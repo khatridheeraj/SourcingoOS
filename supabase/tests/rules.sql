@@ -512,6 +512,139 @@ do $$ begin
   if exists (select 1 from samples where id = 'SMP-000002') then raise exception 'owner could not delete a sample'; end if;
 end $$;
 
+-- ───────── payments ─────────
+-- Dispatching DC-T1 opened invoice INV-1 for its buyer, waiting for an amount.
+select pg_temp.act_as('accounts@t');
+do $$ begin
+  if not exists (select 1 from invoices where invoice_no = 'INV-1' and dc_id = 'DC-T1' and so_id = 'SO-000003' and amount is null) then
+    raise exception 'dispatch did not open the invoice';
+  end if;
+end $$;
+
+-- Only Accounts and the owner see payments.
+select pg_temp.act_as('merch@t');
+do $$ begin
+  if exists (select 1 from invoices) then raise exception 'merchandiser read invoices'; end if;
+end $$;
+select pg_temp.expect_error($$select save_cheque('{}'::jsonb)$$, 'Only Accounts and the owner%');
+select pg_temp.act_as('buyer@t');
+do $$ begin
+  if exists (select 1 from invoices) or exists (select 1 from cheques) then raise exception 'buyer read payments'; end if;
+end $$;
+
+select pg_temp.act_as('accounts@t');
+select pg_temp.expect_error($$select save_invoice(jsonb_build_object('invoice_no','inv-1','buyer_id',(select buyer_id from invoices limit 1),'invoice_date',current_date))$$, '%already exists%');
+select pg_temp.expect_error($$select save_invoice(jsonb_build_object('invoice_no','X','buyer_id',(select id from buyers where id <> (select buyer_id from sales_orders where id = 'SO-000003') limit 1),'invoice_date',current_date,'so_id','SO-000003'))$$, '%belongs to another buyer%');
+select pg_temp.expect_error($$select delete_invoice((select id from invoices where invoice_no = 'INV-1'))$$, '%came from DC-T1%');
+select set_buyer_credit_days((select buyer_id from invoices where invoice_no = 'INV-1'), 45);
+
+do $$
+declare b uuid := (select buyer_id from invoices where invoice_no = 'INV-1'); i1 uuid; i2 uuid; c1 uuid; c2 uuid;
+begin
+  if (select credit_days from buyers where id = b) <> 45 then raise exception 'credit days not saved'; end if;
+  i1 := (select id from invoices where invoice_no = 'INV-1');
+  -- No cheque against an invoice without an amount.
+  begin
+    perform save_cheque(jsonb_build_object('buyer_id', b, 'cheque_no', '100', 'cheque_date', current_date, 'amount', 500,
+      'allocations', jsonb_build_array(jsonb_build_object('invoice_id', i1, 'amount', 500))));
+    raise exception 'cheque against an invoice with no amount';
+  exception when others then if sqlerrm not like 'Enter the amount of invoice%' then raise; end if;
+  end;
+  perform save_invoice(jsonb_build_object('id', i1, 'invoice_no', 'INV-1', 'buyer_id', b, 'invoice_date', current_date - 50, 'amount', 1000));
+  i2 := save_invoice(jsonb_build_object('invoice_no', 'PAY-2', 'buyer_id', b, 'invoice_date', current_date - 10, 'amount', 400.70));
+  perform save_credit_note(jsonb_build_object('credit_note_no', 'CN-1', 'invoice_id', i1, 'note_date', current_date, 'amount', 200));
+
+  -- One cheque pays two invoices; the rupee rounding on INV-2 is accepted.
+  c1 := save_cheque(jsonb_build_object('buyer_id', b, 'cheque_no', '100', 'cheque_date', current_date + 5, 'amount', 1201,
+    'allocations', jsonb_build_array(jsonb_build_object('invoice_id', i1, 'amount', 800), jsonb_build_object('invoice_id', i2, 'amount', 401))));
+  if (select status from cheques where id = c1) <> 'in_hand' or (select received_on from cheques where id = c1) <> current_date then
+    raise exception 'new cheque should be in hand, received today';
+  end if;
+  if invoice_covered(i1) <> 800 or invoice_net(i1) <> 800 then raise exception 'credit note not netted'; end if;
+
+  -- Not more than the cheque, not more than the invoice.
+  begin
+    perform save_cheque(jsonb_build_object('id', c1, 'buyer_id', b, 'cheque_no', '100', 'cheque_date', current_date + 5, 'amount', 1000,
+      'allocations', jsonb_build_array(jsonb_build_object('invoice_id', i1, 'amount', 800), jsonb_build_object('invoice_id', i2, 'amount', 401))));
+    raise exception 'allocated more than the cheque';
+  exception when others then if sqlerrm not like '%split across invoices%' then raise; end if;
+  end;
+  begin
+    c2 := save_cheque(jsonb_build_object('buyer_id', b, 'cheque_no', '101', 'cheque_date', current_date, 'amount', 50,
+      'allocations', jsonb_build_array(jsonb_build_object('invoice_id', i1, 'amount', 50))));
+    raise exception 'covered more than the invoice';
+  exception when others then if sqlerrm not like 'Cheques cover%' then raise; end if;
+  end;
+  begin
+    perform save_credit_note(jsonb_build_object('credit_note_no', 'CN-2', 'invoice_id', i1, 'note_date', current_date, 'amount', 10));
+    raise exception 'credit note below what cheques cover';
+  exception when others then if sqlerrm not like 'Cheques cover%' then raise; end if;
+  end;
+  begin
+    perform save_invoice(jsonb_build_object('id', i2, 'invoice_no', 'PAY-2', 'buyer_id', b, 'invoice_date', current_date - 10, 'amount', 300));
+    raise exception 'invoice amount below what cheques cover';
+  exception when others then if sqlerrm not like 'Cheques cover%' then raise; end if;
+  end;
+  -- Another buyer's invoice can't be paid with this cheque.
+  begin
+    perform save_cheque(jsonb_build_object('buyer_id', (select id from buyers where id <> b limit 1), 'cheque_no', '9', 'cheque_date', current_date,
+      'amount', 10, 'allocations', jsonb_build_array(jsonb_build_object('invoice_id', i2, 'amount', 10))));
+    raise exception 'cross-buyer allocation';
+  exception when others then if sqlerrm not like '%different buyers%' then raise; end if;
+  end;
+
+  -- A post-dated cheque can't go to the bank before its date.
+  begin
+    perform set_cheque_status(array[c1], 'deposited');
+    raise exception 'deposited a post-dated cheque early';
+  exception when others then if sqlerrm not like '%can''t be deposited before then%' then raise; end if;
+  end;
+  update cheques set cheque_date = current_date - 2 where id = c1;
+  -- Deposit, then the details are fixed; clearing keeps the dates.
+  perform set_cheque_status(array[c1], 'deposited', current_date - 1);
+  if (select deposited_on from cheques where id = c1) <> current_date - 1 then raise exception 'deposit date not kept'; end if;
+  begin
+    update cheques set amount = 2000 where id = c1;
+    raise exception 'changed a deposited cheque';
+  exception when others then if sqlerrm not like '%has been deposited%' then raise; end if;
+  end;
+  if set_cheque_status(array[c1], 'cleared') <> 1 or (select cleared_on from cheques where id = c1) <> current_date then
+    raise exception 'clearing failed';
+  end if;
+  -- Accounts can't move a cleared cheque back; a bounce frees the invoices.
+  begin
+    perform set_cheque_status(array[c1], 'in_hand');
+    raise exception 'accounts reversed a cleared cheque';
+  exception when others then if sqlerrm not like '%Ask the owner%' then raise; end if;
+  end;
+  begin
+    perform delete_cheque(c1);
+    raise exception 'accounts deleted a cleared cheque';
+  exception when others then if sqlerrm not like '%Mark it cancelled or bounced%' then raise; end if;
+  end;
+end $$;
+
+select pg_temp.act_as('new@t');  -- owner
+do $$ declare c uuid := (select id from cheques where cheque_no = '100'); i1 uuid := (select id from invoices where invoice_no = 'INV-1'); begin
+  perform set_cheque_status(array[c], 'bounced', null, 'Insufficient funds');
+  if invoice_covered(i1) <> 0 then raise exception 'bounced cheque still covers the invoice'; end if;
+  if (select notes from cheques where id = c) <> 'Insufficient funds' or (select bounced_on from cheques where id = c) is null then
+    raise exception 'bounce reason or date missing';
+  end if;
+  -- A new cheque can now cover INV-1; reviving the bounced one would overpay it.
+  perform save_cheque(jsonb_build_object('buyer_id', (select buyer_id from invoices where id = i1), 'cheque_no', '102', 'cheque_date', current_date,
+    'amount', 800, 'allocations', jsonb_build_array(jsonb_build_object('invoice_id', i1, 'amount', 800))));
+  begin
+    perform set_cheque_status(array[c], 'deposited');
+    raise exception 'revived cheque overpaid the invoice';
+  exception when others then if sqlerrm not like 'Cheques cover%' then raise; end if;
+  end;
+end $$;
+
+-- A merchandiser can't set credit days.
+select pg_temp.act_as('merch@t');
+select pg_temp.expect_error($$select set_buyer_credit_days((select id from buyers limit 1), 30)$$, 'Only Accounts and the owner%');
+
 reset role;
 \o
 \echo 'All rule tests passed.'

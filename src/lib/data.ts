@@ -2,6 +2,7 @@ import { cache } from "react";
 import { getMe } from "@/lib/auth";
 import { todayIST } from "@/lib/format";
 import { makeWorld, type Buyer, type Dc, type Factory, type Grn, type Inquiry, type Order, type Person, type Sample } from "@/lib/model";
+import { makeBooks } from "@/lib/payments";
 import { createClient } from "@/lib/supabase/server";
 
 const byPos = <T extends { position: number }>(a: T, b: T) => a.position - b.position;
@@ -60,4 +61,30 @@ export const loadWorld = cache(async () => {
   });
   /* eslint-enable @typescript-eslint/no-explicit-any */
   return { world, error, me };
+});
+
+// Invoices, credit notes and cheques, for the owner and Accounts only.
+export const loadBooks = cache(async () => {
+  const supabase = await createClient();
+  const { world } = await loadWorld();
+  const [invoices, creditNotes, cheques, allocations, credit] = await Promise.all([
+    supabase.from("invoices").select("id, invoice_no, buyer_id, invoice_date, amount, due_date, so_id, dc_id, notes, created_at").order("invoice_date", { ascending: false }),
+    supabase.from("credit_notes").select("id, credit_note_no, invoice_id, note_date, amount, notes").order("note_date"),
+    supabase.from("cheques").select("id, buyer_id, cheque_no, bank, cheque_date, amount, status, received_on, deposited_on, cleared_on, bounced_on, notes, created_at").order("cheque_date", { ascending: false }),
+    supabase.from("cheque_allocations").select("id, cheque_id, invoice_id, amount"),
+    supabase.from("buyers").select("id, credit_days"),
+  ]);
+  const error = [invoices, creditNotes, cheques, allocations, credit].find((r) => r.error)?.error ?? null;
+  const days = new Map((credit.data ?? []).map((b) => [b.id as string, b.credit_days as number | null]));
+  /* eslint-disable @typescript-eslint/no-explicit-any */
+  const books = makeBooks({
+    invoices: (invoices.data ?? []) as any[],
+    creditNotes: (creditNotes.data ?? []) as any[],
+    cheques: (cheques.data ?? []) as any[],
+    allocations: (allocations.data ?? []) as any[],
+    buyers: world.buyers.map((b) => ({ ...b, credit_days: days.get(b.id) ?? null })),
+    today: world.today,
+  });
+  /* eslint-enable @typescript-eslint/no-explicit-any */
+  return { books, world, error };
 });
