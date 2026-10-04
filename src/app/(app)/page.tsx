@@ -11,12 +11,8 @@ export default async function Home() {
   if (!me?.role || !isInternal(me.role)) {
     return (
       <section className="warnbox">
-        <h2 className="text-lg font-bold">{me?.role ? "Your portal is on its way" : "Waiting for approval"}</h2>
-        <p>
-          {me?.role
-            ? "Factory and buyer portals are the next thing being built. You'll see your orders here soon."
-            : "Your account is set up. The owner needs to give you a role before you can see any orders."}
-        </p>
+        <h2 className="text-lg font-bold">Waiting for approval</h2>
+        <p>Your account is set up. The owner needs to give you a role before you can see any orders.</p>
       </section>
     );
   }

@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { Head } from "@/components/bits";
 import { inputCls, panelCls } from "@/components/ui";
 import { getMe } from "@/lib/auth";
+import { loadFiles } from "@/lib/files";
 import { todayIST } from "@/lib/format";
 import { isOps } from "@/lib/roles";
 import { createClient } from "@/lib/supabase/server";
@@ -65,6 +66,7 @@ export default async function InquiriesPage({ searchParams }: PageProps<"/inquir
       filter === "all" ? true : filter === "open" ? isOpen(i) : filter === "due" ? isOpen(i) && !!i.next_follow_up && i.next_follow_up <= today : i.status === filter,
     )
     .filter((i) => !q || [i.id, i.buyerLabel, i.product_type, i.contact_person, i.contact_email].join(" ").toLowerCase().includes(q));
+  const files = await loadFiles("inquiry", shown.map((i) => i.id), nameOf);
   const dueCount = all.filter((i) => isOpen(i) && !!i.next_follow_up && i.next_follow_up <= today).length;
 
   const href = (status: string) => `/inquiries?status=${status}${q ? `&q=${encodeURIComponent(q)}` : ""}`;
@@ -101,7 +103,7 @@ export default async function InquiriesPage({ searchParams }: PageProps<"/inquir
           ))}
         </nav>
         {shown.length ? (
-          shown.map((i) => <InquiryCard key={i.id} inq={i} merchandisers={merchandisers} today={today} />)
+          shown.map((i) => <InquiryCard key={i.id} inq={i} merchandisers={merchandisers} today={today} files={files.get(i.id) ?? []} />)
         ) : (
           <div className="rounded-xl border-2 border-dashed border-line p-8 text-center text-muted">
             <b className="block text-foreground">{all.length ? "No inquiries match" : "No inquiries yet"}</b>

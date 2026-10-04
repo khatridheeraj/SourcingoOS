@@ -4,6 +4,7 @@ import { Chip, Empty, Head, Pills } from "@/components/bits";
 import { AutoForm, SearchParamInput } from "@/components/feedback";
 import { getMe } from "@/lib/auth";
 import { loadWorld } from "@/lib/data";
+import { loadCovers } from "@/lib/files";
 import { money, nf, unitOf } from "@/lib/model";
 import { isInternal } from "@/lib/roles";
 
@@ -26,6 +27,7 @@ export default async function Styles({ searchParams }: PageProps<"/styles">) {
     .filter((o) => (status === "all" || o.status === status) && (!buyer || o.buyer_id === buyer))
     .flatMap((o) => o.styles.map((st) => ({ o, st })))
     .filter(({ st }) => !q || [st.name, st.code, st.fabric, st.colour].join(" ").toLowerCase().includes(q));
+  const covers = await loadCovers(items.map(({ st }) => st.id));
   const href = (s: string) => `/styles?${new URLSearchParams(Object.entries({ status: s, buyer, q }).filter(([, v]) => v))}`;
 
   return (
@@ -46,7 +48,11 @@ export default async function Styles({ searchParams }: PageProps<"/styles">) {
       <div className="cat">
         {items.length ? items.map(({ o, st }) => (
           <Link key={st.id} href={`/orders/${o.id}`} className="cat-card">
-            <div className="cat-img">{(st.name || "?").slice(0, 2).toUpperCase()}<Chip status={o.status} /></div>
+            <div className="cat-img">
+              {/* eslint-disable-next-line @next/next/no-img-element -- signed storage link */}
+              {covers.has(st.id) ? <img src={covers.get(st.id)} alt="" loading="lazy" /> : (st.name || "?").slice(0, 2).toUpperCase()}
+              <Chip status={o.status} />
+            </div>
             <div className="cat-body">
               <b>{st.name || "Unnamed style"}</b>
               <span className="code text-muted">{st.code || "—"}</span>

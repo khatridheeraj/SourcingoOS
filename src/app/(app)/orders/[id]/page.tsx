@@ -6,6 +6,7 @@ import { LiveStatus, UnlockButton } from "@/components/order-actions";
 import { TnaStyles } from "@/components/tna-styles";
 import { getMe } from "@/lib/auth";
 import { loadWorld } from "@/lib/data";
+import { loadFiles } from "@/lib/files";
 import { fmtDateTime } from "@/lib/format";
 import { buyerStage, fmtDay, grnQty, money, nf, orderValue, STAGES, toDraft, unitOf } from "@/lib/model";
 import { isInternal, isOps } from "@/lib/roles";
@@ -25,6 +26,7 @@ export default async function OrderPage({ params }: PageProps<"/orders/[id]">) {
   const o = w.orderById.get(id);
   if (!o) notFound();
   const ops = isOps(me?.role);
+  const files = await loadFiles("style", o.styles.map((s) => s.id), w.personName);
   const isOwner = me?.role === "owner";
 
   if (ops && (o.status === "draft" || o.status === "tna_review")) {
@@ -38,6 +40,7 @@ export default async function OrderPage({ params }: PageProps<"/orders/[id]">) {
       <Editor
         key={o.id + o.status}
         initial={toDraft(o)}
+        files={Object.fromEntries(files)}
         isOwner={isOwner}
         today={w.today}
         options={{
@@ -97,7 +100,7 @@ export default async function OrderPage({ params }: PageProps<"/orders/[id]">) {
         {!ops && o.remarks && <p className="mt-2 text-[12.5px]"><b>Status remarks:</b> {o.remarks}</p>}
       </section>
       {ops && o.status === "locked" && <LiveStatus id={o.id} merchDate={o.merch_date ?? ""} remarks={o.remarks ?? ""} />}
-      {o.styles.length ? <TnaStyles w={w} o={o} canEdit={ops} /> : <Empty title="No styles yet" />}
+      {o.styles.length ? <TnaStyles w={w} o={o} canEdit={ops} files={files} /> : <Empty title="No styles yet" />}
       {(grns.length > 0 || dcs.length > 0) && (
         <section className="panel">
           <h3>Warehouse</h3>

@@ -3,8 +3,10 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { Attachments } from "@/components/attachments";
 import { Chip, Problems } from "@/components/bits";
 import { useFeedback } from "@/components/feedback";
+import { CATEGORIES_FOR, type FileItem } from "@/lib/file-kinds";
 import { type Condition, CONDITION_LABEL, fromLocalInput, money, nf, num, toLocalInput } from "@/lib/model";
 import { deleteGrn, type GrnInput, saveGrn } from "./actions";
 
@@ -17,8 +19,8 @@ export type GrnOrderOption = {
 };
 type Lines = Record<string, { qty: string; condition: Condition }>;
 
-export function GrnForm({ id, orders, people, isOwner, initial }: {
-  id: string | null; orders: GrnOrderOption[]; people: { id: string; label: string }[]; isOwner: boolean;
+export function GrnForm({ id, orders, people, isOwner, initial, files = [] }: {
+  id: string | null; orders: GrnOrderOption[]; people: { id: string; label: string }[]; isOwner: boolean; files?: FileItem[];
   initial: { so_id: string; received_at: string; received_by: string; qc_checked: boolean; qc_note: string; notes: string; lines: Lines };
 }) {
   const router = useRouter();
@@ -173,6 +175,14 @@ export function GrnForm({ id, orders, people, isOwner, initial }: {
             <textarea className="inp" rows={2} value={f.notes} placeholder="Cartons, packing condition, shortages" onChange={(e) => setF({ ...f, notes: e.target.value })} />
           </label>
         </div>
+      </section>
+      <section className="panel">
+        {id ? (
+          <Attachments target="grn" id={id} files={files} upload={CATEGORIES_FOR.grn} canDeleteAll title="Goods photos & QC report"
+            hint="Photos of cartons, labels and any damage help when the owner approves." />
+        ) : (
+          <p className="text-xs text-muted"><b className="sub">Goods photos &amp; QC report</b><br />Save the draft first, then add photos of the cartons and the QC report here.</p>
+        )}
       </section>
       <div className="sticky-actions">
         <span className="grow text-xs text-muted">Received goods must leave within 24 hours.</span>

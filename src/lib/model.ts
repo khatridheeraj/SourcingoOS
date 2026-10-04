@@ -22,7 +22,7 @@ export const CONDITION_LABEL: Record<Condition, string> = { good: "Good", damage
 
 export type Checkpoint = {
   id: string; style_id: string; position: number; name: string; due_date: string | null; status: TnaStatus;
-  status_updated_at: string | null; status_updated_by: string | null;
+  status_updated_at: string | null; status_updated_by: string | null; status_note?: string | null;
 };
 export type Style = {
   id: string; so_id: string; position: number; name: string; code: string; fabric: string; colour: string; use_sizes: boolean;
