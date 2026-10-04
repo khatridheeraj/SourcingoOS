@@ -27,7 +27,7 @@ export default async function PortalLayout({ children }: LayoutProps<"/">) {
             <b className="font-display text-xl tracking-tight">Sourcingo</b>
             <span className="text-[10.5px] uppercase tracking-widest text-muted">{factory ? t("Factory") : "Buyer"}</span>
           </Link>
-          <span className="ml-auto truncate text-[12.5px] text-muted">{me.fullName || me.email}</span>
+          <span className="ml-auto min-w-0 truncate text-[12.5px] text-muted max-sm:invisible">{me.fullName || me.email}</span>
           {factory && <Link href="/factory/settings" className="btn sm" aria-label={t("My settings")}>{hi ? "EN" : "हिं"}</Link>}
           {factory && <Bell unread={count ?? 0} href="/factory/notifications" />}
           <form action="/auth/signout" method="post">
@@ -35,8 +35,10 @@ export default async function PortalLayout({ children }: LayoutProps<"/">) {
           </form>
         </div>
       </header>
-      <main className="mx-auto flex w-full max-w-[920px] flex-col gap-[18px] px-4 pb-[72px] pt-5">{children}</main>
-      <FeedbackButton label={t("Feedback")} hi={hi} />
+      <main className="mx-auto flex w-full max-w-[920px] flex-col gap-[18px] px-4 pb-10 pt-5">
+        {children}
+        <FeedbackButton label={t("Feedback")} hi={hi} inline />
+      </main>
     </Feedback>
   );
 }

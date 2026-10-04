@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState, useTransition } from "react";
+import { createPortal } from "react-dom";
 import { sendFeedback } from "@/app/me-actions";
 import { useFeedback } from "@/components/feedback";
 
@@ -26,7 +27,7 @@ const KINDS = [
 ];
 
 // "Tell us" from any screen: the page it was sent from goes with it.
-export function FeedbackButton({ label = "Feedback", hi = false }: { label?: string; hi?: boolean }) {
+export function FeedbackButton({ label = "Feedback", hi = false, inline = false, className }: { label?: string; hi?: boolean; inline?: boolean; className?: string }) {
   const path = usePathname();
   const { toast } = useFeedback();
   const [open, setOpen] = useState(false);
@@ -36,8 +37,8 @@ export function FeedbackButton({ label = "Feedback", hi = false }: { label?: str
   const t = (en: string, h: string) => (hi ? h : en);
   return (
     <>
-      <button type="button" className="fb-btn" onClick={() => setOpen(true)}>{label}</button>
-      {open && (
+      <button type="button" className={className ?? (inline ? "fb-btn inline" : "fb-btn")} onClick={() => setOpen(true)}>{label}</button>
+      {open && createPortal(
         <div className="modal-bg" onClick={(e) => e.target === e.currentTarget && setOpen(false)}>
           <form
             className="modal"
@@ -69,7 +70,8 @@ export function FeedbackButton({ label = "Feedback", hi = false }: { label?: str
               <button className="btn primary" disabled={pending || !msg.trim()}>{pending ? "…" : t("Send", "भेजें")}</button>
             </div>
           </form>
-        </div>
+        </div>,
+        document.body,
       )}
     </>
   );

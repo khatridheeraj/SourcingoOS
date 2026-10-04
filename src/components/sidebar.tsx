@@ -58,6 +58,7 @@ export function Shell({ nav, badges, who, actions, unread, children }: {
           <div className="mt-auto flex flex-col gap-1.5 px-2.5 text-xs text-muted">
             <span>{who}</span>
             <Link href="/settings" className="font-semibold text-accent" onClick={() => setOpen(false)}>My settings</Link>
+            <FeedbackButton label="Send feedback" className="text-left font-semibold text-accent lg:hidden" />
             <form action="/auth/signout" method="post">
               <button className="font-semibold text-accent">Sign out</button>
             </form>

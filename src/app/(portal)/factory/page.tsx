@@ -55,7 +55,7 @@ export default async function FactoryHome({ searchParams }: PageProps<"/factory"
             {toAccept.map((p) => (
               <div key={p.id}>
                 <span className="grow"><b className="code">{p.id}</b>{p.revision > 1 && <span className="text-muted"> rev {p.revision}</span>}
-                  <span className="block text-[12.5px] text-muted">{nf(p.total_qty)} pcs · {p.total_value != null ? money(p.total_value, p.currency) : ""} · {t("Deliver by")} {fmtDay(p.delivery_date)}</span>
+                  <span className="block text-[12.5px] text-muted">{[`${nf(p.total_qty)} pcs`, p.total_value != null ? money(p.total_value, p.currency) : null, `${t("Deliver by")} ${fmtDay(p.delivery_date)}`].filter(Boolean).join(" · ")}</span>
                 </span>
                 <Link className="btn primary" href={`/factory/po/${p.id}`}>{t("Open")}</Link>
               </div>
