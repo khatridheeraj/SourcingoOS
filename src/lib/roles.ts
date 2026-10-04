@@ -15,3 +15,5 @@ export const roleLabel = (role: Role | null | undefined) => ROLES.find((r) => r.
 export const INTERNAL_ROLES: Role[] = ["owner", "merchandiser", "manager", "qc", "accounts"];
 export const isInternal = (role: Role | null | undefined) => !!role && INTERNAL_ROLES.includes(role);
 export const canManageFactories = (role: Role | null | undefined) => role === "owner" || role === "manager";
+export const OPS_ROLES: Role[] = ["owner", "merchandiser", "manager", "qc"];
+export const isOps = (role: Role | null | undefined) => !!role && OPS_ROLES.includes(role);

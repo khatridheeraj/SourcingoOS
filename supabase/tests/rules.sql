@@ -16,10 +16,11 @@ exception when others then
   if sqlerrm not like p_like then raise exception 'wrong error for %: %', p_sql, sqlerrm; end if;
 end $$;
 
-insert into auth.users (email) values ('owner@t'), ('merch@t'), ('buyer@t'), ('factory@t'), ('new@t');
+insert into auth.users (email) values ('owner@t'), ('merch@t'), ('buyer@t'), ('factory@t'), ('new@t'), ('accounts@t');
 insert into factories (name) values ('F1');
 update profiles set role = 'owner', active = true where email = 'owner@t';
 update profiles set role = 'merchandiser', active = true where email = 'merch@t';
+update profiles set role = 'accounts', active = true where email = 'accounts@t';
 update profiles set role = 'buyer', active = true, buyer_id = (select id from buyers where code = 'BYR-AH-0001') where email = 'buyer@t';
 update profiles set role = 'factory', active = true, factory_id = (select id from factories where name = 'F1') where email = 'factory@t';
 insert into sales_orders (buyer_id, buyer_po_number, status) select id, 'PO-DRAFT', 'draft' from buyers where code = 'BYR-AH-0001';
@@ -99,6 +100,23 @@ end $$;
 select pg_temp.expect_error($$insert into factories (name) values ('F2')$$, '%row-level security%');
 select pg_temp.act_as('owner@t');  -- now a manager
 insert into factories (name, city) values ('F2', 'Jaipur');
+
+-- Inquiries: ops log them and add follow-ups; accounts, buyers and factories can't see them.
+select pg_temp.act_as('merch@t');
+insert into inquiries (buyer_id, contact_person, contact_email, product_type)
+  select id, 'Asha', 'asha@brand.in', 'Kurta' from buyers where code = 'BYR-AH-0005';
+insert into inquiry_followups (inquiry_id, note) values ('INQ-000001', 'Sent quote');
+do $$ begin
+  if (select created_by from inquiries where id = 'INQ-000001') is distinct from auth.uid() then raise exception 'inquiry created_by not set'; end if;
+end $$;
+select pg_temp.act_as('accounts@t');
+do $$ begin
+  if exists (select 1 from inquiries) or exists (select 1 from inquiry_followups) then raise exception 'accounts read inquiries'; end if;
+end $$;
+select pg_temp.act_as('buyer@t');
+do $$ begin
+  if exists (select 1 from inquiries) then raise exception 'buyer read inquiries'; end if;
+end $$;
 
 reset role;
 \o

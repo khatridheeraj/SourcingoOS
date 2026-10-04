@@ -11,6 +11,8 @@
   --warn: #9a6200;
   --warn-soft: #fdf0cf;
   --bad: #b3261e;
+  --ok: #1d7549;
+  --ok-soft: #dcf1e4;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -25,6 +27,8 @@
     --warn: #e7b24a;
     --warn-soft: #3a2c10;
     --bad: #f28a80;
+    --ok: #62c993;
+    --ok-soft: #163324;
   }
 }
 
@@ -39,6 +43,8 @@
   --color-warn: var(--warn);
   --color-warn-soft: var(--warn-soft);
   --color-bad: var(--bad);
+  --color-ok: var(--ok);
+  --color-ok-soft: var(--ok-soft);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }

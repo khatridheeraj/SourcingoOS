@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { roleLabel, type Me } from "@/lib/auth";
-import { isInternal } from "@/lib/roles";
+import { isInternal, isOps } from "@/lib/roles";
 
 export function AppHeader({ me }: { me: Me }) {
   return (
@@ -8,7 +8,8 @@ export function AppHeader({ me }: { me: Me }) {
       <Link href="/" className="flex-1 text-2xl font-bold">
         Sourcingo <span className="text-sm uppercase tracking-widest text-muted">OS</span>
       </Link>
-      <nav className="flex gap-4 text-sm font-semibold text-accent">
+      <nav className="flex flex-wrap gap-x-4 gap-y-1 text-sm font-semibold text-accent">
+        {isOps(me.role) && <Link href="/inquiries">Inquiries</Link>}
         {isInternal(me.role) && <Link href="/setup">Buyers &amp; factories</Link>}
         {me.role === "owner" && <Link href="/team">People &amp; roles</Link>}
       </nav>
