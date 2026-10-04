@@ -24,6 +24,7 @@ export const NAV: NavGroup[] = [
     { href: "/dashboard", label: "Ops dashboard", roles: OPS, badge: "alerts" },
   ] },
   { title: "Sales", items: [
+    { href: "/pos", label: "POs received", roles: OPS, badge: "pos" },
     { href: "/inquiries", label: "Inquiries", roles: OPS, badge: "inquiries" },
     { href: "/orders", label: "Sales orders", roles: INTERNAL, badge: "review" },
   ] },
