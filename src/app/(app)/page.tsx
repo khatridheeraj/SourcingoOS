@@ -2,7 +2,7 @@ import Link from "next/link";
 import { AlertList, Head, Tile } from "@/components/bits";
 import { getMe } from "@/lib/auth";
 import { loadBooks, loadWorld } from "@/lib/data";
-import { computeAlerts, isoIST, money, sumByCur } from "@/lib/model";
+import { addDays, computeAlerts, isOpenSample, isoIST, money, sumByCur } from "@/lib/model";
 import { FINANCE_ACTIONS, NAV, QUICK_ACTIONS } from "@/lib/nav";
 import { paymentAlerts } from "@/lib/payments";
 import { isFinance, isInternal, isOps } from "@/lib/roles";
@@ -24,7 +24,7 @@ export default async function Home() {
   const payAlerts = books ? paymentAlerts(books, (id) => w.buyerCode(id)) : [];
   const alerts = computeAlerts(w);
   const rank = { bad: 0, warn: 1, info: 2, note: 3 };
-  const shownAlerts = [...(ops ? alerts : alerts.filter((a) => a.href.startsWith("/grn") || a.href.startsWith("/dc"))), ...payAlerts]
+  const shownAlerts = [...(ops ? alerts : alerts.filter((a) => a.href.startsWith("/grn") || a.href.startsWith("/dc") || a.href.startsWith("/samples"))), ...payAlerts]
     .sort((a, z) => rank[a.sev] - rank[z.sev]);
   const actions = [...(ops ? QUICK_ACTIONS : []), ...(finance ? FINANCE_ACTIONS : [])];
   const t = w.today;
@@ -33,6 +33,9 @@ export default async function Home() {
   const grnToday = w.grns.filter((g) => isoIST(g.received_at) === t);
   const dcToday = w.dcs.filter((d) => d.status === "dispatched" && d.dispatched_at && isoIST(d.dispatched_at) === t);
   const held = w.lateGrns().length;
+  const openSamples = w.samples.filter(isOpenSample);
+  const samplesSoon = openSamples.filter((s) => s.due_date && s.due_date >= t && s.due_date <= addDays(t, 3)).length;
+  const samplesLate = openSamples.filter((s) => s.due_date && s.due_date < t).length;
   const waiting = me.role === "owner" ? w.people.filter((p) => !p.active).length : 0;
   const day = new Date(w.now).toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long", timeZone: "Asia/Kolkata" });
 
@@ -49,6 +52,7 @@ export default async function Home() {
         <span className="sub">Your today&apos;s summary</span>
         <div className="tiles">
           {ops && <Tile tone="blue" label="New inquiries" value={w.inquiries.filter((i) => isoIST(i.created_at) === t).length} note={`${w.inquiries.filter((i) => i.status === "new" || i.status === "quoted").length} open in total`} href="/inquiries" />}
+          <Tile alarm={samplesLate > 0} label="Samples due in 3 days" value={samplesSoon} note={samplesLate ? `${samplesLate} late` : `${openSamples.length} open`} href={samplesLate ? "/samples?show=late" : "/samples?show=week"} />
           {ops && <Tile tone="yellow" label="TNA activities due today" value={dueToday.length} note={`${overdueN} overdue`} href="/tna?preset=today" />}
           <Tile tone="green" label="GRNs received today" value={grnToday.length} note={sumByCur(grnToday.map((g) => [w.grnValue(g), w.currencyOf(g.so_id)]))} href="/grn" />
           <Tile tone="pink" label="Dispatched today" value={dcToday.length} note={sumByCur(dcToday.map((d) => [w.dcValue(d), w.currencyOf(d.so_id)]))} href="/dc?status=dispatched" />

@@ -28,6 +28,9 @@ export async function searchIndex(): Promise<SearchItem[]> {
       out.push({ k: "Inquiry", l: `${i.id} · ${i.product_type}`, s: w.buyerCode(i.buyer_id), href: `/inquiries?status=all&q=${encodeURIComponent(i.id)}`, hay: [i.id, i.product_type, name(i.buyer_id)].join(" ") });
     }
   }
+  for (const s of w.samples) {
+    out.push({ k: "Sample", l: `${s.id} · ${s.description || s.fabric || "Sample"}`, s: `${w.buyerCode(s.buyer_id)}${s.factory_id ? ` · ${w.factoryName(s.factory_id)}` : ""}`, href: `/samples/${s.id}`, hay: [s.id, s.description, s.fabric, s.buyer_ref, name(s.buyer_id), w.factoryName(s.factory_id), s.tracking].join(" ") });
+  }
   for (const g of w.grns) out.push({ k: "GRN", l: g.id, s: `${g.so_id} · ${g.status.replace("_", " ")}`, href: `/grn/${g.id}`, hay: [g.id, g.so_id].join(" ") });
   for (const d of w.dcs) out.push({ k: "DC", l: d.id, s: [d.invoice_no, d.tracking].filter(Boolean).join(" · "), href: `/dc/${d.id}`, hay: [d.id, d.invoice_no, d.tracking, d.so_id, d.grn_id].join(" ") });
   if (isFinance(me?.role)) {

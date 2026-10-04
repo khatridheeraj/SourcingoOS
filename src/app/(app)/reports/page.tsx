@@ -46,6 +46,7 @@ export default async function Reports() {
           <Download href="/reports/export/sales-orders">Sales orders (CSV)</Download>
           <Download href="/reports/export/grns">GRNs (CSV)</Download>
           <Download href="/reports/export/delivery-challans">Delivery challans (CSV)</Download>
+          <Download href="/reports/export/samples">Samples (CSV)</Download>
           {(me?.role === "owner" || me?.role === "accounts") && <Download href="/reports/export/payments">Payments (CSV)</Download>}
           {me?.role === "owner" && <Download href="/reports/export/backup">Full backup (JSON)</Download>}
         </div>

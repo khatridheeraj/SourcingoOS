@@ -1,7 +1,7 @@
 import { getMe } from "@/lib/auth";
 import { loadBooks, loadWorld } from "@/lib/data";
 import { fmtDateTime } from "@/lib/format";
-import { CONDITION_LABEL, DC_LABEL, GRN_LABEL, SO_LABEL, unitOf } from "@/lib/model";
+import { CONDITION_LABEL, DC_LABEL, GRN_LABEL, SAMPLE_LABEL, sampleOnTime, sampleTypeLabel, SO_LABEL, unitOf } from "@/lib/model";
 import { CHEQUE_LABEL, INVOICE_LABEL } from "@/lib/payments";
 import { isFinance, isInternal } from "@/lib/roles";
 
@@ -74,13 +74,25 @@ export async function GET(_req: Request, ctx: RouteContext<"/reports/export/[kin
       ])),
     ]));
   }
+  if (kind === "samples") {
+    return file("samples", csv([
+      ["Sample", "Buyer code", "What", "Fabric", "Buyer ref", "Type", "Pieces", "Vendor", "Status", "Round", "Received", "Due to buyer",
+        "Given to vendor", "Vendor return by", "Back from vendor", "Sent to buyer", "On time", "Courier", "Tracking", "Merchandiser", "Feedback", "Remarks"],
+      ...w.samples.map((s) => {
+        const ok = sampleOnTime(s);
+        return [s.id, w.buyerCode(s.buyer_id), s.description, s.fabric, s.buyer_ref, sampleTypeLabel(s.sample_type), s.qty, s.factory_id ? w.factoryName(s.factory_id) : "",
+          SAMPLE_LABEL[s.status], s.round, s.received_on, s.due_date, s.issued_on, s.vendor_due, s.ready_on, s.dispatched_on, ok === null ? "" : ok ? "Yes" : "No",
+          s.courier, s.tracking, s.merchandiser_id ? w.personName(s.merchandiser_id) : "", s.feedback, s.remarks];
+      }),
+    ]));
+  }
   if (kind === "backup" && me?.role === "owner") {
     // Codes only: real buyer names stay in the private registry.
     const buyers = w.buyers.map((b) => ({ id: b.id, code: b.code, default_payment_terms: b.default_payment_terms, default_address: b.default_address }));
     const { books: b } = await loadBooks();
     const omit = <T extends object>(o: T, key: string) => Object.fromEntries(Object.entries(o).filter(([k]) => k !== key));
     const payments = { invoices: b.invoices.map((i) => omit(i, "cheques")), credit_notes: b.creditNotes, cheques: b.cheques.map((c) => omit(c, "invoices")), cheque_allocations: b.allocations };
-    const body = { exported_at: new Date(w.now).toISOString(), buyers, factories: w.factories, orders: w.orders, grns: w.grns, delivery_challans: w.dcs, inquiries: w.inquiries, payments };
+    const body = { exported_at: new Date(w.now).toISOString(), buyers, factories: w.factories, orders: w.orders, grns: w.grns, delivery_challans: w.dcs, inquiries: w.inquiries, samples: w.samples, payments };
     return file("backup", JSON.stringify(body, null, 2), "application/json");
   }
   return new Response("Unknown export", { status: 404 });

@@ -1,7 +1,7 @@
 import { cache } from "react";
 import { getMe } from "@/lib/auth";
 import { todayIST } from "@/lib/format";
-import { makeWorld, type Buyer, type Dc, type Factory, type Grn, type Inquiry, type Order, type Person } from "@/lib/model";
+import { makeWorld, type Buyer, type Dc, type Factory, type Grn, type Inquiry, type Order, type Person, type Sample } from "@/lib/model";
 import { makeBooks } from "@/lib/payments";
 import { createClient } from "@/lib/supabase/server";
 
@@ -30,7 +30,7 @@ export const loadWorld = cache(async () => {
   const me = await getMe();
   const supabase = await createClient();
   const isOwner = me?.role === "owner";
-  const [orders, grns, dcs, inquiries, buyers, registry, factories, people] = await Promise.all([
+  const [orders, grns, dcs, inquiries, buyers, registry, factories, people, samples] = await Promise.all([
     supabase.from("sales_orders").select("*, so_styles(*, tna_checkpoints(*))").order("created_at", { ascending: false }),
     supabase.from("grns").select("*, grn_lines(*)").order("received_at", { ascending: false }),
     supabase.from("delivery_challans").select("*, dc_lines(*)").order("created_at", { ascending: false }),
@@ -39,8 +39,9 @@ export const loadWorld = cache(async () => {
     isOwner ? supabase.from("buyer_registry").select("buyer_id, real_name") : Promise.resolve({ data: [], error: null }),
     supabase.from("factories").select("id, name, city, active").order("name"),
     supabase.from("profiles").select("id, full_name, email, role, active"),
+    supabase.from("samples").select("*").order("created_at", { ascending: false }),
   ]);
-  const error = [orders, grns, dcs, inquiries, buyers, registry, factories, people].find((r) => r.error)?.error ?? null;
+  const error = [orders, grns, dcs, inquiries, buyers, registry, factories, people, samples].find((r) => r.error)?.error ?? null;
 
   /* eslint-disable @typescript-eslint/no-explicit-any */
   const names = new Map(((registry.data ?? []) as any[]).map((r) => [r.buyer_id, r.real_name as string]));
@@ -52,6 +53,7 @@ export const loadWorld = cache(async () => {
     buyers: ((buyers.data ?? []) as Buyer[]).map((b) => ({ ...b, real_name: names.get(b.id) })),
     factories: (factories.data ?? []) as Factory[],
     people: (people.data ?? []) as Person[],
+    samples: (samples.data ?? []) as Sample[],
     today: todayIST(),
     now: Date.now(),
     meId: me?.id ?? "",

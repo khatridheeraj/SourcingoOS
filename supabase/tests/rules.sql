@@ -346,6 +346,172 @@ do $$ begin
   if not exists (select 1 from tna_status_history where note = 'Fabric late from mill') then raise exception 'note not in history'; end if;
 end $$;
 
+-- POs received: staff only; inquiry and sales order come from the PO.
+select pg_temp.act_as('merch@t');
+do $$ declare v_b uuid := (select id from buyers where code = 'BYR-AH-0001'); v_po text; v_inq text; v_so text; begin
+  insert into received_pos (buyer_id, po_number, po_date, delivery_date, sender_name, sender_email, email_thread_id, attachments, lines)
+    values (v_b, ' KFT-1 ', '2026-10-01', '2026-11-15', 'Asha', 'asha@brand.in', 't1', '{po.pdf}',
+            '[{"style_code":"A1","description":"Cord set","colour":"Red","qty":100,"rate":740},{"style_code":"A2","description":"Cord set","colour":"Blue","qty":50,"rate":740}]')
+    returning id into v_po;
+  if (select po_number from received_pos where id = v_po) <> 'KFT-1' then raise exception 'po number not trimmed'; end if;
+  begin
+    insert into received_pos (buyer_id, po_number, email_thread_id) values (v_b, 'KFT-1', 't2');
+    raise exception 'duplicate PO allowed';
+  exception when unique_violation then null;
+  end;
+  begin
+    update received_pos set status = 'rejected' where id = v_po;
+    raise exception 'reject without reason allowed';
+  exception when check_violation then null;
+  end;
+  v_inq := received_po_to_inquiry(v_po);
+  if (select est_qty from inquiries where id = v_inq) <> 150 or (select budget_inr from inquiries where id = v_inq) <> 111000
+     or (select status from received_pos where id = v_po) <> 'in_progress' then raise exception 'inquiry from PO wrong'; end if;
+  v_so := convert_received_po(v_po);
+  if (select count(*) from so_styles where so_id = v_so) <> 2 or (select buyer_date from sales_orders where id = v_so) <> '2026-11-15'
+     or (select count(*) from tna_checkpoints c join so_styles s on s.id = c.style_id where s.so_id = v_so) <> 12
+     or (select status from received_pos where id = v_po) <> 'converted'
+     or (select so_id from inquiries where id = v_inq) <> v_so then raise exception 'conversion wrong'; end if;
+  -- An order deleted while still a draft sends the PO back to the team.
+  perform delete_draft_sales_order(v_so);
+  if (select status from received_pos where id = v_po) <> 'in_progress' then raise exception 'PO not reopened'; end if;
+  -- A PO whose order already exists is linked on arrival.
+  insert into received_pos (buyer_id, po_number, email_thread_id) values (v_b, 'PO-DRAFT', 't3') returning id into v_po;
+  if (select status from received_pos where id = v_po) <> 'converted' then raise exception 'existing order not linked'; end if;
+  insert into received_pos (buyer_id, po_number, email_thread_id) values (v_b, 'KFT-2', 't4') returning id into v_po;
+  update received_pos set status = 'rejected', reject_reason = 'Duplicate of KFT-1' where id = v_po;
+  v_so := convert_received_po(v_po);
+  if (select count(*) from so_styles where so_id = v_so) <> 1 or (select reject_reason from received_pos where id = v_po) is not null then raise exception 'header-only conversion wrong'; end if;
+end $$;
+select pg_temp.expect_error($$select convert_received_po((select id from received_pos where po_number = 'KFT-2'))$$, '%already sales order%');
+select pg_temp.act_as('accounts@t');
+do $$ begin if exists (select 1 from received_pos) then raise exception 'accounts read POs'; end if; end $$;
+select pg_temp.expect_error($$select received_po_to_inquiry('RPO-000001')$$, 'Only merchandisers%');
+select pg_temp.act_as('factory@t');
+do $$ begin if exists (select 1 from received_pos) then raise exception 'factory read POs'; end if; end $$;
+
+-- Samples: due date required, dates stamped and checked, every move logged.
+select pg_temp.act_as('merch@t');
+select pg_temp.expect_error($$insert into samples (buyer_id, fabric) select id, '60s Cotton' from buyers where code = 'BYR-AH-0001'$$,
+  'Set the date the buyer needs this sample by.');
+select pg_temp.expect_error($$insert into samples (buyer_id, fabric, due_date, status) select id, 'Linen', current_date + 5, 'with_vendor' from buyers where code = 'BYR-AH-0001'$$,
+  'Choose the vendor making this sample.');
+select setval('sample_seq', 1, false); -- the rejected inserts above used up numbers
+do $$ declare v_today date := (now() at time zone 'Asia/Kolkata')::date; v_id text; begin
+  insert into samples (buyer_id, fabric, description, received_on, due_date)
+    select id, ' 60s Cotton ', 'Kaftan dress', v_today - 2, v_today + 5 from buyers where code = 'BYR-AH-0001' returning id into v_id;
+  if v_id <> 'SMP-000001' then raise exception 'sample id should be SMP-000001, got %', v_id; end if;
+  if (select fabric from samples where id = v_id) <> '60s Cotton' then raise exception 'text not trimmed'; end if;
+  if (select count(*) from sample_events where sample_id = v_id and kind = 'status' and to_status = 'received') <> 1 then raise exception 'creation not logged'; end if;
+
+  update samples set status = 'with_vendor', factory_id = (select id from factories where name = 'F1'), vendor_due = v_today + 3 where id = v_id;
+  if (select issued_on from samples where id = v_id) <> v_today then raise exception 'issued date not stamped'; end if;
+  begin
+    update samples set received_on = v_today + 1 where id = v_id;
+    raise exception 'future received date allowed';
+  exception when others then if sqlerrm not like 'The received date can''t be in the future.' then raise; end if;
+  end;
+  begin
+    update samples set received_on = v_today, issued_on = v_today - 1 where id = v_id;
+    raise exception 'issued before received allowed';
+  exception when others then if sqlerrm not like 'It went to the vendor on % but was received on %' then raise; end if;
+  end;
+  begin
+    update samples set status = 'approved' where id = v_id;
+    raise exception 'approved before dispatch';
+  exception when others then if sqlerrm not like 'Mark the sample as sent to the buyer%' then raise; end if;
+  end;
+  insert into sample_events (sample_id, kind, note) values (v_id, 'note', 'Print options sent');
+  begin
+    insert into sample_events (sample_id, kind, to_status) values (v_id, 'status', 'approved');
+    raise exception 'fake status event allowed';
+  exception when others then if sqlerrm not like '%row-level security%' then raise; end if;
+  end;
+  insert into files (category, sample_id, storage_path, file_name, mime_type, size_bytes)
+    values ('sample_photo', v_id, 'sample/' || v_id || '/s1/ref.jpg', 'ref.jpg', 'image/jpeg', 1000);
+  begin
+    insert into files (category, sample_id, storage_path, file_name, mime_type, size_bytes)
+      values ('tech_pack', v_id, 'sample/' || v_id || '/s2/tp.pdf', 'tp.pdf', 'application/pdf', 10);
+    raise exception 'tech pack on a sample allowed';
+  exception when others then if sqlerrm not like '%can''t be attached here%' then raise; end if;
+  end;
+end $$;
+-- A sample still at Sourcingo stays hidden from vendors.
+insert into samples (buyer_id, fabric, due_date, factory_id) select b.id, 'Poplin', current_date + 9, f.id from buyers b, factories f where b.code = 'BYR-AH-0001' and f.name = 'F1';
+
+select pg_temp.act_as('accounts@t');
+update samples set remarks = 'x';
+do $$ begin
+  if (select count(*) from samples) <> 2 then raise exception 'accounts should read samples'; end if;
+  if exists (select 1 from samples where remarks = 'x') then raise exception 'accounts changed a sample'; end if;
+end $$;
+
+select pg_temp.act_as('factory@t');
+do $$ begin
+  if exists (select 1 from samples) then raise exception 'factory read samples table'; end if;
+  if (select array_agg(id) from portal_factory_samples) is distinct from array['SMP-000001'] then raise exception 'factory should see only the issued sample'; end if;
+  if (select buyer_code from portal_factory_samples) <> 'BYR-AH-0001' then raise exception 'factory should see the buyer code'; end if;
+  if (select array_agg(file_name) from files where sample_id is not null) is distinct from array['ref.jpg'] then raise exception 'factory cannot see sample photo'; end if;
+  insert into files (category, sample_id, storage_path, file_name, mime_type, size_bytes)
+    values ('sample_photo', 'SMP-000001', 'sample/SMP-000001/f1/done.jpg', 'done.jpg', 'image/jpeg', 1000);
+  insert into storage.objects (bucket_id, name) values ('files', 'sample/SMP-000001/f1/done.jpg');
+  begin
+    insert into files (category, sample_id, storage_path, file_name, mime_type, size_bytes)
+      values ('sample_photo', 'SMP-000002', 'sample/SMP-000002/f2/x.jpg', 'x.jpg', 'image/jpeg', 10);
+    raise exception 'factory added a photo to a sample not issued to it';
+  exception when others then if sqlerrm not like '%row-level security%' then raise; end if;
+  end;
+  begin
+    perform factory_sample_ready('SMP-000002');
+    raise exception 'factory marked a sample it does not have';
+  exception when others then if sqlerrm not like 'You do not have access%' then raise; end if;
+  end;
+  perform factory_sample_ready('SMP-000001', 'Sent with Ramesh');
+  if (select status from portal_factory_samples where id = 'SMP-000001') <> 'ready' then raise exception 'factory ready not saved'; end if;
+  begin
+    insert into files (category, sample_id, storage_path, file_name, mime_type, size_bytes)
+      values ('sample_photo', 'SMP-000001', 'sample/SMP-000001/f3/late.jpg', 'late.jpg', 'image/jpeg', 10);
+    raise exception 'factory added a photo after handing the sample back';
+  exception when others then if sqlerrm not like '%row-level security%' then raise; end if;
+  end;
+end $$;
+
+select pg_temp.act_as('merch@t');
+do $$ declare v_today date := (now() at time zone 'Asia/Kolkata')::date; begin
+  if (select ready_on from samples where id = 'SMP-000001') <> v_today then raise exception 'ready date not stamped'; end if;
+  if not exists (select 1 from sample_events where note = 'Sent with Ramesh') then raise exception 'factory note missing'; end if;
+  update samples set status = 'dispatched', courier = 'DTDC', tracking = 'D123' where id = 'SMP-000001';
+  update samples set status = 'changes', feedback = 'Shorten the sleeve' where id = 'SMP-000001';
+  update samples set status = 'with_vendor', due_date = v_today + 6 where id = 'SMP-000001';
+  if (select row(round, dispatched_on, ready_on, courier, issued_on, vendor_due) from samples where id = 'SMP-000001')
+     is distinct from row(2, null::date, null::date, null::text, v_today, null::date) then
+    raise exception 'next round not reset: %', (select row(round, dispatched_on, ready_on, courier, issued_on, vendor_due) from samples where id = 'SMP-000001');
+  end if;
+  if (select count(*) from sample_events where sample_id = 'SMP-000001' and kind = 'status') <> 6 then raise exception 'status history incomplete'; end if;
+  delete from samples where id = 'SMP-000002';
+  if not exists (select 1 from samples where id = 'SMP-000002') then raise exception 'merchandiser deleted a sample'; end if;
+end $$;
+
+select pg_temp.act_as('factory@t');
+do $$ begin
+  if (select feedback from portal_factory_samples where id = 'SMP-000001') is not null then raise exception 'feedback shown outside changes'; end if;
+  if (select status from portal_factory_samples where id = 'SMP-000001') <> 'with_vendor' then raise exception 'round 2 not visible'; end if;
+end $$;
+
+select pg_temp.act_as('buyer@t');
+do $$ begin
+  if exists (select 1 from samples) then raise exception 'buyer read samples table'; end if;
+  if (select array_agg(stage order by id) from portal_buyer_samples) is distinct from array['In development', 'In development'] then
+    raise exception 'buyer sample stages wrong';
+  end if;
+end $$;
+
+select pg_temp.act_as('new@t');  -- the owner by now
+delete from samples where id = 'SMP-000002';
+do $$ begin
+  if exists (select 1 from samples where id = 'SMP-000002') then raise exception 'owner could not delete a sample'; end if;
+end $$;
+
 -- ───────── payments ─────────
 -- Dispatching DC-T1 opened invoice INV-1 for its buyer, waiting for an amount.
 select pg_temp.act_as('accounts@t');
