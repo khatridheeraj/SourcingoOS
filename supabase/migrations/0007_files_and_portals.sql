@@ -96,8 +96,7 @@ create policy "sourcingo delete files" on storage.objects for delete to authenti
 alter table tna_checkpoints add column status_note text;
 alter table tna_status_history add column note text;
 
-drop function set_checkpoint_status(uuid, tna_status);
-create function set_checkpoint_status(p_checkpoint uuid, p_status tna_status, p_note text default null) returns void
+create function set_checkpoint_status(p_checkpoint uuid, p_status tna_status, p_note text) returns void
   language plpgsql security definer set search_path = public as $$
 declare v_old tna_status; v_old_note text; v_so text; v_factory uuid; v_so_status so_status;
         v_note text := nullif(btrim(coalesce(p_note, '')), '');
@@ -120,7 +119,10 @@ begin
   insert into tna_status_history (checkpoint_id, from_status, to_status, changed_by, note)
     values (p_checkpoint, v_old, p_status, auth.uid(), v_note);
 end $$;
-grant execute on function set_checkpoint_status(uuid, tna_status, text) to authenticated;
+-- The two-argument form keeps working and simply carries no note.
+create or replace function set_checkpoint_status(p_checkpoint uuid, p_status tna_status) returns void
+  language sql security definer set search_path = public as $$ select set_checkpoint_status(p_checkpoint, p_status, null::text) $$;
+grant execute on function set_checkpoint_status(uuid, tna_status, text), set_checkpoint_status(uuid, tna_status) to authenticated;
 
 -- ───────────────────────── portals ─────────────────────────
 create or replace view portal_factory_checkpoints as
