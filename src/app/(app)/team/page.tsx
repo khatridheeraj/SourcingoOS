@@ -1,5 +1,4 @@
 import { redirect } from "next/navigation";
-import { AppHeader } from "@/components/app-header";
 import { getMe } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { PersonRow, type Person } from "./person-row";
@@ -28,8 +27,7 @@ export default async function TeamPage() {
   const active = all.filter((p) => p.active);
 
   return (
-    <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-6 px-4 py-10">
-      <AppHeader me={me} />
+    <div className="flex flex-col gap-6">
       <div>
         <h1 className="text-xl font-bold">People &amp; roles</h1>
         <p className="text-muted">Anyone can sign up with their email. Nobody sees anything until you give them a role here.</p>
@@ -52,6 +50,6 @@ export default async function TeamPage() {
           <PersonRow key={p.id} person={p} isMe={p.id === me.id} factories={factoryOpts} buyers={buyerOpts} />
         ))}
       </section>
-    </main>
+    </div>
   );
 }

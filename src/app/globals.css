@@ -4,6 +4,7 @@
   --background: #f4f5f7;
   --foreground: #16181f;
   --surface: #ffffff;
+  --surface-2: #eef0f4;
   --muted: #5b6070;
   --line: #dfe2e8;
   --accent: #2f4fa0;
@@ -13,6 +14,11 @@
   --bad: #b3261e;
   --ok: #1d7549;
   --ok-soft: #dcf1e4;
+  --bad-soft: #fbdedb;
+  --t-blue: #e7eefc;
+  --t-yellow: #fdf3d3;
+  --t-green: #e1f4e8;
+  --t-pink: #fbe6ef;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -20,6 +26,7 @@
     --background: #0f1117;
     --foreground: #e8e9ee;
     --surface: #171a22;
+    --surface-2: #20242f;
     --muted: #9aa0b2;
     --line: #2b303d;
     --accent: #3d5fb8;
@@ -29,6 +36,11 @@
     --bad: #f28a80;
     --ok: #62c993;
     --ok-soft: #163324;
+    --bad-soft: #3e1d1a;
+    --t-blue: #1d2640;
+    --t-yellow: #352c12;
+    --t-green: #15301f;
+    --t-pink: #3a1c29;
   }
 }
 
@@ -36,6 +48,7 @@
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
   --color-muted: var(--muted);
   --color-line: var(--line);
   --color-accent: var(--accent);
@@ -45,11 +58,25 @@
   --color-bad: var(--bad);
   --color-ok: var(--ok);
   --color-ok-soft: var(--ok-soft);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-bad-soft: var(--bad-soft);
+  --color-t-blue: var(--t-blue);
+  --color-t-yellow: var(--t-yellow);
+  --color-t-green: var(--t-green);
+  --color-t-pink: var(--t-pink);
+  --font-sans: var(--font-body), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-display-face), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-mono-face), ui-monospace, monospace;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
+}
+
+h1, h2, h3 {
+  font-family: var(--font-display);
+  text-wrap: balance;
+}
+.num {
+  font-variant-numeric: tabular-nums;
 }

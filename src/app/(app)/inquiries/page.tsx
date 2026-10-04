@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { AppHeader } from "@/components/app-header";
 import { inputCls, panelCls } from "@/components/ui";
 import { getMe } from "@/lib/auth";
 import { todayIST } from "@/lib/format";
@@ -70,8 +69,7 @@ export default async function InquiriesPage({ searchParams }: PageProps<"/inquir
   const href = (status: string) => `/inquiries?status=${status}${q ? `&q=${encodeURIComponent(q)}` : ""}`;
 
   return (
-    <main className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-6 px-4 py-10">
-      <AppHeader me={me} />
+    <div className="flex flex-col gap-6">
       <div>
         <h1 className="text-xl font-bold">Inquiries</h1>
         <p className="text-muted">Log every buyer inquiry, assign it, and follow up until it becomes an order.</p>
@@ -113,6 +111,6 @@ export default async function InquiriesPage({ searchParams }: PageProps<"/inquir
           </div>
         )}
       </section>
-    </main>
+    </div>
   );
 }

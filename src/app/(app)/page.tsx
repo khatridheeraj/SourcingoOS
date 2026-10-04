@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { AppHeader } from "@/components/app-header";
 import { getMe } from "@/lib/auth";
 import { todayIST } from "@/lib/format";
 import { isOps } from "@/lib/roles";
@@ -28,8 +27,7 @@ export default async function Home() {
   }
 
   return (
-    <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-6 px-4 py-10">
-      <AppHeader me={me} />
+    <div className="flex flex-col gap-6">
 
       {waiting > 0 && (
         <Link href="/team" className="rounded-xl bg-accent-soft p-4 font-semibold">
@@ -61,6 +59,6 @@ export default async function Home() {
           <p>Your account is set up. The owner needs to give you a role before you can see any orders.</p>
         </section>
       )}
-    </main>
+    </div>
   );
 }

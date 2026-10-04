@@ -118,6 +118,77 @@ do $$ begin
   if exists (select 1 from inquiries) then raise exception 'buyer read inquiries'; end if;
 end $$;
 
+-- Sales order lifecycle: create from inquiry, save draft, lock, factory updates TNA,
+-- receive goods, dispatch, auto-ship.
+select pg_temp.act_as('merch@t');
+do $$
+declare v_so text; v_buyer uuid := (select buyer_id from inquiries where id = 'INQ-000001');
+        v_fac uuid := (select id from factories where name = 'F1');
+        v_merch uuid := auth.uid(); v_mgr uuid := (select id from profiles where email = 'owner@t');
+begin
+  v_so := create_sales_order(v_buyer, 'PO-100', 'garment', 'INQ-000001');
+  if (select status from inquiries where id = 'INQ-000001') <> 'converted' then raise exception 'inquiry not converted'; end if;
+  perform save_sales_order(jsonb_build_object(
+    'id', v_so, 'buyer_id', v_buyer, 'buyer_po_number', 'PO-100', 'order_type', 'garment', 'currency', 'INR',
+    'factory_id', v_fac, 'payment_terms', '45 days', 'merchandiser_id', v_merch, 'manager_id', v_mgr,
+    'buyer_date', current_date + 60, 'factory_date', current_date + 50, 'merch_date', current_date + 48, 'tags', jsonb_build_array('SS27', ' '),
+    'styles', jsonb_build_array(jsonb_build_object(
+      'id', '11111111-1111-1111-1111-111111111111', 'name', 'Kurta', 'code', 'K1', 'fabric', 'Cotton', 'colour', 'Blue',
+      'use_sizes', true, 'sizes', jsonb_build_object('S', '10', 'M', '20', 'L', ''), 'buyer_rate', '240', 'factory_rate', '180',
+      'checkpoints', jsonb_build_array(
+        jsonb_build_object('id', '22222222-2222-2222-2222-222222222221', 'name', 'Cutting', 'due_date', current_date + 10),
+        jsonb_build_object('id', '22222222-2222-2222-2222-222222222222', 'name', 'Packing', 'due_date', current_date + 40))))));
+  if (select qty from so_styles where id = '11111111-1111-1111-1111-111111111111') <> 30 then raise exception 'size total not computed'; end if;
+  if (select tags from sales_orders where id = v_so) <> array['SS27'] then raise exception 'tags not cleaned'; end if;
+  update sales_orders set status = 'tna_review' where id = v_so;
+end $$;
+select pg_temp.expect_error($$select create_sales_order((select buyer_id from inquiries where id = 'INQ-000001'), 'PO-100')$$, '%already used%');
+select pg_temp.expect_error($$select set_checkpoint_status('22222222-2222-2222-2222-222222222221', 'in_progress')$$, '%after the TNA is locked%');
+
+-- Factory sees the order in review, but not its buyer rate.
+select pg_temp.act_as('factory@t');
+do $$ begin
+  if not exists (select 1 from portal_factory_orders where id = 'SO-000003') then raise exception 'factory cannot see its order'; end if;
+end $$;
+
+select pg_temp.act_as('new@t');  -- owner
+select lock_sales_order('SO-000003');
+select pg_temp.act_as('merch@t');
+select pg_temp.expect_error($$select save_sales_order('{"id":"SO-000003"}'::jsonb)$$, '%is locked%');
+update sales_orders set merch_date = current_date + 49, remarks = 'Fabric booked' where id = 'SO-000003';
+
+select pg_temp.act_as('factory@t');
+select set_checkpoint_status('22222222-2222-2222-2222-222222222221', 'completed');
+do $$ begin
+  if (select milestone from portal_buyer_orders where id = 'SO-000003') is not null then raise exception 'factory read buyer portal'; end if;
+end $$;
+
+select pg_temp.act_as('merch@t');
+insert into grns (id, so_id) values ('GRN-T1', 'SO-000003');
+select pg_temp.expect_error($$insert into grn_lines (grn_id, style_id, qty) values ('GRN-T1', '11111111-1111-1111-1111-111111111111', 31)$$, '%Overshipping is not allowed%');
+insert into grn_lines (grn_id, style_id, qty) values ('GRN-T1', '11111111-1111-1111-1111-111111111111', 30);
+select pg_temp.act_as('new@t');
+select pg_temp.expect_error($$update sales_orders set status = 'tna_review' where id = 'SO-000003'$$, '%cannot be unlocked%');
+select pg_temp.act_as('merch@t');
+insert into delivery_challans (id, grn_id, so_id) values ('DC-T1', 'GRN-T1', 'SO-000003');
+select pg_temp.expect_error($$insert into dc_lines (dc_id, style_id, qty) values ('DC-T1', '11111111-1111-1111-1111-111111111111', 31)$$, 'Only 30 available%');
+insert into dc_lines (dc_id, style_id, qty) values ('DC-T1', '11111111-1111-1111-1111-111111111111', 30);
+update delivery_challans set status = 'dispatched', courier = 'Delhivery', tracking = 'X1', address = 'Mumbai',
+  invoice_no = 'INV-1', invoice_date = current_date, dispatched_at = now() where id = 'DC-T1';
+do $$ begin
+  if (select status from sales_orders where id = 'SO-000003') <> 'shipped' then raise exception 'order not marked shipped'; end if;
+end $$;
+
+-- Deleting a draft frees its inquiry.
+insert into inquiries (id, buyer_id, contact_person, contact_email, product_type)
+  select 'INQ-T2', id, 'B', 'b@b.in', 'Shirt' from buyers where code = 'BYR-AH-0005';
+do $$ declare v text; begin
+  v := create_sales_order((select buyer_id from inquiries where id = 'INQ-T2'), 'PO-200', 'garment', 'INQ-T2');
+  perform delete_draft_sales_order(v);
+  if (select so_id from inquiries where id = 'INQ-T2') is not null then raise exception 'inquiry still linked'; end if;
+end $$;
+select pg_temp.expect_error($$select delete_draft_sales_order('SO-000003')$$, 'Only draft%');
+
 reset role;
 \o
 \echo 'All rule tests passed.'
