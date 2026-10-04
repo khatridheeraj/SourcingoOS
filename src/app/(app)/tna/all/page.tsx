@@ -5,6 +5,7 @@ import { AutoForm } from "@/components/feedback";
 import { TnaStyles } from "@/components/tna-styles";
 import { getMe } from "@/lib/auth";
 import { loadWorld } from "@/lib/data";
+import { loadFiles } from "@/lib/files";
 import { fmtDay, progressCells } from "@/lib/model";
 import { isOps } from "@/lib/roles";
 
@@ -17,6 +18,7 @@ export default async function AllTna({ searchParams }: PageProps<"/tna/all">) {
   const { world: w } = await loadWorld();
   const locked = w.orders.filter((o) => o.status === "locked");
   const o = locked.find((x) => x.id === so) ?? locked[0];
+  const files = await loadFiles("style", o?.styles.map((s) => s.id) ?? [], w.personName);
   const open = (id: string) => {
     const c = progressCells(w.orderById.get(id)!, w.today);
     return `${c.filter((x) => x === "c").length}/${c.length} done${c.includes("o") ? " · overdue" : ""}`;
@@ -42,7 +44,7 @@ export default async function AllTna({ searchParams }: PageProps<"/tna/all">) {
             <Link className="btn sm" href={`/orders/${o.id}`}>Open full sales order</Link>
             <span className="text-xs text-muted">Buyer delivery {fmtDay(o.buyer_date)} · Factory delivery {fmtDay(o.factory_date)}</span>
           </div>
-          <TnaStyles key={o.id} w={w} o={o} canEdit />
+          <TnaStyles key={o.id} w={w} o={o} canEdit files={files} />
         </div>
       ) : (
         <Empty title="Nothing to track yet">A sales order appears here once the owner locks its TNA.</Empty>

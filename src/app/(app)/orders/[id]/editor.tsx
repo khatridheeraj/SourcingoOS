@@ -3,8 +3,10 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Attachments } from "@/components/attachments";
 import { Chip, Problems } from "@/components/bits";
 import { useFeedback } from "@/components/feedback";
+import { CATEGORIES_FOR, type FileItem } from "@/lib/file-kinds";
 import {
   CURRENCIES, DEFAULT_CHECKPOINTS, type Draft, type DraftStyle, draftQty, fmtDay, money, nf, num, SIZES, SOURCES, validateDraft,
 } from "@/lib/model";
@@ -26,7 +28,9 @@ const newStyle = (garment: boolean): DraftStyle => ({
   checkpoints: DEFAULT_CHECKPOINTS.map((name) => ({ id: uid(), name, due_date: "" })),
 });
 
-export function Editor({ initial, options, isOwner, today }: { initial: Draft; options: EditorOptions; isOwner: boolean; today: string }) {
+export function Editor({ initial, options, isOwner, today, files }: {
+  initial: Draft; options: EditorOptions; isOwner: boolean; today: string; files: Record<string, FileItem[]>;
+}) {
   const router = useRouter();
   const { toast, confirm } = useFeedback();
   const [d, setD] = useState<Draft>(initial);
@@ -252,7 +256,9 @@ export function Editor({ initial, options, isOwner, today }: { initial: Draft; o
           d={d}
           onChange={(patch) => setStyle(i, patch)}
           onRemove={async () => {
-            if (d.styles.length > 1 && (st.name || st.code) && !(await confirm(`Remove style ${i + 1}${st.name ? ` "${st.name}"` : ""}?`, "Remove", true))) return;
+            const n = files[st.id]?.length ?? 0;
+            const also = n ? ` Its ${n === 1 ? "file" : `${n} files`} will be removed too.` : "";
+            if ((n || (d.styles.length > 1 && (st.name || st.code))) && !(await confirm(`Remove style ${i + 1}${st.name ? ` "${st.name}"` : ""}?${also}`, "Remove", true))) return;
             update((x) => ({ ...x, styles: x.styles.filter((_, j) => j !== i) }));
           }}
           onDuplicate={() => {
@@ -272,6 +278,8 @@ export function Editor({ initial, options, isOwner, today }: { initial: Draft; o
             toast("Checkpoints copied from Style 1");
           }}
           toast={toast}
+          files={files[st.id] ?? []}
+          beforeUpload={doSave}
         />
       ))}
       <div><button type="button" className="btn" onClick={() => update((x) => ({ ...x, styles: [...x.styles, newStyle(garment)] }))}>+ Add style / colour</button></div>
@@ -290,9 +298,9 @@ export function Editor({ initial, options, isOwner, today }: { initial: Draft; o
   );
 }
 
-function StyleCard({ st, i, d, onChange, onRemove, onDuplicate, onCopyTna, toast }: {
+function StyleCard({ st, i, d, onChange, onRemove, onDuplicate, onCopyTna, toast, files, beforeUpload }: {
   st: DraftStyle; i: number; d: Draft; onChange: (p: Partial<DraftStyle>) => void; onRemove: () => void; onDuplicate: () => void;
-  onCopyTna: () => void; toast: (m: string, k?: "bad") => void;
+  onCopyTna: () => void; toast: (m: string, k?: "bad") => void; files: FileItem[]; beforeUpload: () => Promise<boolean>;
 }) {
   const [newCp, setNewCp] = useState("");
   const garment = d.order_type === "garment";
@@ -357,6 +365,8 @@ function StyleCard({ st, i, d, onChange, onRemove, onDuplicate, onCopyTna, toast
         <label className="field"><span>Internal note (not visible to factory or buyer)</span>
           <textarea className="inp" rows={2} value={st.internal_note} placeholder="Scope for improvement, sampling risks" onChange={(e) => onChange({ internal_note: e.target.value })} />
         </label>
+        <Attachments target="style" id={st.id} files={files} upload={CATEGORIES_FOR.style} canDeleteAll beforeUpload={beforeUpload}
+          title="Tech pack, cutting program & photos" hint="The factory sees tech packs, cutting programs, photos and QC reports once the order is sent for the TNA lock. “Other” stays internal." />
         <div className="stack" style={{ gap: 8 }}>
           <div className="row">
             <span className="sub" style={{ flex: 1 }}>TNA checkpoints</span>

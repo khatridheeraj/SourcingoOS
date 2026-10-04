@@ -1,9 +1,12 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
+import { Attachments } from "@/components/attachments";
 import { BuyerCode, Chip, HoldChip } from "@/components/bits";
 import { DcCard } from "@/components/doc-cards";
 import { getMe } from "@/lib/auth";
 import { loadWorld } from "@/lib/data";
+import { CATEGORIES_FOR } from "@/lib/file-kinds";
+import { loadFiles } from "@/lib/files";
 import { fmtDateTime } from "@/lib/format";
 import { CONDITION_LABEL, money, nf } from "@/lib/model";
 import { isInternal, isOps } from "@/lib/roles";
@@ -23,6 +26,7 @@ export default async function GrnPage({ params }: PageProps<"/grn/[id]">) {
   const g = w.grnById.get(id);
   if (!g) notFound();
   const ops = isOps(me.role);
+  const files = (await loadFiles("grn", [g.id], w.personName)).get(g.id) ?? [];
 
   if (g.status === "draft" && ops) {
     return (
@@ -32,6 +36,7 @@ export default async function GrnPage({ params }: PageProps<"/grn/[id]">) {
         orders={grnOrderOptions(w, g.id, g.so_id)}
         people={receiverOptions(w)}
         isOwner={me.role === "owner"}
+        files={files}
         initial={{
           so_id: g.so_id, received_at: g.received_at, received_by: g.received_by ?? "", qc_checked: g.qc_checked, qc_note: g.qc_note ?? "", notes: g.notes ?? "",
           lines: Object.fromEntries(g.lines.map((l) => [l.style_id, { qty: String(l.qty), condition: l.condition }])),
@@ -93,6 +98,10 @@ export default async function GrnPage({ params }: PageProps<"/grn/[id]">) {
           </tbody>
         </table>
       </div>
+      <section className="panel">
+        <Attachments target="grn" id={g.id} files={files} upload={ops && g.status !== "rejected" ? CATEGORIES_FOR.grn : []} canDeleteAll={ops}
+          title="Goods photos & QC report" empty="No photos or QC report attached." />
+      </section>
       {dcs.length > 0 && (
         <section className="panel">
           <h3>Delivery challans</h3>

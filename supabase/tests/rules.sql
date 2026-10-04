@@ -270,6 +270,82 @@ do $$ declare v text; begin
 end $$;
 select pg_temp.expect_error($$select delete_draft_sales_order('SO-000003')$$, 'Only draft%');
 
+-- Files: the row comes first, storage follows it; factories see their own order's files.
+select pg_temp.act_as('merch@t');
+do $$ declare v_st uuid := (select id from so_styles where so_id = 'SO-000005' order by position limit 1); begin
+  insert into files (category, style_id, storage_path, file_name, mime_type, size_bytes)
+    values ('tech_pack', v_st, 'style/' || v_st || '/a1/tp.pdf', 'tp.pdf', 'application/pdf', 1000);
+  insert into files (category, style_id, storage_path, file_name, mime_type, size_bytes)
+    values ('other', v_st, 'style/' || v_st || '/a2/costing.xlsx', 'costing.xlsx', 'application/vnd.ms-excel', 1000);
+  insert into storage.objects (bucket_id, name) values ('files', 'style/' || v_st || '/a1/tp.pdf');
+  if (select uploaded_by from files where file_name = 'tp.pdf') is distinct from auth.uid() then raise exception 'uploader not recorded'; end if;
+  begin
+    insert into files (category, style_id, storage_path, file_name, mime_type, size_bytes)
+      values ('tech_pack', v_st, 'grn/GRN-T1/a3/x.pdf', 'x.pdf', 'application/pdf', 10);
+    raise exception 'mismatched path allowed';
+  exception when others then if sqlerrm not like 'File path does not match%' then raise; end if;
+  end;
+  begin
+    insert into files (category, style_id, storage_path, file_name, mime_type, size_bytes)
+      values ('grn_photo', v_st, 'style/' || v_st || '/a4/x.jpg', 'x.jpg', 'image/jpeg', 10);
+    raise exception 'wrong category allowed';
+  exception when others then if sqlerrm not like '%can''t be attached here%' then raise; end if;
+  end;
+  begin
+    insert into storage.objects (bucket_id, name) values ('files', 'style/' || v_st || '/zz/no-row.pdf');
+    raise exception 'upload without a files row allowed';
+  exception when others then if sqlerrm not like '%row-level security%' then raise; end if;
+  end;
+end $$;
+select pg_temp.expect_error($$update files set file_name = 'y.pdf' where file_name = 'tp.pdf'$$, 'Files can''t be changed%');
+
+select pg_temp.act_as('accounts@t');
+do $$ begin
+  if (select count(*) from files) <> 2 then raise exception 'accounts should read all files'; end if;
+end $$;
+
+select pg_temp.act_as('buyer@t');
+do $$ begin
+  if exists (select 1 from files) or exists (select 1 from storage.objects) then raise exception 'buyer read files'; end if;
+end $$;
+
+select pg_temp.act_as('factory@t');
+do $$ declare v_st uuid := (select style_id from portal_factory_checkpoints where so_id = 'SO-000005' limit 1); begin
+  if (select array_agg(file_name) from files) is distinct from array['tp.pdf'] then raise exception 'factory should see only the tech pack'; end if;
+  if not exists (select 1 from storage.objects where name like '%/tp.pdf') then raise exception 'factory cannot open the tech pack'; end if;
+  if (select name from portal_factory_profile) <> 'F1' then raise exception 'factory profile missing'; end if;
+  if not exists (select 1 from portal_factory_receipts where so_id = 'SO-000005') then raise exception 'factory receipts missing'; end if;
+  insert into files (category, style_id, storage_path, file_name, mime_type, size_bytes)
+    values ('style_photo', v_st, 'style/' || v_st || '/f1/line.jpg', 'line.jpg', 'image/jpeg', 2000);
+  insert into storage.objects (bucket_id, name) values ('files', 'style/' || v_st || '/f1/line.jpg');
+  begin
+    insert into files (category, style_id, storage_path, file_name, mime_type, size_bytes)
+      values ('tech_pack', v_st, 'style/' || v_st || '/f2/tp2.pdf', 'tp2.pdf', 'application/pdf', 10);
+    raise exception 'factory added a tech pack';
+  exception when others then if sqlerrm not like '%row-level security%' then raise; end if;
+  end;
+  delete from files where file_name = 'tp.pdf';
+  if not exists (select 1 from files where file_name = 'tp.pdf') then raise exception 'factory deleted a tech pack'; end if;
+  delete from storage.objects where name like '%/f1/line.jpg';
+  delete from files where file_name = 'line.jpg';
+  if exists (select 1 from files where file_name = 'line.jpg') then raise exception 'factory could not delete its photo'; end if;
+end $$;
+
+-- A factory must say why a checkpoint is delayed; the reason reaches ops.
+do $$ declare v_cp uuid := (select id from portal_factory_checkpoints where so_id = 'SO-000005' order by position limit 1); begin
+  begin
+    perform set_checkpoint_status(v_cp, 'delayed');
+    raise exception 'delay without reason allowed';
+  exception when others then if sqlerrm not like 'Say why it is delayed%' then raise; end if;
+  end;
+  perform set_checkpoint_status(v_cp, 'delayed', '  Fabric late from mill ');
+  if (select status_note from portal_factory_checkpoints where id = v_cp) <> 'Fabric late from mill' then raise exception 'note not saved'; end if;
+end $$;
+select pg_temp.act_as('merch@t');
+do $$ begin
+  if not exists (select 1 from tna_status_history where note = 'Fabric late from mill') then raise exception 'note not in history'; end if;
+end $$;
+
 reset role;
 \o
 \echo 'All rule tests passed.'

@@ -2,7 +2,9 @@
 
 import Link from "next/link";
 import { useActionState, useState, useTransition } from "react";
+import { Attachments } from "@/components/attachments";
 import { inputCls, labelCls, secondaryBtn } from "@/components/ui";
+import { CATEGORIES_FOR, type FileItem } from "@/lib/file-kinds";
 import { fmtDate, fmtDateTime, fmtINR, fmtNum } from "@/lib/format";
 import { addFollowUp, updateInquiry, type FormState } from "./actions";
 import type { Option } from "./new-inquiry";
@@ -32,7 +34,7 @@ export const STATUS: Record<Inquiry["status"], { label: string; cls: string }> =
   lost: { label: "Lost", cls: "bg-line text-muted" },
 };
 
-export function InquiryCard({ inq, merchandisers, today }: { inq: Inquiry; merchandisers: Option[]; today: string }) {
+export function InquiryCard({ inq, merchandisers, today, files }: { inq: Inquiry; merchandisers: Option[]; today: string; files: FileItem[] }) {
   const [saveState, setSaveState] = useState<FormState>({});
   const [saving, startSave] = useTransition();
   const [noteState, noteAction, notePending] = useActionState<FormState, FormData>(addFollowUp, {});
@@ -87,6 +89,9 @@ export function InquiryCard({ inq, merchandisers, today }: { inq: Inquiry; merch
         </label>
       </div>
       {saveState.error && <p className="text-sm text-bad">{saveState.error}</p>}
+
+      <Attachments target="inquiry" id={inq.id} files={files} upload={CATEGORIES_FOR.inquiry} canDeleteAll title="Reference images & files"
+        empty="No images yet. Add the buyer's references, sketches or spec sheets." />
 
       <details className="text-sm">
         <summary className="cursor-pointer font-semibold text-muted">Follow-up history ({inq.followups.length})</summary>
