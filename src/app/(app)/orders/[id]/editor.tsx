@@ -8,7 +8,7 @@ import { Chip, Problems } from "@/components/bits";
 import { useFeedback } from "@/components/feedback";
 import { CATEGORIES_FOR, type FileItem } from "@/lib/file-kinds";
 import {
-  CURRENCIES, DEFAULT_CHECKPOINTS, type Draft, type DraftStyle, draftQty, fmtDay, money, nf, num, SIZES, SOURCES, validateDraft,
+  addDays, CURRENCIES, DEFAULT_CHECKPOINTS, type Draft, type DraftStyle, draftQty, fmtDay, money, nf, num, SIZES, SOURCES, validateDraft,
 } from "@/lib/model";
 import { backToDraft, deleteDraft, lockOrder, saveOrder, submitOrder, type Result } from "../actions";
 
@@ -19,6 +19,7 @@ export type EditorOptions = {
   merchandisers: Opt[];
   managers: Opt[];
   people: Opt[];
+  templates: { id: string; name: string; order_type: "garment" | "fabric"; steps: { name: string; days: number }[]; is_default: boolean }[];
 };
 
 const uid = () => crypto.randomUUID();
@@ -212,7 +213,7 @@ export function Editor({ initial, options, isOwner, today, files }: {
               </select>
             </label>
             <label className="field"><span>Factory <i>*</i></span>{sel("factory_id", options.factories, "Select factory…")}
-              {!options.factories.length && <small>Add factories in Buyers &amp; factories first.</small>}
+              {!options.factories.length && <small>Add factories in Master data first.</small>}
             </label>
             <label className="field"><span>Payment terms <i>*</i></span>{txt("payment_terms", "45 days post-receipt")}</label>
           </div>
@@ -247,6 +248,19 @@ export function Editor({ initial, options, isOwner, today, files }: {
         </div>
         <span className="chip">{d.styles.length} style{d.styles.length === 1 ? "" : "s"} · {nf(total)} {unit} · {money(value, d.currency)}</span>
       </div>
+      <TemplateBar
+        templates={options.templates.filter((t) => t.order_type === d.order_type)}
+        factoryDate={d.factory_date}
+        onApply={async (t) => {
+          const filled = d.styles.some((s) => s.checkpoints.some((c) => c.due_date));
+          if (filled && !(await confirm(`Replace the checkpoints on all ${d.styles.length} styles with "${t.name}"?`, "Replace"))) return;
+          update((x) => ({
+            ...x,
+            styles: x.styles.map((s) => ({ ...s, checkpoints: t.steps.map((st) => ({ id: uid(), name: st.name, due_date: addDays(x.factory_date, -st.days) })) })),
+          }));
+          toast(`"${t.name}" applied, dated back from ${fmtDay(d.factory_date)}. Adjust any date if needed.`);
+        }}
+      />
 
       {d.styles.map((st, i) => (
         <StyleCard
@@ -295,6 +309,28 @@ export function Editor({ initial, options, isOwner, today, files }: {
         {isOwner && <button type="button" className="btn dark" disabled={busy} onClick={lock}>🔒 Lock TNA &amp; issue final PO</button>}
       </div>
     </div>
+  );
+}
+
+// Fill every style's TNA from a template, dated back from the factory delivery date.
+function TemplateBar({ templates, factoryDate, onApply }: {
+  templates: EditorOptions["templates"]; factoryDate: string; onApply: (t: EditorOptions["templates"][number]) => void;
+}) {
+  const [tid, setTid] = useState(templates.find((t) => t.is_default)?.id ?? templates[0]?.id ?? "");
+  const t = templates.find((x) => x.id === tid);
+  if (!templates.length) return null;
+  return (
+    <section className="panel" id="plan" style={{ padding: 14 }}>
+      <div className="row">
+        <b className="text-[14px]">Plan the TNA from a template</b>
+        <select className="inp" style={{ maxWidth: 300 }} value={tid} onChange={(e) => setTid(e.target.value)} aria-label="TNA template">
+          {templates.map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
+        </select>
+        <button type="button" className="btn sm primary" disabled={!t || !factoryDate} onClick={() => t && onApply(t)}>Apply to all styles</button>
+        {!factoryDate && <span className="text-xs text-warn">Set the factory delivery date first.</span>}
+      </div>
+      {t && factoryDate && <p className="mt-2 text-xs text-muted">{t.steps.map((s) => `${s.name} ${fmtDay(addDays(factoryDate, -s.days))}`).join(" · ")}</p>}
+    </section>
   );
 }
 

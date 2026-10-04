@@ -1,3 +1,4 @@
+import { type Lang, tr } from "@/lib/i18n";
 import { daysBetween } from "@/lib/model";
 import type { FOrder } from "@/lib/portal";
 
@@ -7,12 +8,13 @@ export function cells(o: FOrder, today: string) {
     c.status === "completed" ? "c" : c.due_date && c.due_date < today ? "o" : c.status === "delayed" ? "d" : c.status === "in_progress" ? "p" : "");
 }
 
-export function DueChip({ date, today, done }: { date: string | null; today: string; done?: boolean }) {
+export function DueChip({ date, today, done, lang = "en" }: { date: string | null; today: string; done?: boolean; lang?: Lang }) {
+  const t = tr(lang);
   if (!date || done) return null;
   const d = daysBetween(today, date);
-  if (d < 0) return <span className="chip bad">{-d} day{d === -1 ? "" : "s"} late</span>;
-  if (d === 0) return <span className="chip warn">Due today</span>;
-  return <span className={`chip ${d <= 7 ? "warn" : ""}`}>{d} day{d === 1 ? "" : "s"} left</span>;
+  if (d < 0) return <span className="chip bad">{-d} {t(d === -1 ? "day late" : "days late")}</span>;
+  if (d === 0) return <span className="chip warn">{t("Due today")}</span>;
+  return <span className={`chip ${d <= 7 ? "warn" : ""}`}>{d} {t(d === 1 ? "day left" : "days left")}</span>;
 }
 
-export const unit = (o: FOrder) => (o.order_type === "fabric" ? "m" : "pcs");
+export const unit = (o: { order_type: string }) => (o.order_type === "fabric" ? "m" : "pcs");

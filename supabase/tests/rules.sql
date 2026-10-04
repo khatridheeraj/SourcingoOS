@@ -645,6 +645,166 @@ end $$;
 select pg_temp.act_as('merch@t');
 select pg_temp.expect_error($$select set_buyer_credit_days((select id from buyers limit 1), 30)$$, 'Only Accounts and the owner%');
 
+-- ───────── factory POs ─────────
+-- Locking SO-000003 issued its factory PO with the rates and dates of that moment.
+select pg_temp.act_as('factory@t');
+do $$ declare v record; begin
+  select * into v from portal_factory_pos where so_id = 'SO-000003';
+  if v.id is null then raise exception 'factory cannot see its PO'; end if;
+  if v.revision <> 1 or v.total_qty <> 30 or v.total_value <> 5400 then raise exception 'PO totals wrong: % % %', v.revision, v.total_qty, v.total_value; end if;
+  if jsonb_array_length(v.lines->0->'steps') <> 2 then raise exception 'PO lacks the TNA dates'; end if;
+  if exists (select 1 from factory_pos) then raise exception 'factory read the base PO table'; end if;
+end $$;
+select pg_temp.expect_error($$select respond_factory_po((select id from portal_factory_pos where so_id = 'SO-000003'), false, ' ')$$, 'Say why%');
+select respond_factory_po((select id from portal_factory_pos where so_id = 'SO-000003'), true);
+select pg_temp.expect_error($$select respond_factory_po((select id from portal_factory_pos where so_id = 'SO-000003'), true)$$, '%already accepted%');
+select pg_temp.act_as('merch@t');
+select pg_temp.expect_error($$update factory_pos set total_value = 1 where so_id = 'SO-000003'$$, '%can''t be edited%');
+do $$ begin
+  if not exists (select 1 from notifications where kind like 'fpo%' and title like '%accepted%') then raise exception 'merchandiser not told the PO was accepted'; end if;
+  if not exists (select 1 from notifications where kind = 'order_locked') then raise exception 'merchandiser not told the order was locked'; end if;
+end $$;
+select pg_temp.act_as('factory@t');
+do $$ begin
+  if not exists (select 1 from notifications where kind like 'fpo%') then raise exception 'factory not told about the new PO'; end if;
+  if exists (select 1 from notifications n join profiles p on p.id = n.user_id where p.email <> 'factory@t') then raise exception 'read someone else''s notifications'; end if;
+end $$;
+select mark_notifications_read();
+do $$ begin
+  if exists (select 1 from notifications where read_at is null) then raise exception 'notifications not marked read'; end if;
+end $$;
+select pg_temp.expect_error($$select notify(array[auth.uid()], 'x', 'x', null, null)$$, '%permission denied%');
+
+-- ───────── QC ─────────
+select pg_temp.act_as('merch@t');
+do $$ begin
+  if qc_sample_size(30) <> 8 or qc_sample_size(1000) <> 80 or qc_accept(80, 2.5) <> 5 or qc_accept(80, 4.0) <> 7 or qc_accept(8, 2.5) <> 0 then
+    raise exception 'AQL table wrong';
+  end if;
+end $$;
+insert into qc_inspections (id, so_id, style_id, kind, lot_qty, sample_size, defects)
+  values ('QC-T1', 'SO-000003', '11111111-1111-1111-1111-111111111111', 'final', 30, 8,
+          '[{"name":"Open seam","severity":"major","count":1},{"name":"Thread end","severity":"minor","count":1}]');
+insert into qc_inspections (id, so_id, style_id, kind, lot_qty, sample_size, defects, measurements_ok)
+  values ('QC-T2', 'SO-000003', '11111111-1111-1111-1111-111111111111', 'inline', 30, 8, '[{"name":"Thread end","severity":"minor","count":1}]', false);
+insert into qc_inspections (id, so_id, style_id, kind, lot_qty, sample_size, result)
+  values ('QC-T3', 'SO-000003', '11111111-1111-1111-1111-111111111111', 'midline', 30, 8, 'fail');
+do $$ begin
+  if (select result from qc_inspections where id = 'QC-T1') <> 'fail' or (select major from qc_inspections where id = 'QC-T1') <> 1 then raise exception 'major over AQL should fail'; end if;
+  if (select result from qc_inspections where id = 'QC-T2') <> 'hold' then raise exception 'bad measurements should hold'; end if;
+  if (select result from qc_inspections where id = 'QC-T3') <> 'pass' then raise exception 'result was typed in by hand'; end if;
+end $$;
+select pg_temp.expect_error($$insert into qc_inspections (so_id, style_id, kind, lot_qty, sample_size) values ('SO-000003', '11111111-1111-1111-1111-111111111111', 'final', 5, 8)$$, '%qc_sample_fits_lot%');
+select pg_temp.expect_error($$insert into qc_inspections (so_id, style_id, kind, lot_qty, sample_size, defects) values ('SO-000003', '11111111-1111-1111-1111-111111111111', 'final', 30, 8, '[{"name":"X","severity":"bad","count":1}]')$$, '%severity must be%');
+select pg_temp.expect_error($$insert into qc_inspections (so_id, style_id, kind, lot_qty, sample_size) values ('SO-000001', '11111111-1111-1111-1111-111111111111', 'final', 30, 8)$$, '%not on SO-000001%');
+select pg_temp.act_as('factory@t');
+do $$ begin
+  if (select count(*) from portal_factory_qc where so_id = 'SO-000003') <> 3 then raise exception 'factory cannot see its inspections'; end if;
+  if not exists (select 1 from notifications where kind like 'qc%') then raise exception 'factory not told about QC'; end if;
+end $$;
+select pg_temp.act_as('accounts@t');
+select pg_temp.expect_error($$insert into qc_inspections (so_id, style_id, kind, lot_qty, sample_size) values ('SO-000003', '11111111-1111-1111-1111-111111111111', 'final', 30, 8)$$, '%row-level security%');
+
+-- ───────── TNA templates, running orders, delay reasons ─────────
+select pg_temp.act_as('merch@t');
+do $$ begin
+  if (select count(*) from tna_templates where is_default) < 1 then raise exception 'no default template'; end if;
+  insert into tna_templates (name, steps) values ('x', '[]');
+  raise exception 'merchandiser added a template';
+exception when others then if sqlerrm not like '%row-level security%' then raise; end if;
+end $$;
+select pg_temp.act_as('new@t');  -- owner
+select pg_temp.expect_error($$insert into tna_templates (name, steps) values ('Bad', '[{"name":"Packing","days":2},{"name":"Cutting","days":10}]')$$, '%planned before the step above%');
+
+-- An order that was locked before TNAs existed gets its plan added afterwards.
+do $$ declare v_so text; begin
+  v_so := create_sales_order((select id from buyers where code = 'BYR-AH-0001'), 'PO-OLD', 'garment');
+  insert into so_styles (so_id, name, code, fabric, colour, qty, buyer_rate) values (v_so, 'Shirt', 'S1', 'Linen', 'White', 10, 300);
+  update sales_orders set status = 'locked' where id = v_so;
+  perform set_config('test.old_so', v_so, false);
+end $$;
+select pg_temp.act_as('merch@t');
+do $$ declare v_so text := current_setting('test.old_so'); v_f uuid := (select id from factories where name = 'F1'); begin
+  -- Missing details can be filled in once on a running order.
+  update sales_orders set factory_id = v_f, buyer_date = current_date + 30, factory_date = current_date + 20 where id = v_so;
+  update so_styles set factory_rate = 200 where so_id = v_so;
+  begin
+    update sales_orders set factory_date = current_date + 21 where id = v_so;
+    raise exception 'changed a locked date';
+  exception when others then if sqlerrm not like '%is locked%' then raise; end if;
+  end;
+  if add_running_tna(v_so, jsonb_build_array(jsonb_build_object('name', 'Sewing', 'due_date', current_date + 5),
+                                            jsonb_build_object('name', 'Packing', 'due_date', current_date + 15))) <> 1 then
+    raise exception 'running TNA not added';
+  end if;
+  begin
+    perform add_running_tna(v_so, '[{"name":"Again","due_date":"2030-01-01"}]');
+    raise exception 'added a second TNA';
+  exception when others then if sqlerrm not like 'Every style%already has a TNA%' then raise; end if;
+  end;
+  begin
+    insert into tna_checkpoints (style_id, name, due_date, position) select id, 'Sneaky', current_date, 9 from so_styles where so_id = v_so;
+    raise exception 'checkpoint added to a locked order';
+  exception when others then if sqlerrm not like '%is locked%' then raise; end if;
+  end;
+end $$;
+select pg_temp.act_as('factory@t');
+do $$ declare v_cp uuid := (select c.id from portal_factory_checkpoints c where c.so_id = current_setting('test.old_so') and c.name = 'Sewing'); begin
+  if v_cp is null then raise exception 'factory cannot see the added TNA'; end if;
+  begin perform update_checkpoint(v_cp, 'delayed'); raise exception 'delay without reason';
+  exception when others then if sqlerrm not like 'Pick why%' then raise; end if; end;
+  begin perform update_checkpoint(v_cp, 'delayed', null, 'other'); raise exception 'other without note';
+  exception when others then if sqlerrm not like 'Say why%' then raise; end if; end;
+  perform update_checkpoint(v_cp, 'delayed', 'Mill closed', 'fabric');
+  if (select delay_reason from portal_factory_checkpoints where id = v_cp) <> 'fabric' then raise exception 'reason not saved'; end if;
+end $$;
+select pg_temp.act_as('merch@t');
+do $$ begin
+  if not exists (select 1 from notifications where kind = 'tna_delayed' and body like '%Fabric%') then raise exception 'delay not notified'; end if;
+  if not exists (select 1 from order_timeline(current_setting('test.old_so')) where source = 'tna_status_history') then raise exception 'timeline lacks the TNA update'; end if;
+end $$;
+select pg_temp.expect_error($$select mark_order_shipped(current_setting('test.old_so'))$$, 'Only the owner%');
+select pg_temp.act_as('new@t');
+select mark_order_shipped(current_setting('test.old_so'), 'Shipped in August');
+do $$ begin
+  if (select status from sales_orders where id = current_setting('test.old_so')) <> 'shipped' then raise exception 'order not closed'; end if;
+end $$;
+
+-- ───────── costing, master data, feedback ─────────
+select pg_temp.act_as('merch@t');
+select pg_temp.expect_error($$insert into costings (inquiry_id, style_name, status) values ('INQ-000002', 'Tee', 'quoted')$$, 'Enter the price you quoted%');
+select pg_temp.expect_error($$insert into costings (inquiry_id, style_name, extras) values ('INQ-000002', 'Tee', '[{"label":"","amount":1}]')$$, 'Every extra cost needs a name%');
+do $$ begin
+  update company_profile set legal_name = 'X';
+  if found then raise exception 'merchandiser changed the company profile'; end if;
+end $$;
+select pg_temp.expect_error($$update factories set gstin = 'bad' where name = 'F1'$$, '%gstin%');
+select set_my_preferences('hi', false, null);
+do $$ begin
+  if (select language from profiles where id = auth.uid()) <> 'hi' then raise exception 'language not saved'; end if;
+end $$;
+insert into feedback (kind, message, page) values ('idea', 'Show photos bigger', '/qc');
+select pg_temp.act_as('accounts@t');
+do $$ begin
+  if exists (select 1 from feedback) then raise exception 'read someone else''s feedback'; end if;
+end $$;
+select pg_temp.act_as('new@t');
+update feedback set status = 'planned', reply = 'Next week';
+select pg_temp.act_as('merch@t');
+do $$ begin
+  if not exists (select 1 from notifications where kind = 'feedback_reply') then raise exception 'feedback reply not notified'; end if;
+end $$;
+
+-- Signed-out visitors can't call app functions.
+reset role;
+do $$ begin
+  if has_function_privilege('anon', 'is_ops()', 'execute') or has_function_privilege('anon', 'create_buyer(text,text,text,text)', 'execute') then
+    raise exception 'anon can call app functions';
+  end if;
+  if not has_function_privilege('authenticated', 'is_ops()', 'execute') then raise exception 'signed-in users lost is_ops'; end if;
+end $$;
+set role authenticated;
+
 reset role;
 \o
 \echo 'All rule tests passed.'

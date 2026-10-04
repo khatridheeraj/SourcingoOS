@@ -16,15 +16,18 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
   const badges = isInternal(me.role) ? navCounts((await loadWorld()).world, me.role) : {};
   const pay = isFinance(me.role) ? paymentBadge((await loadBooks()).books) : null;
   if (pay) badges.payments = pay;
-  if (isOps(me.role)) {
+  const supabase = await createClient();
+  const [pos, unread, fb] = await Promise.all([
     // New buyer POs from email that nobody has picked up yet.
-    const supabase = await createClient();
-    const { count } = await supabase.from("received_pos").select("id", { count: "exact", head: true }).eq("status", "new");
-    if (count) badges.pos = { n: count, hot: true };
-  }
+    isOps(me.role) ? supabase.from("received_pos").select("id", { count: "exact", head: true }).eq("status", "new") : null,
+    supabase.from("notifications").select("id", { count: "exact", head: true }).eq("user_id", me.id).is("read_at", null),
+    me.role === "owner" ? supabase.from("feedback").select("id", { count: "exact", head: true }).eq("status", "new") : null,
+  ]);
+  if (pos?.count) badges.pos = { n: pos.count, hot: true };
+  if (fb?.count) badges.feedback = { n: fb.count, hot: false };
   const who = `${me.fullName || me.email}${me.role ? ` · ${roleLabel(me.role)}` : ""}`;
   return (
-    <Shell nav={navFor(me.role)} badges={badges} who={who} actions={[...(isOps(me.role) ? QUICK_ACTIONS : []), ...(isFinance(me.role) ? FINANCE_ACTIONS : [])]}>
+    <Shell nav={navFor(me.role)} badges={badges} who={who} unread={unread.count ?? 0} actions={[...(isOps(me.role) ? QUICK_ACTIONS : []), ...(isFinance(me.role) ? FINANCE_ACTIONS : [])]}>
       {children}
     </Shell>
   );

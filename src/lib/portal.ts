@@ -1,11 +1,20 @@
 import { cache } from "react";
 import { createClient } from "@/lib/supabase/server";
-import type { OrderType, SampleStatus, SampleType, TnaStatus } from "@/lib/model";
+import type { DelayReason, FpoLine, FpoStatus, OrderType, QcDefect, QcKind, QcResult, SampleStatus, SampleType, TnaStatus } from "@/lib/model";
 
 /* Factory portal: only what the portal_factory_* views expose. */
 export type FCheckpoint = {
   id: string; style_id: string; so_id: string; position: number; name: string; due_date: string | null; status: TnaStatus;
-  status_updated_at: string | null; status_note: string | null;
+  status_updated_at: string | null; status_note: string | null; delay_reason: DelayReason | null;
+};
+export type FPo = {
+  id: string; so_id: string; buyer_code: string; revision: number; status: FpoStatus; currency: string; delivery_date: string | null;
+  payment_terms: string | null; terms: string | null; lines: FpoLine[]; total_qty: number; total_value: number | null; issued_at: string;
+  responded_at: string | null; response_note: string | null;
+};
+export type FQc = {
+  id: string; so_id: string; style_id: string; kind: QcKind; inspected_on: string; lot_qty: number; sample_size: number; defects: QcDefect[];
+  critical: number; major: number; minor: number; measurements_ok: boolean | null; packing_ok: boolean | null; result: QcResult; notes: string | null;
 };
 export type FStyle = {
   id: string; so_id: string; position: number; name: string; code: string; fabric: string; colour: string; use_sizes: boolean;
@@ -26,15 +35,17 @@ const byPos = <T extends { position: number }>(a: T, b: T) => a.position - b.pos
 
 export const loadFactory = cache(async () => {
   const supabase = await createClient();
-  const [profile, orders, styles, cps, receipts, samples] = await Promise.all([
+  const [profile, orders, styles, cps, receipts, samples, pos, qcs] = await Promise.all([
     supabase.from("portal_factory_profile").select("id, name, city").maybeSingle(),
     supabase.from("portal_factory_orders").select("*").order("factory_date", { ascending: true, nullsFirst: false }),
     supabase.from("portal_factory_styles").select("*"),
     supabase.from("portal_factory_checkpoints").select("*"),
     supabase.from("portal_factory_receipts").select("*").order("received_at", { ascending: false }),
     supabase.from("portal_factory_samples").select("*").order("vendor_due", { ascending: true, nullsFirst: false }),
+    supabase.from("portal_factory_pos").select("*").order("issued_at", { ascending: false }),
+    supabase.from("portal_factory_qc").select("*").order("inspected_on", { ascending: false }),
   ]);
-  const error = [profile, orders, styles, cps, receipts, samples].find((r) => r.error)?.error ?? null;
+  const error = [profile, orders, styles, cps, receipts, samples, pos, qcs].find((r) => r.error)?.error ?? null;
   const rec = (receipts.data ?? []) as FReceipt[];
   const list: FOrder[] = ((orders.data ?? []) as Omit<FOrder, "styles" | "receipts">[]).map((o) => ({
     ...o,
@@ -48,7 +59,10 @@ export const loadFactory = cache(async () => {
       }))
       .sort(byPos),
   }));
-  return { factory: profile.data as { id: string; name: string; city: string | null } | null, orders: list, samples: (samples.data ?? []) as FSample[], error };
+  return {
+    factory: profile.data as { id: string; name: string; city: string | null } | null, orders: list, samples: (samples.data ?? []) as FSample[],
+    pos: (pos.data ?? []) as FPo[], qcs: (qcs.data ?? []) as FQc[], error,
+  };
 });
 
 /* Buyer portal: milestones, styles and shipments only. */

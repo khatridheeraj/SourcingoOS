@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { getMe } from "@/lib/auth";
 import { loadOrder } from "@/lib/data";
 import { todayIST } from "@/lib/format";
-import { type Draft, type TnaStatus, toDraft, toPayload, validateDraft } from "@/lib/model";
+import { DEFAULT_CHECKPOINTS, type Draft, type TnaStatus, toDraft, toPayload, validateDraft } from "@/lib/model";
 import { isOps } from "@/lib/roles";
 import { createClient } from "@/lib/supabase/server";
 
@@ -28,20 +28,42 @@ export async function createOrder(input: { buyer_id: string; po: string; order_t
   });
   if (error) return { error: error.message };
   const id = data as string;
-  // Start with one empty style and the standard checkpoints, like the old tool.
+  // Styles the buyer accepted on the cost sheets come across with their
+  // prices; otherwise start with one empty style, like the old tool.
+  const { data: costs } = input.inquiry_id
+    ? await supabase.from("costings").select("style_name, qty, currency, factory_id, factory_cost, quoted_price").eq("inquiry_id", input.inquiry_id).eq("status", "accepted").order("created_at")
+    : { data: [] };
+  const names = await defaultSteps(input.order_type);
+  const draft = await draftFor(id);
+  const factories = [...new Set((costs ?? []).map((c) => c.factory_id).filter(Boolean))];
   const { error: e2 } = await supabase.rpc("save_sales_order", {
-    p: { ...(await draftFor(id)), styles: [blankStyle(input.order_type)] },
+    p: {
+      ...draft,
+      ...(costs?.length ? { currency: costs[0].currency, factory_id: factories.length === 1 ? factories[0] : draft.factory_id } : {}),
+      styles: costs?.length
+        ? costs.map((c) => ({ ...blankStyle(input.order_type, names), name: c.style_name, use_sizes: false, qty: c.qty != null ? String(c.qty) : "",
+            buyer_rate: c.quoted_price != null ? String(c.quoted_price) : "", factory_rate: c.factory_cost ? String(c.factory_cost) : "" }))
+        : [blankStyle(input.order_type, names)],
+    },
   });
   if (e2) return { error: `Created ${id}, but the first style wasn't added: ${e2.message}`, id };
   refresh();
   return { ok: `Created ${id}.`, id };
 }
 
-function blankStyle(type: "garment" | "fabric") {
+// Step names from the default TNA template for this kind of order.
+async function defaultSteps(type: "garment" | "fabric") {
+  const supabase = await createClient();
+  const { data } = await supabase.from("tna_templates").select("steps").eq("order_type", type).eq("is_default", true).maybeSingle();
+  const names = ((data?.steps ?? []) as { name: string }[]).map((s) => s.name);
+  return names.length ? names : DEFAULT_CHECKPOINTS;
+}
+
+function blankStyle(type: "garment" | "fabric", steps: string[]) {
   return {
     id: crypto.randomUUID(), name: "", code: "", fabric: "", colour: "", use_sizes: type === "garment", sizes: {}, qty: "",
     buyer_rate: "", factory_rate: "", internal_note: "",
-    checkpoints: ["Fabric Sourcing", "Cutting", "Sewing", "QC", "Packing", "Ready for Dispatch"].map((name) => ({ id: crypto.randomUUID(), name, due_date: "" })),
+    checkpoints: steps.map((name) => ({ id: crypto.randomUUID(), name, due_date: "" })),
   };
 }
 
@@ -128,11 +150,13 @@ export async function saveLiveStatus(id: string, merchDate: string, remarks: str
 }
 
 const TNA: TnaStatus[] = ["pending", "in_progress", "completed", "delayed"];
-export async function setCheckpoint(checkpointId: string, status: TnaStatus): Promise<Result> {
+export async function setCheckpoint(checkpointId: string, status: TnaStatus, note = "", reason = ""): Promise<Result> {
   if (!(await guard())) return { error: NOT_ALLOWED };
   if (!TNA.includes(status)) return { error: "Unknown status." };
   const supabase = await createClient();
-  const { error } = await supabase.rpc("set_checkpoint_status", { p_checkpoint: checkpointId, p_status: status });
+  const { error } = await supabase.rpc("update_checkpoint", {
+    p_checkpoint: checkpointId, p_status: status, p_note: note.trim() || null, p_reason: reason || null,
+  });
   if (error) return { error: error.message };
   refresh();
   return { ok: "Updated." };

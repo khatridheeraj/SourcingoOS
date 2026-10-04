@@ -1,7 +1,7 @@
 // What can be attached where. Shared by the browser uploader and the server.
 
-export type FileCategory = "inquiry_image" | "tech_pack" | "cutting_program" | "style_photo" | "grn_photo" | "qc_report" | "sample_photo" | "other";
-export type FileTarget = "inquiry" | "style" | "grn" | "sample";
+export type FileCategory = "inquiry_image" | "tech_pack" | "cutting_program" | "style_photo" | "grn_photo" | "qc_report" | "sample_photo" | "qc_photo" | "other";
+export type FileTarget = "inquiry" | "style" | "grn" | "sample" | "qc";
 
 export const CATEGORY_LABEL: Record<FileCategory, string> = {
   inquiry_image: "Reference image",
@@ -11,6 +11,7 @@ export const CATEGORY_LABEL: Record<FileCategory, string> = {
   grn_photo: "Goods photo",
   qc_report: "QC report",
   sample_photo: "Photo",
+  qc_photo: "Defect photo",
   other: "Other",
 };
 
@@ -19,9 +20,10 @@ export const CATEGORIES_FOR: Record<FileTarget, FileCategory[]> = {
   style: ["tech_pack", "cutting_program", "style_photo", "qc_report", "other"],
   grn: ["grn_photo", "qc_report", "other"],
   sample: ["sample_photo", "other"],
+  qc: ["qc_photo", "qc_report", "other"],
 };
 
-export const TARGET_COLUMN = { inquiry: "inquiry_id", style: "style_id", grn: "grn_id", sample: "sample_id" } as const;
+export const TARGET_COLUMN = { inquiry: "inquiry_id", style: "style_id", grn: "grn_id", sample: "sample_id", qc: "qc_id" } as const;
 
 export const MAX_BYTES = 25 * 1024 * 1024;
 

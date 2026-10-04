@@ -22,8 +22,22 @@ export const CONDITION_LABEL: Record<Condition, string> = { good: "Good", damage
 
 export type Checkpoint = {
   id: string; style_id: string; position: number; name: string; due_date: string | null; status: TnaStatus;
-  status_updated_at: string | null; status_updated_by: string | null; status_note?: string | null;
+  status_updated_at: string | null; status_updated_by: string | null; status_note?: string | null; delay_reason?: DelayReason | null;
 };
+
+// Why a step is late. The factory must pick one; staff may.
+export type DelayReason = "fabric" | "trims" | "approval" | "capacity" | "quality" | "labour" | "transport" | "other";
+export const DELAY_REASONS: { value: DelayReason; label: string }[] = [
+  { value: "fabric", label: "Fabric late" },
+  { value: "trims", label: "Trims or accessories late" },
+  { value: "approval", label: "Waiting for buyer approval" },
+  { value: "capacity", label: "Line busy with other work" },
+  { value: "quality", label: "Quality issue, redoing" },
+  { value: "labour", label: "Workers short" },
+  { value: "transport", label: "Transport" },
+  { value: "other", label: "Other" },
+];
+export const delayLabel = (r: string | null | undefined) => DELAY_REASONS.find((x) => x.value === r)?.label ?? "";
 export type Style = {
   id: string; so_id: string; position: number; name: string; code: string; fabric: string; colour: string; use_sizes: boolean;
   sizes: Record<string, number | string | null>; qty: number; buyer_rate: number; factory_rate: number | null;
@@ -56,6 +70,62 @@ export type Inquiry = {
 export type Buyer = { id: string; code: string; default_payment_terms: string | null; default_address: string | null; real_name?: string };
 export type Factory = { id: string; name: string; city: string | null; active: boolean };
 export type Person = { id: string; full_name: string | null; email: string; role: string | null; active: boolean };
+
+// ───────── factory POs and QC ─────────
+export type FpoStatus = "issued" | "accepted" | "declined" | "superseded" | "cancelled";
+export type FpoLine = {
+  style_id: string; name: string; code: string; fabric: string; colour: string; use_sizes: boolean; sizes: Record<string, number | string | null>;
+  qty: number; rate: number | null; steps: { name: string; due_date: string | null }[];
+};
+export type Fpo = {
+  id: string; so_id: string; factory_id: string; revision: number; status: FpoStatus; currency: string; delivery_date: string | null;
+  payment_terms: string | null; terms: string | null; lines: FpoLine[]; total_qty: number; total_value: number | null;
+  issued_at: string; issued_by: string | null; responded_at: string | null; responded_by: string | null; response_note: string | null;
+};
+export const FPO_LABEL: Record<FpoStatus, string> = {
+  issued: "Waiting for factory", accepted: "Accepted", declined: "Declined", superseded: "Replaced", cancelled: "Withdrawn",
+};
+export const FPO_TONE: Record<FpoStatus, string> = { issued: "warn", accepted: "ok", declined: "bad", superseded: "", cancelled: "" };
+
+export type QcKind = "inline" | "midline" | "final";
+export type QcResult = "pass" | "fail" | "hold";
+export type QcDefect = { name: string; severity: "critical" | "major" | "minor"; count: number };
+export type Qc = {
+  id: string; so_id: string; style_id: string; kind: QcKind; inspected_on: string; inspector_id: string | null; lot_qty: number;
+  sample_size: number; aql_major: number; aql_minor: number; defects: QcDefect[]; critical: number; major: number; minor: number;
+  measurements_ok: boolean | null; packing_ok: boolean | null; result: QcResult; notes: string | null; created_at: string;
+};
+export const QC_KIND_LABEL: Record<QcKind, string> = { inline: "Inline", midline: "Mid-line", final: "Final" };
+export const QC_RESULT_LABEL: Record<QcResult, string> = { pass: "Pass", fail: "Fail", hold: "On hold" };
+export const QC_TONE: Record<QcResult, string> = { pass: "ok", fail: "bad", hold: "warn" };
+export const COMMON_DEFECTS: { name: string; severity: QcDefect["severity"] }[] = [
+  { name: "Open seam", severity: "major" }, { name: "Broken stitch", severity: "major" }, { name: "Skipped stitch", severity: "major" },
+  { name: "Uneven hem", severity: "minor" }, { name: "Shade variation", severity: "major" }, { name: "Stain / spot", severity: "major" },
+  { name: "Hole / damage", severity: "major" }, { name: "Measurement out", severity: "major" }, { name: "Loose thread", severity: "minor" },
+  { name: "Puckering", severity: "minor" }, { name: "Label wrong / missing", severity: "minor" }, { name: "Needle / sharp object", severity: "critical" },
+];
+
+// ANSI/ASQ Z1.4, level II, normal single sampling: the same table the database uses.
+const QC_N = [2, 3, 5, 8, 13, 20, 32, 50, 80, 125, 200, 315, 500, 800, 1250];
+const QC_A25 = [0, 0, 0, 0, 1, 1, 2, 3, 5, 7, 10, 14, 21, 21, 21];
+const QC_A40 = [0, 0, 0, 1, 1, 2, 3, 5, 7, 10, 14, 21, 21, 21, 21];
+export function qcSampleSize(lot: number) {
+  const steps: [number, number][] = [[8, 2], [15, 3], [25, 5], [50, 8], [90, 13], [150, 20], [280, 32], [500, 50], [1200, 80], [3200, 125], [10000, 200], [35000, 315], [150000, 500], [500000, 800]];
+  const n = steps.find(([max]) => lot <= max)?.[1] ?? 1250;
+  return Math.min(Math.max(lot, 1), n);
+}
+export function qcAccept(sample: number, aql: number) {
+  let i = 0;
+  QC_N.forEach((n, j) => { if (n <= Math.max(sample, 2)) i = j; });
+  return (aql >= 4 ? QC_A40 : QC_A25)[i];
+}
+export function qcJudge(q: { sample_size: number; aql_major: number; aql_minor: number; defects: QcDefect[]; measurements_ok: boolean | null; packing_ok: boolean | null }) {
+  const sum = (sev: QcDefect["severity"]) => q.defects.filter((d) => d.severity === sev).reduce((a, d) => a + num(d.count), 0);
+  const critical = sum("critical"), major = sum("major"), minor = sum("minor");
+  const acMajor = qcAccept(q.sample_size, q.aql_major), acMinor = qcAccept(q.sample_size, q.aql_minor);
+  const result: QcResult = critical > 0 || major > acMajor || minor > acMinor ? "fail" : q.measurements_ok === false || q.packing_ok === false ? "hold" : "pass";
+  return { critical, major, minor, acMajor, acMinor, result };
+}
 
 // ───────── samples ─────────
 export type SampleStatus = "received" | "with_vendor" | "ready" | "dispatched" | "approved" | "changes" | "rejected" | "cancelled";
@@ -133,6 +203,23 @@ export function sampleAlert(s: Sample, today: string, buyer: string, vendor: str
   return null;
 }
 
+// ───────── costing ─────────
+export type CostExtra = { label: string; amount: number };
+export type Costing = {
+  id: string; inquiry_id: string; style_name: string; currency: string; qty: number | null; factory_id: string | null; factory_cost: number;
+  extras: CostExtra[]; overhead_pct: number; margin_pct: number; quoted_price: number | null; status: "draft" | "quoted" | "accepted" | "rejected"; notes: string | null;
+};
+// Cost per piece, and the price that earns the target margin on it.
+export function costingMath(c: { factory_cost: number | string; extras: CostExtra[]; overhead_pct: number | string; margin_pct: number | string; quoted_price?: number | string | null }) {
+  const base = num(c.factory_cost) + c.extras.reduce((a, e) => a + num(e.amount), 0);
+  const cost = base * (1 + num(c.overhead_pct) / 100);
+  const m = Math.min(num(c.margin_pct), 99);
+  const suggested = Math.ceil((cost / (1 - m / 100)) * 100) / 100;
+  const q = c.quoted_price == null || c.quoted_price === "" ? null : num(c.quoted_price);
+  const realMargin = q && q > 0 ? ((q - cost) / q) * 100 : null;
+  return { cost, suggested, realMargin };
+}
+
 // ───────── numbers and money ─────────
 export const num = (v: unknown) => {
   const n = Number(v);
@@ -203,8 +290,10 @@ export const heldHours = (g: Grn, now: number) => (now - Date.parse(g.received_a
 export type World = ReturnType<typeof makeWorld>;
 export function makeWorld(raw: {
   orders: Order[]; grns: Grn[]; dcs: Dc[]; inquiries: Inquiry[]; buyers: Buyer[]; factories: Factory[]; people: Person[]; samples: Sample[];
-  today: string; now: number; meId: string; isOwner: boolean;
+  fpos?: Fpo[]; qcs?: Qc[]; today: string; now: number; meId: string; isOwner: boolean;
 }) {
+  const fpos = raw.fpos ?? [];
+  const qcs = raw.qcs ?? [];
   const orderById = new Map(raw.orders.map((o) => [o.id, o]));
   const styleById = new Map(raw.orders.flatMap((o) => o.styles.map((s) => [s.id, s] as const)));
   const buyerById = new Map(raw.buyers.map((b) => [b.id, b]));
@@ -245,66 +334,117 @@ export function makeWorld(raw: {
     return p ? p.full_name || p.email : "Someone";
   };
 
+  // The factory PO that counts for an order: the live one, else the latest.
+  const fpoFor = (soId: string) => {
+    const list = fpos.filter((p) => p.so_id === soId).sort((a, b) => b.revision - a.revision);
+    return list.find((p) => p.status === "issued" || p.status === "accepted") ?? list[0] ?? null;
+  };
+  // The latest inspection of each kind for a style.
+  const qcFor = (styleId: string) => qcs.filter((q) => q.style_id === styleId).sort((a, b) => b.inspected_on.localeCompare(a.inspected_on) || b.created_at.localeCompare(a.created_at));
+
   return {
-    ...raw, orderById, styleById, buyerById, factoryById, personById, grnById,
+    ...raw, fpos, qcs, fpoFor, qcFor, orderById, styleById, buyerById, factoryById, personById, grnById,
     rate, currencyOf, grnValue, dcValue, dcQtyFor, grnHeld, grnAvail, receivedFor, dispatchedFor, lateGrns,
     buyerCode, factoryName, personName,
   };
 }
 
 // ───────── alerts ─────────
-export type Alert = { sev: "bad" | "warn" | "info" | "note"; t: string; d: string; href: string; k?: string };
+// who: the people this is for (order or inquiry owners). Empty means everyone.
+export type Alert = { sev: "bad" | "warn" | "info" | "note"; t: string; d: string; href: string; k?: string; who?: (string | null)[] };
+
+// When a style will really finish if every late step pushes the rest back.
+export function projectedFinish(o: Order, today: string) {
+  let worst: string | null = null;
+  for (const st of o.styles) {
+    const open = st.checkpoints.filter((c) => c.status !== "completed" && c.due_date);
+    if (!open.length) continue;
+    const last = st.checkpoints.reduce<string | null>((m, c) => (c.due_date && (!m || c.due_date > m) ? c.due_date : m), null)!;
+    const slip = Math.max(0, ...open.map((c) => daysBetween(c.due_date!, today)));
+    const end = addDays(last, slip);
+    if (!worst || end > worst) worst = end;
+  }
+  return worst;
+}
 
 export function computeAlerts(w: World): Alert[] {
   const out: Alert[] = [];
   const t = w.today;
   if (!w.factories.some((f) => f.active)) {
-    out.push({ sev: "info", t: "Add your factories", d: "Sales orders need a factory. Add them in Buyers & factories.", href: "/setup" });
+    out.push({ sev: "info", t: "Add your factories", d: "Sales orders need a factory. Add them in Master data.", href: "/setup?tab=factories" });
   }
   if (w.isOwner && !w.people.some((p) => p.active && p.role === "merchandiser")) {
-    out.push({ sev: "info", t: "Add your merchandiser", d: "Ask them to sign in, then give them the Merchandiser role in People & roles.", href: "/team" });
+    out.push({ sev: "info", t: "Add your merchandiser", d: "Ask them to sign in, then give them the Merchandiser role in People.", href: "/team" });
   }
   for (const g of w.grns) {
     const held = w.grnHeld(g);
     const so = w.orderById.get(g.so_id);
     const tag = `${g.so_id} · ${w.buyerCode(so?.buyer_id)}`;
+    const who = [g.created_by, so?.merchandiser_id ?? null];
     if (held > 0) {
       const h = heldHours(g, w.now);
       if (h >= 24) {
-        out.push({ sev: "bad", t: `Zero-inventory breach: ${g.id} held ${Math.floor(h)} hours`, d: `${nf(held)} units still at Sourcingo · ${tag}. Invoice and dispatch now.`, href: `/grn/${g.id}`, k: "0" });
+        out.push({ sev: "bad", t: `Zero-inventory breach: ${g.id} held ${Math.floor(h)} hours`, d: `${nf(held)} units still at Sourcingo · ${tag}. Invoice and dispatch now.`, href: `/grn/${g.id}`, k: "0", who });
       } else if (h >= 12) {
-        out.push({ sev: "warn", t: `Dispatch window closing: ${g.id}`, d: `${Math.ceil(24 - h)} hours left · ${nf(held)} units · ${tag}`, href: `/grn/${g.id}`, k: "1" });
+        out.push({ sev: "warn", t: `Dispatch window closing: ${g.id}`, d: `${Math.ceil(24 - h)} hours left · ${nf(held)} units · ${tag}`, href: `/grn/${g.id}`, k: "1", who });
       }
     }
     if (g.status === "pending_approval") {
+      const failed = so?.styles.some((st) => w.qcFor(st.id).find((q) => q.kind === "final")?.result === "fail");
       out.push({
-        sev: w.isOwner ? "warn" : "info",
+        sev: w.isOwner ? (failed ? "bad" : "warn") : "info",
         t: w.isOwner ? `Approve ${g.id}` : `${g.id} waiting for approval`,
-        d: `${nf(grnQty(g))} units from ${w.factoryName(so?.factory_id)}${g.qc_checked ? "" : " · QC not confirmed"}`,
+        d: `${nf(grnQty(g))} units from ${w.factoryName(so?.factory_id)}${failed ? " · final QC failed" : g.qc_checked ? "" : " · QC not confirmed"}`,
         href: `/grn/${g.id}`,
+        who: w.isOwner ? [] : who,
       });
     }
     if (g.status === "draft") {
-      out.push({ sev: "note", t: `${g.id} is still a draft`, d: `${tag} · submit it so the goods can be dispatched`, href: `/grn/${g.id}` });
+      out.push({ sev: "note", t: `${g.id} is still a draft`, d: `${tag} · submit it so the goods can be dispatched`, href: `/grn/${g.id}`, who });
     }
   }
+  let pastBuyer = 0, noTna = 0;
   for (const o of w.orders) {
     const tag = `${o.id} · ${w.buyerCode(o.buyer_id)}`;
+    const who = [o.merchandiser_id, o.manager_id];
     if (o.status === "locked") {
+      if (o.buyer_date && o.buyer_date < addDays(t, -7)) { pastBuyer++; continue; }
+      const cps = allCheckpoints(o);
+      if (!cps.length) { noTna++; continue; }
       let allDone = true;
-      for (const { style, cp } of allCheckpoints(o)) {
+      for (const { style, cp } of cps) {
         if (cp.status !== "completed") allDone = false;
         const what = `${cp.name} for ${style.name} (${style.colour})`;
+        const why = cp.delay_reason ? ` · ${delayLabel(cp.delay_reason)}` : "";
         if (overdue(cp, t)) {
-          out.push({ sev: "bad", t: `Overdue: ${what}`, d: `${tag} · due ${fmtDay(cp.due_date)} · ${TNA_LABEL[cp.status]} · ${w.factoryName(o.factory_id)}`, href: `/orders/${o.id}`, k: cp.due_date ?? "" });
+          out.push({ sev: "bad", t: `Overdue: ${what}`, d: `${tag} · due ${fmtDay(cp.due_date)} · ${TNA_LABEL[cp.status]}${why} · ${w.factoryName(o.factory_id)}`, href: `/orders/${o.id}`, k: cp.due_date ?? "", who });
         } else if (cp.status === "delayed") {
-          out.push({ sev: "warn", t: `Delayed: ${what}`, d: `${tag} · due ${fmtDay(cp.due_date)} · ${w.factoryName(o.factory_id)}`, href: `/orders/${o.id}`, k: cp.due_date ?? "" });
+          out.push({ sev: "warn", t: `Delayed: ${what}`, d: `${tag} · due ${fmtDay(cp.due_date)}${why} · ${w.factoryName(o.factory_id)}`, href: `/orders/${o.id}`, k: cp.due_date ?? "", who });
         }
+      }
+      const end = projectedFinish(o, t);
+      if (end && o.buyer_date && end > o.buyer_date) {
+        out.push({ sev: "bad", t: `Buyer date at risk: ${o.id}`, d: `${w.buyerCode(o.buyer_id)} · at today's pace production ends ${fmtDay(end)}, buyer needs it ${fmtDay(o.buyer_date)}`, href: `/orders/${o.id}`, k: o.buyer_date, who });
+      } else if (end && o.factory_date && end > o.factory_date) {
+        out.push({ sev: "warn", t: `Factory date slipping: ${o.id}`, d: `${tag} · likely ${fmtDay(end)} instead of ${fmtDay(o.factory_date)}`, href: `/orders/${o.id}`, k: o.factory_date, who });
       }
       const bd = o.buyer_date;
       if (!allDone && bd && bd >= t && bd <= addDays(t, 7)) {
         const n = daysBetween(t, bd);
-        out.push({ sev: "warn", t: n === 0 ? "Buyer deadline today" : `Buyer deadline in ${n} day${n === 1 ? "" : "s"}`, d: `${tag} · delivery ${fmtDay(bd)} and production isn't complete`, href: `/orders/${o.id}`, k: bd });
+        out.push({ sev: "warn", t: n === 0 ? "Buyer deadline today" : `Buyer deadline in ${n} day${n === 1 ? "" : "s"}`, d: `${tag} · delivery ${fmtDay(bd)} and production isn't complete`, href: `/orders/${o.id}`, k: bd, who });
+      }
+      const po = w.fpoFor(o.id);
+      if (po?.status === "declined") {
+        out.push({ sev: "bad", t: `Factory declined ${po.id}`, d: `${tag} · ${w.factoryName(po.factory_id)}${po.response_note ? `: "${po.response_note.slice(0, 80)}"` : ""}`, href: `/fpos/${po.id}`, who });
+      } else if (po?.status === "issued" && daysBetween(isoIST(po.issued_at), t) >= 2) {
+        out.push({ sev: "warn", t: `Factory hasn't accepted ${po.id}`, d: `${tag} · sent ${fmtDay(isoIST(po.issued_at))} to ${w.factoryName(po.factory_id)}. Call them.`, href: `/fpos/${po.id}`, who });
+      }
+      for (const st of o.styles) {
+        const last = w.qcFor(st.id)[0];
+        if (last && last.result !== "pass") {
+          out.push({ sev: last.result === "fail" ? "bad" : "warn", t: `${QC_KIND_LABEL[last.kind]} QC ${last.result === "fail" ? "failed" : "on hold"}: ${st.name} (${st.colour})`,
+            d: `${tag} · ${last.critical} critical, ${last.major} major, ${last.minor} minor · ${fmtDay(last.inspected_on)}`, href: `/qc/${last.id}`, who: [...who, last.inspector_id] });
+        }
       }
     } else if (o.status === "tna_review") {
       out.push({
@@ -312,13 +452,20 @@ export function computeAlerts(w: World): Alert[] {
         t: w.isOwner ? "Waiting for your TNA lock" : "Waiting for the owner to lock the TNA",
         d: `${tag} · the factory gets the final PO only after the lock`,
         href: `/orders/${o.id}`,
+        who: w.isOwner ? [] : who,
       });
     }
+  }
+  if (pastBuyer) {
+    out.push({ sev: "warn", t: `${pastBuyer} running order${pastBuyer === 1 ? " is" : "s are"} past the buyer date`, d: "Mark the shipped ones as shipped so alerts stay true.", href: "/cleanup#shipped", k: "" });
+  }
+  if (noTna) {
+    out.push({ sev: "warn", t: `${noTna} running order${noTna === 1 ? " has" : "s have"} no TNA`, d: "Apply a TNA template so delays show up here.", href: "/cleanup#tna", k: "" });
   }
   for (const i of w.inquiries) {
     const open = i.status === "new" || i.status === "quoted";
     if (open && i.next_follow_up && i.next_follow_up <= t) {
-      out.push({ sev: "warn", t: `Follow-up due: ${i.product_type} for ${w.buyerCode(i.buyer_id)}`, d: `${i.id} · ${i.merchandiser_id ? w.personName(i.merchandiser_id) : "unassigned"} · due ${fmtDay(i.next_follow_up)}`, href: `/inquiries?status=due`, k: i.next_follow_up });
+      out.push({ sev: "warn", t: `Follow-up due: ${i.product_type} for ${w.buyerCode(i.buyer_id)}`, d: `${i.id} · ${i.merchandiser_id ? w.personName(i.merchandiser_id) : "unassigned"} · due ${fmtDay(i.next_follow_up)}`, href: `/inquiries?status=due`, k: i.next_follow_up, who: [i.merchandiser_id] });
     }
     if (i.status === "new" && !i.merchandiser_id) {
       out.push({ sev: "info", t: `Assign a merchandiser: ${i.id}`, d: `${i.product_type} for ${w.buyerCode(i.buyer_id)}`, href: `/inquiries?status=new` });
@@ -326,11 +473,15 @@ export function computeAlerts(w: World): Alert[] {
   }
   for (const sm of w.samples) {
     const a = sampleAlert(sm, t, w.buyerCode(sm.buyer_id), w.factoryName(sm.factory_id));
-    if (a) out.push({ ...a, href: `/samples/${sm.id}` });
+    if (a) out.push({ ...a, href: `/samples/${sm.id}`, who: [sm.merchandiser_id] });
   }
   const rank = { bad: 0, warn: 1, info: 2, note: 3 };
   return out.sort((a, b) => rank[a.sev] - rank[b.sev] || (a.k ?? "").localeCompare(b.k ?? ""));
 }
+
+// Alerts for one person: theirs, plus the ones nobody owns.
+export const alertsFor = (alerts: Alert[], meId: string) =>
+  alerts.filter((a) => !a.who?.some(Boolean) || a.who.includes(meId));
 
 export function fmtDay(d: string | null | undefined) {
   if (!d) return "—";

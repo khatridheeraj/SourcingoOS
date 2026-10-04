@@ -4,7 +4,9 @@ import type { Role } from "@/lib/roles";
 
 export { ROLES, roleLabel, type Role } from "@/lib/roles";
 
-export type Me = { id: string; email: string; fullName: string | null; role: Role | null; active: boolean };
+export type Me = {
+  id: string; email: string; fullName: string | null; role: Role | null; active: boolean; language: "en" | "hi"; digest: boolean; phone: string | null;
+};
 
 // The signed-in user's profile, read once per request.
 export const getMe = cache(async (): Promise<Me | null> => {
@@ -12,7 +14,10 @@ export const getMe = cache(async (): Promise<Me | null> => {
   const { data } = await supabase.auth.getClaims();
   const id = data?.claims.sub;
   if (!id) return null;
-  const { data: p } = await supabase.from("profiles").select("email, full_name, role, active").eq("id", id).maybeSingle();
+  const { data: p } = await supabase.from("profiles").select("email, full_name, role, active, language, digest, phone").eq("id", id).maybeSingle();
   if (!p) return null;
-  return { id, email: p.email, fullName: p.full_name, role: p.active ? p.role : null, active: p.active };
+  return {
+    id, email: p.email, fullName: p.full_name, role: p.active ? p.role : null, active: p.active,
+    language: p.language === "hi" ? "hi" : "en", digest: p.digest !== false, phone: p.phone ?? null,
+  };
 });
