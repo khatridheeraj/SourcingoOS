@@ -11,3 +11,7 @@ export const ROLES: { value: Role; label: string; hint: string }[] = [
 ];
 
 export const roleLabel = (role: Role | null | undefined) => ROLES.find((r) => r.value === role)?.label ?? "No role";
+
+export const INTERNAL_ROLES: Role[] = ["owner", "merchandiser", "manager", "qc", "accounts"];
+export const isInternal = (role: Role | null | undefined) => !!role && INTERNAL_ROLES.includes(role);
+export const canManageFactories = (role: Role | null | undefined) => role === "owner" || role === "manager";

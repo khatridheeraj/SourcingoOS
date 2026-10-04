@@ -81,6 +81,25 @@ select pg_temp.expect_error($$update profiles set active = false where email = '
 update profiles set role = 'owner' where email = 'new@t';
 update profiles set role = 'manager' where email = 'owner@t';
 
+-- Adding buyers: owner only, code numbered after the seeded ones, real name private.
+select pg_temp.act_as('new@t');
+do $$ begin
+  if create_buyer('Aurelia Home Pvt Ltd', null, '30 days') <> 'BYR-AH-0005' then raise exception 'unexpected buyer code'; end if;
+  if create_buyer('Kora', 'k-r', null) <> 'BYR-KR-0006' then raise exception 'initials not cleaned'; end if;
+end $$;
+select pg_temp.expect_error($$select create_buyer('aurelia home pvt ltd')$$, '%already has a buyer code%');
+select pg_temp.act_as('merch@t');
+select pg_temp.expect_error($$select create_buyer('Someone')$$, 'Only the owner can add buyers.');
+do $$ begin
+  if not exists (select 1 from buyers where code = 'BYR-AH-0005') then raise exception 'merchandiser cannot see buyer codes'; end if;
+  if exists (select 1 from buyer_registry) then raise exception 'merchandiser read real buyer names'; end if;
+end $$;
+
+-- Factories: owner and manager manage them; merchandisers only read.
+select pg_temp.expect_error($$insert into factories (name) values ('F2')$$, '%row-level security%');
+select pg_temp.act_as('owner@t');  -- now a manager
+insert into factories (name, city) values ('F2', 'Jaipur');
+
 reset role;
 \o
 \echo 'All rule tests passed.'
