@@ -1,4 +1,4 @@
-import { computeAlerts, type World } from "@/lib/model";
+import { computeAlerts, isOpenSample, sampleDaysLeft, vendorLate, type World } from "@/lib/model";
 import { isOps, type Role } from "@/lib/roles";
 
 export type Badges = Record<string, { n: number; hot: boolean }>;
@@ -12,6 +12,11 @@ export function navCounts(w: World, role: Role | null): Badges {
   else if (pending) out.grn = { n: pending, hot: role === "owner" };
   const waitingDc = w.grns.filter((g) => w.grnAvail(g) > 0).length;
   if (waitingDc) out.dc = { n: waitingDc, hot: late > 0 };
+  const openSamples = w.samples.filter(isOpenSample);
+  if (openSamples.length) {
+    const urgent = openSamples.some((s) => { const d = sampleDaysLeft(s, w.today); return d === null || d <= 1 || vendorLate(s, w.today); });
+    out.samples = { n: openSamples.length, hot: urgent };
+  }
   if (isOps(role)) {
     const red = computeAlerts(w).filter((a) => a.sev === "bad").length;
     if (red) out.alerts = { n: red, hot: true };

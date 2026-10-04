@@ -46,6 +46,7 @@ export default async function Reports() {
           <Download href="/reports/export/sales-orders">Sales orders (CSV)</Download>
           <Download href="/reports/export/grns">GRNs (CSV)</Download>
           <Download href="/reports/export/delivery-challans">Delivery challans (CSV)</Download>
+          <Download href="/reports/export/samples">Samples (CSV)</Download>
           {me?.role === "owner" && <Download href="/reports/export/backup">Full backup (JSON)</Download>}
         </div>
         <p className="mt-2 text-xs text-muted">CSV files open in Excel. Real buyer names are never included.</p>
