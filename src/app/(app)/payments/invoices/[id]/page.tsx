@@ -8,6 +8,7 @@ import { isFinance } from "@/lib/roles";
 import { ChequeChip, InvoiceChip } from "../../chips";
 import { AddCreditNote, DeleteButton, InvoiceForm } from "../../forms";
 import { buyerOptions, orderOptions } from "../../options";
+import { History } from "@/components/history";
 
 export const metadata = { title: "Invoice · Sourcingo OS" };
 
@@ -104,6 +105,7 @@ export default async function InvoicePage({ params }: PageProps<"/payments/invoi
           <div className="mt-3 border-t border-line pt-3"><DeleteButton kind="invoice" id={i.id} label={`invoice ${i.invoice_no}`} back="/payments?tab=invoices" /></div>
         )}
       </details>
+      <History table="invoices" id={i.id} w={w} />
     </div>
   );
 }

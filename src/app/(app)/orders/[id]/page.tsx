@@ -11,6 +11,7 @@ import { fmtDateTime } from "@/lib/format";
 import { buyerStage, fmtDay, grnQty, money, nf, orderValue, STAGES, toDraft, unitOf } from "@/lib/model";
 import { isInternal, isOps } from "@/lib/roles";
 import { Editor } from "./editor";
+import { History } from "@/components/history";
 
 export async function generateMetadata({ params }: PageProps<"/orders/[id]">) {
   return { title: `${(await params).id} · Sourcingo OS` };
@@ -37,20 +38,23 @@ export default async function OrderPage({ params }: PageProps<"/orders/[id]">) {
     const keep = (list: { id: string; label: string }[], pid: string | null) =>
       pid && !list.some((x) => x.id === pid) ? [...list, { id: pid, label: w.personName(pid) }] : list;
     return (
-      <Editor
-        key={o.id + o.status}
-        initial={toDraft(o)}
-        files={Object.fromEntries(files)}
-        isOwner={isOwner}
-        today={w.today}
-        options={{
-          buyers: w.buyers.map((b) => ({ id: b.id, label: b.real_name ? `${b.code} · ${b.real_name}` : b.code, terms: b.default_payment_terms ?? "", address: b.default_address ?? "" })),
-          factories: w.factories.filter((f) => f.active || f.id === o.factory_id).map((f) => ({ id: f.id, label: f.city ? `${f.name} · ${f.city}` : f.name })),
-          merchandisers: keep(opt(["merchandiser", "manager", "owner"]), o.merchandiser_id),
-          managers: keep(opt(["manager", "owner"]), o.manager_id),
-          people: keep(keep(opt(), o.fabric_poc_id), o.quality_poc_id),
-        }}
-      />
+      <div className="stack">
+        <Editor
+          key={o.id + o.status}
+          initial={toDraft(o)}
+          files={Object.fromEntries(files)}
+          isOwner={isOwner}
+          today={w.today}
+          options={{
+            buyers: w.buyers.map((b) => ({ id: b.id, label: b.real_name ? `${b.code} · ${b.real_name}` : b.code, terms: b.default_payment_terms ?? "", address: b.default_address ?? "" })),
+            factories: w.factories.filter((f) => f.active || f.id === o.factory_id).map((f) => ({ id: f.id, label: f.city ? `${f.name} · ${f.city}` : f.name })),
+            merchandisers: keep(opt(["merchandiser", "manager", "owner"]), o.merchandiser_id),
+            managers: keep(opt(["manager", "owner"]), o.manager_id),
+            people: keep(keep(opt(), o.fabric_poc_id), o.quality_poc_id),
+          }}
+        />
+        <History table="sales_orders" id={o.id} w={w} />
+      </div>
     );
   }
 
@@ -110,6 +114,7 @@ export default async function OrderPage({ params }: PageProps<"/orders/[id]">) {
           </div>
         </section>
       )}
+      <History table="sales_orders" id={o.id} w={w} />
     </div>
   );
 }

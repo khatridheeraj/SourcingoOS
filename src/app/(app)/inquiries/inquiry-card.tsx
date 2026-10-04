@@ -55,6 +55,7 @@ export function InquiryCard({ inq, merchandisers, today, files }: { inq: Inquiry
       </div>
       <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted">
         <span className="font-mono">{inq.id}</span>
+        <Link className="link" href={`/history/inquiries/${inq.id}`}>History</Link>
         <span>Buyer <b className="font-mono text-foreground">{inq.buyerLabel}</b></span>
         <span>Contact <b className="text-foreground">{inq.contact_person}</b> · <a href={`mailto:${inq.contact_email}`} className="text-accent">{inq.contact_email}</a></span>
         {inq.est_qty !== null && <span>Qty <b className="text-foreground">{fmtNum(inq.est_qty)} {inq.unit}</b></span>}

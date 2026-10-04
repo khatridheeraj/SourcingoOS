@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useActionState, useState } from "react";
 import { ROLES, type Role } from "@/lib/roles";
 import { saveProfile, type SaveState } from "./actions";
@@ -29,6 +30,7 @@ export function PersonRow({ person, isMe, factories, buyers }: { person: Person;
         <b>{person.full_name || person.email}</b>
         {person.full_name && <span className="text-sm text-muted">{person.email}</span>}
         {isMe && <span className="text-sm text-muted">(you)</span>}
+        <Link className="link text-sm" href={`/activity?who=${person.id}`}>Activity</Link>
         <span className="ml-auto text-xs text-muted">
           Joined {new Date(person.created_at).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}
         </span>

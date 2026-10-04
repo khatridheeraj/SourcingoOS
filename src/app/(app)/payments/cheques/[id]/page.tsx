@@ -9,6 +9,7 @@ import { ChequeChip, InvoiceChip } from "../../chips";
 import { ChequeForm, DeleteButton } from "../../forms";
 import { buyerOptions, openInvoices } from "../../options";
 import { ChequeSteps } from "../../parts";
+import { History } from "@/components/history";
 
 export const metadata = { title: "Cheque · Sourcingo OS" };
 
@@ -85,6 +86,7 @@ export default async function ChequePage({ params }: PageProps<"/payments/cheque
       {(c.status === "in_hand" || isOwner) && (
         <div><DeleteButton kind="cheque" id={c.id} label={`cheque ${c.cheque_no}`} back="/payments?tab=cheques" /></div>
       )}
+      <History table="cheques" id={c.id} w={w} />
     </div>
   );
 }

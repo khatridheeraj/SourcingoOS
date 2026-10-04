@@ -5,6 +5,8 @@ import { fmtDay, money, nf } from "@/lib/model";
 import { isOps } from "@/lib/roles";
 import { gmailLink, loadPos, PO_STATUS, poQty, poValue } from "../data";
 import { PoActions } from "../po-actions";
+import { History } from "@/components/history";
+import { loadWorld } from "@/lib/data";
 
 export async function generateMetadata({ params }: PageProps<"/pos/[id]">) {
   return { title: `${(await params).id} · Sourcingo OS` };
@@ -12,7 +14,7 @@ export async function generateMetadata({ params }: PageProps<"/pos/[id]">) {
 
 export default async function PoPage({ params }: PageProps<"/pos/[id]">) {
   const { id } = await params;
-  const { me, pos, buyer, error } = await loadPos(id);
+  const [{ me, pos, buyer, error }, { world: w }] = await Promise.all([loadPos(id), loadWorld()]);
   if (!me) redirect("/login");
   if (!isOps(me.role)) redirect("/");
   const p = pos[0];
@@ -102,6 +104,7 @@ export default async function PoPage({ params }: PageProps<"/pos/[id]">) {
           <p className="whitespace-pre-line text-[13px]">{p.notes}</p>
         </section>
       )}
+      <History table="received_pos" id={p.id} w={w} />
     </div>
   );
 }

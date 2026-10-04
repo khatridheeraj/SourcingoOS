@@ -4,6 +4,7 @@ import { fmtDateTime } from "@/lib/format";
 import { CONDITION_LABEL, DC_LABEL, GRN_LABEL, SAMPLE_LABEL, sampleOnTime, sampleTypeLabel, SO_LABEL, unitOf } from "@/lib/model";
 import { CHEQUE_LABEL, INVOICE_LABEL } from "@/lib/payments";
 import { isFinance, isInternal } from "@/lib/roles";
+import { createClient } from "@/lib/supabase/server";
 
 // Excel-friendly CSV. Cells that look like formulas are neutralised.
 function csv(rows: (string | number | null | undefined)[][]) {
@@ -19,6 +20,8 @@ export async function GET(_req: Request, ctx: RouteContext<"/reports/export/[kin
   const me = await getMe();
   if (!isInternal(me?.role)) return new Response("Not allowed", { status: 403 });
   const { kind } = await ctx.params;
+  // Downloads are recorded in the activity log.
+  await (await createClient()).rpc("log_activity", { p_action: "EXPORT", p_table: "reports", p_row: kind });
   const { world: w } = await loadWorld();
   const stamp = w.today;
   const file = (name: string, body: string, type = "text/csv; charset=utf-8") =>

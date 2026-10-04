@@ -9,3 +9,4 @@ trap 'psql -q -d postgres -c "drop database if exists $db" >/dev/null' EXIT
 psql -q -d "$db" -v ON_ERROR_STOP=1 -f tests/stub_auth.sql
 for f in migrations/*.sql; do psql -q -d "$db" -v ON_ERROR_STOP=1 -f "$f"; done
 psql -q -d "$db" -v ON_ERROR_STOP=1 -f tests/rules.sql
+psql -q -d "$db" -v ON_ERROR_STOP=1 -f tests/activity.sql

@@ -54,6 +54,7 @@ export const NAV: NavGroup[] = [
   { title: "Reports", items: [
     { href: "/reports", label: "Reports & exports", roles: INTERNAL },
     { href: "/buyer-view", label: "Buyer view", roles: OPS },
+    { href: "/activity", label: "Activity log", roles: ["owner"] },
   ] },
 ];
 

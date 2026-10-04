@@ -13,6 +13,7 @@ import { isInternal, isOps } from "@/lib/roles";
 import { GrnForm } from "../grn-form";
 import { grnOrderOptions, receiverOptions } from "../options";
 import { GrnDecision } from "./decision";
+import { History } from "@/components/history";
 
 export async function generateMetadata({ params }: PageProps<"/grn/[id]">) {
   return { title: `${(await params).id} · Sourcingo OS` };
@@ -30,18 +31,21 @@ export default async function GrnPage({ params }: PageProps<"/grn/[id]">) {
 
   if (g.status === "draft" && ops) {
     return (
-      <GrnForm
-        key={g.id}
-        id={g.id}
-        orders={grnOrderOptions(w, g.id, g.so_id)}
-        people={receiverOptions(w)}
-        isOwner={me.role === "owner"}
-        files={files}
-        initial={{
-          so_id: g.so_id, received_at: g.received_at, received_by: g.received_by ?? "", qc_checked: g.qc_checked, qc_note: g.qc_note ?? "", notes: g.notes ?? "",
-          lines: Object.fromEntries(g.lines.map((l) => [l.style_id, { qty: String(l.qty), condition: l.condition }])),
-        }}
-      />
+      <div className="stack">
+        <GrnForm
+          key={g.id}
+          id={g.id}
+          orders={grnOrderOptions(w, g.id, g.so_id)}
+          people={receiverOptions(w)}
+          isOwner={me.role === "owner"}
+          files={files}
+          initial={{
+            so_id: g.so_id, received_at: g.received_at, received_by: g.received_by ?? "", qc_checked: g.qc_checked, qc_note: g.qc_note ?? "", notes: g.notes ?? "",
+            lines: Object.fromEntries(g.lines.map((l) => [l.style_id, { qty: String(l.qty), condition: l.condition }])),
+          }}
+        />
+        <History table="grns" id={g.id} w={w} />
+      </div>
     );
   }
 
@@ -108,6 +112,7 @@ export default async function GrnPage({ params }: PageProps<"/grn/[id]">) {
           <div className="cards">{dcs.map((d) => <DcCard key={d.id} w={w} d={d} />)}</div>
         </section>
       )}
+      <History table="grns" id={g.id} w={w} />
     </div>
   );
 }

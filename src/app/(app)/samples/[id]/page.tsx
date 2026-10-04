@@ -14,6 +14,7 @@ import { SampleChip, SampleDue } from "../bits";
 import { sampleOptions } from "../options";
 import { NextStep } from "./next-step";
 import { DeleteSample, Details, NoteForm } from "./parts";
+import { History } from "@/components/history";
 
 export async function generateMetadata({ params }: PageProps<"/samples/[id]">) {
   return { title: `${(await params).id} · Sourcingo OS` };
@@ -133,6 +134,7 @@ export default async function SamplePage({ params, searchParams }: PageProps<"/s
           </div>
         </section>
       </div>
+      <History table="samples" id={s.id} w={w} />
     </div>
   );
 }

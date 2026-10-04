@@ -9,6 +9,7 @@ import { fmtDay, money, nf } from "@/lib/model";
 import { isInternal, isOps } from "@/lib/roles";
 import { DcForm } from "../dc-form";
 import { dcGrnOptions } from "../options";
+import { History } from "@/components/history";
 
 export async function generateMetadata({ params }: PageProps<"/dc/[id]">) {
   return { title: `${(await params).id} · Sourcingo OS` };
@@ -24,16 +25,19 @@ export default async function DcPage({ params }: PageProps<"/dc/[id]">) {
 
   if (d.status === "draft" && isOps(me?.role)) {
     return (
-      <DcForm
-        key={d.id}
-        id={d.id}
-        grns={dcGrnOptions(w, d.id, d.grn_id)}
-        initial={{
-          grn_id: d.grn_id, courier: d.courier ?? "", tracking: d.tracking ?? "", address: d.address ?? "", invoice_no: d.invoice_no ?? "",
-          invoice_date: d.invoice_date ?? w.today, dispatched_at: new Date(w.now).toISOString(),
-          lines: Object.fromEntries(d.lines.map((l) => [l.style_id, String(l.qty)])),
-        }}
-      />
+      <div className="stack">
+        <DcForm
+          key={d.id}
+          id={d.id}
+          grns={dcGrnOptions(w, d.id, d.grn_id)}
+          initial={{
+            grn_id: d.grn_id, courier: d.courier ?? "", tracking: d.tracking ?? "", address: d.address ?? "", invoice_no: d.invoice_no ?? "",
+            invoice_date: d.invoice_date ?? w.today, dispatched_at: new Date(w.now).toISOString(),
+            lines: Object.fromEntries(d.lines.map((l) => [l.style_id, String(l.qty)])),
+          }}
+        />
+        <History table="delivery_challans" id={d.id} w={w} />
+      </div>
     );
   }
 
@@ -80,6 +84,7 @@ export default async function DcPage({ params }: PageProps<"/dc/[id]">) {
           </tbody>
         </table>
       </div>
+      <History table="delivery_challans" id={d.id} w={w} />
     </div>
   );
 }
