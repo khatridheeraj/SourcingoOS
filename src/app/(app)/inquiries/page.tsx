@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { Head } from "@/components/bits";
 import { inputCls, panelCls } from "@/components/ui";
 import { getMe } from "@/lib/auth";
 import { todayIST } from "@/lib/format";
@@ -69,15 +70,12 @@ export default async function InquiriesPage({ searchParams }: PageProps<"/inquir
   const href = (status: string) => `/inquiries?status=${status}${q ? `&q=${encodeURIComponent(q)}` : ""}`;
 
   return (
-    <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="text-xl font-bold">Inquiries</h1>
-        <p className="text-muted">Log every buyer inquiry, assign it, and follow up until it becomes an order.</p>
-      </div>
-      {error && <p className="rounded-lg bg-warn-soft p-4 text-warn">Couldn&apos;t load everything: {error.message}</p>}
+    <>
+      <Head crumbs="Sales › Inquiries" title="Inquiries" sub="Log every buyer inquiry, assign it, and follow up until it becomes an order." />
+      {error && <p className="warnbox">Couldn&apos;t load everything: {error.message}</p>}
 
-      <section className={panelCls}>
-        <h2 className="mb-3 font-bold">Log a new inquiry</h2>
+      <section id="new" className={`${panelCls} scroll-mt-20`}>
+        <h2>Log a new inquiry</h2>
         <NewInquiry buyers={(buyers.data ?? []).map((b) => ({ id: b.id, label: label(b.id) }))} merchandisers={merchandisers} isOwner={isOwner} />
       </section>
 
@@ -111,6 +109,6 @@ export default async function InquiriesPage({ searchParams }: PageProps<"/inquir
           </div>
         )}
       </section>
-    </div>
+    </>
   );
 }

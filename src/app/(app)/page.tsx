@@ -1,64 +1,93 @@
 import Link from "next/link";
-import { redirect } from "next/navigation";
+import { AlertList, Head, Tile } from "@/components/bits";
 import { getMe } from "@/lib/auth";
-import { todayIST } from "@/lib/format";
-import { isOps } from "@/lib/roles";
-import { createClient } from "@/lib/supabase/server";
+import { loadWorld } from "@/lib/data";
+import { computeAlerts, isoIST, sumByCur } from "@/lib/model";
+import { NAV, QUICK_ACTIONS } from "@/lib/nav";
+import { isInternal, isOps } from "@/lib/roles";
 
 export default async function Home() {
   const me = await getMe();
-  if (!me) redirect("/login");
-
-  const supabase = await createClient();
-  let waiting = 0;
-  if (me.role === "owner") {
-    const { count } = await supabase.from("profiles").select("id", { count: "exact", head: true }).eq("active", false);
-    waiting = count ?? 0;
+  if (!me?.role || !isInternal(me.role)) {
+    return (
+      <section className="warnbox">
+        <h2 className="text-lg font-bold">{me?.role ? "Your portal is on its way" : "Waiting for approval"}</h2>
+        <p>
+          {me?.role
+            ? "Factory and buyer portals are the next thing being built. You'll see your orders here soon."
+            : "Your account is set up. The owner needs to give you a role before you can see any orders."}
+        </p>
+      </section>
+    );
   }
-  let openInquiries = 0;
-  let followUpsDue = 0;
-  if (isOps(me.role)) {
-    const [open, due] = await Promise.all([
-      supabase.from("inquiries").select("id", { count: "exact", head: true }).in("status", ["new", "quoted"]),
-      supabase.from("inquiries").select("id", { count: "exact", head: true }).in("status", ["new", "quoted"]).lte("next_follow_up", todayIST()),
-    ]);
-    openInquiries = open.count ?? 0;
-    followUpsDue = due.count ?? 0;
-  }
+  const { world: w, error } = await loadWorld();
+  const ops = isOps(me.role);
+  const alerts = computeAlerts(w);
+  const t = w.today;
+  const dueToday = w.orders.filter((o) => o.status === "locked").flatMap((o) => o.styles.flatMap((s) => s.checkpoints)).filter((cp) => cp.due_date === t && cp.status !== "completed");
+  const overdueN = alerts.filter((a) => a.t.startsWith("Overdue")).length;
+  const grnToday = w.grns.filter((g) => isoIST(g.received_at) === t);
+  const dcToday = w.dcs.filter((d) => d.status === "dispatched" && d.dispatched_at && isoIST(d.dispatched_at) === t);
+  const held = w.lateGrns().length;
+  const waiting = me.role === "owner" ? w.people.filter((p) => !p.active).length : 0;
+  const day = new Date(w.now).toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long", timeZone: "Asia/Kolkata" });
 
   return (
-    <div className="flex flex-col gap-6">
-
+    <>
+      <Head title="Shortcuts" sub={`Today at Sourcingo, ${day}.`} />
+      {error && <p className="errbox">Couldn&apos;t load everything: {error.message}</p>}
       {waiting > 0 && (
-        <Link href="/team" className="rounded-xl bg-accent-soft p-4 font-semibold">
+        <Link href="/team" className="warnbox font-semibold">
           {waiting === 1 ? "1 person is" : `${waiting} people are`} waiting for you to approve them →
         </Link>
       )}
-
-      {isOps(me.role) && (
-        <div className="grid gap-3 sm:grid-cols-2">
-          <Link href="/inquiries?status=open" className="rounded-xl bg-accent-soft p-4">
-            <span className="text-sm font-semibold text-muted">Open inquiries</span>
-            <b className="block text-3xl">{openInquiries}</b>
-          </Link>
-          <Link href="/inquiries?status=due" className={`rounded-xl p-4 ${followUpsDue ? "bg-bad text-white" : "border border-line bg-surface"}`}>
-            <span className={`text-sm font-semibold ${followUpsDue ? "" : "text-muted"}`}>Follow-ups due today</span>
-            <b className="block text-3xl">{followUpsDue}</b>
-          </Link>
+      <section className="stack">
+        <span className="sub">Your today&apos;s summary</span>
+        <div className="tiles">
+          {ops && <Tile tone="blue" label="New inquiries" value={w.inquiries.filter((i) => isoIST(i.created_at) === t).length} note={`${w.inquiries.filter((i) => i.status === "new" || i.status === "quoted").length} open in total`} href="/inquiries" />}
+          {ops && <Tile tone="yellow" label="TNA activities due today" value={dueToday.length} note={`${overdueN} overdue`} href="/tna?preset=today" />}
+          <Tile tone="green" label="GRNs received today" value={grnToday.length} note={sumByCur(grnToday.map((g) => [w.grnValue(g), w.currencyOf(g.so_id)]))} href="/grn" />
+          <Tile tone="pink" label="Dispatched today" value={dcToday.length} note={sumByCur(dcToday.map((d) => [w.dcValue(d), w.currencyOf(d.so_id)]))} href="/dc?status=dispatched" />
+          <Tile alarm={held > 0} label="Goods held over 24h" value={held} note="Must be zero" href="/grn?status=held" />
         </div>
-      )}
-
-      {me.role ? (
-        <section className="rounded-xl border border-line bg-surface p-5">
-          <h2 className="text-lg font-bold">You&apos;re signed in</h2>
-          <p className="text-muted">Sales orders, TNA and the warehouse screens are being moved here next.</p>
+      </section>
+      {ops && (
+        <section className="stack">
+          <span className="sub">Quick actions</span>
+          <div className="actions">
+            {QUICK_ACTIONS.map((a) => (
+              <Link key={a.href} href={a.href} className="action">
+                <i className={a.tone}>{a.icon}</i>
+                <span><b>{a.label}</b><small>{a.sub}</small></span>
+              </Link>
+            ))}
+          </div>
         </section>
-      ) : (
-        <section className="rounded-xl bg-warn-soft p-5 text-warn">
-          <h2 className="text-lg font-bold">Waiting for approval</h2>
-          <p>Your account is set up. The owner needs to give you a role before you can see any orders.</p>
-        </section>
       )}
-    </div>
+      <div className="two">
+        <section className="panel">
+          <div className="row mb-3">
+            <h2 className="flex-1 text-[19px] font-bold">Needs attention</h2>
+            {ops && <Link className="btn sm" href="/dashboard">Ops dashboard</Link>}
+          </div>
+          <AlertList alerts={ops ? alerts : alerts.filter((a) => a.href.startsWith("/grn") || a.href.startsWith("/dc"))} limit={8} more="on the Ops dashboard" />
+        </section>
+        <section className="panel">
+          <h2>All modules</h2>
+          <div className="stack" style={{ gap: 14 }}>
+            {NAV.filter((g) => g.title).map((g) => {
+              const items = g.items.filter((i) => i.roles.includes(me.role!));
+              if (!items.length) return null;
+              return (
+                <div key={g.title}>
+                  <div className="sub mb-1">{g.title}</div>
+                  <div className="row">{items.map((i) => <Link key={i.href} className="link" href={i.href}>{i.label} ↗</Link>)}</div>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      </div>
+    </>
   );
 }

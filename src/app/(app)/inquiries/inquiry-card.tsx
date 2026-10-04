@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useActionState, useState, useTransition } from "react";
 import { inputCls, labelCls, secondaryBtn } from "@/components/ui";
 import { fmtDate, fmtDateTime, fmtINR, fmtNum } from "@/lib/format";
@@ -46,6 +47,9 @@ export function InquiryCard({ inq, merchandisers, today }: { inq: Inquiry; merch
         <h3 className="mr-1 text-base font-bold">{inq.product_type}</h3>
         <span className={`rounded-full px-2 text-xs font-bold ${STATUS[inq.status].cls}`}>{STATUS[inq.status].label}</span>
         {due && <span className="rounded-full bg-bad px-2 text-xs font-bold text-white">Follow-up due</span>}
+        <span className="ml-auto" />
+        {open && !inq.so_id && <Link href={`/orders/new?inquiry=${inq.id}`} className="btn sm primary">Create sales order</Link>}
+        {inq.so_id && <Link href={`/orders/${inq.so_id}`} className="btn sm">Open {inq.so_id}</Link>}
       </div>
       <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm text-muted">
         <span className="font-mono">{inq.id}</span>
@@ -61,7 +65,7 @@ export function InquiryCard({ inq, merchandisers, today }: { inq: Inquiry; merch
         <label className={labelCls}>
           Status
           {inq.status === "converted" ? (
-            <span className="py-2 text-sm text-foreground">Converted to {inq.so_id ?? "a sales order"}</span>
+            <span className="py-2 text-sm text-foreground">Converted to {inq.so_id ? <Link className="link" href={`/orders/${inq.so_id}`}>{inq.so_id}</Link> : "a sales order"}</span>
           ) : (
             <select defaultValue={inq.status} disabled={saving} onChange={(e) => save("status", e.target.value)} className={inputCls}>
               <option value="new">New</option>

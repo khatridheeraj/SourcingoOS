@@ -1,3 +1,4 @@
+import { Head } from "@/components/bits";
 import { redirect } from "next/navigation";
 import { panelCls } from "@/components/ui";
 import { getMe } from "@/lib/auth";
@@ -47,12 +48,9 @@ export default async function SetupPage() {
   const canEditFactories = canManageFactories(me.role);
 
   return (
-    <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="text-xl font-bold">Buyers &amp; factories</h1>
-        <p className="text-muted">Master data used on every inquiry, sales order and challan.</p>
-      </div>
-      {error && <p className="rounded-lg bg-warn-soft p-4 text-warn">Couldn&apos;t load everything: {error.message}</p>}
+    <>
+      <Head crumbs="CRM › Buyers & factories" title="Buyers & factories" sub={<>Master data used on every inquiry, sales order and challan.</>} />
+      {error && <p className="warnbox">Couldn&apos;t load everything: {error.message}</p>}
 
       <div className="grid gap-6 lg:grid-cols-2 lg:items-start">
         <section className={panelCls}>
@@ -82,6 +80,6 @@ export default async function SetupPage() {
           {isOwner && <AddBuyer />}
         </section>
       </div>
-    </div>
+    </>
   );
 }
