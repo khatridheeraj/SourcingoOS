@@ -346,6 +346,50 @@ do $$ begin
   if not exists (select 1 from tna_status_history where note = 'Fabric late from mill') then raise exception 'note not in history'; end if;
 end $$;
 
+-- POs received: staff only; inquiry and sales order come from the PO.
+select pg_temp.act_as('merch@t');
+do $$ declare v_b uuid := (select id from buyers where code = 'BYR-AH-0001'); v_po text; v_inq text; v_so text; begin
+  insert into received_pos (buyer_id, po_number, po_date, delivery_date, sender_name, sender_email, email_thread_id, attachments, lines)
+    values (v_b, ' KFT-1 ', '2026-10-01', '2026-11-15', 'Asha', 'asha@brand.in', 't1', '{po.pdf}',
+            '[{"style_code":"A1","description":"Cord set","colour":"Red","qty":100,"rate":740},{"style_code":"A2","description":"Cord set","colour":"Blue","qty":50,"rate":740}]')
+    returning id into v_po;
+  if (select po_number from received_pos where id = v_po) <> 'KFT-1' then raise exception 'po number not trimmed'; end if;
+  begin
+    insert into received_pos (buyer_id, po_number, email_thread_id) values (v_b, 'KFT-1', 't2');
+    raise exception 'duplicate PO allowed';
+  exception when unique_violation then null;
+  end;
+  begin
+    update received_pos set status = 'rejected' where id = v_po;
+    raise exception 'reject without reason allowed';
+  exception when check_violation then null;
+  end;
+  v_inq := received_po_to_inquiry(v_po);
+  if (select est_qty from inquiries where id = v_inq) <> 150 or (select budget_inr from inquiries where id = v_inq) <> 111000
+     or (select status from received_pos where id = v_po) <> 'in_progress' then raise exception 'inquiry from PO wrong'; end if;
+  v_so := convert_received_po(v_po);
+  if (select count(*) from so_styles where so_id = v_so) <> 2 or (select buyer_date from sales_orders where id = v_so) <> '2026-11-15'
+     or (select count(*) from tna_checkpoints c join so_styles s on s.id = c.style_id where s.so_id = v_so) <> 12
+     or (select status from received_pos where id = v_po) <> 'converted'
+     or (select so_id from inquiries where id = v_inq) <> v_so then raise exception 'conversion wrong'; end if;
+  -- An order deleted while still a draft sends the PO back to the team.
+  perform delete_draft_sales_order(v_so);
+  if (select status from received_pos where id = v_po) <> 'in_progress' then raise exception 'PO not reopened'; end if;
+  -- A PO whose order already exists is linked on arrival.
+  insert into received_pos (buyer_id, po_number, email_thread_id) values (v_b, 'PO-DRAFT', 't3') returning id into v_po;
+  if (select status from received_pos where id = v_po) <> 'converted' then raise exception 'existing order not linked'; end if;
+  insert into received_pos (buyer_id, po_number, email_thread_id) values (v_b, 'KFT-2', 't4') returning id into v_po;
+  update received_pos set status = 'rejected', reject_reason = 'Duplicate of KFT-1' where id = v_po;
+  v_so := convert_received_po(v_po);
+  if (select count(*) from so_styles where so_id = v_so) <> 1 or (select reject_reason from received_pos where id = v_po) is not null then raise exception 'header-only conversion wrong'; end if;
+end $$;
+select pg_temp.expect_error($$select convert_received_po((select id from received_pos where po_number = 'KFT-2'))$$, '%already sales order%');
+select pg_temp.act_as('accounts@t');
+do $$ begin if exists (select 1 from received_pos) then raise exception 'accounts read POs'; end if; end $$;
+select pg_temp.expect_error($$select received_po_to_inquiry('RPO-000001')$$, 'Only merchandisers%');
+select pg_temp.act_as('factory@t');
+do $$ begin if exists (select 1 from received_pos) then raise exception 'factory read POs'; end if; end $$;
+
 -- Samples: due date required, dates stamped and checked, every move logged.
 select pg_temp.act_as('merch@t');
 select pg_temp.expect_error($$insert into samples (buyer_id, fabric) select id, '60s Cotton' from buyers where code = 'BYR-AH-0001'$$,
