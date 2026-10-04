@@ -1,34 +1,44 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Shell } from "@/components/sidebar";
+import { Nav } from "@/components/nav";
 import { getMe, roleLabel } from "@/lib/auth";
-import { navCounts } from "@/lib/counts";
-import { loadBooks, loadWorld } from "@/lib/data";
-import { FINANCE_ACTIONS, isLive, navFor, QUICK_ACTIONS } from "@/lib/nav";
-import { paymentBadge } from "@/lib/payments";
-import { isFinance, isInternal, isOps } from "@/lib/roles";
-import { createClient } from "@/lib/supabase/server";
 
 export default async function AppLayout({ children }: LayoutProps<"/">) {
   const me = await getMe();
   if (!me) redirect("/login");
-  if (me.role === "factory") redirect("/factory");
-  if (me.role === "buyer") redirect("/buyer");
-  const badges = isInternal(me.role) ? navCounts((await loadWorld()).world, me.role) : {};
-  const pay = isFinance(me.role) ? paymentBadge((await loadBooks()).books) : null;
-  if (pay) badges.payments = pay;
-  const supabase = await createClient();
-  const [pos, unread, fb] = await Promise.all([
-    // New buyer POs from email that nobody has picked up yet.
-    isOps(me.role) && isLive("/pos") ? supabase.from("received_pos").select("id", { count: "exact", head: true }).eq("status", "new") : null,
-    supabase.from("notifications").select("id", { count: "exact", head: true }).eq("user_id", me.id).is("read_at", null),
-    me.role === "owner" && isLive("/feedback") ? supabase.from("feedback").select("id", { count: "exact", head: true }).eq("status", "new") : null,
-  ]);
-  if (pos?.count) badges.pos = { n: pos.count, hot: true };
-  if (fb?.count) badges.feedback = { n: fb.count, hot: false };
-  const who = `${me.fullName || me.email}${me.role ? ` · ${roleLabel(me.role)}` : ""}`;
+
+  const items = [
+    { href: "/", label: "Orders" },
+    { href: "/buyers", label: "Buyers" },
+    { href: "/factories", label: "Factories" },
+    ...(me.role === "owner" ? [{ href: "/team", label: "Team" }] : []),
+  ];
+
   return (
-    <Shell nav={navFor(me.role)} badges={badges} who={who} unread={unread.count ?? 0} actions={[...(isOps(me.role) ? QUICK_ACTIONS : []), ...(isFinance(me.role) ? FINANCE_ACTIONS : [])]}>
-      {children}
-    </Shell>
+    <div className="flex min-h-full flex-col">
+      <header className="sticky top-0 z-30 border-b border-line bg-surface">
+        <div className="mx-auto flex w-full max-w-[1180px] flex-wrap items-center gap-x-5 gap-y-2 px-4 py-2.5">
+          <Link href="/" className="flex items-baseline gap-2">
+            <b className="font-display text-lg tracking-tight">Sourcingo</b>
+            <span className="text-[10.5px] uppercase tracking-widest text-muted">OS</span>
+          </Link>
+          {me.role && <Nav items={items} />}
+          <div className="ml-auto flex items-center gap-3 text-xs text-muted">
+            <span className="hidden sm:inline">{me.fullName || me.email} · {roleLabel(me.role)}{me.companyName && ` · ${me.companyName}`}</span>
+            <form action="/auth/signout" method="post">
+              <button className="font-semibold text-accent">Sign out</button>
+            </form>
+          </div>
+        </div>
+      </header>
+      <main className="mx-auto flex w-full max-w-[1180px] flex-1 flex-col gap-[18px] px-4 pb-16 pt-5">
+        {me.role ? children : (
+          <div className="empty mt-10">
+            <b>You haven&apos;t been added to a company yet</b>
+            You are signed in as {me.email}. Ask the owner to add this email in Team, then refresh this page.
+          </div>
+        )}
+      </main>
+    </div>
   );
 }

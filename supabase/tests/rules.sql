@@ -1,810 +1,237 @@
--- Business-rule tests. Each block raises on failure; run with ON_ERROR_STOP.
-\set ON_ERROR_STOP on
-set client_min_messages = warning;
-\o /dev/null
+-- Rule tests. Every block either passes quietly or raises.
+\set ON_ERROR_STOP 1
+\set QUIET 1
 
-create function pg_temp.act_as(p_email text) returns void language plpgsql security definer as $$
-begin
-  perform set_config('request.jwt.claim.sub', coalesce((select id::text from auth.users where email = p_email), ''), false);
-end $$;
+create function pg_temp.as_user(p uuid) returns void language sql as $$
+  select set_config('request.jwt.claim.sub', p::text, false);
+$$;
 
-create function pg_temp.expect_error(p_sql text, p_like text) returns void language plpgsql as $$
-begin
-  execute p_sql;
-  raise exception 'expected an error like "%" from: %', p_like, p_sql;
-exception when others then
-  if sqlerrm not like p_like then raise exception 'wrong error for %: %', p_sql, sqlerrm; end if;
-end $$;
+-- On a new database the migration creates Sourcingo with no owner, so make one here.
+insert into auth.users (id, email) values ('00000000-0000-0000-0000-00000000000a', 'owner@sourcingo.in');
+insert into public.members (company_id, user_id, role) select id, '00000000-0000-0000-0000-00000000000a', 'owner' from public.companies;
+update public.profiles set current_company_id = (select id from public.companies) where id = '00000000-0000-0000-0000-00000000000a';
 
-insert into auth.users (email) values ('owner@t'), ('merch@t'), ('buyer@t'), ('factory@t'), ('new@t'), ('accounts@t');
-insert into factories (name) values ('F1');
-update profiles set role = 'owner', active = true where email = 'owner@t';
-update profiles set role = 'merchandiser', active = true where email = 'merch@t';
-update profiles set role = 'accounts', active = true where email = 'accounts@t';
-update profiles set role = 'buyer', active = true, buyer_id = (select id from buyers where code = 'BYR-AH-0001') where email = 'buyer@t';
-update profiles set role = 'factory', active = true, factory_id = (select id from factories where name = 'F1') where email = 'factory@t';
-insert into sales_orders (buyer_id, buyer_po_number, status) select id, 'PO-DRAFT', 'draft' from buyers where code = 'BYR-AH-0001';
-insert into sales_orders (buyer_id, buyer_po_number, status) select id, 'PO-REVIEW', 'tna_review' from buyers where code = 'BYR-AH-0001';
+-- A second business on the same system, with its own owner.
+insert into auth.users (id, email) values ('00000000-0000-0000-0000-0000000000f1', 'boss@other.in');
+insert into public.companies (id, name) values ('cccccccc-0000-0000-0000-000000000002', 'Other Co');
+insert into public.members values ('cccccccc-0000-0000-0000-000000000002', '00000000-0000-0000-0000-0000000000f1', 'owner');
+update public.profiles set current_company_id = 'cccccccc-0000-0000-0000-000000000002' where id = '00000000-0000-0000-0000-0000000000f1';
 
--- New sign-ups start inactive with no role.
+-- Someone who signs up without being added sees nothing.
+insert into auth.users (id, email) values ('00000000-0000-0000-0000-00000000000c', 'stranger@gmail.com');
 do $$ begin
-  if exists (select 1 from profiles where email = 'new@t' and (active or role is not null)) then
-    raise exception 'new sign-up should be inactive with no role';
+  if (select current_company_id from public.profiles where id = '00000000-0000-0000-0000-00000000000c') is not null then
+    raise exception 'a stranger was put in a company';
   end if;
+end $$;
+
+-- ---------------------------------------------------------------- owner sets up Sourcingo
+set role authenticated;
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000a');
+
+-- Adding a merchandiser by email before they have signed in.
+do $$ begin
+  if public.add_member(' Merch@Sourcingo.in ', 'merchandiser') <> 'invited' then raise exception 'invite not created'; end if;
+end $$;
+
+insert into public.buyers (id, code) values ('10000000-0000-0000-0000-000000000001', 'BYR-OZ');
+insert into public.buyer_names (buyer_id, real_name) values ('10000000-0000-0000-0000-000000000001', 'Ozia Fashions');
+insert into public.factories (id, name) values ('20000000-0000-0000-0000-000000000001', 'Shree Knits');
+
+do $$ begin
+  insert into public.buyers (code) values ('byr-oz');
+  raise exception 'lower-case buyer code should be rejected';
+exception when check_violation then null;
+end $$;
+
+do $$ begin
+  insert into public.factories (name) values (' shree knits ');
+  raise exception 'duplicate factory name should be rejected';
+exception when unique_violation then null;
+end $$;
+
+do $$ begin
+  update public.members set active = false where user_id = '00000000-0000-0000-0000-00000000000a';
+  raise exception 'last owner was switched off';
+exception when raise_exception then
+  if sqlerrm not like 'There must always be one active owner.%' then raise; end if;
+end $$;
+
+do $$ begin
+  update public.profiles set email = 'x@y.z' where id = auth.uid();
+  raise exception 'email was changed';
+exception when insufficient_privilege then null;
+end $$;
+
+-- ---------------------------------------------------------------- the merchandiser signs in for the first time
+reset role;
+insert into auth.users (id, email) values ('00000000-0000-0000-0000-00000000000b', 'merch@sourcingo.in');
+do $$ begin
+  if (select role from public.members where user_id = '00000000-0000-0000-0000-00000000000b') <> 'merchandiser' then
+    raise exception 'invite was not turned into a membership';
+  end if;
+  if exists (select 1 from public.invites) then raise exception 'invite should be used up'; end if;
 end $$;
 
 set role authenticated;
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000b');
 
--- Buyers see confirmed orders, never drafts.
-select pg_temp.act_as('buyer@t');
 do $$ begin
-  if (select array_agg(buyer_po_number order by 1) from portal_buyer_orders) is distinct from array['PO-REVIEW'] then
-    raise exception 'buyer portal should show only PO-REVIEW';
+  if (select count(*) from public.buyers) <> 1 then raise exception 'staff should see buyer codes'; end if;
+  if (select count(*) from public.buyer_names) <> 0 then raise exception 'staff must not see real buyer names'; end if;
+  if exists (select 1 from public.history where table_name = 'buyer_names') then raise exception 'staff can read real names in history'; end if;
+end $$;
+
+do $$ begin
+  insert into public.buyers (code) values ('BYR-XX');
+  raise exception 'merchandiser added a buyer';
+exception when insufficient_privilege then null;
+end $$;
+
+do $$ begin
+  update public.members set role = 'owner' where user_id = auth.uid();
+  if public.my_role(public.current_company()) <> 'merchandiser' then raise exception 'merchandiser promoted themselves'; end if;
+end $$;
+
+do $$ begin
+  perform public.add_member('friend@gmail.com', 'manager');
+  raise exception 'merchandiser added a person';
+exception when raise_exception then
+  if sqlerrm <> 'Only the owner can add people.' then raise; end if;
+end $$;
+
+insert into public.factories (id, name) values ('20000000-0000-0000-0000-000000000002', 'Laxmi Garments');
+
+select public.save_order(
+  '{"buyer_id":"10000000-0000-0000-0000-000000000001","buyer_po":"OZIA PO 001","ship_date":"2026-11-30"}',
+  '[{"style":"OZ-101","colour":"Navy","qty":500,"buyer_rate":"320","factory_id":"20000000-0000-0000-0000-000000000001","factory_rate":"240"},
+    {"style":"OZ-102","qty":300,"factory_id":"20000000-0000-0000-0000-000000000002"}]') \gset
+
+do $$ begin
+  if (select order_no from public.orders) <> 'SO-0001' then raise exception 'order number should be SO-0001'; end if;
+  if (select count(*) from public.order_lines) <> 2 then raise exception 'both lines should be saved'; end if;
+  if (select created_by from public.orders) <> '00000000-0000-0000-0000-00000000000b' then raise exception 'created_by not set'; end if;
+  if (select count(*) from public.history where table_name in ('orders', 'order_lines') and actor = auth.uid()) <> 3 then
+    raise exception 'history should hold the order and its two lines';
   end if;
 end $$;
 
--- Buyers and factories can't read base tables.
+-- The same buyer PO cannot be entered twice (this is how the old app ended up with copies).
 do $$ begin
-  if exists (select 1 from sales_orders) then raise exception 'buyer read sales_orders'; end if;
+  perform public.save_order('{"buyer_id":"10000000-0000-0000-0000-000000000001","buyer_po":"ozia po 001 "}', '[{"style":"X","qty":1}]');
+  raise exception 'duplicate buyer PO was accepted';
+exception when unique_violation then null;
 end $$;
-select pg_temp.act_as('factory@t');
+
 do $$ begin
-  if exists (select 1 from sales_orders) or exists (select 1 from profiles where email <> 'factory@t') then
-    raise exception 'factory read internal rows';
+  perform public.save_order('{"buyer_id":"10000000-0000-0000-0000-000000000001","buyer_po":"PO-EMPTY"}', '[]');
+  raise exception 'empty order was accepted';
+exception when raise_exception then
+  if sqlerrm <> 'Add at least one style.' then raise; end if;
+end $$;
+do $$ begin
+  perform public.save_order('{"buyer_id":"10000000-0000-0000-0000-000000000001","buyer_po":"PO-ZERO"}', '[{"style":"Z","qty":0}]');
+  raise exception 'zero quantity was accepted';
+exception when check_violation then null;
+end $$;
+do $$ begin
+  if (select count(*) from public.orders) <> 1 then raise exception 'a failed save left an order behind'; end if;
+end $$;
+
+-- Editing keeps the lines it is given (same id), drops the ones left out, and adds new ones in order.
+select public.save_order(
+  jsonb_build_object('id', :'save_order', 'buyer_id', '10000000-0000-0000-0000-000000000001', 'buyer_po', 'OZIA PO 001', 'status', 'shipped'),
+  jsonb_build_array(
+    jsonb_build_object('style', 'OZ-103', 'qty', 50),
+    jsonb_build_object('id', (select id from public.order_lines where style = 'OZ-101'), 'style', 'OZ-101', 'colour', 'Navy', 'qty', 520)));
+do $$ begin
+  if (select status from public.orders) <> 'shipped' then raise exception 'status not updated'; end if;
+  if (select string_agg(style || ':' || qty, ',' order by position) from public.order_lines) <> 'OZ-103:50,OZ-101:520' then
+    raise exception 'lines not saved as given: %', (select string_agg(style || ':' || qty, ',' order by position) from public.order_lines);
+  end if;
+  if (select count(*) from public.history where table_name = 'order_lines' and action = 'update') <> 1 then
+    raise exception 'the kept line should be logged as one update';
   end if;
 end $$;
 
--- Only the owner can change roles; for anyone else the update touches nothing.
-select pg_temp.act_as('merch@t');
-update profiles set role = 'owner', active = true where email = 'new@t';
 do $$ begin
-  if exists (select 1 from profiles where email = 'new@t' and role is not null) then raise exception 'merchandiser changed a role'; end if;
+  perform public.save_order('{"buyer_id":"10000000-0000-0000-0000-000000000001","buyer_po":"PO-DUP"}',
+    '[{"style":"A","colour":"Red","qty":1},{"style":"a ","colour":"red","qty":2}]');
+  raise exception 'duplicate style line was accepted';
+exception when unique_violation then null;
 end $$;
 
--- Only the owner can lock a TNA.
-select pg_temp.expect_error($$select lock_sales_order('SO-000002')$$, 'Only the owner can lock%');
-
--- The owner approves people.
-select pg_temp.act_as('owner@t');
-update profiles set role = 'qc', active = true where email = 'new@t';
 do $$ begin
-  if not exists (select 1 from profiles where email = 'new@t' and role = 'qc' and active) then raise exception 'owner could not approve'; end if;
+  delete from public.orders;
+  if (select count(*) from public.orders) <> 1 then raise exception 'merchandiser deleted an order'; end if;
 end $$;
 
--- A factory user must be linked to a factory.
-select pg_temp.expect_error($$update profiles set role = 'factory' where email = 'new@t'$$, '%factory_users_have_factory%');
-
--- The last active owner can't remove themselves.
-select pg_temp.expect_error($$update profiles set role = 'manager' where email = 'owner@t'$$, '%at least one active owner%');
-select pg_temp.expect_error($$update profiles set active = false where email = 'owner@t'$$, '%at least one active owner%');
-
--- With a second owner, the first can step down.
-update profiles set role = 'owner' where email = 'new@t';
-update profiles set role = 'manager' where email = 'owner@t';
-
--- Adding buyers: owner only, code numbered after the seeded ones, real name private.
-select pg_temp.act_as('new@t');
 do $$ begin
-  if create_buyer('Aurelia Home Pvt Ltd', null, '30 days') <> 'BYR-AH-0005' then raise exception 'unexpected buyer code'; end if;
-  if create_buyer('Kora', 'k-r', null) <> 'BYR-KR-0006' then raise exception 'initials not cleaned'; end if;
+  insert into public.history (company_id, table_name, row_id, action) values (public.current_company(), 'x', 'x', 'insert');
+  raise exception 'history can be written to directly';
+exception when insufficient_privilege then null;
 end $$;
-select pg_temp.expect_error($$select create_buyer('aurelia home pvt ltd')$$, '%already has a buyer code%');
-select pg_temp.act_as('merch@t');
-select pg_temp.expect_error($$select create_buyer('Someone')$$, 'Only the owner can add buyers.');
+
+-- ---------------------------------------------------------------- the other business sees none of it
+select pg_temp.as_user('00000000-0000-0000-0000-0000000000f1');
 do $$ begin
-  if not exists (select 1 from buyers where code = 'BYR-AH-0005') then raise exception 'merchandiser cannot see buyer codes'; end if;
-  if exists (select 1 from buyer_registry) then raise exception 'merchandiser read real buyer names'; end if;
-end $$;
-
--- Factories: owner and manager manage them; merchandisers only read.
-select pg_temp.expect_error($$insert into factories (name) values ('F2')$$, '%row-level security%');
-select pg_temp.act_as('owner@t');  -- now a manager
-insert into factories (name, city) values ('F2', 'Jaipur');
-
--- Inquiries: ops log them and add follow-ups; accounts, buyers and factories can't see them.
-select pg_temp.act_as('merch@t');
-insert into inquiries (buyer_id, contact_person, contact_email, product_type)
-  select id, 'Asha', 'asha@brand.in', 'Kurta' from buyers where code = 'BYR-AH-0005';
-insert into inquiry_followups (inquiry_id, note) values ('INQ-000001', 'Sent quote');
-do $$ begin
-  if (select created_by from inquiries where id = 'INQ-000001') is distinct from auth.uid() then raise exception 'inquiry created_by not set'; end if;
-end $$;
-select pg_temp.act_as('accounts@t');
-do $$ begin
-  if exists (select 1 from inquiries) or exists (select 1 from inquiry_followups) then raise exception 'accounts read inquiries'; end if;
-end $$;
-select pg_temp.act_as('buyer@t');
-do $$ begin
-  if exists (select 1 from inquiries) then raise exception 'buyer read inquiries'; end if;
-end $$;
-
--- Sales order lifecycle: create from inquiry, save draft, lock, factory updates TNA,
--- receive goods, dispatch, auto-ship.
-select pg_temp.act_as('merch@t');
-do $$
-declare v_so text; v_buyer uuid := (select buyer_id from inquiries where id = 'INQ-000001');
-        v_fac uuid := (select id from factories where name = 'F1');
-        v_merch uuid := auth.uid(); v_mgr uuid := (select id from profiles where email = 'owner@t');
-begin
-  v_so := create_sales_order(v_buyer, 'PO-100', 'garment', 'INQ-000001');
-  if (select status from inquiries where id = 'INQ-000001') <> 'converted' then raise exception 'inquiry not converted'; end if;
-  perform save_sales_order(jsonb_build_object(
-    'id', v_so, 'buyer_id', v_buyer, 'buyer_po_number', 'PO-100', 'order_type', 'garment', 'currency', 'INR',
-    'factory_id', v_fac, 'payment_terms', '45 days', 'merchandiser_id', v_merch, 'manager_id', v_mgr,
-    'buyer_date', current_date + 60, 'factory_date', current_date + 50, 'merch_date', current_date + 48, 'tags', jsonb_build_array('SS27', ' '),
-    'styles', jsonb_build_array(jsonb_build_object(
-      'id', '11111111-1111-1111-1111-111111111111', 'name', 'Kurta', 'code', 'K1', 'fabric', 'Cotton', 'colour', 'Blue',
-      'use_sizes', true, 'sizes', jsonb_build_object('S', '10', 'M', '20', 'L', ''), 'buyer_rate', '240', 'factory_rate', '180',
-      'checkpoints', jsonb_build_array(
-        jsonb_build_object('id', '22222222-2222-2222-2222-222222222221', 'name', 'Cutting', 'due_date', current_date + 10),
-        jsonb_build_object('id', '22222222-2222-2222-2222-222222222222', 'name', 'Packing', 'due_date', current_date + 40))))));
-  if (select qty from so_styles where id = '11111111-1111-1111-1111-111111111111') <> 30 then raise exception 'size total not computed'; end if;
-  if (select tags from sales_orders where id = v_so) <> array['SS27'] then raise exception 'tags not cleaned'; end if;
-  update sales_orders set status = 'tna_review' where id = v_so;
-end $$;
-select pg_temp.expect_error($$select create_sales_order((select buyer_id from inquiries where id = 'INQ-000001'), 'PO-100')$$, '%already used%');
-select pg_temp.expect_error($$select set_checkpoint_status('22222222-2222-2222-2222-222222222221', 'in_progress')$$, '%after the TNA is locked%');
-
--- Factory sees the order in review, but not its buyer rate.
-select pg_temp.act_as('factory@t');
-do $$ begin
-  if not exists (select 1 from portal_factory_orders where id = 'SO-000003') then raise exception 'factory cannot see its order'; end if;
-end $$;
-
-select pg_temp.act_as('new@t');  -- owner
-select lock_sales_order('SO-000003');
-select pg_temp.act_as('merch@t');
-select pg_temp.expect_error($$select save_sales_order('{"id":"SO-000003"}'::jsonb)$$, '%is locked%');
-update sales_orders set merch_date = current_date + 49, remarks = 'Fabric booked' where id = 'SO-000003';
-
-select pg_temp.act_as('factory@t');
-select set_checkpoint_status('22222222-2222-2222-2222-222222222221', 'completed');
-do $$ begin
-  if (select milestone from portal_buyer_orders where id = 'SO-000003') is not null then raise exception 'factory read buyer portal'; end if;
-end $$;
-
-select pg_temp.act_as('merch@t');
-insert into grns (id, so_id) values ('GRN-T1', 'SO-000003');
-select pg_temp.expect_error($$insert into grn_lines (grn_id, style_id, qty) values ('GRN-T1', '11111111-1111-1111-1111-111111111111', 31)$$, '%Overshipping is not allowed%');
-insert into grn_lines (grn_id, style_id, qty) values ('GRN-T1', '11111111-1111-1111-1111-111111111111', 30);
-insert into delivery_challans (id, grn_id, so_id) values ('DC-T0', 'GRN-T1', 'SO-000003');
-select pg_temp.expect_error($$insert into dc_lines (dc_id, style_id, qty) values ('DC-T0', '11111111-1111-1111-1111-111111111111', 1)$$, 'Submit GRN-T1%');
-delete from delivery_challans where id = 'DC-T0';
-update grns set status = 'pending_approval' where id = 'GRN-T1';
-select pg_temp.expect_error($$update grn_lines set qty = 29 where grn_id = 'GRN-T1'$$, '%has been submitted%');
-select pg_temp.expect_error($$update grns set status = 'draft' where id = 'GRN-T1'$$, '%can''t go back to draft%');
-select pg_temp.act_as('new@t');
-select pg_temp.expect_error($$update sales_orders set status = 'tna_review' where id = 'SO-000003'$$, '%cannot be unlocked%');
-select pg_temp.expect_error($$select unlock_sales_order('SO-000003')$$, '%cannot be unlocked%');
-select pg_temp.act_as('merch@t');
-select pg_temp.expect_error($$select unlock_sales_order('SO-000003')$$, 'Only the owner%');
-insert into delivery_challans (id, grn_id, so_id) values ('DC-T1', 'GRN-T1', 'SO-000003');
-select pg_temp.expect_error($$insert into dc_lines (dc_id, style_id, qty) values ('DC-T1', '11111111-1111-1111-1111-111111111111', 31)$$, 'Only 30 available%');
-insert into dc_lines (dc_id, style_id, qty) values ('DC-T1', '11111111-1111-1111-1111-111111111111', 30);
-update delivery_challans set status = 'dispatched', courier = 'Delhivery', tracking = 'X1', address = 'Mumbai',
-  invoice_no = 'INV-1', invoice_date = current_date, dispatched_at = now() where id = 'DC-T1';
-do $$ begin
-  if (select status from sales_orders where id = 'SO-000003') <> 'shipped' then raise exception 'order not marked shipped'; end if;
-end $$;
-select pg_temp.expect_error($$update dc_lines set qty = 1 where dc_id = 'DC-T1'$$, '%has been dispatched%');
-select pg_temp.act_as('new@t');
-select pg_temp.expect_error($$update grns set status = 'rejected' where id = 'GRN-T1'$$, '%can''t be rejected%');
-
--- Accounts can read orders but not change them.
-select pg_temp.act_as('accounts@t');
-do $$ begin
-  if not exists (select 1 from sales_orders where id = 'SO-000003') then raise exception 'accounts cannot read orders'; end if;
-  if not exists (select 1 from so_styles where so_id = 'SO-000003') then raise exception 'accounts cannot read styles'; end if;
-  update sales_orders set remarks = 'x' where id = 'SO-000003';
-  if found then raise exception 'accounts changed an order'; end if;
-end $$;
-select pg_temp.expect_error($$select save_grn('{"so_id":"SO-000003"}'::jsonb)$$, 'Only merchandisers%');
-
--- Second order: GRN and DC saved in one call each.
-select pg_temp.act_as('merch@t');
-do $$
-declare v_so text; v_grn text; v_dc text; v_buyer uuid := (select id from buyers where code = 'BYR-AH-0005');
-        v_st uuid := '33333333-3333-3333-3333-333333333333';
-begin
-  v_so := create_sales_order(v_buyer, 'PO-300');
-  perform save_sales_order(jsonb_build_object(
-    'id', v_so, 'buyer_id', v_buyer, 'buyer_po_number', 'PO-300', 'order_type', 'fabric', 'currency', 'USD',
-    'factory_id', (select id from factories where name = 'F1'), 'payment_terms', '30 days',
-    'merchandiser_id', auth.uid(), 'manager_id', auth.uid(),
-    'buyer_date', current_date + 30, 'factory_date', current_date + 20, 'merch_date', current_date + 20,
-    'styles', jsonb_build_array(jsonb_build_object('id', v_st, 'name', 'Poplin', 'code', 'P1', 'fabric', 'Poplin', 'colour', 'White',
-      'use_sizes', true, 'qty', '500', 'buyer_rate', '2.5',
-      'checkpoints', jsonb_build_array(jsonb_build_object('id', gen_random_uuid(), 'name', 'Weaving', 'due_date', current_date + 5))))));
-  if (select qty from so_styles where id = v_st) <> 500 or (select use_sizes from so_styles where id = v_st) then raise exception 'fabric qty wrong'; end if;
-  perform set_sales_order_review(v_so, true);
-  if (select status from sales_orders where id = v_so) <> 'tna_review' then raise exception 'not in review'; end if;
-  perform set_sales_order_review(v_so, false);
-  perform set_sales_order_review(v_so, true);
-end $$;
-select pg_temp.act_as('new@t');
-select lock_sales_order('SO-000005');
-select pg_temp.expect_error($$select save_grn(jsonb_build_object('so_id','SO-000005','received_at','2020-01-01','status','approved','received_by',auth.uid()))$$, '%at least one style%');
-select pg_temp.act_as('merch@t');
-select pg_temp.expect_error($$select save_grn('{"so_id":"SO-000005","received_at":"2020-01-01","status":"approved"}'::jsonb)$$, 'Only the owner can approve%');
-select pg_temp.expect_error($$select save_grn('{"so_id":"SO-000005","received_at":"2020-01-01","status":"pending_approval"}'::jsonb)$$, 'Choose who received%');
-select pg_temp.expect_error($$select save_grn(jsonb_build_object('so_id','SO-000005','received_at', now() + interval '1 day'))$$, '%in the future%');
-do $$
-declare v_grn text; v_dc text; v_st uuid := '33333333-3333-3333-3333-333333333333';
-begin
-  v_grn := save_grn(jsonb_build_object('so_id', 'SO-000005', 'received_at', now() - interval '2 hours',
-    'lines', jsonb_build_array(jsonb_build_object('style_id', v_st, 'qty', '100'))));
-  if (select status from grns where id = v_grn) <> 'draft' then raise exception 'grn not draft'; end if;
-  perform save_grn(jsonb_build_object('id', v_grn, 'so_id', 'SO-000005', 'received_at', now() - interval '2 hours',
-    'received_by', auth.uid(), 'qc_checked', true, 'status', 'pending_approval',
-    'lines', jsonb_build_array(jsonb_build_object('style_id', v_st, 'qty', '200', 'condition', 'damaged'))));
-  if (select qty from grn_lines where grn_id = v_grn) <> 200 then raise exception 'grn lines not replaced'; end if;
-  if (select status from grns where id = v_grn) <> 'pending_approval' then raise exception 'grn not submitted'; end if;
-  v_dc := save_dc(jsonb_build_object('grn_id', v_grn, 'lines', jsonb_build_array(jsonb_build_object('style_id', v_st, 'qty', '150'))));
-  begin
-    perform save_dc(jsonb_build_object('id', v_dc, 'grn_id', v_grn, 'status', 'dispatched',
-      'lines', jsonb_build_array(jsonb_build_object('style_id', v_st, 'qty', '150'))));
-    raise exception 'dispatch without courier allowed';
-  exception when others then if sqlerrm not like 'Enter the courier%' then raise; end if;
-  end;
-  begin
-    perform save_dc(jsonb_build_object('id', v_dc, 'grn_id', v_grn, 'status', 'dispatched', 'courier', 'VRL', 'tracking', 'LR1',
-      'address', 'Delhi', 'invoice_no', 'INV-2', 'invoice_date', current_date, 'dispatched_at', now() - interval '3 hours',
-      'lines', jsonb_build_array(jsonb_build_object('style_id', v_st, 'qty', '150'))));
-    raise exception 'dispatch before receipt allowed';
-  exception when others then if sqlerrm not like '%before the goods were received%' then raise; end if;
-  end;
-  perform save_dc(jsonb_build_object('id', v_dc, 'grn_id', v_grn, 'status', 'dispatched', 'courier', 'VRL', 'tracking', 'LR1',
-    'address', 'Delhi', 'invoice_no', 'INV-2', 'invoice_date', current_date, 'dispatched_at', now(),
-    'lines', jsonb_build_array(jsonb_build_object('style_id', v_st, 'qty', '200'))));
-  if (select status from delivery_challans where id = v_dc) <> 'dispatched' then raise exception 'dc not dispatched'; end if;
-  if (select status from sales_orders where id = 'SO-000005') <> 'locked' then raise exception 'partial dispatch shipped the order'; end if;
-end $$;
-
--- Deleting a draft frees its inquiry.
-insert into inquiries (id, buyer_id, contact_person, contact_email, product_type)
-  select 'INQ-T2', id, 'B', 'b@b.in', 'Shirt' from buyers where code = 'BYR-AH-0005';
-do $$ declare v text; begin
-  v := create_sales_order((select buyer_id from inquiries where id = 'INQ-T2'), 'PO-200', 'garment', 'INQ-T2');
-  perform delete_draft_sales_order(v);
-  if (select so_id from inquiries where id = 'INQ-T2') is not null then raise exception 'inquiry still linked'; end if;
-end $$;
-select pg_temp.expect_error($$select delete_draft_sales_order('SO-000003')$$, 'Only draft%');
-
--- Files: the row comes first, storage follows it; factories see their own order's files.
-select pg_temp.act_as('merch@t');
-do $$ declare v_st uuid := (select id from so_styles where so_id = 'SO-000005' order by position limit 1); begin
-  insert into files (category, style_id, storage_path, file_name, mime_type, size_bytes)
-    values ('tech_pack', v_st, 'style/' || v_st || '/a1/tp.pdf', 'tp.pdf', 'application/pdf', 1000);
-  insert into files (category, style_id, storage_path, file_name, mime_type, size_bytes)
-    values ('other', v_st, 'style/' || v_st || '/a2/costing.xlsx', 'costing.xlsx', 'application/vnd.ms-excel', 1000);
-  insert into storage.objects (bucket_id, name) values ('files', 'style/' || v_st || '/a1/tp.pdf');
-  if (select uploaded_by from files where file_name = 'tp.pdf') is distinct from auth.uid() then raise exception 'uploader not recorded'; end if;
-  begin
-    insert into files (category, style_id, storage_path, file_name, mime_type, size_bytes)
-      values ('tech_pack', v_st, 'grn/GRN-T1/a3/x.pdf', 'x.pdf', 'application/pdf', 10);
-    raise exception 'mismatched path allowed';
-  exception when others then if sqlerrm not like 'File path does not match%' then raise; end if;
-  end;
-  begin
-    insert into files (category, style_id, storage_path, file_name, mime_type, size_bytes)
-      values ('grn_photo', v_st, 'style/' || v_st || '/a4/x.jpg', 'x.jpg', 'image/jpeg', 10);
-    raise exception 'wrong category allowed';
-  exception when others then if sqlerrm not like '%can''t be attached here%' then raise; end if;
-  end;
-  begin
-    insert into storage.objects (bucket_id, name) values ('files', 'style/' || v_st || '/zz/no-row.pdf');
-    raise exception 'upload without a files row allowed';
-  exception when others then if sqlerrm not like '%row-level security%' then raise; end if;
-  end;
-end $$;
-select pg_temp.expect_error($$update files set file_name = 'y.pdf' where file_name = 'tp.pdf'$$, 'Files can''t be changed%');
-
-select pg_temp.act_as('accounts@t');
-do $$ begin
-  if (select count(*) from files) <> 2 then raise exception 'accounts should read all files'; end if;
-end $$;
-
-select pg_temp.act_as('buyer@t');
-do $$ begin
-  if exists (select 1 from files) or exists (select 1 from storage.objects) then raise exception 'buyer read files'; end if;
-end $$;
-
-select pg_temp.act_as('factory@t');
-do $$ declare v_st uuid := (select style_id from portal_factory_checkpoints where so_id = 'SO-000005' limit 1); begin
-  if (select array_agg(file_name) from files) is distinct from array['tp.pdf'] then raise exception 'factory should see only the tech pack'; end if;
-  if not exists (select 1 from storage.objects where name like '%/tp.pdf') then raise exception 'factory cannot open the tech pack'; end if;
-  if (select name from portal_factory_profile) <> 'F1' then raise exception 'factory profile missing'; end if;
-  if not exists (select 1 from portal_factory_receipts where so_id = 'SO-000005') then raise exception 'factory receipts missing'; end if;
-  insert into files (category, style_id, storage_path, file_name, mime_type, size_bytes)
-    values ('style_photo', v_st, 'style/' || v_st || '/f1/line.jpg', 'line.jpg', 'image/jpeg', 2000);
-  insert into storage.objects (bucket_id, name) values ('files', 'style/' || v_st || '/f1/line.jpg');
-  begin
-    insert into files (category, style_id, storage_path, file_name, mime_type, size_bytes)
-      values ('tech_pack', v_st, 'style/' || v_st || '/f2/tp2.pdf', 'tp2.pdf', 'application/pdf', 10);
-    raise exception 'factory added a tech pack';
-  exception when others then if sqlerrm not like '%row-level security%' then raise; end if;
-  end;
-  delete from files where file_name = 'tp.pdf';
-  if not exists (select 1 from files where file_name = 'tp.pdf') then raise exception 'factory deleted a tech pack'; end if;
-  delete from storage.objects where name like '%/f1/line.jpg';
-  delete from files where file_name = 'line.jpg';
-  if exists (select 1 from files where file_name = 'line.jpg') then raise exception 'factory could not delete its photo'; end if;
-end $$;
-
--- A factory must say why a checkpoint is delayed; the reason reaches ops.
-do $$ declare v_cp uuid := (select id from portal_factory_checkpoints where so_id = 'SO-000005' order by position limit 1); begin
-  begin
-    perform set_checkpoint_status(v_cp, 'delayed');
-    raise exception 'delay without reason allowed';
-  exception when others then if sqlerrm not like 'Say why it is delayed%' then raise; end if;
-  end;
-  perform set_checkpoint_status(v_cp, 'delayed', '  Fabric late from mill ');
-  if (select status_note from portal_factory_checkpoints where id = v_cp) <> 'Fabric late from mill' then raise exception 'note not saved'; end if;
-end $$;
-select pg_temp.act_as('merch@t');
-do $$ begin
-  if not exists (select 1 from tna_status_history where note = 'Fabric late from mill') then raise exception 'note not in history'; end if;
-end $$;
-
--- POs received: staff only; inquiry and sales order come from the PO.
-select pg_temp.act_as('merch@t');
-do $$ declare v_b uuid := (select id from buyers where code = 'BYR-AH-0001'); v_po text; v_inq text; v_so text; begin
-  insert into received_pos (buyer_id, po_number, po_date, delivery_date, sender_name, sender_email, email_thread_id, attachments, lines)
-    values (v_b, ' KFT-1 ', '2026-10-01', '2026-11-15', 'Asha', 'asha@brand.in', 't1', '{po.pdf}',
-            '[{"style_code":"A1","description":"Cord set","colour":"Red","qty":100,"rate":740},{"style_code":"A2","description":"Cord set","colour":"Blue","qty":50,"rate":740}]')
-    returning id into v_po;
-  if (select po_number from received_pos where id = v_po) <> 'KFT-1' then raise exception 'po number not trimmed'; end if;
-  begin
-    insert into received_pos (buyer_id, po_number, email_thread_id) values (v_b, 'KFT-1', 't2');
-    raise exception 'duplicate PO allowed';
-  exception when unique_violation then null;
-  end;
-  begin
-    update received_pos set status = 'rejected' where id = v_po;
-    raise exception 'reject without reason allowed';
-  exception when check_violation then null;
-  end;
-  v_inq := received_po_to_inquiry(v_po);
-  if (select est_qty from inquiries where id = v_inq) <> 150 or (select budget_inr from inquiries where id = v_inq) <> 111000
-     or (select status from received_pos where id = v_po) <> 'in_progress' then raise exception 'inquiry from PO wrong'; end if;
-  v_so := convert_received_po(v_po);
-  if (select count(*) from so_styles where so_id = v_so) <> 2 or (select buyer_date from sales_orders where id = v_so) <> '2026-11-15'
-     or (select count(*) from tna_checkpoints c join so_styles s on s.id = c.style_id where s.so_id = v_so) <> 12
-     or (select status from received_pos where id = v_po) <> 'converted'
-     or (select so_id from inquiries where id = v_inq) <> v_so then raise exception 'conversion wrong'; end if;
-  -- An order deleted while still a draft sends the PO back to the team.
-  perform delete_draft_sales_order(v_so);
-  if (select status from received_pos where id = v_po) <> 'in_progress' then raise exception 'PO not reopened'; end if;
-  -- A PO whose order already exists is linked on arrival.
-  insert into received_pos (buyer_id, po_number, email_thread_id) values (v_b, 'PO-DRAFT', 't3') returning id into v_po;
-  if (select status from received_pos where id = v_po) <> 'converted' then raise exception 'existing order not linked'; end if;
-  insert into received_pos (buyer_id, po_number, email_thread_id) values (v_b, 'KFT-2', 't4') returning id into v_po;
-  update received_pos set status = 'rejected', reject_reason = 'Duplicate of KFT-1' where id = v_po;
-  v_so := convert_received_po(v_po);
-  if (select count(*) from so_styles where so_id = v_so) <> 1 or (select reject_reason from received_pos where id = v_po) is not null then raise exception 'header-only conversion wrong'; end if;
-end $$;
-select pg_temp.expect_error($$select convert_received_po((select id from received_pos where po_number = 'KFT-2'))$$, '%already sales order%');
-select pg_temp.act_as('accounts@t');
-do $$ begin if exists (select 1 from received_pos) then raise exception 'accounts read POs'; end if; end $$;
-select pg_temp.expect_error($$select received_po_to_inquiry('RPO-000001')$$, 'Only merchandisers%');
-select pg_temp.act_as('factory@t');
-do $$ begin if exists (select 1 from received_pos) then raise exception 'factory read POs'; end if; end $$;
-
--- Samples: due date required, dates stamped and checked, every move logged.
-select pg_temp.act_as('merch@t');
-select pg_temp.expect_error($$insert into samples (buyer_id, fabric) select id, '60s Cotton' from buyers where code = 'BYR-AH-0001'$$,
-  'Set the date the buyer needs this sample by.');
-select pg_temp.expect_error($$insert into samples (buyer_id, fabric, due_date, status) select id, 'Linen', current_date + 5, 'with_vendor' from buyers where code = 'BYR-AH-0001'$$,
-  'Choose the vendor making this sample.');
-select setval('sample_seq', 1, false); -- the rejected inserts above used up numbers
-do $$ declare v_today date := (now() at time zone 'Asia/Kolkata')::date; v_id text; begin
-  insert into samples (buyer_id, fabric, description, received_on, due_date)
-    select id, ' 60s Cotton ', 'Kaftan dress', v_today - 2, v_today + 5 from buyers where code = 'BYR-AH-0001' returning id into v_id;
-  if v_id <> 'SMP-000001' then raise exception 'sample id should be SMP-000001, got %', v_id; end if;
-  if (select fabric from samples where id = v_id) <> '60s Cotton' then raise exception 'text not trimmed'; end if;
-  if (select count(*) from sample_events where sample_id = v_id and kind = 'status' and to_status = 'received') <> 1 then raise exception 'creation not logged'; end if;
-
-  update samples set status = 'with_vendor', factory_id = (select id from factories where name = 'F1'), vendor_due = v_today + 3 where id = v_id;
-  if (select issued_on from samples where id = v_id) <> v_today then raise exception 'issued date not stamped'; end if;
-  begin
-    update samples set received_on = v_today + 1 where id = v_id;
-    raise exception 'future received date allowed';
-  exception when others then if sqlerrm not like 'The received date can''t be in the future.' then raise; end if;
-  end;
-  begin
-    update samples set received_on = v_today, issued_on = v_today - 1 where id = v_id;
-    raise exception 'issued before received allowed';
-  exception when others then if sqlerrm not like 'It went to the vendor on % but was received on %' then raise; end if;
-  end;
-  begin
-    update samples set status = 'approved' where id = v_id;
-    raise exception 'approved before dispatch';
-  exception when others then if sqlerrm not like 'Mark the sample as sent to the buyer%' then raise; end if;
-  end;
-  insert into sample_events (sample_id, kind, note) values (v_id, 'note', 'Print options sent');
-  begin
-    insert into sample_events (sample_id, kind, to_status) values (v_id, 'status', 'approved');
-    raise exception 'fake status event allowed';
-  exception when others then if sqlerrm not like '%row-level security%' then raise; end if;
-  end;
-  insert into files (category, sample_id, storage_path, file_name, mime_type, size_bytes)
-    values ('sample_photo', v_id, 'sample/' || v_id || '/s1/ref.jpg', 'ref.jpg', 'image/jpeg', 1000);
-  begin
-    insert into files (category, sample_id, storage_path, file_name, mime_type, size_bytes)
-      values ('tech_pack', v_id, 'sample/' || v_id || '/s2/tp.pdf', 'tp.pdf', 'application/pdf', 10);
-    raise exception 'tech pack on a sample allowed';
-  exception when others then if sqlerrm not like '%can''t be attached here%' then raise; end if;
-  end;
-end $$;
--- A sample still at Sourcingo stays hidden from vendors.
-insert into samples (buyer_id, fabric, due_date, factory_id) select b.id, 'Poplin', current_date + 9, f.id from buyers b, factories f where b.code = 'BYR-AH-0001' and f.name = 'F1';
-
-select pg_temp.act_as('accounts@t');
-update samples set remarks = 'x';
-do $$ begin
-  if (select count(*) from samples) <> 2 then raise exception 'accounts should read samples'; end if;
-  if exists (select 1 from samples where remarks = 'x') then raise exception 'accounts changed a sample'; end if;
-end $$;
-
-select pg_temp.act_as('factory@t');
-do $$ begin
-  if exists (select 1 from samples) then raise exception 'factory read samples table'; end if;
-  if (select array_agg(id) from portal_factory_samples) is distinct from array['SMP-000001'] then raise exception 'factory should see only the issued sample'; end if;
-  if (select buyer_code from portal_factory_samples) <> 'BYR-AH-0001' then raise exception 'factory should see the buyer code'; end if;
-  if (select array_agg(file_name) from files where sample_id is not null) is distinct from array['ref.jpg'] then raise exception 'factory cannot see sample photo'; end if;
-  insert into files (category, sample_id, storage_path, file_name, mime_type, size_bytes)
-    values ('sample_photo', 'SMP-000001', 'sample/SMP-000001/f1/done.jpg', 'done.jpg', 'image/jpeg', 1000);
-  insert into storage.objects (bucket_id, name) values ('files', 'sample/SMP-000001/f1/done.jpg');
-  begin
-    insert into files (category, sample_id, storage_path, file_name, mime_type, size_bytes)
-      values ('sample_photo', 'SMP-000002', 'sample/SMP-000002/f2/x.jpg', 'x.jpg', 'image/jpeg', 10);
-    raise exception 'factory added a photo to a sample not issued to it';
-  exception when others then if sqlerrm not like '%row-level security%' then raise; end if;
-  end;
-  begin
-    perform factory_sample_ready('SMP-000002');
-    raise exception 'factory marked a sample it does not have';
-  exception when others then if sqlerrm not like 'You do not have access%' then raise; end if;
-  end;
-  perform factory_sample_ready('SMP-000001', 'Sent with Ramesh');
-  if (select status from portal_factory_samples where id = 'SMP-000001') <> 'ready' then raise exception 'factory ready not saved'; end if;
-  begin
-    insert into files (category, sample_id, storage_path, file_name, mime_type, size_bytes)
-      values ('sample_photo', 'SMP-000001', 'sample/SMP-000001/f3/late.jpg', 'late.jpg', 'image/jpeg', 10);
-    raise exception 'factory added a photo after handing the sample back';
-  exception when others then if sqlerrm not like '%row-level security%' then raise; end if;
-  end;
-end $$;
-
-select pg_temp.act_as('merch@t');
-do $$ declare v_today date := (now() at time zone 'Asia/Kolkata')::date; begin
-  if (select ready_on from samples where id = 'SMP-000001') <> v_today then raise exception 'ready date not stamped'; end if;
-  if not exists (select 1 from sample_events where note = 'Sent with Ramesh') then raise exception 'factory note missing'; end if;
-  update samples set status = 'dispatched', courier = 'DTDC', tracking = 'D123' where id = 'SMP-000001';
-  update samples set status = 'changes', feedback = 'Shorten the sleeve' where id = 'SMP-000001';
-  update samples set status = 'with_vendor', due_date = v_today + 6 where id = 'SMP-000001';
-  if (select row(round, dispatched_on, ready_on, courier, issued_on, vendor_due) from samples where id = 'SMP-000001')
-     is distinct from row(2, null::date, null::date, null::text, v_today, null::date) then
-    raise exception 'next round not reset: %', (select row(round, dispatched_on, ready_on, courier, issued_on, vendor_due) from samples where id = 'SMP-000001');
+  if exists (select 1 from public.orders) or exists (select 1 from public.buyers) or exists (select 1 from public.factories)
+     or exists (select 1 from public.history where company_id <> 'cccccccc-0000-0000-0000-000000000002') then
+    raise exception 'another company can see Sourcingo data';
   end if;
-  if (select count(*) from sample_events where sample_id = 'SMP-000001' and kind = 'status') <> 6 then raise exception 'status history incomplete'; end if;
-  delete from samples where id = 'SMP-000002';
-  if not exists (select 1 from samples where id = 'SMP-000002') then raise exception 'merchandiser deleted a sample'; end if;
+  if (select count(*) from public.profiles) <> 1 then raise exception 'another company can see Sourcingo people'; end if;
+end $$;
+-- Its own order numbers start at 1, and it can use the same codes and names.
+insert into public.buyers (id, code) values ('10000000-0000-0000-0000-000000000009', 'BYR-OZ');
+insert into public.factories (name) values ('Shree Knits');
+select public.save_order('{"buyer_id":"10000000-0000-0000-0000-000000000009","buyer_po":"OZIA PO 001"}', '[{"style":"Q","qty":5}]');
+do $$ begin
+  if (select order_no from public.orders) <> 'SO-0001' then raise exception 'order numbers should run per company'; end if;
+end $$;
+-- It cannot attach a Sourcingo buyer to its order.
+do $$ begin
+  perform public.save_order('{"buyer_id":"10000000-0000-0000-0000-000000000001","buyer_po":"STEAL"}', '[{"style":"Q","qty":5}]');
+  raise exception 'used another company''s buyer';
+exception when foreign_key_violation then null;
 end $$;
 
-select pg_temp.act_as('factory@t');
+-- ---------------------------------------------------------------- not added to any company
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000c');
 do $$ begin
-  if (select feedback from portal_factory_samples where id = 'SMP-000001') is not null then raise exception 'feedback shown outside changes'; end if;
-  if (select status from portal_factory_samples where id = 'SMP-000001') <> 'with_vendor' then raise exception 'round 2 not visible'; end if;
-end $$;
-
-select pg_temp.act_as('buyer@t');
-do $$ begin
-  if exists (select 1 from samples) then raise exception 'buyer read samples table'; end if;
-  if (select array_agg(stage order by id) from portal_buyer_samples) is distinct from array['In development', 'In development'] then
-    raise exception 'buyer sample stages wrong';
+  if exists (select 1 from public.orders) or exists (select 1 from public.buyers) or exists (select 1 from public.companies) then
+    raise exception 'a stranger can see data';
   end if;
 end $$;
-
-select pg_temp.act_as('new@t');  -- the owner by now
-delete from samples where id = 'SMP-000002';
 do $$ begin
-  if exists (select 1 from samples where id = 'SMP-000002') then raise exception 'owner could not delete a sample'; end if;
+  perform public.save_order('{"buyer_id":"10000000-0000-0000-0000-000000000001","buyer_po":"PO-X"}', '[{"style":"X","qty":1}]');
+  raise exception 'stranger saved an order';
+exception when raise_exception then
+  if sqlerrm <> 'Your account is not switched on yet.' then raise; end if;
 end $$;
-
--- ───────── payments ─────────
--- Dispatching DC-T1 opened invoice INV-1 for its buyer, waiting for an amount.
-select pg_temp.act_as('accounts@t');
 do $$ begin
-  if not exists (select 1 from invoices where invoice_no = 'INV-1' and dc_id = 'DC-T1' and so_id = 'SO-000003' and amount is null) then
-    raise exception 'dispatch did not open the invoice';
-  end if;
+  update public.profiles set current_company_id = (select id from public.companies limit 1) where id = auth.uid();
+  update public.profiles set current_company_id = '00000000-0000-0000-0000-000000000000' where id = auth.uid();
+  raise exception 'stranger joined a company by switching to it';
+exception when insufficient_privilege or foreign_key_violation or check_violation then null;
+  when others then if sqlerrm not like '%row-level security%' then raise; end if;
 end $$;
 
--- Only Accounts and the owner see payments.
-select pg_temp.act_as('merch@t');
-do $$ begin
-  if exists (select 1 from invoices) then raise exception 'merchandiser read invoices'; end if;
-end $$;
-select pg_temp.expect_error($$select save_cheque('{}'::jsonb)$$, 'Only Accounts and the owner%');
-select pg_temp.act_as('buyer@t');
-do $$ begin
-  if exists (select 1 from invoices) or exists (select 1 from cheques) then raise exception 'buyer read payments'; end if;
-end $$;
-
-select pg_temp.act_as('accounts@t');
-select pg_temp.expect_error($$select save_invoice(jsonb_build_object('invoice_no','inv-1','buyer_id',(select buyer_id from invoices limit 1),'invoice_date',current_date))$$, '%already exists%');
-select pg_temp.expect_error($$select save_invoice(jsonb_build_object('invoice_no','X','buyer_id',(select id from buyers where id <> (select buyer_id from sales_orders where id = 'SO-000003') limit 1),'invoice_date',current_date,'so_id','SO-000003'))$$, '%belongs to another buyer%');
-select pg_temp.expect_error($$select delete_invoice((select id from invoices where invoice_no = 'INV-1'))$$, '%came from DC-T1%');
-select set_buyer_credit_days((select buyer_id from invoices where invoice_no = 'INV-1'), 45);
-
-do $$
-declare b uuid := (select buyer_id from invoices where invoice_no = 'INV-1'); i1 uuid; i2 uuid; c1 uuid; c2 uuid;
-begin
-  if (select credit_days from buyers where id = b) <> 45 then raise exception 'credit days not saved'; end if;
-  i1 := (select id from invoices where invoice_no = 'INV-1');
-  -- No cheque against an invoice without an amount.
-  begin
-    perform save_cheque(jsonb_build_object('buyer_id', b, 'cheque_no', '100', 'cheque_date', current_date, 'amount', 500,
-      'allocations', jsonb_build_array(jsonb_build_object('invoice_id', i1, 'amount', 500))));
-    raise exception 'cheque against an invoice with no amount';
-  exception when others then if sqlerrm not like 'Enter the amount of invoice%' then raise; end if;
-  end;
-  perform save_invoice(jsonb_build_object('id', i1, 'invoice_no', 'INV-1', 'buyer_id', b, 'invoice_date', current_date - 50, 'amount', 1000));
-  i2 := save_invoice(jsonb_build_object('invoice_no', 'PAY-2', 'buyer_id', b, 'invoice_date', current_date - 10, 'amount', 400.70));
-  perform save_credit_note(jsonb_build_object('credit_note_no', 'CN-1', 'invoice_id', i1, 'note_date', current_date, 'amount', 200));
-
-  -- One cheque pays two invoices; the rupee rounding on INV-2 is accepted.
-  c1 := save_cheque(jsonb_build_object('buyer_id', b, 'cheque_no', '100', 'cheque_date', current_date + 5, 'amount', 1201,
-    'allocations', jsonb_build_array(jsonb_build_object('invoice_id', i1, 'amount', 800), jsonb_build_object('invoice_id', i2, 'amount', 401))));
-  if (select status from cheques where id = c1) <> 'in_hand' or (select received_on from cheques where id = c1) <> current_date then
-    raise exception 'new cheque should be in hand, received today';
-  end if;
-  if invoice_covered(i1) <> 800 or invoice_net(i1) <> 800 then raise exception 'credit note not netted'; end if;
-
-  -- Not more than the cheque, not more than the invoice.
-  begin
-    perform save_cheque(jsonb_build_object('id', c1, 'buyer_id', b, 'cheque_no', '100', 'cheque_date', current_date + 5, 'amount', 1000,
-      'allocations', jsonb_build_array(jsonb_build_object('invoice_id', i1, 'amount', 800), jsonb_build_object('invoice_id', i2, 'amount', 401))));
-    raise exception 'allocated more than the cheque';
-  exception when others then if sqlerrm not like '%split across invoices%' then raise; end if;
-  end;
-  begin
-    c2 := save_cheque(jsonb_build_object('buyer_id', b, 'cheque_no', '101', 'cheque_date', current_date, 'amount', 50,
-      'allocations', jsonb_build_array(jsonb_build_object('invoice_id', i1, 'amount', 50))));
-    raise exception 'covered more than the invoice';
-  exception when others then if sqlerrm not like 'Cheques cover%' then raise; end if;
-  end;
-  begin
-    perform save_credit_note(jsonb_build_object('credit_note_no', 'CN-2', 'invoice_id', i1, 'note_date', current_date, 'amount', 10));
-    raise exception 'credit note below what cheques cover';
-  exception when others then if sqlerrm not like 'Cheques cover%' then raise; end if;
-  end;
-  begin
-    perform save_invoice(jsonb_build_object('id', i2, 'invoice_no', 'PAY-2', 'buyer_id', b, 'invoice_date', current_date - 10, 'amount', 300));
-    raise exception 'invoice amount below what cheques cover';
-  exception when others then if sqlerrm not like 'Cheques cover%' then raise; end if;
-  end;
-  -- Another buyer's invoice can't be paid with this cheque.
-  begin
-    perform save_cheque(jsonb_build_object('buyer_id', (select id from buyers where id <> b limit 1), 'cheque_no', '9', 'cheque_date', current_date,
-      'amount', 10, 'allocations', jsonb_build_array(jsonb_build_object('invoice_id', i2, 'amount', 10))));
-    raise exception 'cross-buyer allocation';
-  exception when others then if sqlerrm not like '%different buyers%' then raise; end if;
-  end;
-
-  -- A post-dated cheque can't go to the bank before its date.
-  begin
-    perform set_cheque_status(array[c1], 'deposited');
-    raise exception 'deposited a post-dated cheque early';
-  exception when others then if sqlerrm not like '%can''t be deposited before then%' then raise; end if;
-  end;
-  update cheques set cheque_date = current_date - 2 where id = c1;
-  -- Deposit, then the details are fixed; clearing keeps the dates.
-  perform set_cheque_status(array[c1], 'deposited', current_date - 1);
-  if (select deposited_on from cheques where id = c1) <> current_date - 1 then raise exception 'deposit date not kept'; end if;
-  begin
-    update cheques set amount = 2000 where id = c1;
-    raise exception 'changed a deposited cheque';
-  exception when others then if sqlerrm not like '%has been deposited%' then raise; end if;
-  end;
-  if set_cheque_status(array[c1], 'cleared') <> 1 or (select cleared_on from cheques where id = c1) <> current_date then
-    raise exception 'clearing failed';
-  end if;
-  -- Accounts can't move a cleared cheque back; a bounce frees the invoices.
-  begin
-    perform set_cheque_status(array[c1], 'in_hand');
-    raise exception 'accounts reversed a cleared cheque';
-  exception when others then if sqlerrm not like '%Ask the owner%' then raise; end if;
-  end;
-  begin
-    perform delete_cheque(c1);
-    raise exception 'accounts deleted a cleared cheque';
-  exception when others then if sqlerrm not like '%Mark it cancelled or bounced%' then raise; end if;
-  end;
-end $$;
-
-select pg_temp.act_as('new@t');  -- owner
-do $$ declare c uuid := (select id from cheques where cheque_no = '100'); i1 uuid := (select id from invoices where invoice_no = 'INV-1'); begin
-  perform set_cheque_status(array[c], 'bounced', null, 'Insufficient funds');
-  if invoice_covered(i1) <> 0 then raise exception 'bounced cheque still covers the invoice'; end if;
-  if (select notes from cheques where id = c) <> 'Insufficient funds' or (select bounced_on from cheques where id = c) is null then
-    raise exception 'bounce reason or date missing';
-  end if;
-  -- A new cheque can now cover INV-1; reviving the bounced one would overpay it.
-  perform save_cheque(jsonb_build_object('buyer_id', (select buyer_id from invoices where id = i1), 'cheque_no', '102', 'cheque_date', current_date,
-    'amount', 800, 'allocations', jsonb_build_array(jsonb_build_object('invoice_id', i1, 'amount', 800))));
-  begin
-    perform set_cheque_status(array[c], 'deposited');
-    raise exception 'revived cheque overpaid the invoice';
-  exception when others then if sqlerrm not like 'Cheques cover%' then raise; end if;
-  end;
-end $$;
-
--- A merchandiser can't set credit days.
-select pg_temp.act_as('merch@t');
-select pg_temp.expect_error($$select set_buyer_credit_days((select id from buyers limit 1), 30)$$, 'Only Accounts and the owner%');
-
--- ───────── factory POs ─────────
--- Locking SO-000003 issued its factory PO with the rates and dates of that moment.
-select pg_temp.act_as('factory@t');
-do $$ declare v record; begin
-  select * into v from portal_factory_pos where so_id = 'SO-000003';
-  if v.id is null then raise exception 'factory cannot see its PO'; end if;
-  if v.revision <> 1 or v.total_qty <> 30 or v.total_value <> 5400 then raise exception 'PO totals wrong: % % %', v.revision, v.total_qty, v.total_value; end if;
-  if jsonb_array_length(v.lines->0->'steps') <> 2 then raise exception 'PO lacks the TNA dates'; end if;
-  if exists (select 1 from factory_pos) then raise exception 'factory read the base PO table'; end if;
-end $$;
-select pg_temp.expect_error($$select respond_factory_po((select id from portal_factory_pos where so_id = 'SO-000003'), false, ' ')$$, 'Say why%');
-select respond_factory_po((select id from portal_factory_pos where so_id = 'SO-000003'), true);
-select pg_temp.expect_error($$select respond_factory_po((select id from portal_factory_pos where so_id = 'SO-000003'), true)$$, '%already accepted%');
-select pg_temp.act_as('merch@t');
-select pg_temp.expect_error($$update factory_pos set total_value = 1 where so_id = 'SO-000003'$$, '%can''t be edited%');
-do $$ begin
-  if not exists (select 1 from notifications where kind like 'fpo%' and title like '%accepted%') then raise exception 'merchandiser not told the PO was accepted'; end if;
-  if not exists (select 1 from notifications where kind = 'order_locked') then raise exception 'merchandiser not told the order was locked'; end if;
-end $$;
-select pg_temp.act_as('factory@t');
-do $$ begin
-  if not exists (select 1 from notifications where kind like 'fpo%') then raise exception 'factory not told about the new PO'; end if;
-  if exists (select 1 from notifications n join profiles p on p.id = n.user_id where p.email <> 'factory@t') then raise exception 'read someone else''s notifications'; end if;
-end $$;
-select mark_notifications_read();
-do $$ begin
-  if exists (select 1 from notifications where read_at is null) then raise exception 'notifications not marked read'; end if;
-end $$;
-select pg_temp.expect_error($$select notify(array[auth.uid()], 'x', 'x', null, null)$$, '%permission denied%');
-
--- ───────── QC ─────────
-select pg_temp.act_as('merch@t');
-do $$ begin
-  if qc_sample_size(30) <> 8 or qc_sample_size(1000) <> 80 or qc_accept(80, 2.5) <> 5 or qc_accept(80, 4.0) <> 7 or qc_accept(8, 2.5) <> 0 then
-    raise exception 'AQL table wrong';
-  end if;
-end $$;
-insert into qc_inspections (id, so_id, style_id, kind, lot_qty, sample_size, defects)
-  values ('QC-T1', 'SO-000003', '11111111-1111-1111-1111-111111111111', 'final', 30, 8,
-          '[{"name":"Open seam","severity":"major","count":1},{"name":"Thread end","severity":"minor","count":1}]');
-insert into qc_inspections (id, so_id, style_id, kind, lot_qty, sample_size, defects, measurements_ok)
-  values ('QC-T2', 'SO-000003', '11111111-1111-1111-1111-111111111111', 'inline', 30, 8, '[{"name":"Thread end","severity":"minor","count":1}]', false);
-insert into qc_inspections (id, so_id, style_id, kind, lot_qty, sample_size, result)
-  values ('QC-T3', 'SO-000003', '11111111-1111-1111-1111-111111111111', 'midline', 30, 8, 'fail');
-do $$ begin
-  if (select result from qc_inspections where id = 'QC-T1') <> 'fail' or (select major from qc_inspections where id = 'QC-T1') <> 1 then raise exception 'major over AQL should fail'; end if;
-  if (select result from qc_inspections where id = 'QC-T2') <> 'hold' then raise exception 'bad measurements should hold'; end if;
-  if (select result from qc_inspections where id = 'QC-T3') <> 'pass' then raise exception 'result was typed in by hand'; end if;
-end $$;
-select pg_temp.expect_error($$insert into qc_inspections (so_id, style_id, kind, lot_qty, sample_size) values ('SO-000003', '11111111-1111-1111-1111-111111111111', 'final', 5, 8)$$, '%qc_sample_fits_lot%');
-select pg_temp.expect_error($$insert into qc_inspections (so_id, style_id, kind, lot_qty, sample_size, defects) values ('SO-000003', '11111111-1111-1111-1111-111111111111', 'final', 30, 8, '[{"name":"X","severity":"bad","count":1}]')$$, '%severity must be%');
-select pg_temp.expect_error($$insert into qc_inspections (so_id, style_id, kind, lot_qty, sample_size) values ('SO-000001', '11111111-1111-1111-1111-111111111111', 'final', 30, 8)$$, '%not on SO-000001%');
-select pg_temp.act_as('factory@t');
-do $$ begin
-  if (select count(*) from portal_factory_qc where so_id = 'SO-000003') <> 3 then raise exception 'factory cannot see its inspections'; end if;
-  if not exists (select 1 from notifications where kind like 'qc%') then raise exception 'factory not told about QC'; end if;
-end $$;
-select pg_temp.act_as('accounts@t');
-select pg_temp.expect_error($$insert into qc_inspections (so_id, style_id, kind, lot_qty, sample_size) values ('SO-000003', '11111111-1111-1111-1111-111111111111', 'final', 30, 8)$$, '%row-level security%');
-
--- ───────── TNA templates, running orders, delay reasons ─────────
-select pg_temp.act_as('merch@t');
-do $$ begin
-  if (select count(*) from tna_templates where is_default) < 1 then raise exception 'no default template'; end if;
-  insert into tna_templates (name, steps) values ('x', '[]');
-  raise exception 'merchandiser added a template';
-exception when others then if sqlerrm not like '%row-level security%' then raise; end if;
-end $$;
-select pg_temp.act_as('new@t');  -- owner
-select pg_temp.expect_error($$insert into tna_templates (name, steps) values ('Bad', '[{"name":"Packing","days":2},{"name":"Cutting","days":10}]')$$, '%planned before the step above%');
-
--- An order that was locked before TNAs existed gets its plan added afterwards.
-do $$ declare v_so text; begin
-  v_so := create_sales_order((select id from buyers where code = 'BYR-AH-0001'), 'PO-OLD', 'garment');
-  insert into so_styles (so_id, name, code, fabric, colour, qty, buyer_rate) values (v_so, 'Shirt', 'S1', 'Linen', 'White', 10, 300);
-  update sales_orders set status = 'locked' where id = v_so;
-  perform set_config('test.old_so', v_so, false);
-end $$;
-select pg_temp.act_as('merch@t');
-do $$ declare v_so text := current_setting('test.old_so'); v_f uuid := (select id from factories where name = 'F1'); begin
-  -- Missing details can be filled in once on a running order.
-  update sales_orders set factory_id = v_f, buyer_date = current_date + 30, factory_date = current_date + 20 where id = v_so;
-  update so_styles set factory_rate = 200 where so_id = v_so;
-  begin
-    update sales_orders set factory_date = current_date + 21 where id = v_so;
-    raise exception 'changed a locked date';
-  exception when others then if sqlerrm not like '%is locked%' then raise; end if;
-  end;
-  if add_running_tna(v_so, jsonb_build_array(jsonb_build_object('name', 'Sewing', 'due_date', current_date + 5),
-                                            jsonb_build_object('name', 'Packing', 'due_date', current_date + 15))) <> 1 then
-    raise exception 'running TNA not added';
-  end if;
-  begin
-    perform add_running_tna(v_so, '[{"name":"Again","due_date":"2030-01-01"}]');
-    raise exception 'added a second TNA';
-  exception when others then if sqlerrm not like 'Every style%already has a TNA%' then raise; end if;
-  end;
-  begin
-    insert into tna_checkpoints (style_id, name, due_date, position) select id, 'Sneaky', current_date, 9 from so_styles where so_id = v_so;
-    raise exception 'checkpoint added to a locked order';
-  exception when others then if sqlerrm not like '%is locked%' then raise; end if;
-  end;
-end $$;
-select pg_temp.act_as('factory@t');
-do $$ declare v_cp uuid := (select c.id from portal_factory_checkpoints c where c.so_id = current_setting('test.old_so') and c.name = 'Sewing'); begin
-  if v_cp is null then raise exception 'factory cannot see the added TNA'; end if;
-  begin perform update_checkpoint(v_cp, 'delayed'); raise exception 'delay without reason';
-  exception when others then if sqlerrm not like 'Pick why%' then raise; end if; end;
-  begin perform update_checkpoint(v_cp, 'delayed', null, 'other'); raise exception 'other without note';
-  exception when others then if sqlerrm not like 'Say why%' then raise; end if; end;
-  perform update_checkpoint(v_cp, 'delayed', 'Mill closed', 'fabric');
-  if (select delay_reason from portal_factory_checkpoints where id = v_cp) <> 'fabric' then raise exception 'reason not saved'; end if;
-end $$;
-select pg_temp.act_as('merch@t');
-do $$ begin
-  if not exists (select 1 from notifications where kind = 'tna_delayed' and body like '%Fabric%') then raise exception 'delay not notified'; end if;
-  if not exists (select 1 from order_timeline(current_setting('test.old_so')) where source = 'tna_status_history') then raise exception 'timeline lacks the TNA update'; end if;
-end $$;
-select pg_temp.expect_error($$select mark_order_shipped(current_setting('test.old_so'))$$, 'Only the owner%');
-select pg_temp.act_as('new@t');
-select mark_order_shipped(current_setting('test.old_so'), 'Shipped in August');
-do $$ begin
-  if (select status from sales_orders where id = current_setting('test.old_so')) <> 'shipped' then raise exception 'order not closed'; end if;
-end $$;
-
--- ───────── costing, master data, feedback ─────────
-select pg_temp.act_as('merch@t');
-select pg_temp.expect_error($$insert into costings (inquiry_id, style_name, status) values ('INQ-000002', 'Tee', 'quoted')$$, 'Enter the price you quoted%');
-select pg_temp.expect_error($$insert into costings (inquiry_id, style_name, extras) values ('INQ-000002', 'Tee', '[{"label":"","amount":1}]')$$, 'Every extra cost needs a name%');
-do $$ begin
-  update company_profile set legal_name = 'X';
-  if found then raise exception 'merchandiser changed the company profile'; end if;
-end $$;
-select pg_temp.expect_error($$update factories set gstin = 'bad' where name = 'F1'$$, '%gstin%');
-select set_my_preferences('hi', false, null);
-do $$ begin
-  if (select language from profiles where id = auth.uid()) <> 'hi' then raise exception 'language not saved'; end if;
-end $$;
-insert into feedback (kind, message, page) values ('idea', 'Show photos bigger', '/qc');
-select pg_temp.act_as('accounts@t');
-do $$ begin
-  if exists (select 1 from feedback) then raise exception 'read someone else''s feedback'; end if;
-end $$;
-select pg_temp.act_as('new@t');
-update feedback set status = 'planned', reply = 'Next week';
-select pg_temp.act_as('merch@t');
-do $$ begin
-  if not exists (select 1 from notifications where kind = 'feedback_reply') then raise exception 'feedback reply not notified'; end if;
-end $$;
-
--- Signed-out visitors can't call app functions.
+-- ---------------------------------------------------------------- anonymous
 reset role;
+set role anon;
 do $$ begin
-  if has_function_privilege('anon', 'is_ops()', 'execute') or has_function_privilege('anon', 'create_buyer(text,text,text,text)', 'execute') then
-    raise exception 'anon can call app functions';
-  end if;
-  if not has_function_privilege('authenticated', 'is_ops()', 'execute') then raise exception 'signed-in users lost is_ops'; end if;
+  perform 1 from public.orders;
+  raise exception 'anon can read orders';
+exception when insufficient_privilege then null;
 end $$;
+
+-- ---------------------------------------------------------------- the owner deletes
+reset role;
 set role authenticated;
-
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000a');
+delete from public.orders;
+do $$ begin
+  if exists (select 1 from public.orders) or exists (select 1 from public.order_lines) then raise exception 'owner delete failed'; end if;
+  if not exists (select 1 from public.history where table_name = 'orders' and action = 'delete') then raise exception 'delete not in history'; end if;
+end $$;
 reset role;
-\o
-\echo 'All rule tests passed.'
