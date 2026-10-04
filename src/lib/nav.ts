@@ -13,7 +13,8 @@ export const QUICK_ACTIONS: QuickAction[] = [
   { href: "/orders/new", icon: "S", tone: "k", label: "New sales order", sub: "Buyer PO, styles and TNA" },
   { href: "/grn/new", icon: "G", tone: "g", label: "Create GRN", sub: "Goods received from a factory" },
   { href: "/dc/new", icon: "D", tone: "o", label: "Create delivery challan", sub: "Invoice and dispatch to buyer" },
-  { href: "/tna/all", icon: "T", tone: "p", label: "Update TNA", sub: "Checkpoint status on running orders" },
+  { href: "/tna?view=orders", icon: "T", tone: "p", label: "Update TNA", sub: "Checkpoint status on running orders" },
+  { href: "/qc/new", icon: "Q", tone: "g", label: "Record QC", sub: "Inline, mid-line or final inspection" },
 ];
 
 // For Accounts and the owner.
@@ -25,35 +26,37 @@ export const FINANCE_ACTIONS: QuickAction[] = [
 export type NavItem = { href: string; label: string; roles: Role[]; badge?: string };
 export type NavGroup = { title: string; items: NavItem[] };
 
-// Mirrors the module list of the original single-page tool.
+// Grouped by the flow of an order: sell, make, ship, collect.
 export const NAV: NavGroup[] = [
   { title: "", items: [
-    { href: "/", label: "Shortcuts", roles: INTERNAL },
-    { href: "/dashboard", label: "Ops dashboard", roles: OPS, badge: "alerts" },
+    { href: "/", label: "My day", roles: INTERNAL, badge: "alerts" },
+    { href: "/cleanup", label: "Fix my data", roles: OPS, badge: "cleanup" },
   ] },
   { title: "Sales", items: [
     { href: "/pos", label: "POs received", roles: OPS, badge: "pos" },
-    { href: "/inquiries", label: "Inquiries", roles: OPS, badge: "inquiries" },
+    { href: "/inquiries", label: "Inquiries & costing", roles: OPS, badge: "inquiries" },
     { href: "/samples", label: "Samples", roles: INTERNAL, badge: "samples" },
     { href: "/orders", label: "Sales orders", roles: INTERNAL, badge: "review" },
+    { href: "/styles", label: "Style catalogue", roles: INTERNAL },
   ] },
-  { title: "Styles", items: [{ href: "/styles", label: "Style catalogue", roles: INTERNAL }] },
-  { title: "Manufacturing", items: [
-    { href: "/tna", label: "TNA dashboard", roles: OPS },
-    { href: "/tna/all", label: "All TNA", roles: OPS },
+  { title: "Production", items: [
+    { href: "/tna", label: "TNA", roles: OPS },
+    { href: "/fpos", label: "Factory POs", roles: INTERNAL, badge: "fpos" },
+    { href: "/qc", label: "QC inspections", roles: INTERNAL, badge: "qc" },
   ] },
   { title: "Warehouse", items: [
     { href: "/grn", label: "GRN", roles: INTERNAL, badge: "grn" },
     { href: "/dc", label: "Delivery challans", roles: INTERNAL, badge: "dc" },
   ] },
   { title: "Finance", items: [{ href: "/payments", label: "Payments", roles: FINANCE, badge: "payments" }] },
-  { title: "CRM", items: [
-    { href: "/setup", label: "Buyers & factories", roles: INTERNAL },
-    { href: "/team", label: "People & roles", roles: ["owner"] },
-  ] },
   { title: "Reports", items: [
     { href: "/reports", label: "Reports & exports", roles: INTERNAL },
-    { href: "/buyer-view", label: "Buyer view", roles: OPS },
+    { href: "/reports/scorecards", label: "Scorecards", roles: OPS },
+  ] },
+  { title: "Setup", items: [
+    { href: "/setup", label: "Master data", roles: INTERNAL },
+    { href: "/team", label: "People", roles: ["owner"] },
+    { href: "/feedback", label: "Feedback", roles: ["owner"], badge: "feedback" },
   ] },
 ];
 

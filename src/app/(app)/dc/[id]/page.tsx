@@ -48,6 +48,7 @@ export default async function DcPage({ params }: PageProps<"/dc/[id]">) {
           <h1>{d.id} <Chip status={d.status} /> {h != null && <span className={`chip ${h > 24 ? "bad" : "ok"}`}>Held {h < 1 ? "under 1" : Math.round(h)}h</span>}</h1>
           <p>Created by {w.personName(d.created_by)} {fmtDateTime(d.created_at)}{d.dispatched_at && ` · dispatched ${fmtDateTime(d.dispatched_at)}`}</p>
         </div>
+        <a className="btn" href={`/print/dc/${d.id}`} target="_blank" rel="noreferrer">Print</a>
       </div>
       <section className="panel">
         <div className="dl">

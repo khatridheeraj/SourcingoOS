@@ -31,7 +31,7 @@ export default async function InquiriesPage({ searchParams }: PageProps<"/inquir
   const today = todayIST();
 
   const supabase = await createClient();
-  const [inquiries, followups, buyers, registry, people] = await Promise.all([
+  const [inquiries, followups, buyers, registry, people, costings] = await Promise.all([
     supabase
       .from("inquiries")
       .select("id, buyer_id, contact_person, contact_email, product_type, est_qty, unit, budget_inr, merchandiser_id, status, next_follow_up, notes, created_at, so_id")
@@ -40,6 +40,7 @@ export default async function InquiriesPage({ searchParams }: PageProps<"/inquir
     supabase.from("buyers").select("id, code").order("code"),
     isOwner ? supabase.from("buyer_registry").select("buyer_id, real_name") : Promise.resolve({ data: [] as { buyer_id: string; real_name: string }[], error: null }),
     supabase.from("profiles").select("id, full_name, email, role, active"),
+    supabase.from("costings").select("inquiry_id, status"),
   ]);
   const error = inquiries.error || followups.error || buyers.error || registry.error || people.error;
 
@@ -55,8 +56,11 @@ export default async function InquiriesPage({ searchParams }: PageProps<"/inquir
     .filter((p) => p.active && ["merchandiser", "manager", "owner"].includes(p.role ?? ""))
     .map((p) => ({ id: p.id, label: p.full_name || p.email }));
 
+  const costCount = new Map<string, number>();
+  for (const c of costings.data ?? []) costCount.set(c.inquiry_id, (costCount.get(c.inquiry_id) ?? 0) + 1);
   const all: Inquiry[] = (inquiries.data ?? []).map((i) => ({
     ...i,
+    costings: costCount.get(i.id) ?? 0,
     buyerLabel: label(i.buyer_id),
     followups: (followups.data ?? []).filter((f) => f.inquiry_id === i.id).map((f) => ({ id: f.id, note: f.note, created_at: f.created_at, by: nameOf(f.created_by) })),
   }));

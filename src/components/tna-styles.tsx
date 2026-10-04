@@ -3,7 +3,7 @@ import { Chip } from "@/components/bits";
 import { CheckpointSelect, StyleNote } from "@/components/order-actions";
 import { CATEGORIES_FOR, type FileItem } from "@/lib/file-kinds";
 import { fmtDateTime } from "@/lib/format";
-import { fmtDay, money, nf, type Order, overdue, SIZES, unitOf, type World } from "@/lib/model";
+import { delayLabel, fmtDay, money, nf, type Order, overdue, SIZES, unitOf, type World } from "@/lib/model";
 
 // One card per style with its TNA checkpoints; status is editable once locked.
 export function TnaStyles({ w, o, canEdit, files }: { w: World; o: Order; canEdit: boolean; files: Map<string, FileItem[]> }) {
@@ -35,9 +35,10 @@ export function TnaStyles({ w, o, canEdit, files }: { w: World; o: Order; canEdi
                     <td className="code text-muted">{j + 1}</td>
                     <td><b>{cp.name}</b></td>
                     <td className="num whitespace-nowrap">{fmtDay(cp.due_date)} {overdue(cp, w.today) && live && <Chip status="overdue" />}</td>
-                    <td>{canEdit && live ? <CheckpointSelect id={cp.id} value={cp.status} label={cp.name} /> : <Chip status={cp.status} />}</td>
+                    <td>{canEdit && live ? <CheckpointSelect id={cp.id} value={cp.status} label={cp.name} reason={cp.delay_reason} note={cp.status_note} /> : <Chip status={cp.status} />}</td>
                     <td className="text-xs text-muted">
                       {cp.status_updated_at ? `${fmtDateTime(cp.status_updated_at)} · ${w.personName(cp.status_updated_by)}` : "—"}
+                      {cp.status === "delayed" && cp.delay_reason && <span className="block font-semibold text-warn">{delayLabel(cp.delay_reason)}</span>}
                       {cp.status_note && <span className={`block ${cp.status === "delayed" ? "text-bad" : "text-foreground"}`}>“{cp.status_note}”</span>}
                     </td>
                   </tr>

@@ -6,7 +6,7 @@ import { loadWorld } from "@/lib/data";
 import { buyerStage, fmtDay, nf, STAGES, unitOf } from "@/lib/model";
 import { isOps } from "@/lib/roles";
 
-export const metadata = { title: "Buyer view · Sourcingo OS" };
+export const metadata = { title: "Preview as buyer · Sourcingo OS" };
 
 export default async function BuyerView({ searchParams }: PageProps<"/buyer-view">) {
   const me = await getMe();
@@ -19,7 +19,7 @@ export default async function BuyerView({ searchParams }: PageProps<"/buyer-view
 
   return (
     <>
-      <Head crumbs="Reports › Buyer view" title="Buyer view" sub="A preview of the buyer portal: milestones only, never factory activities, factory rates or internal notes.">
+      <Head crumbs="Sales › Preview as buyer" title="Preview as buyer" sub="A preview of the buyer portal: milestones only, never factory activities, factory rates or internal notes.">
         <AutoForm>
           <label className="field" style={{ minWidth: 240 }}>
             <span>Buyer</span>

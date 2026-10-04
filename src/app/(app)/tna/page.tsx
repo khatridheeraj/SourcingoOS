@@ -4,10 +4,12 @@ import { Chip, Empty, Head, Tile } from "@/components/bits";
 import { AutoForm, ClickRow } from "@/components/feedback";
 import { getMe } from "@/lib/auth";
 import { loadWorld } from "@/lib/data";
-import { addDays, allCheckpoints, fmtDay, isoIST, isLocked, type Order, overdue } from "@/lib/model";
+import { addDays, allCheckpoints, delayLabel, fmtDay, isoIST, isLocked, type Order, overdue, progressCells } from "@/lib/model";
+import { TnaStyles } from "@/components/tna-styles";
+import { loadFiles } from "@/lib/files";
 import { isOps } from "@/lib/roles";
 
-export const metadata = { title: "TNA dashboard · Sourcingo OS" };
+export const metadata = { title: "TNA · Sourcingo OS" };
 
 const PRESETS = [
   ["today", "Today"], ["yesterday", "Yesterday"], ["thisWeek", "This week"], ["lastWeek", "Last week"], ["thisMonth", "This month"],
@@ -32,11 +34,21 @@ function rangeFor(preset: string, today: string, from: string, to: string): [str
   }
 }
 
-export default async function TnaDashboard({ searchParams }: PageProps<"/tna">) {
+function Tabs({ view }: { view: string }) {
+  return (
+    <nav className="tabs" aria-label="TNA views">
+      <Link href="/tna" aria-current={view === "activities" ? "page" : undefined}>Activities</Link>
+      <Link href="/tna?view=orders" aria-current={view === "orders" ? "page" : undefined}>Update by order</Link>
+    </nav>
+  );
+}
+
+export default async function Tna({ searchParams }: PageProps<"/tna">) {
   const me = await getMe();
   if (!isOps(me?.role)) redirect("/");
   const sp = await searchParams;
   const p = (k: string) => String(sp[k] ?? "");
+  if (p("view") === "orders") return <ByOrder so={p("so")} />;
   const preset = PRESETS.some(([k]) => k === p("preset")) ? p("preset") : p("from") || p("to") ? "custom" : "thisMonth";
   const { world: w } = await loadWorld();
   const [from, to] = rangeFor(preset, w.today, p("from"), p("to"));
@@ -75,7 +87,8 @@ export default async function TnaDashboard({ searchParams }: PageProps<"/tna">) 
 
   return (
     <>
-      <Head crumbs="Manufacturing › TNA dashboard" title="TNA dashboard" sub="Monitor TNA metrics and activities." />
+      <Head crumbs="Production › TNA" title="TNA" sub="Every activity across running orders. Switch to Update by order to change status." />
+      <Tabs view="activities" />
       <section className="panel">
         <div className="stack">
           <span className="sub">Date range</span>
@@ -134,7 +147,7 @@ export default async function TnaDashboard({ searchParams }: PageProps<"/tna">) 
                       <td className="code"><Link href={`/orders/${x.o.id}`} className="text-accent">{x.o.id}</Link><br /><span className="text-muted">{w.buyerCode(x.o.buyer_id)}</span></td>
                       <td>{w.factoryName(x.o.factory_id)}</td>
                       <td>{w.personName(x.o.merchandiser_id)}</td>
-                      <td><Chip status={x.cp.status} /></td>
+                      <td><Chip status={x.cp.status} />{x.cp.delay_reason && <span className="block text-xs text-warn">{delayLabel(x.cp.delay_reason)}</span>}</td>
                     </ClickRow>
                   ))}
                 </tbody>
@@ -169,6 +182,50 @@ export default async function TnaDashboard({ searchParams }: PageProps<"/tna">) 
           )}
         </section>
       </div>
+    </>
+  );
+}
+
+// One running order at a time, with every step's status editable.
+async function ByOrder({ so }: { so: string }) {
+  const { world: w } = await loadWorld();
+  const locked = w.orders.filter((o) => o.status === "locked");
+  const o = locked.find((x) => x.id === so) ?? locked.find((x) => x.styles.some((s) => s.checkpoints.length)) ?? locked[0];
+  const files = await loadFiles("style", o?.styles.map((s) => s.id) ?? [], w.personName);
+  const open = (id: string) => {
+    const c = progressCells(w.orderById.get(id)!, w.today);
+    return c.length ? `${c.filter((x) => x === "c").length}/${c.length} done${c.includes("o") ? " · overdue" : ""}` : "no TNA yet";
+  };
+  return (
+    <>
+      <Head crumbs="Production › TNA" title="TNA" sub="Update activity status on a running order. Dates and names can't change after the lock.">
+        <AutoForm>
+          <input type="hidden" name="view" value="orders" />
+          <label className="field" style={{ minWidth: 260 }}>
+            <span>Sales order</span>
+            <select name="so" className="inp" defaultValue={o?.id ?? ""}>
+              {locked.length ? locked.map((x) => (
+                <option key={x.id} value={x.id}>{x.id} · #{x.buyer_po_number} · {w.buyerCode(x.buyer_id)} · {w.factoryName(x.factory_id)} · {open(x.id)}</option>
+              )) : <option value="">No running orders yet</option>}
+            </select>
+          </label>
+        </AutoForm>
+      </Head>
+      <Tabs view="orders" />
+      {o ? (
+        <div className="stack">
+          <div className="row">
+            <Link className="btn sm" href={`/orders/${o.id}`}>Open full sales order</Link>
+            <span className="text-xs text-muted">Buyer delivery {fmtDay(o.buyer_date)} · Factory delivery {fmtDay(o.factory_date)}</span>
+          </div>
+          {o.styles.some((s) => !s.checkpoints.length) && (
+            <p className="warnbox">This order has no TNA yet. <Link className="link" href={`/orders/${o.id}#plan`}>Apply a TNA template</Link> so the factory and alerts can track it.</p>
+          )}
+          <TnaStyles key={o.id} w={w} o={o} canEdit files={files} />
+        </div>
+      ) : (
+        <Empty title="Nothing to track yet">A sales order appears here once the owner locks its TNA.</Empty>
+      )}
     </>
   );
 }

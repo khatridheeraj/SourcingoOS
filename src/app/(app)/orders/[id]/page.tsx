@@ -2,14 +2,18 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { BuyerCode, Chip, Empty } from "@/components/bits";
 import { DcCard, GrnCard } from "@/components/doc-cards";
-import { LiveStatus, UnlockButton } from "@/components/order-actions";
+import { LiveStatus, MarkShippedButton, UnlockButton } from "@/components/order-actions";
+import { OrderTimeline } from "@/components/order-timeline";
+import { TemplatePicker } from "@/app/(app)/cleanup/parts";
+import { IssueButton } from "@/app/(app)/fpos/buttons";
 import { TnaStyles } from "@/components/tna-styles";
 import { getMe } from "@/lib/auth";
 import { loadWorld } from "@/lib/data";
 import { loadFiles } from "@/lib/files";
 import { fmtDateTime } from "@/lib/format";
-import { buyerStage, fmtDay, grnQty, money, nf, orderValue, STAGES, toDraft, unitOf } from "@/lib/model";
+import { buyerStage, fmtDay, FPO_LABEL, FPO_TONE, grnQty, money, nf, orderValue, projectedFinish, QC_KIND_LABEL, QC_RESULT_LABEL, QC_TONE, STAGES, toDraft, unitOf } from "@/lib/model";
 import { isInternal, isOps } from "@/lib/roles";
+import { loadTemplates } from "@/lib/tna";
 import { Editor } from "./editor";
 
 export async function generateMetadata({ params }: PageProps<"/orders/[id]">) {
@@ -49,6 +53,7 @@ export default async function OrderPage({ params }: PageProps<"/orders/[id]">) {
           merchandisers: keep(opt(["merchandiser", "manager", "owner"]), o.merchandiser_id),
           managers: keep(opt(["manager", "owner"]), o.manager_id),
           people: keep(keep(opt(), o.fabric_poc_id), o.quality_poc_id),
+          templates: await loadTemplates(),
         }}
       />
     );
@@ -58,6 +63,16 @@ export default async function OrderPage({ params }: PageProps<"/orders/[id]">) {
   const dcs = w.dcs.filter((d) => d.so_id === o.id);
   const received = grns.filter((g) => g.status !== "rejected").reduce((a, g) => a + grnQty(g), 0);
   const locked = o.status === "locked" || o.status === "shipped";
+  const po = w.fpoFor(o.id);
+  const qcs = w.qcs.filter((q) => q.so_id === o.id);
+  const noTna = o.status === "locked" && o.styles.some((s) => !s.checkpoints.length);
+  const templates = noTna && ops ? await loadTemplates() : [];
+  const end = o.status === "locked" ? projectedFinish(o, w.today) : null;
+  const risk = end && o.buyer_date && end > o.buyer_date
+    ? { bad: true, text: `At today's pace production ends ${fmtDay(end)}, after the buyer's date (${fmtDay(o.buyer_date)}). Talk to the factory or the buyer now.` }
+    : end && o.factory_date && end > o.factory_date
+      ? { bad: false, text: `Running late: production now looks like ending ${fmtDay(end)}, not ${fmtDay(o.factory_date)}.` }
+      : null;
 
   return (
     <div className="stack">
@@ -71,9 +86,14 @@ export default async function OrderPage({ params }: PageProps<"/orders/[id]">) {
               : "Not locked yet. Merchandisers are still preparing this order."}
           </p>
         </div>
+        <a className="btn" href={`/print/order/${o.id}`} target="_blank" rel="noreferrer">Print</a>
+        {ops && <Link className="btn" href={`/buyer-view?buyer=${o.buyer_id}`}>Preview as buyer</Link>}
+        {ops && o.status === "locked" && <Link className="btn" href={`/qc/new?so=${o.id}`}>+ QC</Link>}
         {ops && o.status === "locked" && <Link className="btn" href={`/grn/new?so=${o.id}`}>+ GRN</Link>}
+        {(isOwner || me?.role === "manager") && o.status === "locked" && <MarkShippedButton id={o.id} />}
         {isOwner && o.status === "locked" && <UnlockButton id={o.id} />}
       </div>
+      {risk && <p className={risk.bad ? "errbox" : "warnbox"}>{risk.text}</p>}
       <section className="panel">
         <div className="dl">
           <div><span>Customer</span><b><BuyerCode buyer={w.buyerById.get(o.buyer_id)} /></b></div>
@@ -100,6 +120,53 @@ export default async function OrderPage({ params }: PageProps<"/orders/[id]">) {
         {!ops && o.remarks && <p className="mt-2 text-[12.5px]"><b>Status remarks:</b> {o.remarks}</p>}
       </section>
       {ops && o.status === "locked" && <LiveStatus id={o.id} merchDate={o.merch_date ?? ""} remarks={o.remarks ?? ""} />}
+      {noTna && ops && (
+        <section className="panel" id="plan">
+          <h3>Add the TNA</h3>
+          <p className="-mt-2 mb-3 text-[13px] text-muted">This order is running without steps, so nobody is warned before it slips. Pick a template; dates are worked back from the factory delivery date.</p>
+          <TemplatePicker soId={o.id} factoryDate={o.factory_date} templates={templates.filter((t) => t.order_type === o.order_type)} />
+        </section>
+      )}
+      {locked && (
+        <div className="two">
+          <section className="panel">
+            <h3>Factory PO</h3>
+            {po ? (
+              <div className="stack" style={{ gap: 8 }}>
+                <div className="row">
+                  <Link className="code text-accent" href={`/fpos/${po.id}`}>{po.id}</Link>
+                  {po.revision > 1 && <span className="text-xs text-muted">revision {po.revision}</span>}
+                  <span className={`chip ${FPO_TONE[po.status]}`}>{FPO_LABEL[po.status]}</span>
+                </div>
+                <span className="text-[13px] text-muted">{nf(po.total_qty)} {unitOf(o)} · {po.total_value != null ? money(po.total_value, po.currency) : "rate missing"} · deliver by {fmtDay(po.delivery_date)}</span>
+                {po.response_note && <span className="text-[13px]">“{po.response_note}”</span>}
+              </div>
+            ) : (
+              <div className="stack" style={{ gap: 8 }}>
+                <p className="text-[13px] text-muted">{o.factory_id ? "No PO sent to the factory yet." : "Choose the factory first."}</p>
+                {ops && o.status === "locked" && o.factory_id && <div><IssueButton soId={o.id} /></div>}
+              </div>
+            )}
+          </section>
+          <section className="panel">
+            <h3>QC</h3>
+            {qcs.length ? (
+              <div className="list-rows">
+                {qcs.slice(0, 6).map((q) => {
+                  const st = w.styleById.get(q.style_id);
+                  return (
+                    <div key={q.id}>
+                      <Link className="code text-accent" href={`/qc/${q.id}`}>{q.id}</Link>
+                      <span className="grow text-[13px]">{QC_KIND_LABEL[q.kind]} · {st?.name} ({st?.colour}) · {fmtDay(q.inspected_on)}</span>
+                      <span className={`chip ${QC_TONE[q.result]}`}>{QC_RESULT_LABEL[q.result]}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : <p className="text-[13px] text-muted">No inspections yet.{ops && o.status === "locked" && <> <Link className="link" href={`/qc/new?so=${o.id}&kind=inline`}>Record the first one</Link>.</>}</p>}
+          </section>
+        </div>
+      )}
       {o.styles.length ? <TnaStyles w={w} o={o} canEdit={ops} files={files} /> : <Empty title="No styles yet" />}
       {(grns.length > 0 || dcs.length > 0) && (
         <section className="panel">
@@ -110,6 +177,7 @@ export default async function OrderPage({ params }: PageProps<"/orders/[id]">) {
           </div>
         </section>
       )}
+      <OrderTimeline soId={o.id} w={w} />
     </div>
   );
 }

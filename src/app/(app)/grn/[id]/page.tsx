@@ -61,6 +61,7 @@ export default async function GrnPage({ params }: PageProps<"/grn/[id]">) {
             {g.approved_by && ` · ${g.status === "rejected" ? "rejected" : "approved"} by ${w.personName(g.approved_by)} ${g.approved_at ? fmtDateTime(g.approved_at) : ""}`}
           </p>
         </div>
+        <a className="btn" href={`/print/grn/${g.id}`} target="_blank" rel="noreferrer">Print</a>
         {me.role === "owner" && g.status === "pending_approval" && <GrnDecision id={g.id} hasDcs={dcs.length > 0} />}
         {ops && avail > 0 && <Link className="btn primary" href={`/dc/new?grn=${g.id}`}>Create delivery challan</Link>}
       </div>

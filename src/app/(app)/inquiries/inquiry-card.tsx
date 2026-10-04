@@ -24,6 +24,7 @@ export type Inquiry = {
   notes: string | null;
   created_at: string;
   so_id: string | null;
+  costings: number;
   followups: { id: string; note: string; created_at: string; by: string }[];
 };
 
@@ -50,6 +51,7 @@ export function InquiryCard({ inq, merchandisers, today, files }: { inq: Inquiry
         <span className={`rounded-full px-2 text-xs font-bold ${STATUS[inq.status].cls}`}>{STATUS[inq.status].label}</span>
         {due && <span className="rounded-full bg-bad px-2 text-xs font-bold text-white">Follow-up due</span>}
         <span className="ml-auto" />
+        <Link href={`/inquiries/${inq.id}/costing`} className="btn sm">{inq.costings ? `Costing (${inq.costings})` : "Cost it"}</Link>
         {open && !inq.so_id && <Link href={`/orders/new?inquiry=${inq.id}`} className="btn sm primary">Create sales order</Link>}
         {inq.so_id && <Link href={`/orders/${inq.so_id}`} className="btn sm">Open {inq.so_id}</Link>}
       </div>

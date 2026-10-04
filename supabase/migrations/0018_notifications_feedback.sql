@@ -203,7 +203,7 @@ begin
     perform notify(people_with_role('{owner}'), 'feedback', initcap(new.kind) || ' from ' || v_who, left(new.message, 200), '/feedback');
   elsif new.status is distinct from old.status or new.reply is distinct from old.reply then
     perform notify(array[new.user_id], 'feedback_reply', 'Your ' || new.kind || ' was answered',
-      coalesce(new.reply, 'Marked ' || new.status), '/feedback');
+      coalesce(new.reply, 'Marked ' || new.status), '/settings#feedback');
   end if;
   return new;
 end $$;

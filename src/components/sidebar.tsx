@@ -5,14 +5,19 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { searchIndex, type SearchItem } from "@/app/(app)/search";
 import { Feedback } from "@/components/feedback";
+import { Bell, FeedbackButton } from "@/components/shell-extras";
 import type { NavGroup, QuickAction } from "@/lib/nav";
 
-export function Shell({ nav, badges, who, actions, children }: {
-  nav: NavGroup[]; badges: Record<string, { n: number; hot: boolean }>; who: string; actions: QuickAction[]; children: React.ReactNode;
+export function Shell({ nav, badges, who, actions, unread, children }: {
+  nav: NavGroup[]; badges: Record<string, { n: number; hot: boolean }>; who: string; actions: QuickAction[]; unread: number; children: React.ReactNode;
 }) {
   const path = usePathname();
   const [open, setOpen] = useState(false);
-  const active = (href: string) => (href === "/" ? path === "/" : href === "/tna" ? path === "/tna" : path === href || path.startsWith(href + "/"));
+  // The most specific menu item wins (Scorecards, not Reports, on /reports/scorecards).
+  const current = nav.flatMap((g) => g.items.map((i) => i.href))
+    .filter((h) => (h === "/" ? path === "/" : path === h || path.startsWith(h + "/")))
+    .sort((a, b) => b.length - a.length)[0];
+  const active = (href: string) => href === current;
 
   return (
     <Feedback>
@@ -52,6 +57,7 @@ export function Shell({ nav, badges, who, actions, children }: {
           </nav>
           <div className="mt-auto flex flex-col gap-1.5 px-2.5 text-xs text-muted">
             <span>{who}</span>
+            <Link href="/settings" className="font-semibold text-accent" onClick={() => setOpen(false)}>My settings</Link>
             <form action="/auth/signout" method="post">
               <button className="font-semibold text-accent">Sign out</button>
             </form>
@@ -63,10 +69,12 @@ export function Shell({ nav, badges, who, actions, children }: {
             <button type="button" onClick={() => setOpen(true)} aria-label="Open menu" className="btn icon lg:hidden">☰</button>
             <CommandSearch nav={nav} actions={actions} />
             <span className="hidden whitespace-nowrap text-[12.5px] text-muted lg:inline">{who}</span>
+            <Bell unread={unread} />
             {actions.length > 0 && <PlusMenu actions={actions} />}
           </header>
           <main className="mx-auto flex w-full max-w-[1240px] flex-col gap-[18px] px-4 pb-[72px] pt-5">{children}</main>
         </div>
+        <FeedbackButton />
       </div>
     </Feedback>
   );

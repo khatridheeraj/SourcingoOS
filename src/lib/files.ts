@@ -4,7 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 
 type Row = {
   id: string; category: FileCategory; file_name: string; mime_type: string; size_bytes: number; created_at: string;
-  uploaded_by: string | null; storage_path: string; inquiry_id: string | null; style_id: string | null; grn_id: string | null; sample_id: string | null;
+  uploaded_by: string | null; storage_path: string; inquiry_id: string | null; style_id: string | null; grn_id: string | null; sample_id: string | null; qc_id: string | null;
 };
 
 // Files attached to the given inquiries, styles or GRNs, grouped by owner id,
