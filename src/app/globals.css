@@ -177,6 +177,7 @@ h1, h2, h3 {
   .action i.o { background: #c46a12; }
   .action i.k { background: var(--foreground); color: var(--background); }
   .action i.p { background: #8a3ea8; }
+  .action i.r { background: #c2185b; }
   .action b { display: block; font-size: 14px; }
   .action small { color: var(--muted); font-size: 12px; }
 

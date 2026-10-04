@@ -57,6 +57,82 @@ export type Buyer = { id: string; code: string; default_payment_terms: string | 
 export type Factory = { id: string; name: string; city: string | null; active: boolean };
 export type Person = { id: string; full_name: string | null; email: string; role: string | null; active: boolean };
 
+// ───────── samples ─────────
+export type SampleStatus = "received" | "with_vendor" | "ready" | "dispatched" | "approved" | "changes" | "rejected" | "cancelled";
+export type SampleType = "development" | "fit" | "size_set" | "pp" | "photoshoot" | "salesman" | "other";
+export type Sample = {
+  id: string; buyer_id: string; sample_type: SampleType; description: string | null; buyer_ref: string | null; fabric: string | null;
+  qty: number; factory_id: string | null; merchandiser_id: string | null; status: SampleStatus; round: number;
+  received_on: string | null; due_date: string | null; issued_on: string | null; vendor_due: string | null; ready_on: string | null;
+  dispatched_on: string | null; courier: string | null; tracking: string | null; feedback: string | null; remarks: string | null;
+  created_by: string | null; created_at: string; updated_at: string;
+};
+
+export const SAMPLE_LABEL: Record<SampleStatus, string> = {
+  received: "At Sourcingo", with_vendor: "With vendor", ready: "Ready to send", dispatched: "Sent to buyer",
+  approved: "Approved", changes: "Changes asked", rejected: "Rejected", cancelled: "Cancelled",
+};
+export const SAMPLE_TONE: Record<SampleStatus, string> = {
+  received: "", with_vendor: "info", ready: "info", dispatched: "ok", approved: "ok", changes: "warn", rejected: "bad", cancelled: "",
+};
+export const SAMPLE_TYPES: { value: SampleType; label: string }[] = [
+  { value: "development", label: "Development / proto" },
+  { value: "fit", label: "Fit sample" },
+  { value: "size_set", label: "Size set" },
+  { value: "pp", label: "Pre-production (PP)" },
+  { value: "photoshoot", label: "Photoshoot" },
+  { value: "salesman", label: "Salesman sample" },
+  { value: "other", label: "Other" },
+];
+export const sampleTypeLabel = (t: string) => SAMPLE_TYPES.find((x) => x.value === t)?.label ?? t;
+export const SAMPLE_STEPS = ["At Sourcingo", "With vendor", "Ready", "Sent to buyer", "Buyer decision"];
+export const sampleStep = (st: SampleStatus) =>
+  ({ received: 0, with_vendor: 1, ready: 2, dispatched: 3, approved: 4, changes: 4, rejected: 4, cancelled: -1 })[st];
+
+// Still with Sourcingo or the vendor: the due date is what matters.
+export const isOpenSample = (s: { status: SampleStatus }) => s.status === "received" || s.status === "with_vendor" || s.status === "ready";
+export const sampleTitle = (s: { description: string | null; fabric: string | null }) => s.description || s.fabric || "Sample";
+export const sampleDaysLeft = (s: { due_date: string | null }, today: string) => (s.due_date ? daysBetween(today, s.due_date) : null);
+export const vendorLate = (s: Sample, today: string) => s.status === "with_vendor" && !!s.vendor_due && s.vendor_due < today;
+// Sent on or before the due date? null until it is sent (or without a due date).
+export const sampleOnTime = (s: Sample) => (s.dispatched_on && s.due_date ? s.dispatched_on <= s.due_date : null);
+
+// Sort key: open samples first, by due date (missing dates first), then the rest newest first.
+export function sampleOrder(a: Sample, b: Sample) {
+  const oa = isOpenSample(a), ob = isOpenSample(b);
+  if (oa !== ob) return oa ? -1 : 1;
+  if (oa) return (a.due_date ?? "").localeCompare(b.due_date ?? "") || a.id.localeCompare(b.id);
+  return b.created_at.localeCompare(a.created_at);
+}
+
+// The one thing to say about a sample on the alert list, if anything.
+export function sampleAlert(s: Sample, today: string, buyer: string, vendor: string): Omit<Alert, "href"> | null {
+  const what = sampleTitle(s);
+  const tag = `${s.id} · ${buyer}`;
+  const where = s.status === "with_vendor" ? ` · with ${vendor}` : ` · ${SAMPLE_LABEL[s.status].toLowerCase()}`;
+  const k = s.due_date ?? "";
+  if (s.status === "dispatched" && s.dispatched_on && daysBetween(s.dispatched_on, today) >= 7) {
+    return { sev: "note", t: `Ask for feedback: ${what}`, d: `${tag} · sent ${fmtDay(s.dispatched_on)}, no decision yet`, k: s.dispatched_on };
+  }
+  if (s.status === "changes") {
+    return { sev: "warn", t: `Changes asked: ${what}`, d: `${tag} · start round ${s.round + 1}${s.feedback ? ` · "${s.feedback.slice(0, 80)}"` : ""}`, k };
+  }
+  if (!isOpenSample(s)) return null;
+  const left = sampleDaysLeft(s, today);
+  if (left === null) return { sev: "warn", t: `Set a due date: ${what}`, d: `${tag}${where} · no buyer deadline recorded`, k: "" };
+  if (left < 0) return { sev: "bad", t: `Sample late by ${-left} day${left === -1 ? "" : "s"}: ${what}`, d: `${tag} · was due ${fmtDay(s.due_date)}${where}`, k };
+  if (left === 0) return { sev: "bad", t: `Sample due today: ${what}`, d: `${tag}${where}`, k };
+  if (vendorLate(s, today)) {
+    return { sev: left <= 2 ? "bad" : "warn", t: `Vendor late: ${what}`, d: `${vendor} promised ${fmtDay(s.vendor_due)} · buyer needs it ${fmtDay(s.due_date)} · ${tag}`, k };
+  }
+  if (left <= 2) {
+    return { sev: s.status === "received" ? "bad" : "warn", t: `Sample due in ${left} day${left === 1 ? "" : "s"}: ${what}`, d: `${tag} · due ${fmtDay(s.due_date)}${where}`, k };
+  }
+  if (s.status === "received") return { sev: "info", t: `Give to a vendor: ${what}`, d: `${tag} · due ${fmtDay(s.due_date)}`, k };
+  if (s.status === "ready") return { sev: "info", t: `Ready to send: ${what}`, d: `${tag} · due ${fmtDay(s.due_date)}`, k };
+  return null;
+}
+
 // ───────── numbers and money ─────────
 export const num = (v: unknown) => {
   const n = Number(v);
@@ -126,7 +202,7 @@ export const heldHours = (g: Grn, now: number) => (now - Date.parse(g.received_a
 // Everything the screens need, indexed once.
 export type World = ReturnType<typeof makeWorld>;
 export function makeWorld(raw: {
-  orders: Order[]; grns: Grn[]; dcs: Dc[]; inquiries: Inquiry[]; buyers: Buyer[]; factories: Factory[]; people: Person[];
+  orders: Order[]; grns: Grn[]; dcs: Dc[]; inquiries: Inquiry[]; buyers: Buyer[]; factories: Factory[]; people: Person[]; samples: Sample[];
   today: string; now: number; meId: string; isOwner: boolean;
 }) {
   const orderById = new Map(raw.orders.map((o) => [o.id, o]));
@@ -247,6 +323,10 @@ export function computeAlerts(w: World): Alert[] {
     if (i.status === "new" && !i.merchandiser_id) {
       out.push({ sev: "info", t: `Assign a merchandiser: ${i.id}`, d: `${i.product_type} for ${w.buyerCode(i.buyer_id)}`, href: `/inquiries?status=new` });
     }
+  }
+  for (const sm of w.samples) {
+    const a = sampleAlert(sm, t, w.buyerCode(sm.buyer_id), w.factoryName(sm.factory_id));
+    if (a) out.push({ ...a, href: `/samples/${sm.id}` });
   }
   const rank = { bad: 0, warn: 1, info: 2, note: 3 };
   return out.sort((a, b) => rank[a.sev] - rank[b.sev] || (a.k ?? "").localeCompare(b.k ?? ""));

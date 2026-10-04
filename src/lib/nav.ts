@@ -8,6 +8,7 @@ export type QuickAction = { href: string; icon: string; tone: string; label: str
 // Shown on Shortcuts and in the + menu.
 export const QUICK_ACTIONS: QuickAction[] = [
   { href: "/inquiries#new", icon: "+", tone: "", label: "Log inquiry", sub: "Buyer inquiry and follow-up" },
+  { href: "/samples/new", icon: "✂", tone: "r", label: "Log sample", sub: "Buyer sample with its due date" },
   { href: "/orders/new", icon: "S", tone: "k", label: "New sales order", sub: "Buyer PO, styles and TNA" },
   { href: "/grn/new", icon: "G", tone: "g", label: "Create GRN", sub: "Goods received from a factory" },
   { href: "/dc/new", icon: "D", tone: "o", label: "Create delivery challan", sub: "Invoice and dispatch to buyer" },
@@ -25,6 +26,7 @@ export const NAV: NavGroup[] = [
   ] },
   { title: "Sales", items: [
     { href: "/inquiries", label: "Inquiries", roles: OPS, badge: "inquiries" },
+    { href: "/samples", label: "Samples", roles: INTERNAL, badge: "samples" },
     { href: "/orders", label: "Sales orders", roles: INTERNAL, badge: "review" },
   ] },
   { title: "Styles", items: [{ href: "/styles", label: "Style catalogue", roles: INTERNAL }] },
