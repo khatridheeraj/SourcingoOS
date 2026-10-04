@@ -1,5 +1,5 @@
+import { Head } from "@/components/bits";
 import { redirect } from "next/navigation";
-import { AppHeader } from "@/components/app-header";
 import { getMe } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { PersonRow, type Person } from "./person-row";
@@ -28,14 +28,10 @@ export default async function TeamPage() {
   const active = all.filter((p) => p.active);
 
   return (
-    <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-6 px-4 py-10">
-      <AppHeader me={me} />
-      <div>
-        <h1 className="text-xl font-bold">People &amp; roles</h1>
-        <p className="text-muted">Anyone can sign up with their email. Nobody sees anything until you give them a role here.</p>
-      </div>
+    <>
+      <Head crumbs="CRM › People & roles" title="People & roles" sub={<>Anyone can sign up with their email. Nobody sees anything until you give them a role here.</>} />
 
-      {people.error && <p className="rounded-lg bg-warn-soft p-4 text-warn">Couldn&apos;t load people: {people.error.message}</p>}
+      {people.error && <p className="warnbox">Couldn&apos;t load people: {people.error.message}</p>}
 
       <section className="rounded-xl border border-line bg-surface px-5">
         <h2 className="pt-4 font-bold">Waiting for approval ({waiting.length})</h2>
@@ -52,6 +48,6 @@ export default async function TeamPage() {
           <PersonRow key={p.id} person={p} isMe={p.id === me.id} factories={factoryOpts} buyers={buyerOpts} />
         ))}
       </section>
-    </main>
+    </>
   );
 }
