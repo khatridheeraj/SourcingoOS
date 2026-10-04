@@ -2,7 +2,7 @@ import Link from "next/link";
 import { AlertList, Head, Tile } from "@/components/bits";
 import { getMe } from "@/lib/auth";
 import { loadWorld } from "@/lib/data";
-import { computeAlerts, isoIST, sumByCur } from "@/lib/model";
+import { addDays, computeAlerts, isOpenSample, isoIST, sumByCur } from "@/lib/model";
 import { NAV, QUICK_ACTIONS } from "@/lib/nav";
 import { isInternal, isOps } from "@/lib/roles";
 
@@ -25,6 +25,9 @@ export default async function Home() {
   const grnToday = w.grns.filter((g) => isoIST(g.received_at) === t);
   const dcToday = w.dcs.filter((d) => d.status === "dispatched" && d.dispatched_at && isoIST(d.dispatched_at) === t);
   const held = w.lateGrns().length;
+  const openSamples = w.samples.filter(isOpenSample);
+  const samplesSoon = openSamples.filter((s) => s.due_date && s.due_date >= t && s.due_date <= addDays(t, 3)).length;
+  const samplesLate = openSamples.filter((s) => s.due_date && s.due_date < t).length;
   const waiting = me.role === "owner" ? w.people.filter((p) => !p.active).length : 0;
   const day = new Date(w.now).toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long", timeZone: "Asia/Kolkata" });
 
@@ -41,6 +44,7 @@ export default async function Home() {
         <span className="sub">Your today&apos;s summary</span>
         <div className="tiles">
           {ops && <Tile tone="blue" label="New inquiries" value={w.inquiries.filter((i) => isoIST(i.created_at) === t).length} note={`${w.inquiries.filter((i) => i.status === "new" || i.status === "quoted").length} open in total`} href="/inquiries" />}
+          <Tile alarm={samplesLate > 0} label="Samples due in 3 days" value={samplesSoon} note={samplesLate ? `${samplesLate} late` : `${openSamples.length} open`} href={samplesLate ? "/samples?show=late" : "/samples?show=week"} />
           {ops && <Tile tone="yellow" label="TNA activities due today" value={dueToday.length} note={`${overdueN} overdue`} href="/tna?preset=today" />}
           <Tile tone="green" label="GRNs received today" value={grnToday.length} note={sumByCur(grnToday.map((g) => [w.grnValue(g), w.currencyOf(g.so_id)]))} href="/grn" />
           <Tile tone="pink" label="Dispatched today" value={dcToday.length} note={sumByCur(dcToday.map((d) => [w.dcValue(d), w.currencyOf(d.so_id)]))} href="/dc?status=dispatched" />
@@ -66,7 +70,7 @@ export default async function Home() {
             <h2 className="flex-1 text-[19px] font-bold">Needs attention</h2>
             {ops && <Link className="btn sm" href="/dashboard">Ops dashboard</Link>}
           </div>
-          <AlertList alerts={ops ? alerts : alerts.filter((a) => a.href.startsWith("/grn") || a.href.startsWith("/dc"))} limit={8} more="on the Ops dashboard" />
+          <AlertList alerts={ops ? alerts : alerts.filter((a) => a.href.startsWith("/grn") || a.href.startsWith("/dc") || a.href.startsWith("/samples"))} limit={8} more="on the Ops dashboard" />
         </section>
         <section className="panel">
           <h2>All modules</h2>

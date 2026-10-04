@@ -4,7 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 
 type Row = {
   id: string; category: FileCategory; file_name: string; mime_type: string; size_bytes: number; created_at: string;
-  uploaded_by: string | null; storage_path: string; inquiry_id: string | null; style_id: string | null; grn_id: string | null;
+  uploaded_by: string | null; storage_path: string; inquiry_id: string | null; style_id: string | null; grn_id: string | null; sample_id: string | null;
 };
 
 // Files attached to the given inquiries, styles or GRNs, grouped by owner id,
@@ -30,6 +30,23 @@ export async function loadFiles(target: FileTarget, ids: string[], nameOf?: (id:
     };
     out.set(key, [...(out.get(key) ?? []), item]);
   }
+  return out;
+}
+
+// The latest photo of each sample, for list thumbnails.
+export async function loadSampleCovers(sampleIds: string[]) {
+  const out = new Map<string, string>();
+  if (!sampleIds.length) return out;
+  const supabase = await createClient();
+  const { data } = await supabase.from("files").select("sample_id, storage_path").like("mime_type", "image/%").in("sample_id", sampleIds)
+    .order("created_at", { ascending: true });
+  // Oldest first: the buyer's reference photo usually goes up first.
+  const first = new Map<string, string>();
+  for (const r of (data ?? []) as { sample_id: string; storage_path: string }[]) if (!first.has(r.sample_id)) first.set(r.sample_id, r.storage_path);
+  if (!first.size) return out;
+  const { data: signed } = await supabase.storage.from("files").createSignedUrls([...first.values()], 3600);
+  const urls = new Map((signed ?? []).map((s) => [s.path, s.signedUrl]));
+  for (const [sid, path] of first) { const u = urls.get(path); if (u) out.set(sid, u); }
   return out;
 }
 

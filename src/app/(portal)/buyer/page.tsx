@@ -12,7 +12,7 @@ const FILTERS = [{ key: "open", label: "In progress" }, { key: "shipped", label:
 export default async function BuyerHome({ searchParams }: PageProps<"/buyer">) {
   const me = await getMe();
   if (me?.role !== "buyer") redirect("/");
-  const { buyer, orders, error } = await loadBuyer();
+  const { buyer, orders, samples, error } = await loadBuyer();
   const sp = await searchParams;
   const filter = FILTERS.some((f) => f.key === sp.show) ? String(sp.show) : "open";
   const today = todayIST();
@@ -30,7 +30,27 @@ export default async function BuyerHome({ searchParams }: PageProps<"/buyer">) {
         <Tile tone="blue" label="Orders in progress" value={open.length} />
         <Tile tone="green" label="Next delivery" value={<span className="text-[20px]">{fmtDay(next)}</span>} />
         <Tile tone="pink" label="Shipments sent" value={shipments.length} />
+        {samples.length > 0 && <Tile tone="yellow" label="Samples in development" value={samples.filter((s) => s.stage === "In development").length} />}
       </div>
+      {samples.length > 0 && (
+        <section className="panel">
+          <h3>Your samples</h3>
+          <div className="list-rows">
+            {samples.map((s) => (
+              <div key={s.id}>
+                <span className="grow">
+                  <b>{s.description || s.fabric || "Sample"}</b>
+                  <span className="block text-xs text-muted">
+                    <span className="code">{s.id}</span>{s.buyer_ref ? ` · your ref ${s.buyer_ref}` : ""}{s.description && s.fabric ? ` · ${s.fabric}` : ""}{s.round > 1 ? ` · round ${s.round}` : ""}
+                  </span>
+                </span>
+                <span className="text-sm">{s.dispatched_on ? <>Sent <b>{fmtDay(s.dispatched_on)}</b>{s.courier ? ` via ${s.courier}` : ""}{s.tracking ? <> · <b className="code">{s.tracking}</b></> : ""}</> : s.due_date ? <>Due <b>{fmtDay(s.due_date)}</b></> : null}</span>
+                <span className={`chip ${s.stage === "Approved" || s.stage === "Sent to you" ? "ok" : s.stage === "Changes requested" ? "warn" : s.stage === "Not approved" ? "bad" : "info"}`}>{s.stage}</span>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
       <div className="row">
         <h2 className="grow text-[17px] font-bold">Orders</h2>
         <Pills current={filter} items={FILTERS.map((f) => ({ ...f, href: `/buyer?show=${f.key}` }))} />

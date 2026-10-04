@@ -7,6 +7,16 @@ import { createClient } from "@/lib/supabase/server";
 
 const STATUSES: TnaStatus[] = ["pending", "in_progress", "completed", "delayed"];
 
+export async function markSampleReady(id: string, note: string): Promise<{ ok?: string; error?: string }> {
+  const me = await getMe();
+  if (me?.role !== "factory") return { error: "Only factory logins can update this." };
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("factory_sample_ready", { p_sample: id, p_note: note.trim() || null });
+  if (error) return { error: error.message };
+  revalidatePath("/factory", "layout");
+  return { ok: "Marked ready. Sourcingo can see it now." };
+}
+
 export async function updateCheckpoint(id: string, status: TnaStatus, note: string): Promise<{ ok?: string; error?: string }> {
   const me = await getMe();
   if (me?.role !== "factory") return { error: "Only factory logins can update this." };
