@@ -3,7 +3,7 @@ import { AlertList, Head, Pills, Tile } from "@/components/bits";
 import { getMe } from "@/lib/auth";
 import { loadBooks, loadWorld } from "@/lib/data";
 import { addDays, alertsFor, allCheckpoints, computeAlerts, isOpenSample, isoIST, money, nf, orderValue, overdue, sampleOnTime, sumByCur } from "@/lib/model";
-import { FINANCE_ACTIONS, QUICK_ACTIONS } from "@/lib/nav";
+import { FINANCE_ACTIONS, isLive, QUICK_ACTIONS } from "@/lib/nav";
 import { paymentAlerts } from "@/lib/payments";
 import { isFinance, isInternal, isOps } from "@/lib/roles";
 
@@ -31,7 +31,9 @@ export default async function MyDay({ searchParams }: PageProps<"/">) {
   const payAlerts = books ? paymentAlerts(books, (id) => w.buyerCode(id)) : [];
   const all = computeAlerts(w);
   const rank = { bad: 0, warn: 1, info: 2, note: 3 };
-  const roleAlerts = [...(ops ? all : all.filter((a) => /^\/(grn|dc|samples)/.test(a.href))), ...payAlerts].sort((a, z) => rank[a.sev] - rank[z.sev]);
+  const roleAlerts = [...(ops ? all : all.filter((a) => /^\/(grn|dc|samples)/.test(a.href))), ...payAlerts]
+    .filter((a) => isLive(a.href))
+    .sort((a, z) => rank[a.sev] - rank[z.sev]);
   const scope = sp.who === "all" || sp.who === "mine" ? String(sp.who) : me.role === "owner" ? "all" : "mine";
   const mine = alertsFor(roleAlerts, me.id);
   const shown = scope === "all" ? roleAlerts : mine;
@@ -67,12 +69,12 @@ export default async function MyDay({ searchParams }: PageProps<"/">) {
         </Link>
       )}
       <div className="tiles">
-        {ops && <Tile alarm={overdueN > 0} label="Overdue TNA steps" value={overdueN} note={`${dueToday} due today`} href="/tna?preset=today" />}
-        <Tile alarm={samplesLate > 0} label="Samples due in 3 days" value={samplesSoon} note={samplesLate ? `${samplesLate} late` : `${openSamples.length} open`} href={samplesLate ? "/samples?show=late" : "/samples?show=week"} />
-        {ops && <Tile tone="yellow" alarm={poDeclined > 0} label="Factory POs waiting" value={poWaiting} note={poDeclined ? `${poDeclined} declined` : "Not yet accepted"} href="/fpos?status=open" />}
-        <Tile alarm={held > 0} label="Goods held over 24h" value={held} note="Must be zero" href="/grn?status=held" />
-        <Tile tone="green" label="Received today" value={grnToday.length} note={sumByCur(grnToday.map((g) => [w.grnValue(g), w.currencyOf(g.so_id)]))} href="/grn" />
-        <Tile tone="pink" label="Dispatched today" value={dcToday.length} note={sumByCur(dcToday.map((d) => [w.dcValue(d), w.currencyOf(d.so_id)]))} href="/dc?status=dispatched" />
+        {ops && isLive("/tna") && <Tile alarm={overdueN > 0} label="Overdue TNA steps" value={overdueN} note={`${dueToday} due today`} href="/tna?preset=today" />}
+        {isLive("/samples") && <Tile alarm={samplesLate > 0} label="Samples due in 3 days" value={samplesSoon} note={samplesLate ? `${samplesLate} late` : `${openSamples.length} open`} href={samplesLate ? "/samples?show=late" : "/samples?show=week"} />}
+        {ops && isLive("/fpos") && <Tile tone="yellow" alarm={poDeclined > 0} label="Factory POs waiting" value={poWaiting} note={poDeclined ? `${poDeclined} declined` : "Not yet accepted"} href="/fpos?status=open" />}
+        {isLive("/grn") && <Tile alarm={held > 0} label="Goods held over 24h" value={held} note="Must be zero" href="/grn?status=held" />}
+        {isLive("/grn") && <Tile tone="green" label="Received today" value={grnToday.length} note={sumByCur(grnToday.map((g) => [w.grnValue(g), w.currencyOf(g.so_id)]))} href="/grn" />}
+        {isLive("/dc") && <Tile tone="pink" label="Dispatched today" value={dcToday.length} note={sumByCur(dcToday.map((d) => [w.dcValue(d), w.currencyOf(d.so_id)]))} href="/dc?status=dispatched" />}
         {books && <Tile tone="blue" label="Cheques to deposit" value={books.toDeposit.length} note={money(books.toDeposit.reduce((a, c) => a + c.amount, 0))} href="/payments?tab=cheques&status=deposit" />}
         {lead && <Tile tone="blue" money label="Running order book" value={sumByCur(running.map((o) => [orderValue(o), o.currency]))} note={`${running.length} running orders`} href="/orders?status=locked" />}
       </div>
@@ -85,7 +87,7 @@ export default async function MyDay({ searchParams }: PageProps<"/">) {
               { key: "all", label: `Everyone (${roleAlerts.length})`, href: "/?who=all" },
             ]} />
           </div>
-          <AlertList alerts={shown} limit={40} more="below the fold. Filter by order on TNA." />
+          <AlertList alerts={shown} limit={40} more={isLive("/tna") ? "below the fold. Filter by order on TNA." : "below the fold."} />
         </section>
         <div className="stack">
           {actions.length > 0 && (
@@ -147,12 +149,14 @@ function Pulse({ w }: { w: Awaited<ReturnType<typeof loadWorld>>["world"] }) {
               {bar("Delayed", delayed, tot, "var(--warn)")}
               {bar("Overdue", late, tot, "var(--bad)")}
             </div>
-          ) : <p className="text-sm text-muted">Shows once running orders have a TNA. <Link className="link" href="/cleanup#tna">Add TNAs</Link></p>}
+          ) : <p className="text-sm text-muted">Shows once running orders have a TNA.{isLive("/cleanup") && <> <Link className="link" href="/cleanup#tna">Add TNAs</Link></>}</p>}
         </div>
-        <div>
-          <div className="sub mb-2">Inquiries</div>
-          <div className="bars">{counts.map(([l, n]) => bar(l, n, maxc, l === "Lost" ? "var(--muted)" : l === "Converted" ? "var(--ok)" : undefined))}</div>
-        </div>
+        {isLive("/inquiries") && (
+          <div>
+            <div className="sub mb-2">Inquiries</div>
+            <div className="bars">{counts.map(([l, n]) => bar(l, n, maxc, l === "Lost" ? "var(--muted)" : l === "Converted" ? "var(--ok)" : undefined))}</div>
+          </div>
+        )}
         <div>
           <div className="sub mb-2">Samples</div>
           <div className="bars">{stageCounts.map(([l, n]) => bar(l, n, maxStage, l === "Ready to send" ? "var(--ok)" : undefined))}</div>

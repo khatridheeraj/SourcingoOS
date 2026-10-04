@@ -3,7 +3,7 @@ import { Shell } from "@/components/sidebar";
 import { getMe, roleLabel } from "@/lib/auth";
 import { navCounts } from "@/lib/counts";
 import { loadBooks, loadWorld } from "@/lib/data";
-import { FINANCE_ACTIONS, navFor, QUICK_ACTIONS } from "@/lib/nav";
+import { FINANCE_ACTIONS, isLive, navFor, QUICK_ACTIONS } from "@/lib/nav";
 import { paymentBadge } from "@/lib/payments";
 import { isFinance, isInternal, isOps } from "@/lib/roles";
 import { createClient } from "@/lib/supabase/server";
@@ -19,9 +19,9 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
   const supabase = await createClient();
   const [pos, unread, fb] = await Promise.all([
     // New buyer POs from email that nobody has picked up yet.
-    isOps(me.role) ? supabase.from("received_pos").select("id", { count: "exact", head: true }).eq("status", "new") : null,
+    isOps(me.role) && isLive("/pos") ? supabase.from("received_pos").select("id", { count: "exact", head: true }).eq("status", "new") : null,
     supabase.from("notifications").select("id", { count: "exact", head: true }).eq("user_id", me.id).is("read_at", null),
-    me.role === "owner" ? supabase.from("feedback").select("id", { count: "exact", head: true }).eq("status", "new") : null,
+    me.role === "owner" && isLive("/feedback") ? supabase.from("feedback").select("id", { count: "exact", head: true }).eq("status", "new") : null,
   ]);
   if (pos?.count) badges.pos = { n: pos.count, hot: true };
   if (fb?.count) badges.feedback = { n: fb.count, hot: false };

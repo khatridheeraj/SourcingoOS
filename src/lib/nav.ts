@@ -4,10 +4,17 @@ const OPS: Role[] = ["owner", "merchandiser", "manager", "qc"];
 const INTERNAL: Role[] = [...OPS, "accounts"];
 const FINANCE: Role[] = ["owner", "accounts"];
 
+// Paused while the team starts small (reset in place, 2026-10-04): these screens
+// stay built and still open by URL, but are left out of menus, tiles and alerts.
+// Remove a path from here to bring that screen back.
+const PAUSED = ["/cleanup", "/pos", "/inquiries", "/styles", "/tna", "/fpos", "/qc", "/grn", "/dc", "/reports", "/feedback", "/notifications"];
+const root = (href: string) => "/" + (href.split(/[?#]/)[0].split("/")[1] ?? "");
+export const isLive = (href: string) => !PAUSED.includes(root(href));
+
 export type QuickAction = { href: string; icon: string; tone: string; label: string; sub: string };
 
 // Shown on Shortcuts and in the + menu.
-export const QUICK_ACTIONS: QuickAction[] = [
+const ALL_QUICK_ACTIONS: QuickAction[] = [
   { href: "/inquiries#new", icon: "+", tone: "", label: "Log inquiry", sub: "Buyer inquiry and follow-up" },
   { href: "/samples/new", icon: "✂", tone: "r", label: "Log sample", sub: "Buyer sample with its due date" },
   { href: "/orders/new", icon: "S", tone: "k", label: "New sales order", sub: "Buyer PO, styles and TNA" },
@@ -16,6 +23,7 @@ export const QUICK_ACTIONS: QuickAction[] = [
   { href: "/tna?view=orders", icon: "T", tone: "p", label: "Update TNA", sub: "Checkpoint status on running orders" },
   { href: "/qc/new", icon: "Q", tone: "g", label: "Record QC", sub: "Inline, mid-line or final inspection" },
 ];
+export const QUICK_ACTIONS = ALL_QUICK_ACTIONS.filter((a) => isLive(a.href));
 
 // For Accounts and the owner.
 export const FINANCE_ACTIONS: QuickAction[] = [
@@ -35,8 +43,8 @@ export const NAV: NavGroup[] = [
   { title: "Sales", items: [
     { href: "/pos", label: "POs received", roles: OPS, badge: "pos" },
     { href: "/inquiries", label: "Inquiries & costing", roles: OPS, badge: "inquiries" },
-    { href: "/samples", label: "Samples", roles: INTERNAL, badge: "samples" },
-    { href: "/orders", label: "Sales orders", roles: INTERNAL, badge: "review" },
+    { href: "/orders", label: "Sales orders", roles: OPS, badge: "review" },
+    { href: "/samples", label: "Samples", roles: OPS, badge: "samples" },
     { href: "/styles", label: "Style catalogue", roles: INTERNAL },
   ] },
   { title: "Production", items: [
@@ -54,11 +62,11 @@ export const NAV: NavGroup[] = [
     { href: "/reports/scorecards", label: "Scorecards", roles: OPS },
   ] },
   { title: "Setup", items: [
-    { href: "/setup", label: "Master data", roles: INTERNAL },
+    { href: "/setup", label: "Master data", roles: ["owner"] },
     { href: "/team", label: "People", roles: ["owner"] },
     { href: "/feedback", label: "Feedback", roles: ["owner"], badge: "feedback" },
   ] },
 ];
 
 export const navFor = (role: Role | null) =>
-  NAV.map((g) => ({ ...g, items: g.items.filter((i) => role && i.roles.includes(role)) })).filter((g) => g.items.length);
+  NAV.map((g) => ({ ...g, items: g.items.filter((i) => role && i.roles.includes(role) && isLive(i.href)) })).filter((g) => g.items.length);
