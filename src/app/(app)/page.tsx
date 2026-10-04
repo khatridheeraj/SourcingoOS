@@ -1,10 +1,11 @@
 import Link from "next/link";
 import { AlertList, Head, Tile } from "@/components/bits";
 import { getMe } from "@/lib/auth";
-import { loadWorld } from "@/lib/data";
-import { computeAlerts, isoIST, sumByCur } from "@/lib/model";
-import { NAV, QUICK_ACTIONS } from "@/lib/nav";
-import { isInternal, isOps } from "@/lib/roles";
+import { loadBooks, loadWorld } from "@/lib/data";
+import { computeAlerts, isoIST, money, sumByCur } from "@/lib/model";
+import { FINANCE_ACTIONS, NAV, QUICK_ACTIONS } from "@/lib/nav";
+import { paymentAlerts } from "@/lib/payments";
+import { isFinance, isInternal, isOps } from "@/lib/roles";
 
 export default async function Home() {
   const me = await getMe();
@@ -18,7 +19,14 @@ export default async function Home() {
   }
   const { world: w, error } = await loadWorld();
   const ops = isOps(me.role);
+  const finance = isFinance(me.role);
+  const books = finance ? (await loadBooks()).books : null;
+  const payAlerts = books ? paymentAlerts(books, (id) => w.buyerCode(id)) : [];
   const alerts = computeAlerts(w);
+  const rank = { bad: 0, warn: 1, info: 2, note: 3 };
+  const shownAlerts = [...(ops ? alerts : alerts.filter((a) => a.href.startsWith("/grn") || a.href.startsWith("/dc"))), ...payAlerts]
+    .sort((a, z) => rank[a.sev] - rank[z.sev]);
+  const actions = [...(ops ? QUICK_ACTIONS : []), ...(finance ? FINANCE_ACTIONS : [])];
   const t = w.today;
   const dueToday = w.orders.filter((o) => o.status === "locked").flatMap((o) => o.styles.flatMap((s) => s.checkpoints)).filter((cp) => cp.due_date === t && cp.status !== "completed");
   const overdueN = alerts.filter((a) => a.t.startsWith("Overdue")).length;
@@ -44,14 +52,15 @@ export default async function Home() {
           {ops && <Tile tone="yellow" label="TNA activities due today" value={dueToday.length} note={`${overdueN} overdue`} href="/tna?preset=today" />}
           <Tile tone="green" label="GRNs received today" value={grnToday.length} note={sumByCur(grnToday.map((g) => [w.grnValue(g), w.currencyOf(g.so_id)]))} href="/grn" />
           <Tile tone="pink" label="Dispatched today" value={dcToday.length} note={sumByCur(dcToday.map((d) => [w.dcValue(d), w.currencyOf(d.so_id)]))} href="/dc?status=dispatched" />
+          {books && !ops && <Tile tone="blue" label="Cheques to deposit" value={books.toDeposit.length} note={money(books.toDeposit.reduce((a, c) => a + c.amount, 0))} href="/payments?tab=cheques&status=deposit" />}
           <Tile alarm={held > 0} label="Goods held over 24h" value={held} note="Must be zero" href="/grn?status=held" />
         </div>
       </section>
-      {ops && (
+      {actions.length > 0 && (
         <section className="stack">
           <span className="sub">Quick actions</span>
           <div className="actions">
-            {QUICK_ACTIONS.map((a) => (
+            {actions.map((a) => (
               <Link key={a.href} href={a.href} className="action">
                 <i className={a.tone}>{a.icon}</i>
                 <span><b>{a.label}</b><small>{a.sub}</small></span>
@@ -66,7 +75,7 @@ export default async function Home() {
             <h2 className="flex-1 text-[19px] font-bold">Needs attention</h2>
             {ops && <Link className="btn sm" href="/dashboard">Ops dashboard</Link>}
           </div>
-          <AlertList alerts={ops ? alerts : alerts.filter((a) => a.href.startsWith("/grn") || a.href.startsWith("/dc"))} limit={8} more="on the Ops dashboard" />
+          <AlertList alerts={shownAlerts} limit={8} more={ops ? "on the Ops dashboard" : "on Payments"} />
         </section>
         <section className="panel">
           <h2>All modules</h2>

@@ -2,6 +2,7 @@ import type { Role } from "@/lib/roles";
 
 const OPS: Role[] = ["owner", "merchandiser", "manager", "qc"];
 const INTERNAL: Role[] = [...OPS, "accounts"];
+const FINANCE: Role[] = ["owner", "accounts"];
 
 export type QuickAction = { href: string; icon: string; tone: string; label: string; sub: string };
 
@@ -12,6 +13,12 @@ export const QUICK_ACTIONS: QuickAction[] = [
   { href: "/grn/new", icon: "G", tone: "g", label: "Create GRN", sub: "Goods received from a factory" },
   { href: "/dc/new", icon: "D", tone: "o", label: "Create delivery challan", sub: "Invoice and dispatch to buyer" },
   { href: "/tna/all", icon: "T", tone: "p", label: "Update TNA", sub: "Checkpoint status on running orders" },
+];
+
+// For Accounts and the owner.
+export const FINANCE_ACTIONS: QuickAction[] = [
+  { href: "/payments/cheques/new", icon: "₹", tone: "g", label: "Record cheque", sub: "Cheque received from a buyer" },
+  { href: "/payments/invoices/new", icon: "I", tone: "k", label: "Add invoice", sub: "Buyer invoice to collect" },
 ];
 
 export type NavItem = { href: string; label: string; roles: Role[]; badge?: string };
@@ -36,6 +43,7 @@ export const NAV: NavGroup[] = [
     { href: "/grn", label: "GRN", roles: INTERNAL, badge: "grn" },
     { href: "/dc", label: "Delivery challans", roles: INTERNAL, badge: "dc" },
   ] },
+  { title: "Finance", items: [{ href: "/payments", label: "Payments", roles: FINANCE, badge: "payments" }] },
   { title: "CRM", items: [
     { href: "/setup", label: "Buyers & factories", roles: INTERNAL },
     { href: "/team", label: "People & roles", roles: ["owner"] },

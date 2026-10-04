@@ -5,17 +5,24 @@ import { createContext, useCallback, useContext, useEffect, useRef, useState, us
 
 type Toast = (msg: string, kind?: "bad") => void;
 type Confirm = (text: string, okLabel?: string, danger?: boolean) => Promise<boolean>;
-const Ctx = createContext<{ toast: Toast; confirm: Confirm }>({ toast: () => {}, confirm: async () => false });
+type Ask = (text: string, placeholder?: string, okLabel?: string) => Promise<string | null>;
+const Ctx = createContext<{ toast: Toast; confirm: Confirm; prompt: Ask }>({ toast: () => {}, confirm: async () => false, prompt: async () => null });
 
 // Toasts and confirm dialogs, styled like the original tool.
 export function Feedback({ children }: { children: React.ReactNode }) {
   const [msg, setMsg] = useState<{ text: string; kind?: "bad"; n: number } | null>(null);
   const [ask, setAsk] = useState<{ text: string; ok: string; danger?: boolean; done: (v: boolean) => void } | null>(null);
+  const [q, setQ] = useState<{ text: string; ok: string; placeholder: string; done: (v: string | null) => void } | null>(null);
+  const [answer, setAnswer] = useState("");
   const okRef = useRef<HTMLButtonElement>(null);
 
   const toast = useCallback<Toast>((text, kind) => setMsg({ text, kind, n: Date.now() }), []);
   const confirm = useCallback<Confirm>(
     (text, ok = "OK", danger) => new Promise((resolve) => setAsk({ text, ok, danger, done: resolve })),
+    [],
+  );
+  const prompt = useCallback<Ask>(
+    (text, placeholder = "", ok = "OK") => new Promise((resolve) => { setAnswer(""); setQ({ text, ok, placeholder, done: resolve }); }),
     [],
   );
 
@@ -40,7 +47,7 @@ export function Feedback({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <Ctx.Provider value={{ toast, confirm }}>
+    <Ctx.Provider value={{ toast, confirm, prompt }}>
       {children}
       {msg && <div key={msg.n} className={`toast ${msg.kind ?? ""}`} role="status">{msg.text}</div>}
       {ask && (
@@ -52,6 +59,21 @@ export function Feedback({ children }: { children: React.ReactNode }) {
               <button type="button" ref={okRef} className={`btn ${ask.danger ? "danger" : "primary"}`} onClick={() => close(true)}>{ask.ok}</button>
             </div>
           </div>
+        </div>
+      )}
+      {q && (
+        <div className="modal-bg" onClick={(e) => { if (e.target === e.currentTarget) { q.done(null); setQ(null); } }}>
+          <form className="modal" role="dialog" aria-modal="true" onSubmit={(e) => { e.preventDefault(); q.done(answer.trim()); setQ(null); }}
+            onKeyDown={(e) => { if (e.key === "Escape") { q.done(null); setQ(null); } }}>
+            <label className="flex flex-col gap-2">
+              {q.text}
+              <input autoFocus className="inp" value={answer} placeholder={q.placeholder} onChange={(e) => setAnswer(e.target.value)} maxLength={300} />
+            </label>
+            <div className="row">
+              <button type="button" className="btn" onClick={() => { q.done(null); setQ(null); }}>Cancel</button>
+              <button className="btn primary">{q.ok}</button>
+            </div>
+          </form>
         </div>
       )}
     </Ctx.Provider>

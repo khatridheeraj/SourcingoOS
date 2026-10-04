@@ -5,7 +5,7 @@ export const ROLES: { value: Role; label: string; hint: string }[] = [
   { value: "manager", label: "Merchandiser manager", hint: "Runs orders and manages factories" },
   { value: "merchandiser", label: "Merchandiser", hint: "Inquiries, sales orders and TNA" },
   { value: "qc", label: "QC", hint: "Runs orders and records quality checks" },
-  { value: "accounts", label: "Accounts", hint: "Reads orders, GRNs and challans" },
+  { value: "accounts", label: "Accounts", hint: "Payments and cheques; reads orders, GRNs and challans" },
   { value: "factory", label: "Factory", hint: "Factory portal: only their own orders" },
   { value: "buyer", label: "Buyer", hint: "Buyer portal: only their own orders" },
 ];
@@ -17,3 +17,5 @@ export const isInternal = (role: Role | null | undefined) => !!role && INTERNAL_
 export const canManageFactories = (role: Role | null | undefined) => role === "owner" || role === "manager";
 export const OPS_ROLES: Role[] = ["owner", "merchandiser", "manager", "qc"];
 export const isOps = (role: Role | null | undefined) => !!role && OPS_ROLES.includes(role);
+export const FINANCE_ROLES: Role[] = ["owner", "accounts"];
+export const isFinance = (role: Role | null | undefined) => !!role && FINANCE_ROLES.includes(role);

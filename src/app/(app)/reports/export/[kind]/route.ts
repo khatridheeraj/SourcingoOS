@@ -1,8 +1,9 @@
 import { getMe } from "@/lib/auth";
-import { loadWorld } from "@/lib/data";
+import { loadBooks, loadWorld } from "@/lib/data";
 import { fmtDateTime } from "@/lib/format";
 import { CONDITION_LABEL, DC_LABEL, GRN_LABEL, SO_LABEL, unitOf } from "@/lib/model";
-import { isInternal } from "@/lib/roles";
+import { CHEQUE_LABEL, INVOICE_LABEL } from "@/lib/payments";
+import { isFinance, isInternal } from "@/lib/roles";
 
 // Excel-friendly CSV. Cells that look like formulas are neutralised.
 function csv(rows: (string | number | null | undefined)[][]) {
@@ -61,10 +62,25 @@ export async function GET(_req: Request, ctx: RouteContext<"/reports/export/[kin
       })),
     ]));
   }
+  if (kind === "payments" && isFinance(me?.role)) {
+    const { books: b } = await loadBooks();
+    return file("payments", csv([
+      ["Invoice", "Buyer code", "Invoice date", "Due date", "Amount", "Credit notes", "To collect", "Cleared", "Left to collect", "Invoice status", "Overdue",
+        "Cheque", "Bank", "Cheque date", "Cheque amount", "Against this invoice", "Cheque status", "Deposited", "Cleared on", "Sales order", "DC", "Notes"],
+      ...b.invoices.flatMap((i) => (i.cheques.length ? i.cheques : [null]).map((c) => [
+        i.invoice_no, w.buyerCode(i.buyer_id), i.invoice_date, i.due, i.amount, i.credit || "", i.net, i.received, i.outstanding, INVOICE_LABEL[i.state], i.overdue ? "Yes" : "",
+        c?.cheque.cheque_no, c?.cheque.bank, c?.cheque.cheque_date, c?.cheque.amount, c?.amount, c ? CHEQUE_LABEL[c.cheque.status] : "", c?.cheque.deposited_on,
+        c?.cheque.cleared_on, i.so_id, i.dc_id, i.notes,
+      ])),
+    ]));
+  }
   if (kind === "backup" && me?.role === "owner") {
     // Codes only: real buyer names stay in the private registry.
     const buyers = w.buyers.map((b) => ({ id: b.id, code: b.code, default_payment_terms: b.default_payment_terms, default_address: b.default_address }));
-    const body = { exported_at: new Date(w.now).toISOString(), buyers, factories: w.factories, orders: w.orders, grns: w.grns, delivery_challans: w.dcs, inquiries: w.inquiries };
+    const { books: b } = await loadBooks();
+    const omit = <T extends object>(o: T, key: string) => Object.fromEntries(Object.entries(o).filter(([k]) => k !== key));
+    const payments = { invoices: b.invoices.map((i) => omit(i, "cheques")), credit_notes: b.creditNotes, cheques: b.cheques.map((c) => omit(c, "invoices")), cheque_allocations: b.allocations };
+    const body = { exported_at: new Date(w.now).toISOString(), buyers, factories: w.factories, orders: w.orders, grns: w.grns, delivery_challans: w.dcs, inquiries: w.inquiries, payments };
     return file("backup", JSON.stringify(body, null, 2), "application/json");
   }
   return new Response("Unknown export", { status: 404 });

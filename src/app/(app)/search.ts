@@ -1,8 +1,9 @@
 "use server";
 
 import { getMe } from "@/lib/auth";
-import { loadWorld } from "@/lib/data";
-import { isInternal, isOps } from "@/lib/roles";
+import { loadBooks, loadWorld } from "@/lib/data";
+import { fmtDay, money } from "@/lib/model";
+import { isFinance, isInternal, isOps } from "@/lib/roles";
 
 export type SearchItem = { k: string; l: string; s: string; href: string; hay: string };
 
@@ -29,5 +30,10 @@ export async function searchIndex(): Promise<SearchItem[]> {
   }
   for (const g of w.grns) out.push({ k: "GRN", l: g.id, s: `${g.so_id} · ${g.status.replace("_", " ")}`, href: `/grn/${g.id}`, hay: [g.id, g.so_id].join(" ") });
   for (const d of w.dcs) out.push({ k: "DC", l: d.id, s: [d.invoice_no, d.tracking].filter(Boolean).join(" · "), href: `/dc/${d.id}`, hay: [d.id, d.invoice_no, d.tracking, d.so_id, d.grn_id].join(" ") });
+  if (isFinance(me?.role)) {
+    const { books: b } = await loadBooks();
+    for (const i of b.invoices) out.push({ k: "Invoice", l: i.invoice_no, s: `${w.buyerCode(i.buyer_id)} · ${i.net == null ? "amount needed" : money(i.net)}`, href: `/payments/invoices/${i.id}`, hay: [i.invoice_no, name(i.buyer_id), i.so_id, i.dc_id].join(" ") });
+    for (const c of b.cheques) out.push({ k: "Cheque", l: `Cheque ${c.cheque_no}`, s: `${w.buyerCode(c.buyer_id)} · ${money(c.amount)} · ${fmtDay(c.cheque_date)}`, href: `/payments/cheques/${c.id}`, hay: [c.cheque_no, c.bank, name(c.buyer_id)].join(" ") });
+  }
   return out;
 }
