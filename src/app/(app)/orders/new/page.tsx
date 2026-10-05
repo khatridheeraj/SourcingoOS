@@ -1,29 +1,30 @@
-import { redirect } from "next/navigation";
-import { Head } from "@/components/bits";
-import { getMe } from "@/lib/auth";
-import { loadWorld } from "@/lib/data";
-import { isOps } from "@/lib/roles";
-import { NewOrderForm } from "./new-order-form";
+import Link from "next/link";
+import { OrderForm } from "../order-form";
+import { formOptions } from "../options";
 
-export const metadata = { title: "New sales order · Sourcingo OS" };
-
-export default async function NewOrderPage({ searchParams }: PageProps<"/orders/new">) {
-  const me = await getMe();
-  if (!isOps(me?.role)) redirect("/orders");
-  const sp = await searchParams;
-  const { world: w } = await loadWorld();
-  const buyers = w.buyers.map((b) => ({ id: b.id, label: b.real_name ? `${b.code} · ${b.real_name}` : b.code }));
-  const inquiries = w.inquiries
-    .filter((i) => (i.status === "new" || i.status === "quoted") && !i.so_id)
-    .map((i) => ({ id: i.id, buyer_id: i.buyer_id, label: `${i.id} · ${i.product_type}`, fabric: i.unit === "m" }));
-  const pick = inquiries.find((i) => i.id === sp.inquiry);
-
+export default async function NewOrderPage() {
+  const o = await formOptions();
   return (
     <>
-      <Head crumbs="Sales › Sales orders › New" title="New sales order" sub="Start with the buyer and their PO number. You'll add styles, quantities and the TNA next." />
-      <section className="panel max-w-3xl">
-        <NewOrderForm buyers={buyers} inquiries={inquiries} initial={{ inquiry_id: pick?.id ?? "", buyer_id: pick?.buyer_id ?? String(sp.buyer ?? ""), fabric: !!pick?.fabric }} />
-      </section>
+      <div className="head">
+        <div className="grow">
+          <Link href="/" className="link text-xs">← Orders</Link>
+          <h1>New order</h1>
+          <p>Enter one buyer PO with all its styles. If the PO is split across factories, pick the factory on each style.</p>
+        </div>
+      </div>
+      {o.buyers.length === 0 ? (
+        <div className="empty"><b>No buyers yet</b>Add buyers first in <Link href="/buyers" className="link">Buyers</Link>.</div>
+      ) : (
+        <OrderForm
+          initial={{ buyer_id: "", buyer_po: "", po_date: "", ship_date: "", status: "open", merchandiser_id: o.meId, notes: "" }}
+          initialLines={[]}
+          buyers={o.buyers}
+          factories={o.factories}
+          team={o.team}
+          canDelete={false}
+        />
+      )}
     </>
   );
 }

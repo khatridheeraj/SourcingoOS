@@ -1,41 +1,54 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { getMe, ROLES, type Role } from "@/lib/auth";
+import { getMe, ROLES } from "@/lib/auth";
+import { friendly } from "@/lib/errors";
 import { createClient } from "@/lib/supabase/server";
 
-export type SaveState = { ok?: string; error?: string };
+const validRole = (r: string) => ROLES.some((x) => x.value === r);
 
-// Turns database errors into something the owner can act on.
-function friendly(message: string) {
-  if (message.includes("factory_users_have_factory")) return "Pick which factory this person works for.";
-  if (message.includes("buyer_users_have_buyer")) return "Pick which buyer this person belongs to.";
-  return message;
+export async function addPerson(email: string, role: string): Promise<{ error?: string; ok?: string }> {
+  const me = await getMe();
+  if (me?.role !== "owner") return { error: "Only the owner can add people." };
+  if (!validRole(role)) return { error: "Pick a role." };
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("add_member", { p_email: email, p_role: role });
+  if (error) return { error: friendly(error) };
+  revalidatePath("/team");
+  return {
+    ok: data === "added"
+      ? `${email.trim()} is in. They can use the app now.`
+      : `${email.trim()} is added. They're in as soon as they sign in at this site with that email.`,
+  };
 }
 
-export async function saveProfile(_prev: SaveState, form: FormData): Promise<SaveState> {
+export async function updateMember(userId: string, input: { role: string; active: boolean }): Promise<{ error?: string }> {
   const me = await getMe();
-  if (me?.role !== "owner") return { error: "Only the owner can change roles." };
-
-  const id = String(form.get("id") ?? "");
-  const roleValue = String(form.get("role") ?? "");
-  const role = ROLES.some((r) => r.value === roleValue) ? (roleValue as Role) : null;
-  const active = form.get("active") === "on";
-  if (active && !role) return { error: "Choose a role before giving access." };
-
-  const update = {
-    role,
-    active,
-    factory_id: role === "factory" ? String(form.get("factory_id") || "") || null : null,
-    buyer_id: role === "buyer" ? String(form.get("buyer_id") || "") || null : null,
-  };
-
+  if (me?.role !== "owner" || !me.companyId) return { error: "Only the owner can change the team." };
+  if (!validRole(input.role)) return { error: "Pick a role." };
   const supabase = await createClient();
-  const { data, error } = await supabase.from("profiles").update(update).eq("id", id).select("id");
-  if (error) return { error: friendly(error.message) };
-  if (!data?.length) return { error: "That person no longer exists. Reload the page." };
+  const { error } = await supabase.from("members").update({ role: input.role, active: input.active }).eq("company_id", me.companyId).eq("user_id", userId);
+  if (error) return { error: error.message.startsWith("There must") ? error.message : friendly(error) };
+  revalidatePath("/", "layout");
+  return {};
+}
 
+export async function cancelInvite(email: string): Promise<{ error?: string }> {
+  const me = await getMe();
+  if (me?.role !== "owner" || !me.companyId) return { error: "Only the owner can change the team." };
+  const supabase = await createClient();
+  const { error } = await supabase.from("invites").delete().eq("company_id", me.companyId).eq("email", email);
+  if (error) return { error: friendly(error) };
   revalidatePath("/team");
-  revalidatePath("/");
-  return { ok: active ? "Saved. They can use Sourcingo OS now." : "Saved. They have no access." };
+  return {};
+}
+
+export async function renameMe(fullName: string): Promise<{ error?: string }> {
+  const me = await getMe();
+  if (!me) return { error: "Sign in first." };
+  const supabase = await createClient();
+  const { error } = await supabase.from("profiles").update({ full_name: fullName.trim() || null }).eq("id", me.id);
+  if (error) return { error: friendly(error) };
+  revalidatePath("/", "layout");
+  return {};
 }
