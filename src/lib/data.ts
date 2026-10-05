@@ -41,7 +41,7 @@ export async function loadTeam(): Promise<Member[]> {
 
 export async function loadInvites(): Promise<Invite[]> {
   const { companyId, supabase } = await scope();
-  const { data } = await supabase.from("invites").select("email, role, created_at").eq("company_id", companyId).order("created_at");
+  const { data } = await supabase.from("invites").select("email, role, created_at").eq("company_id", companyId).is("closed_at", null).order("created_at");
   return data ?? [];
 }
 

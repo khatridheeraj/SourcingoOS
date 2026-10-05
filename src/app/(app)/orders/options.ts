@@ -6,7 +6,6 @@ export async function formOptions(keep: { buyerId?: string; factoryIds?: string[
   const [me, buyers, factories, team] = await Promise.all([getMe(), loadBuyers(), loadFactories(), loadTeam()]);
   const owner = me?.role === "owner";
   return {
-    canDelete: owner,
     buyers: buyers
       .filter((b) => b.active || b.id === keep.buyerId)
       .map((b) => ({ id: b.id, label: owner && b.realName ? `${b.code} · ${b.realName}` : b.code })),

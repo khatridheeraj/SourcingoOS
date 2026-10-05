@@ -15,16 +15,10 @@ export async function saveBuyer(b: BuyerInput): Promise<{ error?: string }> {
   if (!b.realName.trim()) return { error: "Enter the buyer's real name. Only you will see it." };
 
   const supabase = await createClient();
-  const row = { code, city: b.city.trim() || null, notes: b.notes.trim() || null, active: b.active };
-  const { data, error } = b.id
-    ? await supabase.from("buyers").update(row).eq("id", b.id).select("id").single()
-    : await supabase.from("buyers").insert(row).select("id").single();
+  const { error } = await supabase.rpc("save_buyer", {
+    p: { id: b.id ?? "", code, real_name: b.realName.trim(), city: b.city, notes: b.notes, active: b.active },
+  });
   if (error) return { error: friendly(error) };
-  const { error: nameError } = await supabase.from("buyer_names").upsert({ buyer_id: data.id, real_name: b.realName.trim() });
-  if (nameError) {
-    if (!b.id) await supabase.from("buyers").delete().eq("id", data.id);
-    return { error: friendly(nameError) };
-  }
   revalidatePath("/", "layout");
   return {};
 }

@@ -36,6 +36,19 @@ end $$;
 
 insert into public.buyers (id, code) values ('10000000-0000-0000-0000-000000000001', 'BYR-OZ');
 insert into public.buyer_names (buyer_id, real_name) values ('10000000-0000-0000-0000-000000000001', 'Ozia Fashions');
+select public.save_buyer('{"id":"10000000-0000-0000-0000-000000000001","code":"BYR-OZ","real_name":" Ozia Fashions ","city":"Delhi"}');
+do $$ begin
+  if (select real_name from public.buyer_names where buyer_id = '10000000-0000-0000-0000-000000000001') <> 'Ozia Fashions' then
+    raise exception 'buyer real name not saved';
+  end if;
+  perform public.save_buyer('{"code":"BYR-NEW","real_name":"Ozia Fashions"}');
+  raise exception 'duplicate real name was accepted';
+exception when unique_violation then null;
+end $$;
+do $$ begin
+  if exists (select 1 from public.buyers where code = 'BYR-NEW') then raise exception 'a failed save left a buyer without a name'; end if;
+end $$;
+select public.save_buyer('{"id":"10000000-0000-0000-0000-000000000001","code":"BYR-OZ","real_name":"Ozia Fashions Pvt Ltd","active":true}');
 insert into public.factories (id, name) values ('20000000-0000-0000-0000-000000000001', 'Shree Knits');
 
 do $$ begin
@@ -70,7 +83,7 @@ do $$ begin
   if (select role from public.members where user_id = '00000000-0000-0000-0000-00000000000b') <> 'merchandiser' then
     raise exception 'invite was not turned into a membership';
   end if;
-  if exists (select 1 from public.invites) then raise exception 'invite should be used up'; end if;
+  if exists (select 1 from public.invites where closed_at is null) then raise exception 'invite should be closed once used'; end if;
 end $$;
 
 set role authenticated;
@@ -146,11 +159,14 @@ select public.save_order(
     jsonb_build_object('id', (select id from public.order_lines where style = 'OZ-101'), 'style', 'OZ-101', 'colour', 'Navy', 'qty', 520)));
 do $$ begin
   if (select status from public.orders) <> 'shipped' then raise exception 'status not updated'; end if;
-  if (select string_agg(style || ':' || qty, ',' order by position) from public.order_lines) <> 'OZ-103:50,OZ-101:520' then
-    raise exception 'lines not saved as given: %', (select string_agg(style || ':' || qty, ',' order by position) from public.order_lines);
+  if (select string_agg(style || ':' || qty, ',' order by position) from public.order_lines where removed_at is null) <> 'OZ-103:50,OZ-101:520' then
+    raise exception 'lines not saved as given: %', (select string_agg(style || ':' || qty, ',' order by position) from public.order_lines where removed_at is null);
   end if;
-  if (select count(*) from public.history where table_name = 'order_lines' and action = 'update') <> 1 then
-    raise exception 'the kept line should be logged as one update';
+  if (select removed_at from public.order_lines where style = 'OZ-102') is null then
+    raise exception 'the dropped line should be marked removed, not lost';
+  end if;
+  if (select count(*) from public.history where table_name = 'order_lines' and action = 'update') <> 2 then
+    raise exception 'the kept line and the removed line should be logged as one update each';
   end if;
 end $$;
 
@@ -161,9 +177,21 @@ do $$ begin
 exception when unique_violation then null;
 end $$;
 
+-- A removed style can be added back.
+select public.save_order(
+  jsonb_build_object('id', :'save_order', 'buyer_id', '10000000-0000-0000-0000-000000000001', 'buyer_po', 'OZIA PO 001', 'status', 'open'),
+  jsonb_build_array(
+    jsonb_build_object('id', (select id from public.order_lines where style = 'OZ-103'), 'style', 'OZ-103', 'qty', 50),
+    jsonb_build_object('id', (select id from public.order_lines where style = 'OZ-101'), 'style', 'OZ-101', 'colour', 'Navy', 'qty', 520),
+    jsonb_build_object('style', 'OZ-102', 'qty', 300)));
+do $$ begin
+  if (select count(*) from public.order_lines where removed_at is null) <> 3 then raise exception 'removed style could not be added back'; end if;
+end $$;
+
 do $$ begin
   delete from public.orders;
-  if (select count(*) from public.orders) <> 1 then raise exception 'merchandiser deleted an order'; end if;
+  raise exception 'merchandiser deleted an order';
+exception when insufficient_privilege then null;
 end $$;
 
 do $$ begin
@@ -182,9 +210,9 @@ do $$ begin
   if (select count(*) from public.profiles) <> 1 then raise exception 'another company can see Sourcingo people'; end if;
 end $$;
 -- Its own order numbers start at 1, and it can use the same codes and names.
-insert into public.buyers (id, code) values ('10000000-0000-0000-0000-000000000009', 'BYR-OZ');
+select public.save_buyer('{"code":"BYR-OZ","real_name":"Ozia Fashions"}') as other_buyer \gset
 insert into public.factories (name) values ('Shree Knits');
-select public.save_order('{"buyer_id":"10000000-0000-0000-0000-000000000009","buyer_po":"OZIA PO 001"}', '[{"style":"Q","qty":5}]');
+select public.save_order(jsonb_build_object('buyer_id', :'other_buyer', 'buyer_po', 'OZIA PO 001'), '[{"style":"Q","qty":5}]');
 do $$ begin
   if (select order_no from public.orders) <> 'SO-0001' then raise exception 'order numbers should run per company'; end if;
 end $$;
@@ -225,13 +253,28 @@ do $$ begin
 exception when insufficient_privilege then null;
 end $$;
 
--- ---------------------------------------------------------------- the owner deletes
+-- ---------------------------------------------------------------- nothing is ever deleted, even by the owner
 reset role;
 set role authenticated;
 select pg_temp.as_user('00000000-0000-0000-0000-00000000000a');
-delete from public.orders;
 do $$ begin
-  if exists (select 1 from public.orders) or exists (select 1 from public.order_lines) then raise exception 'owner delete failed'; end if;
-  if not exists (select 1 from public.history where table_name = 'orders' and action = 'delete') then raise exception 'delete not in history'; end if;
+  delete from public.orders;
+  raise exception 'owner deleted an order';
+exception when insufficient_privilege then null;
+end $$;
+do $$ begin
+  delete from public.buyers;
+  raise exception 'owner deleted a buyer';
+exception when insufficient_privilege then null;
+end $$;
+-- The owner cancels an invite by closing it; adding the email again reopens it.
+do $$ begin
+  perform public.add_member('later@sourcingo.in', 'accounts');
+  update public.invites set closed_at = now() where email = 'later@sourcingo.in';
+  if exists (select 1 from public.invites where email = 'later@sourcingo.in' and closed_at is null) then raise exception 'invite not cancelled'; end if;
+  perform public.add_member('later@sourcingo.in', 'manager');
+  if not exists (select 1 from public.invites where email = 'later@sourcingo.in' and closed_at is null and role = 'manager') then
+    raise exception 'invite not reopened';
+  end if;
 end $$;
 reset role;

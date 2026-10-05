@@ -22,7 +22,6 @@ export default async function NewOrderPage() {
           buyers={o.buyers}
           factories={o.factories}
           team={o.team}
-          canDelete={false}
         />
       )}
     </>

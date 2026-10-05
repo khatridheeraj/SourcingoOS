@@ -4,21 +4,19 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { money, qty as fmtQty } from "@/lib/format";
-import { deleteOrder, saveOrder, type LineInput, type OrderInput } from "./actions";
+import { saveOrder, type LineInput, type OrderInput } from "./actions";
 
 type Option = { id: string; label: string };
 
 const blankLine = (): LineInput => ({ style: "", description: "", colour: "", qty: "", buyer_rate: "", factory_id: "", factory_rate: "" });
 const n = (s: string) => Number(s.replace(/[,₹\s]/g, "")) || 0;
 
-export function OrderForm({ initial, initialLines, buyers, factories, team, orderNo, canDelete }: {
+export function OrderForm({ initial, initialLines, buyers, factories, team }: {
   initial: OrderInput;
   initialLines: LineInput[];
   buyers: Option[];
   factories: Option[];
   team: Option[];
-  orderNo?: string;
-  canDelete: boolean;
 }) {
   const router = useRouter();
   const [order, setOrder] = useState(initial);
@@ -49,14 +47,6 @@ export function OrderForm({ initial, initialLines, buyers, factories, team, orde
       setSaved(true);
       if (!order.id && res.id) router.replace(`/orders/${res.id}?saved=1`);
       else router.refresh();
-    });
-  }
-
-  function remove() {
-    if (!order.id || !confirm(`Delete ${orderNo}? This can't be undone. To keep it, set the status to Cancelled instead.`)) return;
-    start(async () => {
-      const res = await deleteOrder(order.id!);
-      if (res?.error) setError(res.error);
     });
   }
 
@@ -153,7 +143,6 @@ export function OrderForm({ initial, initialLines, buyers, factories, team, orde
         </div>
         {error && <span className="text-[13px] font-semibold text-bad" role="alert">{error}</span>}
         {saved && !error && <span className="text-[13px] font-semibold text-ok">Saved</span>}
-        {canDelete && order.id && <button type="button" className="btn danger" onClick={remove} disabled={pending}>Delete</button>}
         <button className="btn primary" disabled={pending}>{pending ? "Saving…" : order.id ? "Save changes" : "Save order"}</button>
       </div>
     </form>
