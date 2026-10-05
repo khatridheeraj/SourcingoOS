@@ -45,6 +45,7 @@ export async function OrderHistory({ orderId }: { orderId: string }) {
     const style = String((r.after ?? r.before)?.style ?? "");
     if (r.action === "insert") return isOrder ? "Entered the order" : `Added style ${style}`;
     if (r.action === "delete") return isOrder ? "Deleted the order" : `Removed style ${style}`;
+    if (!isOrder && r.after?.removed_at && !r.before?.removed_at) return `Removed style ${style}`;
     const fields = isOrder ? ORDER_FIELDS : LINE_FIELDS;
     const changes = Object.entries(fields)
       .filter(([k]) => JSON.stringify(r.before?.[k] ?? null) !== JSON.stringify(r.after?.[k] ?? null))

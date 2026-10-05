@@ -26,6 +26,7 @@ export default async function OrdersPage({ searchParams }: PageProps<"/">) {
     .from("orders")
     .select("id, order_no, buyer_id, buyer_po, ship_date, status, order_lines(style, qty, buyer_rate, factory_id)")
     .eq("company_id", companyId)
+    .is("order_lines.removed_at", null)
     .order("ship_date", { ascending: true, nullsFirst: false })
     .order("order_no");
   if (status !== "all") query = query.eq("status", status);

@@ -17,6 +17,7 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
     .from("orders")
     .select("id, order_no, buyer_id, buyer_po, po_date, ship_date, status, merchandiser_id, notes, created_at, updated_at, order_lines(id, style, description, colour, qty, buyer_rate, factory_id, factory_rate, position)")
     .eq("id", id)
+    .is("order_lines.removed_at", null)
     .maybeSingle();
   if (!o) notFound();
 
@@ -35,7 +36,6 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
       {saved && <div className="okbox">Order saved as {o.order_no}.</div>}
       <OrderForm
         key={o.updated_at}
-        orderNo={o.order_no}
         initial={{
           id: o.id, buyer_id: o.buyer_id, buyer_po: o.buyer_po, po_date: str(o.po_date), ship_date: str(o.ship_date),
           status: o.status, merchandiser_id: str(o.merchandiser_id), notes: str(o.notes),
@@ -47,7 +47,6 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
         buyers={opts.buyers}
         factories={opts.factories}
         team={opts.team}
-        canDelete={opts.canDelete}
       />
       <OrderHistory orderId={o.id} />
     </>

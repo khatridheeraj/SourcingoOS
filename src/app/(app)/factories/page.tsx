@@ -8,7 +8,7 @@ export default async function FactoriesPage() {
   const [me, supabase] = await Promise.all([getMe(), createClient()]);
   const [factories, { data: lines }] = await Promise.all([
     loadFactories(),
-    supabase.from("order_lines").select("factory_id, orders!inner(status)").eq("company_id", me?.companyId ?? NO_COMPANY).eq("orders.status", "open").not("factory_id", "is", null),
+    supabase.from("order_lines").select("factory_id, orders!inner(status)").eq("company_id", me?.companyId ?? NO_COMPANY).eq("orders.status", "open").is("removed_at", null).not("factory_id", "is", null),
   ]);
   const openStyles: Record<string, number> = {};
   for (const l of lines ?? []) if (l.factory_id) openStyles[l.factory_id] = (openStyles[l.factory_id] ?? 0) + 1;

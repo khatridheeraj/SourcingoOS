@@ -1,7 +1,6 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { redirect } from "next/navigation";
 import { getMe } from "@/lib/auth";
 import { friendly } from "@/lib/errors";
 import { createClient } from "@/lib/supabase/server";
@@ -60,15 +59,4 @@ export async function saveOrder(order: OrderInput, lines: LineInput[]): Promise<
   if (error) return { error: friendly(error) };
   revalidatePath("/");
   return { id: data as string };
-}
-
-export async function deleteOrder(id: string): Promise<{ error?: string }> {
-  const me = await getMe();
-  if (me?.role !== "owner") return { error: "Only the owner can delete an order." };
-  const supabase = await createClient();
-  const { error, count } = await supabase.from("orders").delete({ count: "exact" }).eq("id", id);
-  if (error) return { error: friendly(error) };
-  if (!count) return { error: "That order was not deleted." };
-  revalidatePath("/");
-  redirect("/");
 }

@@ -37,7 +37,7 @@ export async function cancelInvite(email: string): Promise<{ error?: string }> {
   const me = await getMe();
   if (me?.role !== "owner" || !me.companyId) return { error: "Only the owner can change the team." };
   const supabase = await createClient();
-  const { error } = await supabase.from("invites").delete().eq("company_id", me.companyId).eq("email", email);
+  const { error } = await supabase.from("invites").update({ closed_at: new Date().toISOString() }).eq("company_id", me.companyId).eq("email", email);
   if (error) return { error: friendly(error) };
   revalidatePath("/team");
   return {};
