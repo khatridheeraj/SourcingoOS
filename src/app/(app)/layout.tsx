@@ -11,6 +11,7 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
     { href: "/", label: "Orders" },
     { href: "/buyers", label: "Buyers" },
     { href: "/factories", label: "Factories" },
+    ...(me.role === "owner" || me.role === "accounts" ? [{ href: "/payments", label: "Payments" }] : []),
     ...(me.role === "owner" ? [{ href: "/team", label: "Team" }] : []),
   ];
 

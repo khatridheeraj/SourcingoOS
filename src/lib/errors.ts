@@ -7,6 +7,9 @@ export function friendly(error: { message: string; code?: string } | null | unde
   if (m.includes("buyers_code_key")) return "Another buyer already has this code.";
   if (m.includes("buyer_names_name_key")) return "Another buyer already has this name.";
   if (m.includes("factories_name_key")) return "A factory with this name already exists.";
+  if (m.includes("invoices_no_key")) return "That invoice number is already in the system. Open the existing invoice instead.";
+  if (m.includes("credit_notes_no_key")) return "That credit note number is already in the system.";
+  if (m.includes("cheques_no_key")) return "This buyer's cheque with that number is already recorded.";
   if (m.includes("buyers_code_check")) return "Use 2 to 20 capital letters, numbers or dashes for the code.";
   if (m.includes("qty_check") || m.includes("order_lines_qty")) return "Every line needs a quantity above zero.";
   if (m.includes("violates foreign key") && m.includes("buyer")) return "This buyer has orders, so it can't be deleted. Mark it inactive instead.";
