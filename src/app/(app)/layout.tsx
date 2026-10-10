@@ -8,6 +8,7 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
   if (!me) redirect("/login");
 
   const items = [
+    { href: "/today", label: "Today" },
     { href: "/", label: "Orders" },
     ...(canEditOrders(me.role) ? [{ href: "/buyers", label: "Buyers" }, { href: "/factories", label: "Factories" }] : []),
     ...(me.role === "owner" || me.role === "accounts" ? [{ href: "/payments", label: "Payments" }] : []),
