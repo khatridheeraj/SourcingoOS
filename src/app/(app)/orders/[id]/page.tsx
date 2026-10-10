@@ -5,6 +5,8 @@ import { createClient } from "@/lib/supabase/server";
 import { OrderForm } from "../order-form";
 import { OrderHistory } from "./order-history";
 import { OrderProduction } from "./order-production";
+import { OrderQc, type QcCheck } from "./order-qc";
+import { loadTeam, personName } from "@/lib/data";
 import { formOptions } from "../options";
 
 const str = (v: unknown) => (v == null ? "" : String(v));
@@ -23,6 +25,18 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
   if (!o) notFound();
 
   const lines = [...(o.order_lines ?? [])].sort((a, b) => a.position - b.position);
+  const [{ data: qc }, team] = await Promise.all([
+    supabase
+      .from("qc_checks")
+      .select("id, kind, checked_on, result, pieces_checked, defects, notes, checked_by, cancelled_at, cancel_reason")
+      .eq("order_id", id)
+      .order("checked_on", { ascending: false })
+      .order("created_at", { ascending: false }),
+    loadTeam(),
+  ]);
+  const people = new Map(team.map((m) => [m.user_id, personName(m)]));
+  const checks: QcCheck[] = (qc ?? []).map((c) => ({ ...c, by: (c.checked_by && people.get(c.checked_by)) || "Someone" }));
+  const finalPassed = checks.find((c) => c.kind === "final" && !c.cancelled_at)?.result === "pass";
   const opts = await formOptions({ buyerId: o.buyer_id, factoryIds: lines.map((l) => l.factory_id).filter(Boolean) as string[] });
 
   return (
@@ -43,6 +57,7 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
         stageAt={o.stage_at}
         initial={{ stage: str(o.stage), revised_ship_date: str(o.revised_ship_date), delay_reason: str(o.delay_reason) }}
       />
+      <OrderQc orderId={o.id} open={o.status === "open"} today={todayIST()} checks={checks} finalPassed={finalPassed} />
       <OrderForm
         key={o.updated_at}
         initial={{

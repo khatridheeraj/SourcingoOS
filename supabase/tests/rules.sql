@@ -151,6 +151,51 @@ do $$ begin
   if (select count(*) from public.orders) <> 1 then raise exception 'a failed save left an order behind'; end if;
 end $$;
 
+-- Quality checks gate shipping: no final check, or a failed latest one, keeps the order open for staff.
+do $$ begin
+  update public.orders set status = 'shipped';
+  raise exception 'shipped without a final QC';
+exception when raise_exception then
+  if sqlerrm not like '%passed final QC%' then raise; end if;
+end $$;
+insert into public.qc_checks (order_id, kind, result, pieces_checked, defects) values (:'save_order', 'inline', 'pass', 50, 2);
+insert into public.qc_checks (order_id, kind, result, pieces_checked, defects, notes, checked_on)
+  values (:'save_order', 'final', 'fail', 80, 9, 'Loose threads, wrong wash care label', current_date - 1);
+do $$ begin
+  if public.final_qc_passed((select id from public.orders)) then raise exception 'a failed final QC counted as passed'; end if;
+  begin
+    insert into public.qc_checks (order_id, kind, result) select id, 'final', 'fail' from public.orders;
+    raise exception 'a failed check without notes was accepted';
+  exception when check_violation then null;
+  end;
+  begin
+    insert into public.qc_checks (order_id, kind, result, pieces_checked, defects) select id, 'final', 'pass', 10, 11 from public.orders;
+    raise exception 'more defects than pieces checked was accepted';
+  exception when check_violation then null;
+  end;
+  begin
+    update public.qc_checks set result = 'pass' where kind = 'final';
+    raise exception 'a saved QC result was changed';
+  exception when raise_exception then
+    if sqlerrm not like '%can''t be changed%' then raise; end if;
+  end;
+end $$;
+insert into public.qc_checks (order_id, kind, result, pieces_checked, defects) values (:'save_order', 'final', 'pass', 80, 1);
+do $$ begin
+  if not public.final_qc_passed((select id from public.orders)) then raise exception 'the passing re-check did not count'; end if;
+  -- Cancelling the passing check puts the order back to needing a final QC.
+  update public.qc_checks set cancelled_at = now(), cancel_reason = 'Entered on the wrong order' where kind = 'final' and result = 'pass';
+  if public.final_qc_passed((select id from public.orders)) then raise exception 'a cancelled check still counted'; end if;
+  begin
+    update public.qc_checks set cancelled_at = null where cancelled_at is not null;
+    raise exception 'a cancelled check was brought back';
+  exception when raise_exception then
+    if sqlerrm not like '%already cancelled%' then raise; end if;
+  end;
+  if (select count(*) from public.history where table_name = 'qc_checks') <> 4 then raise exception 'QC history not kept'; end if;
+end $$;
+insert into public.qc_checks (order_id, kind, result, pieces_checked, defects) values (:'save_order', 'final', 'pass', 80, 0);
+
 -- Editing keeps the lines it is given (same id), drops the ones left out, and adds new ones in order.
 select public.save_order(
   jsonb_build_object('id', :'save_order', 'buyer_id', '10000000-0000-0000-0000-000000000001', 'buyer_po', 'OZIA PO 001', 'status', 'shipped'),
@@ -296,5 +341,10 @@ do $$ begin
   if not exists (select 1 from public.invites where email = 'later@sourcingo.in' and closed_at is null and role = 'manager') then
     raise exception 'invite not reopened';
   end if;
+end $$;
+-- The owner can mark an order shipped without a final QC (for example a fabric-only order).
+do $$ begin
+  perform public.save_order('{"buyer_id":"10000000-0000-0000-0000-000000000001","buyer_po":"OWNER-SHIPPED","status":"shipped"}', '[{"style":"F-1","qty":5}]');
+  if (select status from public.orders where buyer_po = 'OWNER-SHIPPED') <> 'shipped' then raise exception 'owner could not ship'; end if;
 end $$;
 reset role;
