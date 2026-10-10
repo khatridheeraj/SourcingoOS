@@ -42,9 +42,13 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
   const canEdit = canEditOrders(me?.role);
   const people = new Map(team.map((m) => [m.user_id, personName(m)]));
   // Photos come from private storage through links that work for an hour.
-  const { data: photoRows } = qc?.length
-    ? await supabase.from("qc_photos").select("id, qc_id, path").in("qc_id", qc.map((c) => c.id)).is("removed_at", null).order("created_at")
-    : { data: [] };
+  const qcIds = (qc ?? []).map((c) => c.id);
+  const [{ data: photoRows }, { data: commentRows }] = qcIds.length
+    ? await Promise.all([
+        supabase.from("qc_photos").select("id, qc_id, path, kind, file_name").in("qc_id", qcIds).is("removed_at", null).order("created_at"),
+        supabase.from("qc_comments").select("id, qc_id, body, created_by, created_at").in("qc_id", qcIds).order("created_at"),
+      ])
+    : [{ data: [] }, { data: [] }];
   const stylePaths = lines.map((l) => l.photo_path).filter(Boolean) as string[];
   const allPaths = [...(photoRows ?? []).map((p) => p.path), ...stylePaths];
   const { data: signed } = allPaths.length
@@ -54,7 +58,11 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
   const checks: QcCheck[] = (qc ?? []).map((c) => ({
     ...c,
     by: (c.checked_by && people.get(c.checked_by)) || "Someone",
-    photos: (photoRows ?? []).filter((p) => p.qc_id === c.id && urlByPath.has(p.path)).map((p) => ({ id: p.id, url: urlByPath.get(p.path)! })),
+    photos: (photoRows ?? []).filter((p) => p.qc_id === c.id && p.kind === "photo" && urlByPath.has(p.path)).map((p) => ({ id: p.id, url: urlByPath.get(p.path)! })),
+    reports: (photoRows ?? []).filter((p) => p.qc_id === c.id && p.kind === "report" && urlByPath.has(p.path))
+      .map((p) => ({ id: p.id, url: urlByPath.get(p.path)!, name: p.file_name || "Report" })),
+    comments: (commentRows ?? []).filter((m) => m.qc_id === c.id)
+      .map((m) => ({ id: m.id, body: m.body, at: m.created_at, by: (m.created_by && people.get(m.created_by)) || "Someone" })),
   }));
   const finalPassed = checks.find((c) => SHIP_QC.includes(c.kind) && !c.cancelled_at)?.result === "pass";
   const opts = await formOptions({ buyerId: o.buyer_id, factoryIds: lines.map((l) => l.factory_id).filter(Boolean) as string[] });

@@ -264,13 +264,52 @@ do $$ begin
   if public.is_member_folder('not-a-company') then raise exception 'a non-company folder was allowed'; end if;
   if not public.is_member_folder((select id::text from public.companies where name = 'Sourcingo')) then raise exception 'own company folder refused'; end if;
 end $$;
+-- A check is recorded with its proof in one step: no photo, no check. Reports ride along.
+do $$
+declare v_co text := (select id::text from public.companies where name = 'Sourcingo'); v_id uuid := gen_random_uuid(); v_order uuid := (select id from public.orders);
+begin
+  begin
+    perform public.record_qc(v_order, jsonb_build_object('kind', 'greige', 'result', 'pass'),
+      jsonb_build_array(jsonb_build_object('path', v_co || '/o/qc/x/r.pdf', 'kind', 'report', 'file_name', 'Greige report.pdf')));
+    raise exception 'a check without a photo was accepted';
+  exception when raise_exception then
+    if sqlerrm not like 'Add at least one photo%' then raise; end if;
+  end;
+  perform public.record_qc(v_order, jsonb_build_object('id', v_id, 'kind', 'greige', 'result', 'pass', 'pieces_checked', '20'),
+    jsonb_build_array(jsonb_build_object('path', v_co || '/' || v_order || '/qc/' || v_id || '/1.jpg', 'kind', 'photo'),
+                      jsonb_build_object('path', v_co || '/' || v_order || '/qc/' || v_id || '/2.pdf', 'kind', 'report', 'file_name', 'Greige report.pdf')));
+  if (select count(*) from public.qc_photos where qc_id = v_id) <> 2 then raise exception 'check files not saved'; end if;
+  if (select file_name from public.qc_photos where qc_id = v_id and kind = 'report') <> 'Greige report.pdf' then raise exception 'report name not kept'; end if;
+  if not public.final_qc_passed(v_order) then raise exception 'a greige check changed the final QC result'; end if;
+end $$;
 select pg_temp.as_user('00000000-0000-0000-0000-00000000000b');
+-- Others can't change QC but can comment on it.
+insert into public.qc_comments (qc_id, body) select id, 'Please share the shade band too' from public.qc_checks where kind = 'greige';
+do $$ begin
+  if (select count(*) from public.qc_comments) <> 1 then raise exception 'comment not saved'; end if;
+  begin
+    update public.qc_comments set body = 'changed';
+    raise exception 'a comment was changed';
+  exception when insufficient_privilege then null;
+  end;
+  begin
+    insert into public.qc_comments (qc_id, body, created_by) select id, 'as someone else', '00000000-0000-0000-0000-00000000000a' from public.qc_checks limit 1;
+    raise exception 'a comment was posted as someone else';
+  exception when insufficient_privilege then null;
+  end;
+  begin
+    perform public.record_qc((select id from public.orders), '{"kind":"final","result":"pass"}', '[{"path":"x","kind":"photo"}]');
+    raise exception 'a merchandiser recorded QC';
+  exception when raise_exception then
+    if sqlerrm not like 'Only the Quality team%' then raise; end if;
+  end;
+end $$;
 do $$ begin
   update public.qc_photos set removed_at = null;
-  if exists (select 1 from public.qc_photos where removed_at is null) then raise exception 'a merchandiser changed a QC photo'; end if;
+  if (select count(*) from public.qc_photos where removed_at is not null) <> 1 then raise exception 'a merchandiser changed a QC photo'; end if;
   update public.qc_checks set cancelled_at = now(), cancel_reason = 'x';
   if exists (select 1 from public.qc_checks where cancel_reason = 'x') then raise exception 'a merchandiser cancelled QC'; end if;
-  if (select count(*) from public.qc_checks) <> 5 then raise exception 'a merchandiser should still see QC'; end if;
+  if (select count(*) from public.qc_checks) <> 6 then raise exception 'a merchandiser should still see QC'; end if;
 end $$;
 
 -- Editing keeps the lines it is given (same id), drops the ones left out, and adds new ones in order.

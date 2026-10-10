@@ -31,8 +31,14 @@ export const dueDate = (o: { ship_date: string | null; revised_ship_date?: strin
 // Whole days between two YYYY-MM-DD dates (b minus a).
 export const daysBetween = (a: string, b: string) => Math.round((Date.parse(b) - Date.parse(a)) / 86_400_000);
 
-// QC stages in the order they happen. A re-check follows a failed final and counts as the final for shipping.
+// QC stages in the order they happen: sampling and approvals, then production checks.
+// A re-check follows a failed final and counts as the final for shipping.
 export const QC_KINDS = [
+  { key: "greige", label: "Greige" },
+  { key: "fit_sample", label: "Fit sample" },
+  { key: "strike_off", label: "Strike off" },
+  { key: "pp_sample", label: "PP sample" },
+  { key: "size_set", label: "Size set" },
   { key: "inline", label: "Inline" },
   { key: "midline", label: "Mid-line" },
   { key: "final", label: "Final" },

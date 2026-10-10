@@ -27,3 +27,27 @@ export async function uploadPhotos(folder: string, files: File[]): Promise<strin
   }
   return paths;
 }
+
+const REPORT_TYPES: Record<string, string> = {
+  pdf: "application/pdf", csv: "text/csv", xls: "application/vnd.ms-excel", doc: "application/msword",
+  xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+};
+export const REPORT_ACCEPT = Object.keys(REPORT_TYPES).map((e) => `.${e}`).join(",");
+
+// Uploads report files (PDF, Excel, Word, CSV) as they are, and returns their storage paths with the original names.
+export async function uploadReports(folder: string, files: File[]): Promise<{ path: string; file_name: string }[]> {
+  const supabase = createClient();
+  const out: { path: string; file_name: string }[] = [];
+  for (const file of files) {
+    const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
+    const type = REPORT_TYPES[ext];
+    if (!type) throw new Error(`${file.name} isn't a PDF, Excel, Word or CSV file.`);
+    if (file.size > 10 * 1024 * 1024) throw new Error(`${file.name} is over 10 MB.`);
+    const path = `${folder}/${crypto.randomUUID()}.${ext}`;
+    const { error } = await supabase.storage.from(PHOTO_BUCKET).upload(path, file, { contentType: type });
+    if (error) throw new Error(`Couldn't upload ${file.name}: ${error.message}`);
+    out.push({ path, file_name: file.name });
+  }
+  return out;
+}
