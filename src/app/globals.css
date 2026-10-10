@@ -146,6 +146,15 @@ h1, h2, h3 {
   .tile b { display: block; font-family: var(--font-display); font-size: 26px; line-height: 1.1; margin-top: 6px; font-variant-numeric: tabular-nums; }
   .tile.alarm b { color: var(--bad); }
 
+  .steps { display: flex; gap: 4px; flex-wrap: wrap; }
+  .steps button {
+    border: 1px solid var(--line); background: var(--surface); border-radius: 8px; padding: 7px 12px;
+    font-size: 13px; font-weight: 600; color: var(--muted); cursor: pointer;
+  }
+  .steps button.done { background: var(--info-soft); border-color: transparent; color: var(--info); }
+  .steps button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .steps button:disabled { cursor: not-allowed; opacity: 0.6; }
+
   .filters { display: flex; gap: 6px; flex-wrap: wrap; }
   .pill {
     border: 1px solid var(--line); background: var(--surface); border-radius: 8px; padding: 5px 11px;

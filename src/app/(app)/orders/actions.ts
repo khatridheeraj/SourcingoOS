@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { getMe } from "@/lib/auth";
 import { friendly } from "@/lib/errors";
+import { STAGES } from "@/lib/format";
 import { createClient } from "@/lib/supabase/server";
 
 export type OrderInput = {
@@ -59,4 +60,32 @@ export async function saveOrder(order: OrderInput, lines: LineInput[]): Promise<
   if (error) return { error: friendly(error) };
   revalidatePath("/");
   return { id: data as string };
+}
+
+export type ProgressInput = { stage: string; revised_ship_date: string; delay_reason: string };
+
+// Updates only the production details, so it never touches the styles or prices.
+export async function saveProgress(id: string, p: ProgressInput): Promise<{ error?: string }> {
+  const me = await getMe();
+  if (!me?.role) return { error: "Your account is not switched on yet." };
+  if (p.stage && !STAGES.some((s) => s.key === p.stage)) return { error: "Pick a stage from the list." };
+  if (p.revised_ship_date && !/^\d{4}-\d{2}-\d{2}$/.test(p.revised_ship_date)) return { error: "Enter the new ship date as a date." };
+  if (p.revised_ship_date && !p.delay_reason.trim()) return { error: "Say why the ship date moved, so everyone knows." };
+
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("orders")
+    .update({
+      stage: p.stage || null,
+      revised_ship_date: p.revised_ship_date || null,
+      delay_reason: p.delay_reason.trim() || null,
+    })
+    .eq("id", id)
+    .eq("status", "open")
+    .select("id");
+  if (error) return { error: friendly(error) };
+  if (!data?.length) return { error: "Only open orders can be updated here. Reload the page." };
+  revalidatePath("/");
+  revalidatePath(`/orders/${id}`);
+  return {};
 }

@@ -1,9 +1,10 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { day } from "@/lib/format";
+import { day, todayIST } from "@/lib/format";
 import { createClient } from "@/lib/supabase/server";
 import { OrderForm } from "../order-form";
 import { OrderHistory } from "./order-history";
+import { OrderProduction } from "./order-production";
 import { formOptions } from "../options";
 
 const str = (v: unknown) => (v == null ? "" : String(v));
@@ -15,7 +16,7 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
   const supabase = await createClient();
   const { data: o } = await supabase
     .from("orders")
-    .select("id, order_no, buyer_id, buyer_po, po_date, ship_date, status, merchandiser_id, notes, created_at, updated_at, order_lines(id, style, description, colour, qty, buyer_rate, factory_id, factory_rate, position)")
+    .select("id, order_no, buyer_id, buyer_po, po_date, ship_date, status, merchandiser_id, notes, stage, stage_at, revised_ship_date, delay_reason, created_at, updated_at, order_lines(id, style, description, colour, qty, buyer_rate, factory_id, factory_rate, position)")
     .eq("id", id)
     .is("order_lines.removed_at", null)
     .maybeSingle();
@@ -34,6 +35,14 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
         </div>
       </div>
       {saved && <div className="okbox">Order saved as {o.order_no}.</div>}
+      <OrderProduction
+        id={o.id}
+        open={o.status === "open"}
+        shipDate={str(o.ship_date)}
+        today={todayIST()}
+        stageAt={o.stage_at}
+        initial={{ stage: str(o.stage), revised_ship_date: str(o.revised_ship_date), delay_reason: str(o.delay_reason) }}
+      />
       <OrderForm
         key={o.updated_at}
         initial={{
