@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { canEditOrders, canRecordQc, getMe } from "@/lib/auth";
+import { canEditOrders, canEnterDone, canRecordQc, getMe } from "@/lib/auth";
 import { day, qty, SHIP_QC, TNA_STEPS, todayIST } from "@/lib/format";
 import { createClient } from "@/lib/supabase/server";
 import { OrderForm } from "../order-form";
@@ -37,8 +37,8 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
       .order("created_at", { ascending: false }),
     loadTeam(),
     getMe(),
-    supabase.from("line_stages").select("line_id, stage, planned_on, done_on, not_needed").eq("order_id", id),
-    supabase.from("factory_pos").select("factory_id, plan_requested_on, released_at").eq("order_id", id),
+    supabase.from("line_stages").select("line_id, stage, planned_on, done_on, not_needed, factory_on").eq("order_id", id),
+    supabase.from("factory_pos").select("factory_id, plan_requested_on, plan_requested_at, buffer_days, factory_sent_at, released_at").eq("order_id", id),
   ]);
   const canEdit = canEditOrders(me?.role);
   const people = new Map(team.map((m) => [m.user_id, personName(m)]));
@@ -68,6 +68,8 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
   const finalPassed = checks.find((c) => SHIP_QC.includes(c.kind) && !c.cancelled_at)?.result === "pass";
   const opts = await formOptions({ buyerId: o.buyer_id, factoryIds: lines.map((l) => l.factory_id).filter(Boolean) as string[] });
 
+  const due = o.revised_ship_date || o.ship_date;
+  const addDays = (d: string, n: number) => new Date(Date.parse(d) + n * 86_400_000).toISOString().slice(0, 10);
   // Styles grouped by factory, each with its PO's plan request and release.
   const groups: FactoryGroup[] = [];
   for (const l of lines) {
@@ -78,6 +80,10 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
         factoryId: l.factory_id ?? null,
         factoryName: l.factory_id ? opts.factories.find((f) => f.id === l.factory_id)?.label ?? "Factory" : "No factory yet",
         planRequestedOn: str(po?.plan_requested_on),
+        planRequestedAt: str(po?.plan_requested_at),
+        bufferDays: po?.buffer_days ?? null,
+        target: po?.buffer_days != null && due ? addDays(due, -po.buffer_days) : "",
+        factorySentAt: str(po?.factory_sent_at),
         releasedAt: str(po?.released_at),
         lines: [],
       };
@@ -118,8 +124,12 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
         companyId={o.company_id}
         open={o.status === "open"}
         canEdit={canEdit}
+        canDone={canEnterDone(me?.role)}
         today={todayIST()}
+        now={new Date().toISOString()}
+        dueDate={due ?? ""}
         groups={groups}
+        factoryDates={Object.fromEntries((lineStages ?? []).filter((r) => r.factory_on).map((r) => [`${r.line_id}:${r.stage}`, String(r.factory_on)]))}
         initial={Object.fromEntries((lineStages ?? []).map((r) => [`${r.line_id}:${r.stage}`, { planned_on: str(r.planned_on), done_on: str(r.done_on), not_needed: !!r.not_needed }]))}
         qc={stepQc}
       />

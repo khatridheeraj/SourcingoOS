@@ -1,18 +1,22 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { getMe, ROLES } from "@/lib/auth";
+import { getMe } from "@/lib/auth";
+import { STAFF_ROLES } from "@/lib/auth-roles";
 import { friendly } from "@/lib/errors";
 import { createClient } from "@/lib/supabase/server";
 
-const validRole = (r: string) => ROLES.some((x) => x.value === r);
+const validRole = (r: string) => STAFF_ROLES.some((x) => x.value === r) || r === "factory";
 
-export async function addPerson(email: string, role: string): Promise<{ error?: string; ok?: string }> {
+export async function addPerson(email: string, role: string, factoryId = ""): Promise<{ error?: string; ok?: string }> {
   const me = await getMe();
   if (me?.role !== "owner") return { error: "Only the owner can add people." };
   if (!validRole(role)) return { error: "Pick a role." };
   const supabase = await createClient();
-  const { data, error } = await supabase.rpc("add_member", { p_email: email, p_role: role });
+  if (role === "factory" && !factoryId) return { error: "Pick the factory this login is for." };
+  const { data, error } = role === "factory"
+    ? await supabase.rpc("add_factory_member", { p_email: email, p_factory: factoryId })
+    : await supabase.rpc("add_member", { p_email: email, p_role: role });
   if (error) return { error: friendly(error) };
   revalidatePath("/team");
   return {

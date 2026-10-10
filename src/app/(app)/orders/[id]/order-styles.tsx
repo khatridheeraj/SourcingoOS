@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { day, daysBetween, TNA_STEPS } from "@/lib/format";
+import { day, daysBetween, DEFAULT_BUFFER_DAYS, planDueAt, PLAN_HOURS, TNA_STEPS } from "@/lib/format";
 import { uploadPhotos } from "@/lib/photos";
 import { releaseFactoryPo, requestPlan, saveLineStages, setStylePhoto, type LineStageInput } from "../actions";
 
@@ -11,16 +11,23 @@ export type FactoryGroup = {
   factoryId: string | null;
   factoryName: string;
   planRequestedOn: string;
+  planRequestedAt: string;
+  bufferDays: number | null;
+  target: string;
+  factorySentAt: string;
   releasedAt: string;
   lines: StyleRow[];
 };
 export type StepQc = { result: string; checkedOn: string; kind: string };
 type Cell = { planned_on: string; done_on: string; not_needed: boolean };
+type FactoryDates = Record<string, string>;
 type Dates = Record<string, Cell>;
 
 const blank: Cell = { planned_on: "", done_on: "", not_needed: false };
 const key = (lineId: string, stage: string) => `${lineId}:${stage}`;
 const plural = (n: number) => `${n} ${n === 1 ? "day" : "days"}`;
+const at = new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit", timeZone: "Asia/Kolkata" });
+const addDays = (d: string, n: number) => new Date(Date.parse(d) + n * 86_400_000).toISOString().slice(0, 10);
 const same = (a: Cell, b: Cell) => a.planned_on === b.planned_on && a.done_on === b.done_on && a.not_needed === b.not_needed;
 
 // Where a step stands against its TNA date.
@@ -38,15 +45,19 @@ function verdict(c: Cell, today: string): { text: string; cls: string } | null {
 
 // The full TNA of every style, grouped by factory. A factory's plan is asked for and entered first;
 // its PO is released only once nothing is missing, and actual dates are entered after that.
-export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, today, groups, initial, qc }: {
+export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDone, today, now, dueDate, groups, initial, factoryDates, qc }: {
   orderId: string;
   orderNo: string;
   companyId: string;
   open: boolean;
   canEdit: boolean;
+  canDone: boolean;
   today: string;
+  now: string;
+  dueDate: string;
   groups: FactoryGroup[];
   initial: Dates;
+  factoryDates: FactoryDates;
   qc: Record<string, StepQc>;
 }) {
   const router = useRouter();
@@ -54,8 +65,11 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, today,
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState("");
+  const [buffers, setBuffers] = useState<Record<string, string>>(
+    Object.fromEntries(groups.filter((g) => g.factoryId).map((g) => [g.factoryId!, String(g.bufferDays ?? DEFAULT_BUFFER_DAYS)])));
   const [pending, start] = useTransition();
   const editable = open && canEdit;
+  const doneEditable = open && canDone;
   const lines = groups.flatMap((g) => g.lines);
 
   const get = (lineId: string, stage: string) => dates[key(lineId, stage)] ?? blank;
@@ -73,11 +87,15 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, today,
 
   // What still stops a factory's PO from being released, by style.
   const missing = (g: FactoryGroup) => g.lines.map((l) => {
+    const open = TNA_STEPS.filter((s) => !get(l.id, s.key).not_needed);
+    const noFactory = open.filter((s) => !factoryDates[key(l.id, s.key)]).map((s) => s.label);
+    const noPlan = open.filter((s) => !get(l.id, s.key).planned_on).map((s) => s.label);
     const gaps = [
       ...(l.hasRate ? [] : ["factory rate"]),
-      ...TNA_STEPS.filter((s) => { const c = get(l.id, s.key); return !c.not_needed && !c.planned_on; }).map((s) => s.label),
+      ...(noFactory.length ? [`factory dates (${noFactory.length === open.length ? "all steps" : noFactory.join(", ")})`] : []),
+      ...(noPlan.length ? [`plan (${noPlan.length === open.length ? "all steps" : noPlan.join(", ")})`] : []),
     ];
-    return gaps.length ? `${l.style}: ${gaps.join(", ")}` : "";
+    return gaps.length ? `${l.style}: ${gaps.join("; ")}` : "";
   }).filter(Boolean);
 
   const late = lines.filter((l) => TNA_STEPS.some((s) => verdict(get(l.id, s.key), today)?.cls === "bad")).length;
@@ -111,10 +129,10 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, today,
 
   async function copyRequest(g: FactoryGroup) {
     const text = [
-      `Please share your TNA plan for order ${orderNo} before we release the PO.`,
+      `Please enter your TNA for order ${orderNo} in your Sourcingo factory panel${g.planRequestedAt ? ` by ${at.format(planDueAt(g.planRequestedAt))}` : ` within ${PLAN_HOURS} hours`}. We release the PO only after that.`,
       `Styles: ${g.lines.map((l) => `${l.style}${l.colour ? ` (${l.colour})` : ""}, ${l.qty} pcs`).join("; ")}.`,
-      `Give a planned date for each step: ${TNA_STEPS.map((s) => s.label).join(", ")}. Say if a step isn't needed for a style.`,
-    ].join("\n");
+      g.target ? `Every date must be on or before ${day(g.target)}.` : "",
+    ].filter(Boolean).join("\n");
     try {
       await navigator.clipboard.writeText(text);
       setNotice("Request message copied. Paste it to the factory.");
@@ -149,18 +167,25 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, today,
         {late > 0 && <span className="chip bad">{late} {late === 1 ? "style" : "styles"} behind plan</span>}
       </div>
       <p className="muted mb-3 text-[13px]">
-        Ask each factory for its plan and enter a plan date for every step, or mark it not needed. Release the factory&apos;s PO once nothing is missing.
-        Done dates open after release. Quality&apos;s latest result shows under each step it checks.
+        The factory enters its own date for every step in its factory panel; you enter the plan date, or mark a step not needed.
+        The PO can be released once both are in. After release the orders team and Quality enter done dates. Quality&apos;s latest result shows under each step it checks.
       </p>
 
       {groups.map((g) => {
         const gaps = missing(g);
         const released = !!g.releasedAt;
+        const dueAt = g.planRequestedAt ? planDueAt(g.planRequestedAt) : null;
+        const critical = !released && !g.factorySentAt && !!dueAt && dueAt.getTime() < Date.parse(now);
         const status = !g.factoryId ? { text: "No factory chosen", cls: "warn" }
           : released ? { text: `PO released ${day(g.releasedAt.slice(0, 10))}`, cls: "ok" }
           : !gaps.length ? { text: "Plan complete, ready to release", cls: "info" }
-          : g.planRequestedOn ? { text: `Plan requested ${day(g.planRequestedOn)}`, cls: "warn" }
+          : critical ? { text: `Critical: no TNA from the factory, due ${at.format(dueAt!)}`, cls: "bad" }
+          : g.factorySentAt ? { text: `Factory sent its TNA ${day(g.factorySentAt.slice(0, 10))}`, cls: "warn" }
+          : dueAt ? { text: `Waiting for the factory's TNA, due ${at.format(dueAt)}`, cls: "warn" }
           : { text: "Plan not requested", cls: "bad" };
+        const buffer = g.factoryId ? buffers[g.factoryId] ?? "" : "";
+        const bufferOk = /^\d{1,2}$/.test(buffer) && Number(buffer) <= 90;
+        const target = released || !g.factoryId ? g.target : dueDate && bufferOk ? addDays(dueDate, -Number(buffer)) : g.target;
         return (
           <div key={g.factoryId ?? "none"} className="mb-5" data-factory={g.factoryName}>
             <div className="row mb-2">
@@ -169,9 +194,15 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, today,
               {editable && g.factoryId && !released && (
                 <>
                   <button type="button" className="btn" disabled={pending} onClick={() => copyRequest(g)}>Copy plan request</button>
-                  <button type="button" className="btn" disabled={pending}
-                    onClick={() => run(`req:${g.factoryId}`, () => requestPlan(orderId, g.factoryId!), `Marked the plan as requested from ${g.factoryName}.`)}>
-                    {busy === `req:${g.factoryId}` ? "Saving…" : g.planRequestedOn ? "Requested again today" : "Mark plan requested"}
+                  <label className="row gap-1.5 text-[13px]">Buffer
+                    <input className="inp w-16" inputMode="numeric" value={buffer} aria-label={`Buffer days for ${g.factoryName}`}
+                      onChange={(e) => setBuffers((b) => ({ ...b, [g.factoryId!]: e.target.value.replace(/\D/g, "") }))} />
+                    days
+                  </label>
+                  <button type="button" className="btn" disabled={pending || !bufferOk}
+                    onClick={() => run(`req:${g.factoryId}`, () => requestPlan(orderId, g.factoryId!, Number(buffer)),
+                      `Asked ${g.factoryName} for its TNA. It has ${PLAN_HOURS} hours to send it in its factory panel.`)}>
+                    {busy === `req:${g.factoryId}` ? "Saving…" : g.planRequestedAt || g.planRequestedOn ? "Ask again (restart 24 hours)" : "Ask factory for plan"}
                   </button>
                   <button type="button" className="btn primary" disabled={pending || gaps.length > 0 || unsaved(g)}
                     title={unsaved(g) ? "Save the dates first" : gaps.length ? "The plan is not complete yet" : undefined}
@@ -182,6 +213,17 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, today,
               )}
             </div>
             {!g.factoryId && <p className="muted mb-2 text-[13px]">Choose a factory for these styles in the order below before planning them.</p>}
+            {g.factoryId && target && (
+              <p className="muted mb-2 text-[13px]">
+                Target date <b className="text-foreground">{day(target)}</b>: every factory and plan date must be on or before it
+                {dueDate && ` (PO delivery ${day(dueDate)} less ${released || !bufferOk ? g.bufferDays ?? 0 : buffer} days buffer)`}.
+              </p>
+            )}
+            {critical && (
+              <p className="errbox mb-2" role="status">
+                {g.factoryName} hasn&apos;t sent its TNA within {PLAN_HOURS} hours. Chase them now, or move these styles to another factory in the order below.
+              </p>
+            )}
             {g.factoryId && !released && gaps.length > 0 && (
               <p className="mb-2 text-[13px] text-warn"><b>Missing before release:</b> {gaps.join("; ")}</p>
             )}
@@ -237,22 +279,27 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, today,
                           <td key={s.key} className={`tna-cell ${v?.cls ?? ""} ${c.not_needed ? "opacity-60" : ""}`}>
                             {!c.not_needed && (
                               <>
+                                <div className="text-[11.5px]"><span className="muted">Factory </span>
+                                  <b data-testid={`${l.style} ${s.label} factory`}>{factoryDates[key(l.id, s.key)] ? day(factoryDates[key(l.id, s.key)]) : "not given"}</b>
+                                </div>
                                 <label><span>Plan</span>
-                                  <input className="inp" type="date" value={c.planned_on} disabled={!editable} aria-label={`${l.style} ${s.label} plan`}
+                                  <input className="inp" type="date" value={c.planned_on} max={target || undefined} disabled={!editable} aria-label={`${l.style} ${s.label} plan`}
                                     onChange={(e) => set(l.id, s.key, { planned_on: e.target.value })} />
                                 </label>
                                 <label><span>Done</span>
-                                  <input className="inp" type="date" value={c.done_on} max={today} disabled={!editable || !released}
+                                  <input className="inp" type="date" value={c.done_on} max={today} disabled={!doneEditable || !released}
                                     title={!released ? "Release the factory PO first" : undefined} aria-label={`${l.style} ${s.label} done`}
                                     onChange={(e) => set(l.id, s.key, { done_on: e.target.value })} />
                                 </label>
                               </>
                             )}
-                            <label className="nn">
-                              <input type="checkbox" checked={c.not_needed} disabled={!editable || !!c.done_on} aria-label={`${l.style} ${s.label} not needed`}
-                                onChange={(e) => set(l.id, s.key, { not_needed: e.target.checked })} />
-                              Not needed
-                            </label>
+                            {s.required ? <span className="block text-[11px] text-muted">Required</span> : (
+                              <label className="nn">
+                                <input type="checkbox" checked={c.not_needed} disabled={!editable || !!c.done_on} aria-label={`${l.style} ${s.label} not needed`}
+                                  onChange={(e) => set(l.id, s.key, { not_needed: e.target.checked })} />
+                                Not needed
+                              </label>
+                            )}
                             {v && <small>{v.text}</small>}
                           </td>
                         );
@@ -271,7 +318,7 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, today,
         );
       })}
 
-      {editable && (
+      {doneEditable && (
         <div className="row mt-1">
           <button type="button" className="btn primary" disabled={pending || !changed.length}
             onClick={() => run("save", () => saveLineStages(orderId, changed), "Saved")}>

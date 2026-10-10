@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { canEditOrders, canRecordQc, getMe } from "@/lib/auth";
+import { canEditOrders, canEnterDone, canRecordQc, getMe } from "@/lib/auth";
 import { friendly } from "@/lib/errors";
 import { QC_KINDS, TNA_STEPS, todayIST } from "@/lib/format";
 import { createClient } from "@/lib/supabase/server";
@@ -92,11 +92,12 @@ export async function saveProgress(id: string, p: ProgressInput): Promise<{ erro
 
 export type LineStageInput = { line_id: string; stage: string; planned_on: string; done_on: string; not_needed: boolean };
 
-// Saves the planned (TNA) and actual dates of an open order's styles. The order's stage follows on its own.
+// Saves the planned (TNA) and actual dates of an open order's styles; Quality saves done dates only.
+// The order's stage follows on its own.
 export async function saveLineStages(orderId: string, rows: LineStageInput[]): Promise<{ error?: string }> {
   const me = await getMe();
   if (!me?.role) return { error: "Your account is not switched on yet." };
-  if (!canEditOrders(me.role)) return { error: "Only the orders team can change orders." };
+  if (!canEnterDone(me.role)) return { error: "Only the orders team and Quality can change production." };
   if (!rows.length) return {};
   const isDate = (d: string) => !d || /^\d{4}-\d{2}-\d{2}$/.test(d);
   if (rows.some((r) => !TNA_STEPS.some((s) => s.key === r.stage) || !isDate(r.planned_on) || !isDate(r.done_on))) return { error: "Enter the dates as dates." };
@@ -111,18 +112,17 @@ export async function saveLineStages(orderId: string, rows: LineStageInput[]): P
   return {};
 }
 
-// Notes that the factory has been asked for its TNA plan (today), before its PO is released.
-export async function requestPlan(orderId: string, factoryId: string): Promise<{ error?: string }> {
+// Asks the factory for its TNA plan, with the buffer to keep before the PO's delivery date.
+// The factory then has 24 hours to send its dates in its panel. Nothing is sent outside the app.
+export async function requestPlan(orderId: string, factoryId: string, bufferDays: number): Promise<{ error?: string }> {
   const me = await getMe();
   if (!me?.role) return { error: "Your account is not switched on yet." };
   if (!canEditOrders(me.role)) return { error: "Only the orders team can change orders." };
+  if (!Number.isInteger(bufferDays) || bufferDays < 0 || bufferDays > 90) return { error: "Keep a buffer of 0 to 90 days." };
   const supabase = await createClient();
-  const today = todayIST();
-  const { data: found } = await supabase.from("factory_pos").select("id").eq("order_id", orderId).eq("factory_id", factoryId).maybeSingle();
-  const { error } = found
-    ? await supabase.from("factory_pos").update({ plan_requested_on: today }).eq("id", found.id)
-    : await supabase.from("factory_pos").insert({ order_id: orderId, factory_id: factoryId, plan_requested_on: today });
+  const { error } = await supabase.rpc("request_factory_plan", { p_order: orderId, p_factory: factoryId, p_buffer_days: bufferDays });
   if (error) return { error: friendly(error) };
+  revalidatePath("/today");
   revalidatePath(`/orders/${orderId}`);
   return {};
 }
