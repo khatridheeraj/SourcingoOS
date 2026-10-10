@@ -49,6 +49,9 @@ export const qcKindLabel = (k: string) => QC_KINDS.find((x) => x.key === k)?.lab
 
 // TNA steps every style is planned against: samples and approvals, production, then inspection and ex-factory.
 // `qc` names the QC check types whose result is shown against the step.
+// A factory is expected to send its TNA plan within this many days of being asked.
+export const PLAN_DUE_DAYS = 3;
+
 export const TNA_STEPS: { key: string; label: string; qc?: string[] }[] = [
   { key: "greige", label: "Greige", qc: ["greige"] },
   { key: "fit_sample", label: "Fit sample", qc: ["fit_sample"] },
