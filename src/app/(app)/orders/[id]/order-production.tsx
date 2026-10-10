@@ -6,9 +6,10 @@ import { day, daysBetween, STAGES } from "@/lib/format";
 import { saveProgress, type ProgressInput } from "../actions";
 
 // Where the order is on the floor, and its new ship date if it slipped.
-export function OrderProduction({ id, open, shipDate, today, stageAt, initial }: {
+export function OrderProduction({ id, open, canEdit, shipDate, today, stageAt, initial }: {
   id: string;
   open: boolean;
+  canEdit: boolean;
   shipDate: string;
   today: string;
   stageAt: string | null;
@@ -28,6 +29,7 @@ export function OrderProduction({ id, open, shipDate, today, stageAt, initial }:
   const due = p.revised_ship_date || shipDate;
   const lateBy = open && due && due < today ? daysBetween(due, today) : 0;
   const movedBy = shipDate && p.revised_ship_date ? daysBetween(shipDate, p.revised_ship_date) : 0;
+  const locked = !open || !canEdit;
   const dirty = JSON.stringify(p) !== JSON.stringify(initial);
 
   function submit(e: React.FormEvent) {
@@ -54,10 +56,10 @@ export function OrderProduction({ id, open, shipDate, today, stageAt, initial }:
       <div className="field">
         <span>Stage{stageAt && p.stage === initial.stage && <> · since {day(stageAt.slice(0, 10))}</>}</span>
         <div className="steps" role="group" aria-label="Stage">
-          <button type="button" aria-pressed={!p.stage} disabled={!open} onClick={() => change("stage", "")}>Not started</button>
+          <button type="button" aria-pressed={!p.stage} disabled={locked} onClick={() => change("stage", "")}>Not started</button>
           {STAGES.map((s, i) => (
             <button key={s.key} type="button" className={i < at ? "done" : undefined} aria-pressed={p.stage === s.key}
-              disabled={!open} onClick={() => change("stage", s.key)}>
+              disabled={locked} onClick={() => change("stage", s.key)}>
               {s.label}
             </button>
           ))}
@@ -67,18 +69,18 @@ export function OrderProduction({ id, open, shipDate, today, stageAt, initial }:
       <div className="fgrid mt-3">
         <label className="field">
           <span>New ship date</span>
-          <input className="inp" type="date" value={p.revised_ship_date} disabled={!open}
+          <input className="inp" type="date" value={p.revised_ship_date} disabled={locked}
             onChange={(e) => change("revised_ship_date", e.target.value)} />
           <small>{shipDate ? `Buyer's date: ${day(shipDate)}. ` : ""}Leave blank if it hasn&apos;t moved.</small>
         </label>
         <label className="field">
           <span>Reason for delay{p.revised_ship_date && <i> *</i>}</span>
-          <input className="inp" value={p.delay_reason} disabled={!open} placeholder="e.g. Fabric came late from mill"
+          <input className="inp" value={p.delay_reason} disabled={locked} placeholder="e.g. Fabric came late from mill"
             onChange={(e) => change("delay_reason", e.target.value)} />
         </label>
       </div>
 
-      {open && (
+      {!locked && (
         <div className="row mt-3">
           <button className="btn primary" disabled={pending || !dirty}>{pending ? "Saving…" : "Save production"}</button>
           {error && <span className="text-[13px] font-semibold text-bad" role="alert">{error}</span>}

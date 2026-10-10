@@ -1,7 +1,8 @@
 // Turns database errors into words the team understands.
 export function friendly(error: { message: string; code?: string } | null | undefined): string {
   if (!error) return "";
-  const m = error.message;
+  const m = error.message ?? "";
+  if (!m && !error.code) return "Something went wrong. Try again.";
   if (m.includes("orders_buyer_po_key")) return "This buyer PO is already in the system. Open the existing order instead.";
   if (m.includes("order_lines_style_key")) return "The same style and colour is on this order twice. Combine them into one line.";
   if (m.includes("buyers_code_key")) return "Another buyer already has this code.";

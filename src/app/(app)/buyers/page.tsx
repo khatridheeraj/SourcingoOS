@@ -1,11 +1,13 @@
 import { NO_COMPANY } from "@/lib/names";
-import { getMe } from "@/lib/auth";
+import { redirect } from "next/navigation";
+import { canEditOrders, getMe } from "@/lib/auth";
 import { loadBuyers } from "@/lib/data";
 import { createClient } from "@/lib/supabase/server";
 import { BuyerList } from "./buyer-list";
 
 export default async function BuyersPage() {
   const me = await getMe();
+  if (!canEditOrders(me?.role)) redirect("/");
   const supabase = await createClient();
   const [buyers, { data: open }] = await Promise.all([loadBuyers(), supabase.from("orders").select("buyer_id").eq("company_id", me?.companyId ?? NO_COMPANY).eq("status", "open")]);
   const openOrders: Record<string, number> = {};
