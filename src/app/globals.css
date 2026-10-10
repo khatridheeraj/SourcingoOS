@@ -181,6 +181,7 @@ h1, h2, h3 {
   .tna-cell label span { font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
   .tna-cell .inp { padding: 4px 6px; font-size: 12.5px; }
   .tna-cell small { font-size: 11.5px; font-weight: 600; }
+  .tna-cell label.nn { flex-direction: row; align-items: center; gap: 6px; font-size: 11.5px; color: var(--muted); }
   .tna-cell.ok { background: var(--ok-soft); }
   .tna-cell.ok small { color: var(--ok); }
   .tna-cell.warn small { color: var(--warn); }

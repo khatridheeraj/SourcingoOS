@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { canEditOrders, canRecordQc, getMe } from "@/lib/auth";
 import { friendly } from "@/lib/errors";
-import { QC_KINDS, STAGES, todayIST } from "@/lib/format";
+import { QC_KINDS, TNA_STEPS, todayIST } from "@/lib/format";
 import { createClient } from "@/lib/supabase/server";
 
 export type OrderInput = {
@@ -90,7 +90,7 @@ export async function saveProgress(id: string, p: ProgressInput): Promise<{ erro
   return {};
 }
 
-export type LineStageInput = { line_id: string; stage: string; planned_on: string; done_on: string };
+export type LineStageInput = { line_id: string; stage: string; planned_on: string; done_on: string; not_needed: boolean };
 
 // Saves the planned (TNA) and actual dates of an open order's styles. The order's stage follows on its own.
 export async function saveLineStages(orderId: string, rows: LineStageInput[]): Promise<{ error?: string }> {
@@ -99,11 +99,41 @@ export async function saveLineStages(orderId: string, rows: LineStageInput[]): P
   if (!canEditOrders(me.role)) return { error: "Only the orders team can change orders." };
   if (!rows.length) return {};
   const isDate = (d: string) => !d || /^\d{4}-\d{2}-\d{2}$/.test(d);
-  if (rows.some((r) => !STAGES.some((s) => s.key === r.stage) || !isDate(r.planned_on) || !isDate(r.done_on))) return { error: "Enter the dates as dates." };
+  if (rows.some((r) => !TNA_STEPS.some((s) => s.key === r.stage) || !isDate(r.planned_on) || !isDate(r.done_on))) return { error: "Enter the dates as dates." };
+  const clean = rows.map((r) => (r.not_needed ? { ...r, planned_on: "", done_on: "" } : r));
   const today = todayIST();
   if (rows.some((r) => r.done_on > today)) return { error: "A done date can't be in the future. Use the plan date for what's expected." };
   const supabase = await createClient();
-  const { error } = await supabase.rpc("save_line_stages", { p_order: orderId, p_rows: rows });
+  const { error } = await supabase.rpc("save_line_stages", { p_order: orderId, p_rows: clean });
+  if (error) return { error: friendly(error) };
+  revalidatePath("/");
+  revalidatePath(`/orders/${orderId}`);
+  return {};
+}
+
+// Notes that the factory has been asked for its TNA plan (today), before its PO is released.
+export async function requestPlan(orderId: string, factoryId: string): Promise<{ error?: string }> {
+  const me = await getMe();
+  if (!me?.role) return { error: "Your account is not switched on yet." };
+  if (!canEditOrders(me.role)) return { error: "Only the orders team can change orders." };
+  const supabase = await createClient();
+  const today = todayIST();
+  const { data: found } = await supabase.from("factory_pos").select("id").eq("order_id", orderId).eq("factory_id", factoryId).maybeSingle();
+  const { error } = found
+    ? await supabase.from("factory_pos").update({ plan_requested_on: today }).eq("id", found.id)
+    : await supabase.from("factory_pos").insert({ order_id: orderId, factory_id: factoryId, plan_requested_on: today });
+  if (error) return { error: friendly(error) };
+  revalidatePath(`/orders/${orderId}`);
+  return {};
+}
+
+// Releases the factory's PO. The database refuses it until every style has a rate and a plan for every TNA step.
+export async function releaseFactoryPo(orderId: string, factoryId: string): Promise<{ error?: string }> {
+  const me = await getMe();
+  if (!me?.role) return { error: "Your account is not switched on yet." };
+  if (!canEditOrders(me.role)) return { error: "Only the orders team can change orders." };
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("release_factory_po", { p_order: orderId, p_factory: factoryId });
   if (error) return { error: friendly(error) };
   revalidatePath("/");
   revalidatePath(`/orders/${orderId}`);
