@@ -126,8 +126,13 @@ export async function setStylePhoto(orderId: string, lineId: string, path: strin
 
 export type QcInput = { kind: string; checked_on: string; result: string; pieces_checked: string; defects: string; notes: string };
 
-// Records one inspection. Saved checks are never edited, only cancelled with a reason.
-export async function addQc(orderId: string, q: QcInput): Promise<{ error?: string; id?: string }> {
+export type QcFile = { path: string; kind: "photo" | "report"; file_name: string };
+
+const checkFiles = (prefix: string, files: QcFile[]) =>
+  files.every((f) => f.path.startsWith(prefix) && !f.path.includes("..") && (f.kind === "photo" || f.kind === "report"));
+
+// Records one inspection with its proof: at least one photo, and any reports. Saved checks are never edited, only cancelled.
+export async function recordQc(orderId: string, qcId: string, q: QcInput, files: QcFile[]): Promise<{ error?: string }> {
   const me = await getMe();
   if (!me?.role || !me.companyId) return { error: "Your account is not switched on yet." };
   if (!canRecordQc(me.role)) return { error: "Only the Quality team records QC." };
@@ -141,33 +146,51 @@ export async function addQc(orderId: string, q: QcInput): Promise<{ error?: stri
   if (!Number.isInteger(defects) || defects < 0) return { error: "Defects must be a whole number, 0 or more." };
   if (pieces != null && defects > pieces) return { error: "Defects can't be more than the pieces checked." };
   if (q.result === "fail" && !q.notes.trim()) return { error: "Write what failed in the notes, so the factory knows what to fix." };
+  if (!files.some((f) => f.kind === "photo")) return { error: "Add at least one photo as proof of the check." };
+  if (!checkFiles(`${me.companyId}/${orderId}/qc/${qcId}/`, files)) return { error: "Those files didn't upload properly. Try again." };
 
   const supabase = await createClient();
-  const { data, error } = await supabase.from("qc_checks").insert({
-    company_id: me.companyId, order_id: orderId, kind: q.kind, checked_on: q.checked_on, result: q.result,
-    pieces_checked: pieces, defects, notes: q.notes.trim() || null, checked_by: me.id,
-  }).select("id").single();
+  const { error } = await supabase.rpc("record_qc", {
+    p_order: orderId,
+    p: { id: qcId, kind: q.kind, checked_on: q.checked_on, result: q.result, pieces_checked: pieces == null ? "" : String(pieces), defects: String(defects), notes: q.notes },
+    p_files: files,
+  });
   if (error) return { error: friendly(error) };
   revalidatePath("/");
   revalidatePath(`/orders/${orderId}`);
-  return { id: data.id };
+  return {};
 }
 
-// Lists photos the browser has just uploaded to storage against a QC check.
-export async function addQcPhotos(orderId: string, qcId: string, paths: string[]): Promise<{ error?: string }> {
+// Adds more photos or reports to a saved check.
+export async function addQcFiles(orderId: string, qcId: string, files: QcFile[]): Promise<{ error?: string }> {
   const me = await getMe();
   if (!me?.role || !me.companyId) return { error: "Your account is not switched on yet." };
   if (!canRecordQc(me.role)) return { error: "Only the Quality team records QC." };
-  const prefix = `${me.companyId}/${orderId}/qc/${qcId}/`;
-  if (!paths.length || paths.some((p) => !p.startsWith(prefix) || p.includes(".."))) return { error: "Those photos didn't upload properly. Try again." };
+  if (!files.length || !checkFiles(`${me.companyId}/${orderId}/qc/${qcId}/`, files)) return { error: "Those files didn't upload properly. Try again." };
   const supabase = await createClient();
-  const { error } = await supabase.from("qc_photos").insert(paths.map((path) => ({ company_id: me.companyId, qc_id: qcId, path, created_by: me.id })));
+  const { error } = await supabase.from("qc_photos").insert(files.map((f) => ({
+    company_id: me.companyId, qc_id: qcId, path: f.path, kind: f.kind, file_name: f.file_name || null, created_by: me.id,
+  })));
   if (error) return { error: friendly(error) };
   revalidatePath(`/orders/${orderId}`);
   return {};
 }
 
-// Takes a photo off a check. The file itself is kept.
+// Anyone in the company can comment on a check; comments are never changed.
+export async function addQcComment(orderId: string, qcId: string, body: string): Promise<{ error?: string }> {
+  const me = await getMe();
+  if (!me?.role || !me.companyId) return { error: "Your account is not switched on yet." };
+  const text = body.trim();
+  if (!text) return { error: "Write the comment first." };
+  if (text.length > 2000) return { error: "Keep the comment under 2,000 characters." };
+  const supabase = await createClient();
+  const { error } = await supabase.from("qc_comments").insert({ company_id: me.companyId, qc_id: qcId, body: text, created_by: me.id });
+  if (error) return { error: friendly(error) };
+  revalidatePath(`/orders/${orderId}`);
+  return {};
+}
+
+// Takes a photo or report off a check. The file itself is kept.
 export async function removeQcPhoto(orderId: string, id: string): Promise<{ error?: string }> {
   const me = await getMe();
   if (!me?.role) return { error: "Your account is not switched on yet." };
