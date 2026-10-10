@@ -170,6 +170,26 @@ do $$ begin
   end if;
 end $$;
 
+-- Production: the stage is stamped when it changes, and saving the order form leaves the stage and new date alone.
+do $$ begin
+  update public.orders set stage = 'stitching', revised_ship_date = '2026-12-01', delay_reason = 'Fabric late';
+  if (select stage_at from public.orders) is null then raise exception 'stage change not stamped'; end if;
+  begin
+    update public.orders set stage = 'sewing';
+    raise exception 'unknown stage was accepted';
+  exception when check_violation then null;
+  end;
+end $$;
+select public.save_order(
+  jsonb_build_object('id', :'save_order', 'buyer_id', '10000000-0000-0000-0000-000000000001', 'buyer_po', 'OZIA PO 001', 'status', 'shipped'),
+  jsonb_build_array(jsonb_build_object('id', (select id from public.order_lines where style = 'OZ-103' and removed_at is null), 'style', 'OZ-103', 'qty', 50),
+    jsonb_build_object('id', (select id from public.order_lines where style = 'OZ-101'), 'style', 'OZ-101', 'colour', 'Navy', 'qty', 520)));
+do $$ begin
+  if (select (stage, revised_ship_date, delay_reason) from public.orders) is distinct from ('stitching'::text, '2026-12-01'::date, 'Fabric late'::text) then
+    raise exception 'saving the order form wiped production details';
+  end if;
+end $$;
+
 do $$ begin
   perform public.save_order('{"buyer_id":"10000000-0000-0000-0000-000000000001","buyer_po":"PO-DUP"}',
     '[{"style":"A","colour":"Red","qty":1},{"style":"a ","colour":"red","qty":2}]');

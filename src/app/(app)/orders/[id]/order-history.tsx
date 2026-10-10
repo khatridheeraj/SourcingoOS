@@ -1,5 +1,5 @@
 import { loadFactories, loadTeam } from "@/lib/data";
-import { day, STATUS } from "@/lib/format";
+import { day, stageLabel, STATUS } from "@/lib/format";
 import { personName } from "@/lib/names";
 import { createClient } from "@/lib/supabase/server";
 
@@ -7,6 +7,7 @@ type Row = { id: number; table_name: string; action: string; actor: string | nul
 
 const ORDER_FIELDS: Record<string, string> = {
   buyer_po: "buyer PO", po_date: "PO date", ship_date: "ship date", status: "status", merchandiser_id: "merchandiser", notes: "notes", buyer_id: "buyer",
+  stage: "stage", revised_ship_date: "new ship date", delay_reason: "reason for delay",
 };
 const LINE_FIELDS: Record<string, string> = {
   style: "style", description: "description", colour: "colour", qty: "quantity", buyer_rate: "buyer rate", factory_id: "factory", factory_rate: "factory rate",
@@ -32,6 +33,7 @@ export async function OrderHistory({ orderId }: { orderId: string }) {
   const factoryName = new Map(factories.map((f) => [f.id, f.name]));
 
   const show = (k: string, v: unknown) => {
+    if (k === "stage") return stageLabel(v == null ? null : String(v));
     if (v == null || v === "") return "blank";
     if (k === "factory_id") return factoryName.get(String(v)) ?? "a factory";
     if (k === "merchandiser_id") return people.get(String(v)) ?? "someone";

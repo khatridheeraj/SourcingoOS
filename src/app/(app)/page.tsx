@@ -2,11 +2,12 @@ import { NO_COMPANY } from "@/lib/names";
 import Link from "next/link";
 import { getMe } from "@/lib/auth";
 import { loadBuyers, loadFactories } from "@/lib/data";
-import { day, money, qty, STATUS, todayIST } from "@/lib/format";
+import { day, daysBetween, dueDate, money, qty, stageLabel, STATUS, todayIST } from "@/lib/format";
 import { createClient } from "@/lib/supabase/server";
 
 const TABS = [
   { key: "open", label: "Open" },
+  { key: "late", label: "Late" },
   { key: "shipped", label: "Shipped" },
   { key: "cancelled", label: "Cancelled" },
   { key: "all", label: "All" },
@@ -24,22 +25,26 @@ export default async function OrdersPage({ searchParams }: PageProps<"/">) {
   const supabase = await createClient();
   let query = supabase
     .from("orders")
-    .select("id, order_no, buyer_id, buyer_po, ship_date, status, order_lines(style, qty, buyer_rate, factory_id)")
+    .select("id, order_no, buyer_id, buyer_po, ship_date, revised_ship_date, delay_reason, stage, status, order_lines(style, qty, buyer_rate, factory_id)")
     .eq("company_id", companyId)
     .is("order_lines.removed_at", null)
     .order("ship_date", { ascending: true, nullsFirst: false })
     .order("order_no");
-  if (status !== "all") query = query.eq("status", status);
+  if (status !== "all") query = query.eq("status", status === "late" ? "open" : status);
   const [{ data, error }, buyers, factories, counts] = await Promise.all([
     query,
     loadBuyers(),
     loadFactories(),
-    supabase.from("orders").select("status").eq("company_id", companyId),
+    supabase.from("orders").select("status, ship_date, revised_ship_date").eq("company_id", companyId),
   ]);
 
   const buyerById = new Map(buyers.map((b) => [b.id, b]));
   const factoryById = new Map(factories.map((f) => [f.id, f]));
   const today = todayIST();
+  const isLate = (o: { status: string; ship_date: string | null; revised_ship_date: string | null }) => {
+    const due = dueDate(o);
+    return o.status === "open" && !!due && due < today;
+  };
   const owner = me?.role === "owner";
 
   const rows = (data ?? []).map((o) => {
@@ -55,14 +60,19 @@ export default async function OrdersPage({ searchParams }: PageProps<"/">) {
       value: lines.every((l) => l.buyer_rate != null) ? lines.reduce((s, l) => s + l.qty * (l.buyer_rate ?? 0), 0) : null,
       factoryNames,
       missingFactory,
-      late: o.status === "open" && !!o.ship_date && o.ship_date < today,
+      due: dueDate(o),
+      late: isLate(o),
+      lateBy: isLate(o) ? daysBetween(dueDate(o)!, today) : 0,
     };
-  }).filter((r) => !q || [r.order_no, r.buyer, r.buyer_po, ...r.styles, ...r.factoryNames].join(" ").toLowerCase().includes(q));
+  })
+    .filter((r) => status !== "late" || r.late)
+    .filter((r) => !q || [r.order_no, r.buyer, r.buyer_po, ...r.styles, ...r.factoryNames].join(" ").toLowerCase().includes(q))
+    .sort((a, b) => (a.due ?? "9999").localeCompare(b.due ?? "9999") || a.order_no.localeCompare(b.order_no));
 
   const all = counts.data ?? [];
   const openCount = all.filter((o) => o.status === "open").length;
   const open = rows.filter((r) => r.status === "open");
-  const late = open.filter((r) => r.late).length;
+  const late = all.filter(isLate).length;
   const noFactory = open.filter((r) => r.missingFactory).length;
 
   return (
@@ -70,7 +80,7 @@ export default async function OrdersPage({ searchParams }: PageProps<"/">) {
       <div className="head">
         <div className="grow">
           <h1>Orders</h1>
-          <p>One line per buyer PO. Open orders are sorted by ship date, earliest first.</p>
+          <p>One line per buyer PO. Sorted by ship date, earliest first. A new ship date replaces the buyer&apos;s date when an order slips.</p>
         </div>
         <Link href="/orders/new" className="btn primary">New order</Link>
       </div>
@@ -79,7 +89,7 @@ export default async function OrdersPage({ searchParams }: PageProps<"/">) {
         <div className="tiles">
           <div className="tile"><span>Open orders</span><b>{openCount}</b></div>
           <div className="tile"><span>Pieces on open orders</span><b>{qty(open.reduce((s, r) => s + r.pieces, 0))}</b></div>
-          <div className={`tile ${late ? "alarm" : ""}`}><span>Past ship date</span><b>{late}</b></div>
+          <Link href="/?status=late" className={`tile ${late ? "alarm" : ""}`}><span>Late, past ship date</span><b>{late}</b></Link>
           <div className={`tile ${noFactory ? "alarm" : ""}`}><span>Styles without a factory</span><b>{noFactory}</b></div>
         </div>
       )}
@@ -88,7 +98,7 @@ export default async function OrdersPage({ searchParams }: PageProps<"/">) {
         <div className="filters">
           {TABS.map((t) => (
             <Link key={t.key} className="pill" href={t.key === "open" ? "/" : `/?status=${t.key}`} aria-current={status === t.key ? "page" : undefined}>
-              {t.label}{t.key !== "all" ? ` ${all.filter((o) => o.status === t.key).length}` : ` ${all.length}`}
+              {t.label} {t.key === "all" ? all.length : t.key === "late" ? late : all.filter((o) => o.status === t.key).length}
             </Link>
           ))}
         </div>
@@ -102,7 +112,7 @@ export default async function OrdersPage({ searchParams }: PageProps<"/">) {
 
       {rows.length === 0 ? (
         <div className="empty">
-          <b>{q ? "Nothing matches that search" : all.length === 0 ? "No orders yet" : "No orders here"}</b>
+          <b>{q ? "Nothing matches that search" : all.length === 0 ? "No orders yet" : status === "late" ? "Nothing is late" : "No orders here"}</b>
           {all.length === 0 && "Add the first one with New order, or send the confirmed sheet and Claude will load it."}
         </div>
       ) : (
@@ -118,8 +128,9 @@ export default async function OrdersPage({ searchParams }: PageProps<"/">) {
                 <div className="font-semibold">{r.buyer_po} <span className="code muted font-normal">{r.buyer}</span></div>
                 <div className="muted text-[13px]">{r.styles.length} {r.styles.length === 1 ? "style" : "styles"} · {qty(r.pieces)} pcs{r.value != null && ` · ${money(r.value)}`}</div>
                 <div className="row text-[13px]">
-                  {r.ship_date ? <span>Ships {day(r.ship_date)}</span> : <span className="muted">No ship date</span>}
-                  {r.late && <span className="chip bad">Late</span>}
+                  {r.due ? <span>Ships {day(r.due)}</span> : <span className="muted">No ship date</span>}
+                  {r.status === "open" && <span className="chip">{stageLabel(r.stage)}</span>}
+                  {r.late && <span className="chip bad">Late {r.lateBy}d</span>}
                   {r.missingFactory && <span className="chip warn">Needs factory</span>}
                 </div>
               </Link>
@@ -131,7 +142,7 @@ export default async function OrdersPage({ searchParams }: PageProps<"/">) {
             <thead>
               <tr>
                 <th>Order</th><th>Buyer</th><th>Buyer PO</th><th>Styles</th><th className="r">Pieces</th>
-                <th className="r">Value</th><th>Factory</th><th>Ship date</th><th>Status</th>
+                <th className="r">Value</th><th>Factory</th><th>Ship date</th><th>Stage</th>
               </tr>
             </thead>
             <tbody>
@@ -148,10 +159,17 @@ export default async function OrdersPage({ searchParams }: PageProps<"/">) {
                     {r.missingFactory && <span className="chip warn ml-1">Needs factory</span>}
                   </td>
                   <td className="whitespace-nowrap">
-                    {day(r.ship_date)}
-                    {r.late && <span className="chip bad ml-1">Late</span>}
+                    {day(r.due)}
+                    {r.late && <span className="chip bad ml-1">Late {r.lateBy}d</span>}
+                    {r.revised_ship_date && r.ship_date && r.revised_ship_date !== r.ship_date && (
+                      <div className="muted text-xs" title={r.delay_reason ?? undefined}>Buyer date {day(r.ship_date)}</div>
+                    )}
                   </td>
-                  <td><span className={STATUS[r.status]?.cls}>{STATUS[r.status]?.label}</span></td>
+                  <td>
+                    {r.status === "open"
+                      ? <span className={r.stage === "packed" ? "chip ok" : r.stage ? "chip info" : "chip"}>{stageLabel(r.stage)}</span>
+                      : <span className={STATUS[r.status]?.cls}>{STATUS[r.status]?.label}</span>}
+                  </td>
                 </tr>
               ))}
             </tbody>
