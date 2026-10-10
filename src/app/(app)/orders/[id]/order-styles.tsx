@@ -19,6 +19,8 @@ export type FactoryGroup = {
   lines: StyleRow[];
 };
 export type StepQc = { result: string; checkedOn: string; kind: string };
+export type ExtraStep = { stage: string; label: string };
+type Step = { key: string; label: string; required?: boolean; extra?: boolean };
 type Cell = { planned_on: string; done_on: string; not_needed: boolean };
 type FactoryDates = Record<string, string>;
 type Dates = Record<string, Cell>;
@@ -45,7 +47,7 @@ function verdict(c: Cell, today: string): { text: string; cls: string } | null {
 
 // The full TNA of every style, grouped by factory. A factory's plan is asked for and entered first;
 // its PO is released only once nothing is missing, and actual dates are entered after that.
-export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDone, today, now, dueDate, groups, initial, factoryDates, qc }: {
+export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDone, today, now, dueDate, groups, initial, initialExtras, factoryDates, qc }: {
   orderId: string;
   orderNo: string;
   companyId: string;
@@ -57,11 +59,14 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
   dueDate: string;
   groups: FactoryGroup[];
   initial: Dates;
+  initialExtras: Record<string, ExtraStep[]>;
   factoryDates: FactoryDates;
   qc: Record<string, StepQc>;
 }) {
   const router = useRouter();
   const [dates, setDates] = useState<Dates>(initial);
+  const [extras, setExtras] = useState<Record<string, ExtraStep[]>>(initialExtras);
+  const [newStep, setNewStep] = useState<Record<string, string>>({});
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState("");
@@ -81,24 +86,55 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
     });
     setNotice("");
   };
-  const changed: LineStageInput[] = lines.flatMap((l) => TNA_STEPS.map((s) => ({ line_id: l.id, stage: s.key, ...get(l.id, s.key) })))
-    .filter((r) => !same(initial[key(r.line_id, r.stage)] ?? blank, r));
+  // A style's steps: the standard ones, then its own extra steps (removed ones are kept as not needed).
+  const allSteps = (lineId: string): Step[] => [...TNA_STEPS, ...(extras[lineId] ?? []).map((x) => ({ key: x.stage, label: x.label, extra: true }))];
+  const steps = (lineId: string) => allSteps(lineId).filter((s) => !get(lineId, s.key).not_needed);
+  const isNew = (lineId: string, stage: string) => !(initialExtras[lineId] ?? []).some((x) => x.stage === stage);
+  const changed: LineStageInput[] = lines.flatMap((l) => allSteps(l.id).map((s) => ({
+    line_id: l.id, stage: s.key, ...get(l.id, s.key), ...(s.extra ? { label: s.label } : {}),
+  }))).filter((r) => !same(initial[key(r.line_id, r.stage)] ?? blank, r) || (r.label !== undefined && isNew(r.line_id, r.stage)));
+
+  function addExtra(lineId: string) {
+    const label = (newStep[lineId] ?? "").trim().slice(0, 60);
+    if (!label) return;
+    if (allSteps(lineId).some((s) => s.label.toLowerCase() === label.toLowerCase() && !get(lineId, s.key).not_needed)) {
+      return setError(`This style already has a step called ${label}.`);
+    }
+    const stage = `extra_${Array.from(crypto.getRandomValues(new Uint8Array(4)), (b) => b.toString(16).padStart(2, "0")).join("")}`;
+    setExtras((x) => ({ ...x, [lineId]: [...(x[lineId] ?? []), { stage, label }] }));
+    setNewStep((n) => ({ ...n, [lineId]: "" }));
+    setError("");
+    setNotice("");
+  }
   const unsaved = (g: FactoryGroup) => changed.some((r) => g.lines.some((l) => l.id === r.line_id));
 
+  const list = (all: Step[], some: Step[]) => (some.length === all.length ? "all steps" : some.map((s) => s.label).join(", "));
+  // Targets the merchandiser still has to set before the factory can be asked, by style.
+  const targetGaps = (g: FactoryGroup, target: string) => g.lines.map((l) => {
+    const open = steps(l.id);
+    const none = open.filter((s) => !get(l.id, s.key).planned_on);
+    const after = target ? open.filter((s) => get(l.id, s.key).planned_on > target) : [];
+    const gaps = [...(none.length ? [`target (${list(open, none)})`] : []), ...(after.length ? [`after the target date (${list(open, after)})`] : [])];
+    return gaps.length ? `${l.style}: ${gaps.join("; ")}` : "";
+  }).filter(Boolean);
   // What still stops a factory's PO from being released, by style.
-  const missing = (g: FactoryGroup) => g.lines.map((l) => {
-    const open = TNA_STEPS.filter((s) => !get(l.id, s.key).not_needed);
-    const noFactory = open.filter((s) => !factoryDates[key(l.id, s.key)]).map((s) => s.label);
-    const noPlan = open.filter((s) => !get(l.id, s.key).planned_on).map((s) => s.label);
+  const missing = (g: FactoryGroup, target: string) => g.lines.map((l) => {
+    const open = steps(l.id);
+    const noTarget = open.filter((s) => !get(l.id, s.key).planned_on);
+    const noFactory = open.filter((s) => !factoryDates[key(l.id, s.key)]);
+    const later = open.filter((s) => factoryDates[key(l.id, s.key)] && get(l.id, s.key).planned_on && factoryDates[key(l.id, s.key)] > get(l.id, s.key).planned_on);
+    const after = target ? open.filter((s) => get(l.id, s.key).planned_on > target) : [];
     const gaps = [
       ...(l.hasRate ? [] : ["factory rate"]),
-      ...(noFactory.length ? [`factory dates (${noFactory.length === open.length ? "all steps" : noFactory.join(", ")})`] : []),
-      ...(noPlan.length ? [`plan (${noPlan.length === open.length ? "all steps" : noPlan.join(", ")})`] : []),
+      ...(noTarget.length ? [`target (${list(open, noTarget)})`] : []),
+      ...(after.length ? [`target after the target date (${list(open, after)})`] : []),
+      ...(noFactory.length ? [`factory dates (${list(open, noFactory)})`] : []),
+      ...(later.length ? [`factory later than target (${list(open, later)})`] : []),
     ];
     return gaps.length ? `${l.style}: ${gaps.join("; ")}` : "";
   }).filter(Boolean);
 
-  const late = lines.filter((l) => TNA_STEPS.some((s) => verdict(get(l.id, s.key), today)?.cls === "bad")).length;
+  const late = lines.filter((l) => steps(l.id).some((s) => verdict(get(l.id, s.key), today)?.cls === "bad")).length;
 
   function copyPlan(g: FactoryGroup) {
     const first = g.lines[0];
@@ -160,6 +196,41 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
     });
   }
 
+  // The factory's date, the target, the done date and the not-needed switch for one step of one style.
+  function stepFields(l: StyleRow, s: Step, released: boolean, target: string) {
+    const c = get(l.id, s.key);
+    const v = verdict(c, today);
+    const f = factoryDates[key(l.id, s.key)];
+    return (
+      <>
+        {!c.not_needed && (
+          <>
+            <div className="text-[11.5px]"><span className="muted">Factory </span>
+              <b data-testid={`${l.style} ${s.label} factory`} className={f && c.planned_on && f > c.planned_on ? "text-bad" : ""}>{f ? day(f) : "not given"}</b>
+            </div>
+            <label><span>Target</span>
+              <input className="inp" type="date" value={c.planned_on} max={target || undefined} disabled={!editable} aria-label={`${l.style} ${s.label} target`}
+                onChange={(e) => set(l.id, s.key, { planned_on: e.target.value })} />
+            </label>
+            <label><span>Done</span>
+              <input className="inp" type="date" value={c.done_on} max={today} disabled={!doneEditable || !released}
+                title={!released ? "Release the factory PO first" : undefined} aria-label={`${l.style} ${s.label} done`}
+                onChange={(e) => set(l.id, s.key, { done_on: e.target.value })} />
+            </label>
+          </>
+        )}
+        {!s.extra && (s.required ? <span className="block text-[11px] text-muted">Required</span> : (
+          <label className="nn">
+            <input type="checkbox" checked={c.not_needed} disabled={!editable || !!c.done_on || released} aria-label={`${l.style} ${s.label} not needed`}
+              onChange={(e) => set(l.id, s.key, { not_needed: e.target.checked })} />
+            Not needed
+          </label>
+        ))}
+        {v && <small>{v.text}</small>}
+      </>
+    );
+  }
+
   return (
     <section className="panel">
       <div className="row mb-1">
@@ -167,25 +238,29 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
         {late > 0 && <span className="chip bad">{late} {late === 1 ? "style" : "styles"} behind plan</span>}
       </div>
       <p className="muted mb-3 text-[13px]">
-        The factory enters its own date for every step in its factory panel; you enter the plan date, or mark a step not needed.
-        The PO can be released once both are in. After release the orders team and Quality enter done dates. Quality&apos;s latest result shows under each step it checks.
+        First set each style&apos;s steps (mark any not needed, add extra steps) and your target date for every step, then ask the factory.
+        The factory gives its own date for each step in its panel. Release the PO once every factory date is in and none is later than its target.
+        After release the orders team and Quality enter done dates. Quality&apos;s latest result shows under each step it checks.
       </p>
 
       {groups.map((g) => {
-        const gaps = missing(g);
         const released = !!g.releasedAt;
         const dueAt = g.planRequestedAt ? planDueAt(g.planRequestedAt) : null;
         const critical = !released && !g.factorySentAt && !!dueAt && dueAt.getTime() < Date.parse(now);
+        const buffer = g.factoryId ? buffers[g.factoryId] ?? "" : "";
+        const bufferOk = /^\d{1,2}$/.test(buffer) && Number(buffer) <= 90;
+        const target = released || !g.factoryId ? g.target : dueDate && bufferOk ? addDays(dueDate, -Number(buffer)) : g.target;
+        const gaps = missing(g, target);
+        const toAsk = targetGaps(g, target);
+        const asked = !!(g.planRequestedAt || g.planRequestedOn);
         const status = !g.factoryId ? { text: "No factory chosen", cls: "warn" }
           : released ? { text: `PO released ${day(g.releasedAt.slice(0, 10))}`, cls: "ok" }
           : !gaps.length ? { text: "Plan complete, ready to release", cls: "info" }
           : critical ? { text: `Critical: no TNA from the factory, due ${at.format(dueAt!)}`, cls: "bad" }
           : g.factorySentAt ? { text: `Factory sent its TNA ${day(g.factorySentAt.slice(0, 10))}`, cls: "warn" }
           : dueAt ? { text: `Waiting for the factory's TNA, due ${at.format(dueAt)}`, cls: "warn" }
-          : { text: "Plan not requested", cls: "bad" };
-        const buffer = g.factoryId ? buffers[g.factoryId] ?? "" : "";
-        const bufferOk = /^\d{1,2}$/.test(buffer) && Number(buffer) <= 90;
-        const target = released || !g.factoryId ? g.target : dueDate && bufferOk ? addDays(dueDate, -Number(buffer)) : g.target;
+          : toAsk.length ? { text: "Set your targets, then ask the factory", cls: "bad" }
+          : { text: "Targets set, ask the factory", cls: "warn" };
         return (
           <div key={g.factoryId ?? "none"} className="mb-5" data-factory={g.factoryName}>
             <div className="row mb-2">
@@ -199,10 +274,11 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
                       onChange={(e) => setBuffers((b) => ({ ...b, [g.factoryId!]: e.target.value.replace(/\D/g, "") }))} />
                     days
                   </label>
-                  <button type="button" className="btn" disabled={pending || !bufferOk}
+                  <button type="button" className="btn" disabled={pending || !bufferOk || toAsk.length > 0 || unsaved(g)}
+                    title={unsaved(g) ? "Save the dates first" : toAsk.length ? "Set every target first" : undefined}
                     onClick={() => run(`req:${g.factoryId}`, () => requestPlan(orderId, g.factoryId!, Number(buffer)),
                       `Asked ${g.factoryName} for its TNA. It has ${PLAN_HOURS} hours to send it in its factory panel.`)}>
-                    {busy === `req:${g.factoryId}` ? "Saving…" : g.planRequestedAt || g.planRequestedOn ? "Ask again (restart 24 hours)" : "Ask factory for plan"}
+                    {busy === `req:${g.factoryId}` ? "Saving…" : asked ? "Ask again (restart 24 hours)" : "Ask factory for plan"}
                   </button>
                   <button type="button" className="btn primary" disabled={pending || gaps.length > 0 || unsaved(g)}
                     title={unsaved(g) ? "Save the dates first" : gaps.length ? "The plan is not complete yet" : undefined}
@@ -215,7 +291,7 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
             {!g.factoryId && <p className="muted mb-2 text-[13px]">Choose a factory for these styles in the order below before planning them.</p>}
             {g.factoryId && target && (
               <p className="muted mb-2 text-[13px]">
-                Target date <b className="text-foreground">{day(target)}</b>: every factory and plan date must be on or before it
+                Target date <b className="text-foreground">{day(target)}</b>: every target and factory date must be on or before it
                 {dueDate && ` (PO delivery ${day(dueDate)} less ${released || !bufferOk ? g.bufferDays ?? 0 : buffer} days buffer)`}.
               </p>
             )}
@@ -224,7 +300,10 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
                 {g.factoryName} hasn&apos;t sent its TNA within {PLAN_HOURS} hours. Chase them now, or move these styles to another factory in the order below.
               </p>
             )}
-            {g.factoryId && !released && gaps.length > 0 && (
+            {g.factoryId && !released && !asked && toAsk.length > 0 && (
+              <p className="mb-2 text-[13px] text-warn"><b>Before asking the factory:</b> {toAsk.join("; ")}</p>
+            )}
+            {g.factoryId && !released && asked && gaps.length > 0 && (
               <p className="mb-2 text-[13px] text-warn"><b>Missing before release:</b> {gaps.join("; ")}</p>
             )}
             <div className="table-wrap">
@@ -242,6 +321,7 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
                         </th>
                       );
                     })}
+                    <th>Extra steps</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -272,38 +352,36 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
                           </div>
                         </div>
                       </td>
-                      {TNA_STEPS.map((s) => {
-                        const c = get(l.id, s.key);
-                        const v = verdict(c, today);
-                        return (
-                          <td key={s.key} className={`tna-cell ${v?.cls ?? ""} ${c.not_needed ? "opacity-60" : ""}`}>
-                            {!c.not_needed && (
-                              <>
-                                <div className="text-[11.5px]"><span className="muted">Factory </span>
-                                  <b data-testid={`${l.style} ${s.label} factory`}>{factoryDates[key(l.id, s.key)] ? day(factoryDates[key(l.id, s.key)]) : "not given"}</b>
-                                </div>
-                                <label><span>Plan</span>
-                                  <input className="inp" type="date" value={c.planned_on} max={target || undefined} disabled={!editable} aria-label={`${l.style} ${s.label} plan`}
-                                    onChange={(e) => set(l.id, s.key, { planned_on: e.target.value })} />
-                                </label>
-                                <label><span>Done</span>
-                                  <input className="inp" type="date" value={c.done_on} max={today} disabled={!doneEditable || !released}
-                                    title={!released ? "Release the factory PO first" : undefined} aria-label={`${l.style} ${s.label} done`}
-                                    onChange={(e) => set(l.id, s.key, { done_on: e.target.value })} />
-                                </label>
-                              </>
-                            )}
-                            {s.required ? <span className="block text-[11px] text-muted">Required</span> : (
-                              <label className="nn">
-                                <input type="checkbox" checked={c.not_needed} disabled={!editable || !!c.done_on} aria-label={`${l.style} ${s.label} not needed`}
-                                  onChange={(e) => set(l.id, s.key, { not_needed: e.target.checked })} />
-                                Not needed
-                              </label>
-                            )}
-                            {v && <small>{v.text}</small>}
-                          </td>
-                        );
-                      })}
+                      {TNA_STEPS.map((s) => (
+                        <td key={s.key} className={`tna-cell ${verdict(get(l.id, s.key), today)?.cls ?? ""} ${get(l.id, s.key).not_needed ? "opacity-60" : ""}`}>
+                          {stepFields(l, s, released, target)}
+                        </td>
+                      ))}
+                      <td className="tna-cell min-w-[190px]">
+                        {(extras[l.id] ?? []).filter((x) => !get(l.id, x.stage).not_needed).map((x) => {
+                          const v = verdict(get(l.id, x.stage), today);
+                          return (
+                            <div key={x.stage} className={`mb-2 rounded-md border border-line p-1.5 ${v?.cls === "bad" ? "bg-bad-soft" : v?.cls === "ok" ? "bg-ok-soft" : ""}`}>
+                              <div className="row justify-between text-[12.5px] font-semibold">{x.label}
+                                {editable && !released && (
+                                  <button type="button" className="link text-xs" aria-label={`Remove ${x.label} from ${l.style}`}
+                                    onClick={() => set(l.id, x.stage, { not_needed: true })}>Remove</button>
+                                )}
+                              </div>
+                              {stepFields(l, { key: x.stage, label: x.label, extra: true }, released, target)}
+                            </div>
+                          );
+                        })}
+                        {editable && !released && (
+                          <div className="flex gap-1">
+                            <input className="inp min-w-0 grow" value={newStep[l.id] ?? ""} placeholder="e.g. Embroidery" maxLength={60}
+                              aria-label={`New step for ${l.style}`} onChange={(e) => setNewStep((n) => ({ ...n, [l.id]: e.target.value }))}
+                              onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addExtra(l.id); } }} />
+                            <button type="button" className="btn sm" onClick={() => addExtra(l.id)}>Add step</button>
+                          </div>
+                        )}
+                        {!(extras[l.id] ?? []).some((x) => !get(l.id, x.stage).not_needed) && !(editable && !released) && <span className="muted text-xs">None</span>}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -311,7 +389,7 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
             </div>
             {editable && g.lines.length > 1 && (
               <button type="button" className="btn mt-2" disabled={pending} onClick={() => copyPlan(g)}>
-                Copy {g.lines[0].style}&apos;s plan to {g.factoryName}&apos;s other styles
+                Copy {g.lines[0].style}&apos;s targets to {g.factoryName}&apos;s other styles
               </button>
             )}
           </div>

@@ -54,10 +54,11 @@ export async function OrderHistory({ orderId }: { orderId: string }) {
     }
     if (r.table_name === "line_stages") {
       const b = r.before ?? {}, a = r.after ?? {};
-      const step = TNA_STEPS.find((s) => s.key === a.stage)?.label ?? String(a.stage);
+      const step = TNA_STEPS.find((s) => s.key === a.stage)?.label ?? String(a.label ?? b.label ?? a.stage);
       const what = `${styleName.get(String(a.line_id)) ?? "a style"} ${step.toLowerCase()}`;
-      if (a.not_needed && !b.not_needed) return `Marked ${what} not needed`;
-      const parts = [["factory_on", "factory date"], ["planned_on", "plan"], ["done_on", "done"]]
+      if (a.not_needed && !b.not_needed) return a.label ? `Removed the ${what} step` : `Marked ${what} not needed`;
+      if (a.label && r.action === "insert") return `Added a step to ${styleName.get(String(a.line_id)) ?? "a style"}: ${a.label}${a.planned_on ? `, target ${day(String(a.planned_on))}` : ""}`;
+      const parts = [["factory_on", "factory date"], ["planned_on", "target"], ["done_on", "done"]]
         .filter(([k]) => (b[k] ?? null) !== (a[k] ?? null))
         .map(([k, label]) => `${label} ${a[k] ? day(String(a[k])) : "cleared"}`);
       return parts.length ? `Set ${what}: ${parts.join(", ")}` : null;
