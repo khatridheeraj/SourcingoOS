@@ -18,7 +18,7 @@ const time = new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "short", 
 // Every change to this order and its styles, newest first, from the permanent history.
 export async function OrderHistory({ orderId }: { orderId: string }) {
   const supabase = await createClient();
-  const [{ data }, team, factories] = await Promise.all([
+  const [{ data }, team, factories, { data: styleRows }] = await Promise.all([
     supabase
       .from("history")
       .select("id, table_name, action, actor, at, before, after")
@@ -28,7 +28,9 @@ export async function OrderHistory({ orderId }: { orderId: string }) {
       .limit(100),
     loadTeam(),
     loadFactories(),
+    supabase.from("order_lines").select("id, style").eq("order_id", orderId),
   ]);
+  const styleName = new Map((styleRows ?? []).map((l) => [l.id, l.style]));
   const people = new Map(team.map((m) => [m.user_id, personName(m)]));
   const factoryName = new Map(factories.map((f) => [f.id, f.name]));
 
@@ -50,11 +52,20 @@ export async function OrderHistory({ orderId }: { orderId: string }) {
       if (r.after?.cancelled_at && !r.before?.cancelled_at) return `Cancelled a ${what} (${c.cancel_reason})`;
       return null;
     }
+    if (r.table_name === "line_stages") {
+      const b = r.before ?? {}, a = r.after ?? {};
+      const what = `${styleName.get(String(a.line_id)) ?? "a style"} ${stageLabel(String(a.stage)).toLowerCase()}`;
+      const parts = [["planned_on", "plan"], ["done_on", "done"]]
+        .filter(([k]) => (b[k] ?? null) !== (a[k] ?? null))
+        .map(([k, label]) => `${label} ${a[k] ? day(String(a[k])) : "cleared"}`);
+      return parts.length ? `Set ${what}: ${parts.join(", ")}` : null;
+    }
     const isOrder = r.table_name === "orders";
     const style = String((r.after ?? r.before)?.style ?? "");
     if (r.action === "insert") return isOrder ? "Entered the order" : `Added style ${style}`;
     if (r.action === "delete") return isOrder ? "Deleted the order" : `Removed style ${style}`;
     if (!isOrder && r.after?.removed_at && !r.before?.removed_at) return `Removed style ${style}`;
+    if (!isOrder && r.after?.photo_path !== r.before?.photo_path) return `${r.before?.photo_path ? "Changed" : "Added"} the photo of ${style}`;
     const fields = isOrder ? ORDER_FIELDS : LINE_FIELDS;
     const changes = Object.entries(fields)
       .filter(([k]) => JSON.stringify(r.before?.[k] ?? null) !== JSON.stringify(r.after?.[k] ?? null))

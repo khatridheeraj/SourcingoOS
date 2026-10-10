@@ -63,14 +63,13 @@ export async function saveOrder(order: OrderInput, lines: LineInput[]): Promise<
   return { id: data as string };
 }
 
-export type ProgressInput = { stage: string; revised_ship_date: string; delay_reason: string };
+export type ProgressInput = { revised_ship_date: string; delay_reason: string };
 
 // Updates only the production details, so it never touches the styles or prices.
 export async function saveProgress(id: string, p: ProgressInput): Promise<{ error?: string }> {
   const me = await getMe();
   if (!me?.role) return { error: "Your account is not switched on yet." };
   if (!canEditOrders(me.role)) return { error: "Only the orders team can change orders." };
-  if (p.stage && !STAGES.some((s) => s.key === p.stage)) return { error: "Pick a stage from the list." };
   if (p.revised_ship_date && !/^\d{4}-\d{2}-\d{2}$/.test(p.revised_ship_date)) return { error: "Enter the new ship date as a date." };
   if (p.revised_ship_date && !p.delay_reason.trim()) return { error: "Say why the ship date moved, so everyone knows." };
 
@@ -78,7 +77,6 @@ export async function saveProgress(id: string, p: ProgressInput): Promise<{ erro
   const { data, error } = await supabase
     .from("orders")
     .update({
-      stage: p.stage || null,
       revised_ship_date: p.revised_ship_date || null,
       delay_reason: p.delay_reason.trim() || null,
     })
@@ -89,6 +87,40 @@ export async function saveProgress(id: string, p: ProgressInput): Promise<{ erro
   if (!data?.length) return { error: "Only open orders can be updated here. Reload the page." };
   revalidatePath("/");
   revalidatePath(`/orders/${id}`);
+  return {};
+}
+
+export type LineStageInput = { line_id: string; stage: string; planned_on: string; done_on: string };
+
+// Saves the planned (TNA) and actual dates of an open order's styles. The order's stage follows on its own.
+export async function saveLineStages(orderId: string, rows: LineStageInput[]): Promise<{ error?: string }> {
+  const me = await getMe();
+  if (!me?.role) return { error: "Your account is not switched on yet." };
+  if (!canEditOrders(me.role)) return { error: "Only the orders team can change orders." };
+  if (!rows.length) return {};
+  const isDate = (d: string) => !d || /^\d{4}-\d{2}-\d{2}$/.test(d);
+  if (rows.some((r) => !STAGES.some((s) => s.key === r.stage) || !isDate(r.planned_on) || !isDate(r.done_on))) return { error: "Enter the dates as dates." };
+  const today = todayIST();
+  if (rows.some((r) => r.done_on > today)) return { error: "A done date can't be in the future. Use the plan date for what's expected." };
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("save_line_stages", { p_order: orderId, p_rows: rows });
+  if (error) return { error: friendly(error) };
+  revalidatePath("/");
+  revalidatePath(`/orders/${orderId}`);
+  return {};
+}
+
+// Sets a style's photo. The old file is kept in storage; the style just points at the new one.
+export async function setStylePhoto(orderId: string, lineId: string, path: string): Promise<{ error?: string }> {
+  const me = await getMe();
+  if (!me?.role || !me.companyId) return { error: "Your account is not switched on yet." };
+  if (!canEditOrders(me.role)) return { error: "Only the orders team can change orders." };
+  if (!path.startsWith(`${me.companyId}/${orderId}/styles/${lineId}/`) || path.includes("..")) return { error: "That photo didn't upload properly. Try again." };
+  const supabase = await createClient();
+  const { data, error } = await supabase.from("order_lines").update({ photo_path: path }).eq("id", lineId).eq("order_id", orderId).select("id");
+  if (error) return { error: friendly(error) };
+  if (!data?.length) return { error: "That style is no longer on this order. Reload the page." };
+  revalidatePath(`/orders/${orderId}`);
   return {};
 }
 

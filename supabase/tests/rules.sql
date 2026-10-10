@@ -319,6 +319,46 @@ do $$ begin
 exception when unique_violation then null;
 end $$;
 
+-- Production by style: planned and actual dates per stage; the order follows its slowest style.
+select public.save_order(
+  jsonb_build_object('id', :'save_order', 'buyer_id', '10000000-0000-0000-0000-000000000001', 'buyer_po', 'OZIA PO 001', 'status', 'open'),
+  jsonb_build_array(jsonb_build_object('id', (select id from public.order_lines where style = 'OZ-103' and removed_at is null), 'style', 'OZ-103', 'qty', 50),
+    jsonb_build_object('id', (select id from public.order_lines where style = 'OZ-101'), 'style', 'OZ-101', 'colour', 'Navy', 'qty', 520)));
+select public.save_line_stages(:'save_order', jsonb_build_array(
+  jsonb_build_object('line_id', (select id from public.order_lines where style = 'OZ-103' and removed_at is null), 'stage', 'fabric', 'planned_on', '2026-11-01', 'done_on', '2026-11-03'),
+  jsonb_build_object('line_id', (select id from public.order_lines where style = 'OZ-103' and removed_at is null), 'stage', 'cutting', 'planned_on', '2026-11-10', 'done_on', '2026-11-09'),
+  jsonb_build_object('line_id', (select id from public.order_lines where style = 'OZ-101'), 'stage', 'fabric', 'planned_on', '2026-11-01', 'done_on', '')));
+do $$ begin
+  if (select count(*) from public.line_stages) <> 3 then raise exception 'style dates not saved'; end if;
+  if (select stage from public.orders) is not null then raise exception 'order stage should follow its slowest style (OZ-101 not started)'; end if;
+end $$;
+select public.save_line_stages(:'save_order', jsonb_build_array(
+  jsonb_build_object('line_id', (select id from public.order_lines where style = 'OZ-101'), 'stage', 'fabric', 'planned_on', '2026-11-01', 'done_on', '2026-11-02')));
+do $$ begin
+  if (select stage from public.orders) <> 'fabric' then raise exception 'order stage not moved to fabric: %', (select stage from public.orders); end if;
+  if (select count(*) from public.line_stages) <> 3 then raise exception 'saving again added a duplicate row'; end if;
+  if (select count(*) from public.history where table_name = 'line_stages') <> 4 then raise exception 'style date history not kept'; end if;
+  begin
+    perform public.save_line_stages((select id from public.orders), jsonb_build_array(
+      jsonb_build_object('line_id', (select id from public.order_lines where style = 'OZ-101'), 'stage', 'sewing')));
+    raise exception 'unknown stage accepted';
+  exception when check_violation then null;
+  end;
+  begin
+    update public.line_stages set line_id = gen_random_uuid();
+    raise exception 'a stage row was moved to another style';
+  exception when insufficient_privilege then null;
+  end;
+end $$;
+select pg_temp.as_user('00000000-0000-0000-0000-0000000000a9');
+do $$ begin
+  perform public.save_line_stages((select id from public.orders), '[]');
+  raise exception 'Quality changed style dates';
+exception when raise_exception then
+  if sqlerrm not like 'Only the orders team%' then raise; end if;
+end $$;
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000b');
+
 -- A removed style can be added back.
 select public.save_order(
   jsonb_build_object('id', :'save_order', 'buyer_id', '10000000-0000-0000-0000-000000000001', 'buyer_po', 'OZIA PO 001', 'status', 'open'),

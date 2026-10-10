@@ -173,6 +173,19 @@ h1, h2, h3 {
   .tbl tr:last-child td { border-bottom: 0; }
   .tbl tr.click:hover td { background: var(--surface-2); }
   .tbl td .inp { padding: 6px 8px; font-size: 13.5px; }
+  /* Style production grid: plan and done dates per stage. */
+  .tna td { padding: 8px; }
+  .tna .tna-style { min-width: 200px; }
+  .tna-cell { min-width: 138px; }
+  .tna-cell label { display: flex; flex-direction: column; gap: 1px; margin-bottom: 4px; }
+  .tna-cell label span { font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
+  .tna-cell .inp { padding: 4px 6px; font-size: 12.5px; }
+  .tna-cell small { font-size: 11.5px; font-weight: 600; }
+  .tna-cell.ok { background: var(--ok-soft); }
+  .tna-cell.ok small { color: var(--ok); }
+  .tna-cell.warn small { color: var(--warn); }
+  .tna-cell.bad { background: var(--bad-soft); }
+  .tna-cell.bad small { color: var(--bad); }
 
   .errbox { background: var(--bad-soft); color: var(--bad); border-radius: 10px; padding: 12px 14px; font-size: 13px; }
   .okbox { background: var(--ok-soft); color: var(--ok); border-radius: 10px; padding: 12px 14px; font-size: 13px; }
