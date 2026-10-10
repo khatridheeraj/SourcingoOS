@@ -2,16 +2,17 @@
 
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { day, daysBetween, STAGES } from "@/lib/format";
+import { day, daysBetween, stageLabel } from "@/lib/format";
 import { saveProgress, type ProgressInput } from "../actions";
 
-// Where the order is on the floor, and its new ship date if it slipped.
-export function OrderProduction({ id, open, canEdit, shipDate, today, stageAt, initial }: {
+// Where the order stands against its ship date, and its new ship date if it slipped.
+export function OrderProduction({ id, open, canEdit, shipDate, today, stage, stageAt, initial }: {
   id: string;
   open: boolean;
   canEdit: boolean;
   shipDate: string;
   today: string;
+  stage: string | null;
   stageAt: string | null;
   initial: ProgressInput;
 }) {
@@ -25,7 +26,6 @@ export function OrderProduction({ id, open, canEdit, shipDate, today, stageAt, i
     setP({ ...p, [k]: v });
     setSaved(false);
   };
-  const at = STAGES.findIndex((s) => s.key === p.stage);
   const due = p.revised_ship_date || shipDate;
   const lateBy = open && due && due < today ? daysBetween(due, today) : 0;
   const movedBy = shipDate && p.revised_ship_date ? daysBetween(shipDate, p.revised_ship_date) : 0;
@@ -53,18 +53,10 @@ export function OrderProduction({ id, open, canEdit, shipDate, today, stageAt, i
       </div>
       {!open && <p className="muted text-[13px] mb-3">This order is closed. Production details are kept as they were.</p>}
 
-      <div className="field">
-        <span>Stage{stageAt && p.stage === initial.stage && <> · since {day(stageAt.slice(0, 10))}</>}</span>
-        <div className="steps" role="group" aria-label="Stage">
-          <button type="button" aria-pressed={!p.stage} disabled={locked} onClick={() => change("stage", "")}>Not started</button>
-          {STAGES.map((s, i) => (
-            <button key={s.key} type="button" className={i < at ? "done" : undefined} aria-pressed={p.stage === s.key}
-              disabled={locked} onClick={() => change("stage", s.key)}>
-              {s.label}
-            </button>
-          ))}
-        </div>
-      </div>
+      <p className="text-[13px]">
+        Order stage: <b>{stageLabel(stage)}</b>{stageAt && <span className="muted"> · since {day(stageAt.slice(0, 10))}</span>}
+        <span className="muted"> · set by the slowest style below</span>
+      </p>
 
       <div className="fgrid mt-3">
         <label className="field">

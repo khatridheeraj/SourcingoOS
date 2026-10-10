@@ -7,6 +7,7 @@ import { OrderForm } from "../order-form";
 import { OrderHistory } from "./order-history";
 import { OrderProduction } from "./order-production";
 import { OrderQc, type QcCheck } from "./order-qc";
+import { OrderStyles } from "./order-styles";
 import { loadTeam, personName } from "@/lib/data";
 import { PHOTO_BUCKET } from "@/lib/storage";
 import { formOptions } from "../options";
@@ -20,14 +21,14 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
   const supabase = await createClient();
   const { data: o } = await supabase
     .from("orders")
-    .select("id, company_id, order_no, buyer_id, buyer_po, po_date, ship_date, status, merchandiser_id, notes, stage, stage_at, revised_ship_date, delay_reason, created_at, updated_at, order_lines(id, style, description, colour, qty, buyer_rate, factory_id, factory_rate, position)")
+    .select("id, company_id, order_no, buyer_id, buyer_po, po_date, ship_date, status, merchandiser_id, notes, stage, stage_at, revised_ship_date, delay_reason, created_at, updated_at, order_lines(id, style, description, colour, qty, buyer_rate, factory_id, factory_rate, position, photo_path)")
     .eq("id", id)
     .is("order_lines.removed_at", null)
     .maybeSingle();
   if (!o) notFound();
 
   const lines = [...(o.order_lines ?? [])].sort((a, b) => a.position - b.position);
-  const [{ data: qc }, team, me] = await Promise.all([
+  const [{ data: qc }, team, me, { data: lineStages }] = await Promise.all([
     supabase
       .from("qc_checks")
       .select("id, kind, checked_on, result, pieces_checked, defects, notes, checked_by, cancelled_at, cancel_reason")
@@ -36,6 +37,7 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
       .order("created_at", { ascending: false }),
     loadTeam(),
     getMe(),
+    supabase.from("line_stages").select("line_id, stage, planned_on, done_on").eq("order_id", id),
   ]);
   const canEdit = canEditOrders(me?.role);
   const people = new Map(team.map((m) => [m.user_id, personName(m)]));
@@ -43,8 +45,10 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
   const { data: photoRows } = qc?.length
     ? await supabase.from("qc_photos").select("id, qc_id, path").in("qc_id", qc.map((c) => c.id)).is("removed_at", null).order("created_at")
     : { data: [] };
-  const { data: signed } = photoRows?.length
-    ? await supabase.storage.from(PHOTO_BUCKET).createSignedUrls(photoRows.map((p) => p.path), 3600)
+  const stylePaths = lines.map((l) => l.photo_path).filter(Boolean) as string[];
+  const allPaths = [...(photoRows ?? []).map((p) => p.path), ...stylePaths];
+  const { data: signed } = allPaths.length
+    ? await supabase.storage.from(PHOTO_BUCKET).createSignedUrls(allPaths, 3600)
     : { data: [] };
   const urlByPath = new Map((signed ?? []).filter((s) => s.signedUrl).map((s) => [s.path, s.signedUrl]));
   const checks: QcCheck[] = (qc ?? []).map((c) => ({
@@ -71,8 +75,18 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
         canEdit={canEdit}
         shipDate={str(o.ship_date)}
         today={todayIST()}
+        stage={o.stage}
         stageAt={o.stage_at}
-        initial={{ stage: str(o.stage), revised_ship_date: str(o.revised_ship_date), delay_reason: str(o.delay_reason) }}
+        initial={{ revised_ship_date: str(o.revised_ship_date), delay_reason: str(o.delay_reason) }}
+      />
+      <OrderStyles
+        orderId={o.id}
+        companyId={o.company_id}
+        open={o.status === "open"}
+        canEdit={canEdit}
+        today={todayIST()}
+        lines={lines.map((l) => ({ id: l.id, style: l.style, colour: str(l.colour), qty: l.qty, photoUrl: (l.photo_path && urlByPath.get(l.photo_path)) || null }))}
+        initial={Object.fromEntries((lineStages ?? []).map((r) => [`${r.line_id}:${r.stage}`, { planned_on: str(r.planned_on), done_on: str(r.done_on) }]))}
       />
       <OrderQc orderId={o.id} companyId={o.company_id} open={o.status === "open"} canRecord={canRecordQc(me?.role)} today={todayIST()} checks={checks} finalPassed={finalPassed} />
       {canEdit ? <OrderForm
