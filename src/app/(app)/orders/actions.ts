@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { getMe } from "@/lib/auth";
 import { friendly } from "@/lib/errors";
-import { STAGES } from "@/lib/format";
+import { STAGES, todayIST } from "@/lib/format";
 import { createClient } from "@/lib/supabase/server";
 
 export type OrderInput = {
@@ -87,5 +87,48 @@ export async function saveProgress(id: string, p: ProgressInput): Promise<{ erro
   if (!data?.length) return { error: "Only open orders can be updated here. Reload the page." };
   revalidatePath("/");
   revalidatePath(`/orders/${id}`);
+  return {};
+}
+
+export type QcInput = { kind: string; checked_on: string; result: string; pieces_checked: string; defects: string; notes: string };
+
+// Records one inspection. Saved checks are never edited, only cancelled with a reason.
+export async function addQc(orderId: string, q: QcInput): Promise<{ error?: string }> {
+  const me = await getMe();
+  if (!me?.role || !me.companyId) return { error: "Your account is not switched on yet." };
+  if (q.kind !== "inline" && q.kind !== "final") return { error: "Pick Inline or Final." };
+  if (q.result !== "pass" && q.result !== "fail") return { error: "Pick Pass or Fail." };
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(q.checked_on)) return { error: "Enter the date of the check." };
+  if (q.checked_on > todayIST()) return { error: "The check date can't be in the future." };
+  const pieces = q.pieces_checked.trim() ? Number(num(q.pieces_checked)) : null;
+  const defects = q.defects.trim() ? Number(num(q.defects)) : 0;
+  if (pieces != null && (!Number.isInteger(pieces) || pieces <= 0)) return { error: "Pieces checked must be a whole number above zero." };
+  if (!Number.isInteger(defects) || defects < 0) return { error: "Defects must be a whole number, 0 or more." };
+  if (pieces != null && defects > pieces) return { error: "Defects can't be more than the pieces checked." };
+  if (q.result === "fail" && !q.notes.trim()) return { error: "Write what failed in the notes, so the factory knows what to fix." };
+
+  const supabase = await createClient();
+  const { error } = await supabase.from("qc_checks").insert({
+    company_id: me.companyId, order_id: orderId, kind: q.kind, checked_on: q.checked_on, result: q.result,
+    pieces_checked: pieces, defects, notes: q.notes.trim() || null, checked_by: me.id,
+  });
+  if (error) return { error: friendly(error) };
+  revalidatePath("/");
+  revalidatePath(`/orders/${orderId}`);
+  return {};
+}
+
+export async function cancelQc(orderId: string, id: string, reason: string): Promise<{ error?: string }> {
+  const me = await getMe();
+  if (!me?.role) return { error: "Your account is not switched on yet." };
+  if (!reason.trim()) return { error: "Say why this QC check is being cancelled." };
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("qc_checks").update({ cancelled_at: new Date().toISOString(), cancel_reason: reason.trim() })
+    .eq("id", id).is("cancelled_at", null).select("id");
+  if (error) return { error: friendly(error) };
+  if (!data?.length) return { error: "That check was already cancelled. Reload the page." };
+  revalidatePath("/");
+  revalidatePath(`/orders/${orderId}`);
   return {};
 }

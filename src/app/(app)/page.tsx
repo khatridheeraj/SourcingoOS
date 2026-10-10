@@ -31,12 +31,17 @@ export default async function OrdersPage({ searchParams }: PageProps<"/">) {
     .order("ship_date", { ascending: true, nullsFirst: false })
     .order("order_no");
   if (status !== "all") query = query.eq("status", status === "late" ? "open" : status);
-  const [{ data, error }, buyers, factories, counts] = await Promise.all([
+  const [{ data, error }, buyers, factories, counts, { data: qc }] = await Promise.all([
     query,
     loadBuyers(),
     loadFactories(),
     supabase.from("orders").select("status, ship_date, revised_ship_date").eq("company_id", companyId),
+    supabase.from("qc_checks").select("order_id, result").eq("company_id", companyId).eq("kind", "final").is("cancelled_at", null)
+      .order("checked_on", { ascending: false }).order("created_at", { ascending: false }),
   ]);
+  // Each order's latest final QC result (rows come newest first).
+  const finalQc = new Map<string, string>();
+  for (const c of qc ?? []) if (!finalQc.has(c.order_id)) finalQc.set(c.order_id, c.result);
 
   const buyerById = new Map(buyers.map((b) => [b.id, b]));
   const factoryById = new Map(factories.map((f) => [f.id, f]));
@@ -61,6 +66,7 @@ export default async function OrdersPage({ searchParams }: PageProps<"/">) {
       factoryNames,
       missingFactory,
       due: dueDate(o),
+      needsQc: o.status === "open" && o.stage === "packed" && finalQc.get(o.id) !== "pass",
       late: isLate(o),
       lateBy: isLate(o) ? daysBetween(dueDate(o)!, today) : 0,
     };
@@ -131,6 +137,7 @@ export default async function OrdersPage({ searchParams }: PageProps<"/">) {
                   {r.due ? <span>Ships {day(r.due)}</span> : <span className="muted">No ship date</span>}
                   {r.status === "open" && <span className="chip">{stageLabel(r.stage)}</span>}
                   {r.late && <span className="chip bad">Late {r.lateBy}d</span>}
+                  {r.needsQc && <span className="chip warn">Needs final QC</span>}
                   {r.missingFactory && <span className="chip warn">Needs factory</span>}
                 </div>
               </Link>
@@ -167,7 +174,10 @@ export default async function OrdersPage({ searchParams }: PageProps<"/">) {
                   </td>
                   <td>
                     {r.status === "open"
-                      ? <span className={r.stage === "packed" ? "chip ok" : r.stage ? "chip info" : "chip"}>{stageLabel(r.stage)}</span>
+                      ? <>
+                          <span className={r.stage === "packed" ? "chip ok" : r.stage ? "chip info" : "chip"}>{stageLabel(r.stage)}</span>
+                          {r.needsQc && <span className="chip warn ml-1">Needs final QC</span>}
+                        </>
                       : <span className={STATUS[r.status]?.cls}>{STATUS[r.status]?.label}</span>}
                   </td>
                 </tr>
