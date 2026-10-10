@@ -1,13 +1,13 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { canEditOrders, canRecordQc, getMe } from "@/lib/auth";
-import { day, qty, SHIP_QC, todayIST } from "@/lib/format";
+import { day, qty, SHIP_QC, TNA_STEPS, todayIST } from "@/lib/format";
 import { createClient } from "@/lib/supabase/server";
 import { OrderForm } from "../order-form";
 import { OrderHistory } from "./order-history";
 import { OrderProduction } from "./order-production";
 import { OrderQc, type QcCheck } from "./order-qc";
-import { OrderStyles } from "./order-styles";
+import { OrderStyles, type FactoryGroup, type StepQc } from "./order-styles";
 import { loadTeam, personName } from "@/lib/data";
 import { PHOTO_BUCKET } from "@/lib/storage";
 import { formOptions } from "../options";
@@ -28,7 +28,7 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
   if (!o) notFound();
 
   const lines = [...(o.order_lines ?? [])].sort((a, b) => a.position - b.position);
-  const [{ data: qc }, team, me, { data: lineStages }] = await Promise.all([
+  const [{ data: qc }, team, me, { data: lineStages }, { data: factoryPos }] = await Promise.all([
     supabase
       .from("qc_checks")
       .select("id, kind, checked_on, result, pieces_checked, defects, notes, checked_by, cancelled_at, cancel_reason")
@@ -37,7 +37,8 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
       .order("created_at", { ascending: false }),
     loadTeam(),
     getMe(),
-    supabase.from("line_stages").select("line_id, stage, planned_on, done_on").eq("order_id", id),
+    supabase.from("line_stages").select("line_id, stage, planned_on, done_on, not_needed").eq("order_id", id),
+    supabase.from("factory_pos").select("factory_id, plan_requested_on, released_at").eq("order_id", id),
   ]);
   const canEdit = canEditOrders(me?.role);
   const people = new Map(team.map((m) => [m.user_id, personName(m)]));
@@ -67,6 +68,30 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
   const finalPassed = checks.find((c) => SHIP_QC.includes(c.kind) && !c.cancelled_at)?.result === "pass";
   const opts = await formOptions({ buyerId: o.buyer_id, factoryIds: lines.map((l) => l.factory_id).filter(Boolean) as string[] });
 
+  // Styles grouped by factory, each with its PO's plan request and release.
+  const groups: FactoryGroup[] = [];
+  for (const l of lines) {
+    let g = groups.find((x) => x.factoryId === (l.factory_id ?? null));
+    if (!g) {
+      const po = (factoryPos ?? []).find((p) => p.factory_id === l.factory_id);
+      g = {
+        factoryId: l.factory_id ?? null,
+        factoryName: l.factory_id ? opts.factories.find((f) => f.id === l.factory_id)?.label ?? "Factory" : "No factory yet",
+        planRequestedOn: str(po?.plan_requested_on),
+        releasedAt: str(po?.released_at),
+        lines: [],
+      };
+      groups.push(g);
+    }
+    g.lines.push({ id: l.id, style: l.style, colour: str(l.colour), qty: l.qty, photoUrl: (l.photo_path && urlByPath.get(l.photo_path)) || null, hasRate: l.factory_rate != null });
+  }
+  // Quality's latest result for each TNA step it checks (checks are newest first).
+  const stepQc: Record<string, StepQc> = {};
+  for (const s of TNA_STEPS) {
+    const c = checks.find((x) => !x.cancelled_at && s.qc?.includes(x.kind));
+    if (c) stepQc[s.key] = { result: c.result, checkedOn: c.checked_on, kind: c.kind };
+  }
+
   return (
     <>
       <div className="head">
@@ -89,12 +114,14 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
       />
       <OrderStyles
         orderId={o.id}
+        orderNo={o.order_no}
         companyId={o.company_id}
         open={o.status === "open"}
         canEdit={canEdit}
         today={todayIST()}
-        lines={lines.map((l) => ({ id: l.id, style: l.style, colour: str(l.colour), qty: l.qty, photoUrl: (l.photo_path && urlByPath.get(l.photo_path)) || null }))}
-        initial={Object.fromEntries((lineStages ?? []).map((r) => [`${r.line_id}:${r.stage}`, { planned_on: str(r.planned_on), done_on: str(r.done_on) }]))}
+        groups={groups}
+        initial={Object.fromEntries((lineStages ?? []).map((r) => [`${r.line_id}:${r.stage}`, { planned_on: str(r.planned_on), done_on: str(r.done_on), not_needed: !!r.not_needed }]))}
+        qc={stepQc}
       />
       <OrderQc orderId={o.id} companyId={o.company_id} open={o.status === "open"} canRecord={canRecordQc(me?.role)} today={todayIST()} checks={checks} finalPassed={finalPassed} />
       {canEdit ? <OrderForm

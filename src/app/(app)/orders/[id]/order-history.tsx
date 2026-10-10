@@ -1,5 +1,5 @@
 import { loadFactories, loadTeam } from "@/lib/data";
-import { day, qcKindLabel, stageLabel, STATUS } from "@/lib/format";
+import { day, qcKindLabel, stageLabel, STATUS, TNA_STEPS } from "@/lib/format";
 import { personName } from "@/lib/names";
 import { createClient } from "@/lib/supabase/server";
 
@@ -54,11 +54,20 @@ export async function OrderHistory({ orderId }: { orderId: string }) {
     }
     if (r.table_name === "line_stages") {
       const b = r.before ?? {}, a = r.after ?? {};
-      const what = `${styleName.get(String(a.line_id)) ?? "a style"} ${stageLabel(String(a.stage)).toLowerCase()}`;
+      const step = TNA_STEPS.find((s) => s.key === a.stage)?.label ?? String(a.stage);
+      const what = `${styleName.get(String(a.line_id)) ?? "a style"} ${step.toLowerCase()}`;
+      if (a.not_needed && !b.not_needed) return `Marked ${what} not needed`;
       const parts = [["planned_on", "plan"], ["done_on", "done"]]
         .filter(([k]) => (b[k] ?? null) !== (a[k] ?? null))
         .map(([k, label]) => `${label} ${a[k] ? day(String(a[k])) : "cleared"}`);
       return parts.length ? `Set ${what}: ${parts.join(", ")}` : null;
+    }
+    if (r.table_name === "factory_pos") {
+      const b = r.before ?? {}, a = r.after ?? {};
+      const factory = factoryName.get(String(a.factory_id)) ?? "a factory";
+      if (a.released_at && !b.released_at) return a.note ? `${factory}'s PO counted as released (${a.note})` : `Released the PO to ${factory}`;
+      if (a.plan_requested_on && a.plan_requested_on !== b.plan_requested_on) return `Asked ${factory} for its plan`;
+      return null;
     }
     const isOrder = r.table_name === "orders";
     const style = String((r.after ?? r.before)?.style ?? "");

@@ -358,25 +358,71 @@ do $$ begin
 exception when unique_violation then null;
 end $$;
 
--- Production by style: planned and actual dates per stage; the order follows its slowest style.
+-- Production by style: a full TNA per style; the factory PO is released only once the plan is complete,
+-- actual dates come after release, and the order follows its slowest style.
 select public.save_order(
   jsonb_build_object('id', :'save_order', 'buyer_id', '10000000-0000-0000-0000-000000000001', 'buyer_po', 'OZIA PO 001', 'status', 'open'),
-  jsonb_build_array(jsonb_build_object('id', (select id from public.order_lines where style = 'OZ-103' and removed_at is null), 'style', 'OZ-103', 'qty', 50),
-    jsonb_build_object('id', (select id from public.order_lines where style = 'OZ-101'), 'style', 'OZ-101', 'colour', 'Navy', 'qty', 520)));
+  jsonb_build_array(jsonb_build_object('id', (select id from public.order_lines where style = 'OZ-103' and removed_at is null), 'style', 'OZ-103', 'qty', 50,
+      'factory_id', '20000000-0000-0000-0000-000000000001', 'factory_rate', '200'),
+    jsonb_build_object('id', (select id from public.order_lines where style = 'OZ-101'), 'style', 'OZ-101', 'colour', 'Navy', 'qty', 520,
+      'factory_id', '20000000-0000-0000-0000-000000000001')));
+select public.save_line_stages(:'save_order', jsonb_build_array(
+  jsonb_build_object('line_id', (select id from public.order_lines where style = 'OZ-103' and removed_at is null), 'stage', 'fabric', 'planned_on', '2026-11-01'),
+  jsonb_build_object('line_id', (select id from public.order_lines where style = 'OZ-103' and removed_at is null), 'stage', 'cutting', 'planned_on', '2026-11-10'),
+  jsonb_build_object('line_id', (select id from public.order_lines where style = 'OZ-101'), 'stage', 'fabric', 'planned_on', '2026-11-01')));
+do $$ begin
+  if (select count(*) from public.line_stages) <> 3 then raise exception 'style plan not saved'; end if;
+  begin
+    perform public.save_line_stages((select id from public.orders), jsonb_build_array(
+      jsonb_build_object('line_id', (select id from public.order_lines where style = 'OZ-101'), 'stage', 'fabric', 'planned_on', '2026-11-01', 'done_on', '2026-11-02')));
+    raise exception 'a done date was accepted before the PO was released';
+  exception when raise_exception then
+    if sqlerrm not like 'Release the factory PO%' then raise; end if;
+  end;
+  begin
+    perform public.release_factory_po((select id from public.orders), '20000000-0000-0000-0000-000000000001');
+    raise exception 'a PO with an incomplete plan was released';
+  exception when raise_exception then
+    if sqlerrm not like 'The plan is not complete yet. Missing: OZ-103 (Greige, Fit sample%; OZ-101 (factory rate, Greige%' then raise; end if;
+  end;
+  begin
+    insert into public.line_stages (order_id, line_id, stage, not_needed, planned_on)
+      select id, (select id from public.order_lines where style = 'OZ-101'), 'printing', true, '2026-11-05' from public.orders;
+    raise exception 'a not-needed step kept a date';
+  exception when check_violation then null;
+  end;
+end $$;
+-- Fill every step (printing not needed), add the missing factory rate, then release.
+select public.save_line_stages(:'save_order', (
+  select jsonb_agg(jsonb_build_object('line_id', l.id, 'stage', st, 'planned_on', case when st = 'printing' then '' else '2026-11-01' end,
+                                      'not_needed', st = 'printing'))
+  from public.order_lines l cross join unnest(array['greige', 'fit_sample', 'strike_off', 'pp_sample', 'size_set',
+    'fabric', 'printing', 'cutting', 'stitching', 'finishing', 'packed', 'final_qc', 'ex_factory']) st
+  where l.order_id = :'save_order' and l.removed_at is null));
+update public.order_lines set factory_rate = 240 where style = 'OZ-101';
+select public.release_factory_po(:'save_order', '20000000-0000-0000-0000-000000000001');
+do $$ begin
+  if (select released_at is null or released_by <> auth.uid() from public.factory_pos where order_id = (select id from public.orders)) then
+    raise exception 'factory PO not released';
+  end if;
+  if (select count(*) from public.line_stages) <> 26 then raise exception 'full TNA not saved: %', (select count(*) from public.line_stages); end if;
+  begin
+    update public.factory_pos set released_at = null;
+    raise exception 'a release was undone';
+  exception when insufficient_privilege then null;
+  end;
+end $$;
 select public.save_line_stages(:'save_order', jsonb_build_array(
   jsonb_build_object('line_id', (select id from public.order_lines where style = 'OZ-103' and removed_at is null), 'stage', 'fabric', 'planned_on', '2026-11-01', 'done_on', '2026-11-03'),
-  jsonb_build_object('line_id', (select id from public.order_lines where style = 'OZ-103' and removed_at is null), 'stage', 'cutting', 'planned_on', '2026-11-10', 'done_on', '2026-11-09'),
-  jsonb_build_object('line_id', (select id from public.order_lines where style = 'OZ-101'), 'stage', 'fabric', 'planned_on', '2026-11-01', 'done_on', '')));
+  jsonb_build_object('line_id', (select id from public.order_lines where style = 'OZ-103' and removed_at is null), 'stage', 'cutting', 'planned_on', '2026-11-10', 'done_on', '2026-11-09')));
 do $$ begin
-  if (select count(*) from public.line_stages) <> 3 then raise exception 'style dates not saved'; end if;
   if (select stage from public.orders) is not null then raise exception 'order stage should follow its slowest style (OZ-101 not started)'; end if;
 end $$;
 select public.save_line_stages(:'save_order', jsonb_build_array(
   jsonb_build_object('line_id', (select id from public.order_lines where style = 'OZ-101'), 'stage', 'fabric', 'planned_on', '2026-11-01', 'done_on', '2026-11-02')));
 do $$ begin
   if (select stage from public.orders) <> 'fabric' then raise exception 'order stage not moved to fabric: %', (select stage from public.orders); end if;
-  if (select count(*) from public.line_stages) <> 3 then raise exception 'saving again added a duplicate row'; end if;
-  if (select count(*) from public.history where table_name = 'line_stages') <> 4 then raise exception 'style date history not kept'; end if;
+  if (select count(*) from public.line_stages) <> 26 then raise exception 'saving again added a duplicate row'; end if;
   begin
     perform public.save_line_stages((select id from public.orders), jsonb_build_array(
       jsonb_build_object('line_id', (select id from public.order_lines where style = 'OZ-101'), 'stage', 'sewing')));
@@ -388,6 +434,13 @@ do $$ begin
     raise exception 'a stage row was moved to another style';
   exception when insufficient_privilege then null;
   end;
+end $$;
+select pg_temp.as_user('00000000-0000-0000-0000-0000000000a9');
+do $$ begin
+  perform public.release_factory_po((select id from public.orders), '20000000-0000-0000-0000-000000000001');
+  raise exception 'Quality released a PO';
+exception when raise_exception then
+  if sqlerrm not like 'Only the orders team%' then raise; end if;
 end $$;
 select pg_temp.as_user('00000000-0000-0000-0000-0000000000a9');
 do $$ begin

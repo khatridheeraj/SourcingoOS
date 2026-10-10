@@ -46,3 +46,21 @@ export const QC_KINDS = [
 ] as const;
 export const SHIP_QC = ["final", "recheck"];
 export const qcKindLabel = (k: string) => QC_KINDS.find((x) => x.key === k)?.label ?? k;
+
+// TNA steps every style is planned against: samples and approvals, production, then inspection and ex-factory.
+// `qc` names the QC check types whose result is shown against the step.
+export const TNA_STEPS: { key: string; label: string; qc?: string[] }[] = [
+  { key: "greige", label: "Greige", qc: ["greige"] },
+  { key: "fit_sample", label: "Fit sample", qc: ["fit_sample"] },
+  { key: "strike_off", label: "Strike off", qc: ["strike_off"] },
+  { key: "pp_sample", label: "PP sample", qc: ["pp_sample"] },
+  { key: "size_set", label: "Size set", qc: ["size_set"] },
+  { key: "fabric", label: "Fabric" },
+  { key: "printing", label: "Printing" },
+  { key: "cutting", label: "Cutting", qc: ["inline"] },
+  { key: "stitching", label: "Stitching", qc: ["midline"] },
+  { key: "finishing", label: "Finishing" },
+  { key: "packed", label: "Packed" },
+  { key: "final_qc", label: "Final QC", qc: ["final", "recheck"] },
+  { key: "ex_factory", label: "Ex-factory" },
+];
