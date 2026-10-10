@@ -1,8 +1,8 @@
 import { NO_COMPANY } from "@/lib/names";
 import Link from "next/link";
-import { getMe } from "@/lib/auth";
+import { canEditOrders, getMe } from "@/lib/auth";
 import { loadBuyers, loadFactories } from "@/lib/data";
-import { day, daysBetween, dueDate, money, qty, stageLabel, STATUS, todayIST } from "@/lib/format";
+import { day, daysBetween, dueDate, money, qty, SHIP_QC, stageLabel, STATUS, todayIST } from "@/lib/format";
 import { createClient } from "@/lib/supabase/server";
 
 const TABS = [
@@ -36,7 +36,7 @@ export default async function OrdersPage({ searchParams }: PageProps<"/">) {
     loadBuyers(),
     loadFactories(),
     supabase.from("orders").select("status, ship_date, revised_ship_date").eq("company_id", companyId),
-    supabase.from("qc_checks").select("order_id, result").eq("company_id", companyId).eq("kind", "final").is("cancelled_at", null)
+    supabase.from("qc_checks").select("order_id, result").eq("company_id", companyId).in("kind", SHIP_QC).is("cancelled_at", null)
       .order("checked_on", { ascending: false }).order("created_at", { ascending: false }),
   ]);
   // Each order's latest final QC result (rows come newest first).
@@ -51,6 +51,7 @@ export default async function OrdersPage({ searchParams }: PageProps<"/">) {
     return o.status === "open" && !!due && due < today;
   };
   const owner = me?.role === "owner";
+  const prices = canEditOrders(me?.role);
 
   const rows = (data ?? []).map((o) => {
     const lines = (o.order_lines ?? []) as Line[];
@@ -62,7 +63,7 @@ export default async function OrdersPage({ searchParams }: PageProps<"/">) {
       buyer: b ? (owner && b.realName ? `${b.code} · ${b.realName}` : b.code) : "",
       styles: lines.map((l) => l.style),
       pieces: lines.reduce((s, l) => s + l.qty, 0),
-      value: lines.every((l) => l.buyer_rate != null) ? lines.reduce((s, l) => s + l.qty * (l.buyer_rate ?? 0), 0) : null,
+      value: prices && lines.every((l) => l.buyer_rate != null) ? lines.reduce((s, l) => s + l.qty * (l.buyer_rate ?? 0), 0) : null,
       factoryNames,
       missingFactory,
       due: dueDate(o),
@@ -88,7 +89,7 @@ export default async function OrdersPage({ searchParams }: PageProps<"/">) {
           <h1>Orders</h1>
           <p>One line per buyer PO. Sorted by ship date, earliest first. A new ship date replaces the buyer&apos;s date when an order slips.</p>
         </div>
-        <Link href="/orders/new" className="btn primary">New order</Link>
+        {prices && <Link href="/orders/new" className="btn primary">New order</Link>}
       </div>
 
       {status === "open" && openCount > 0 && (
@@ -149,7 +150,7 @@ export default async function OrdersPage({ searchParams }: PageProps<"/">) {
             <thead>
               <tr>
                 <th>Order</th><th>Buyer</th><th>Buyer PO</th><th>Styles</th><th className="r">Pieces</th>
-                <th className="r">Value</th><th>Factory</th><th>Ship date</th><th>Stage</th>
+                {prices && <th className="r">Value</th>}<th>Factory</th><th>Ship date</th><th>Stage</th>
               </tr>
             </thead>
             <tbody>
@@ -160,7 +161,7 @@ export default async function OrdersPage({ searchParams }: PageProps<"/">) {
                   <td className="whitespace-nowrap">{r.buyer_po}</td>
                   <td>{r.styles.length <= 2 ? r.styles.join(", ") : `${r.styles.slice(0, 2).join(", ")} +${r.styles.length - 2}`}</td>
                   <td className="r num">{qty(r.pieces)}</td>
-                  <td className="r num">{money(r.value)}</td>
+                  {prices && <td className="r num">{money(r.value)}</td>}
                   <td>
                     {r.factoryNames.join(", ")}
                     {r.missingFactory && <span className="chip warn ml-1">Needs factory</span>}

@@ -1,5 +1,5 @@
 import { loadFactories, loadTeam } from "@/lib/data";
-import { day, stageLabel, STATUS } from "@/lib/format";
+import { day, qcKindLabel, stageLabel, STATUS } from "@/lib/format";
 import { personName } from "@/lib/names";
 import { createClient } from "@/lib/supabase/server";
 
@@ -45,7 +45,7 @@ export async function OrderHistory({ orderId }: { orderId: string }) {
   const describe = (r: Row) => {
     if (r.table_name === "qc_checks") {
       const c = (r.after ?? r.before) as { kind?: string; result?: string; cancel_reason?: string };
-      const what = `${c.kind === "final" ? "final" : "inline"} QC`;
+      const what = `${qcKindLabel(c.kind ?? "").toLowerCase()} QC`;
       if (r.action === "insert") return `Recorded ${what}: ${c.result === "pass" ? "Pass" : "Fail"}`;
       if (r.after?.cancelled_at && !r.before?.cancelled_at) return `Cancelled a ${what} (${c.cancel_reason})`;
       return null;

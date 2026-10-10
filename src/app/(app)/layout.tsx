@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Nav } from "@/components/nav";
-import { getMe, roleLabel } from "@/lib/auth";
+import { canEditOrders, getMe, roleLabel } from "@/lib/auth";
 
 export default async function AppLayout({ children }: LayoutProps<"/">) {
   const me = await getMe();
@@ -9,8 +9,7 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
 
   const items = [
     { href: "/", label: "Orders" },
-    { href: "/buyers", label: "Buyers" },
-    { href: "/factories", label: "Factories" },
+    ...(canEditOrders(me.role) ? [{ href: "/buyers", label: "Buyers" }, { href: "/factories", label: "Factories" }] : []),
     ...(me.role === "owner" || me.role === "accounts" ? [{ href: "/payments", label: "Payments" }] : []),
     ...(me.role === "owner" ? [{ href: "/team", label: "Team" }] : []),
   ];

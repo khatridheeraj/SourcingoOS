@@ -1,8 +1,11 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
+import { canEditOrders, getMe } from "@/lib/auth";
 import { OrderForm } from "../order-form";
 import { formOptions } from "../options";
 
 export default async function NewOrderPage() {
+  if (!canEditOrders((await getMe())?.role)) redirect("/");
   const o = await formOptions();
   return (
     <>

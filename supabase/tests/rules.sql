@@ -158,6 +158,50 @@ do $$ begin
 exception when raise_exception then
   if sqlerrm not like '%passed final QC%' then raise; end if;
 end $$;
+
+-- QC belongs to the Quality team: a merchandiser can't record it.
+do $$ begin
+  insert into public.qc_checks (order_id, kind, result) select id, 'inline', 'pass' from public.orders;
+  raise exception 'a merchandiser recorded QC';
+exception when insufficient_privilege then null;
+end $$;
+do $$ begin
+  if public.can_upload_photo((select id::text from public.companies where name = 'Sourcingo') || '/o/qc/c/a.jpg') then
+    raise exception 'a merchandiser may upload QC photos';
+  end if;
+  if not public.can_upload_photo((select id::text from public.companies where name = 'Sourcingo') || '/o/styles/l/a.jpg') then
+    raise exception 'a merchandiser may not upload style photos';
+  end if;
+end $$;
+
+-- The owner adds a Quality person, who has already signed in.
+reset role;
+insert into auth.users (id, email) values ('00000000-0000-0000-0000-0000000000a9', 'qc@sourcingo.in');
+set role authenticated;
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000a');
+do $$ begin
+  if public.add_member('qc@sourcingo.in', 'quality') <> 'added' then raise exception 'quality person not added'; end if;
+end $$;
+select pg_temp.as_user('00000000-0000-0000-0000-0000000000a9');
+do $$ begin
+  if (select count(*) from public.orders) <> 1 then raise exception 'Quality should see orders'; end if;
+  if (select count(*) from public.buyer_names) <> 0 then raise exception 'Quality must not see real buyer names'; end if;
+  if public.can_upload_photo((select id::text from public.companies where name = 'Sourcingo') || '/o/styles/l/a.jpg') then
+    raise exception 'Quality may upload style photos';
+  end if;
+  update public.orders set stage = 'packed';
+  if exists (select 1 from public.orders where stage = 'packed') then raise exception 'Quality changed production'; end if;
+  begin
+    perform public.save_order(jsonb_build_object('buyer_id', '10000000-0000-0000-0000-000000000001', 'buyer_po', 'QC-PO'), '[{"style":"Q","qty":1}]');
+    raise exception 'Quality created an order';
+  exception when insufficient_privilege then null;
+  end;
+  begin
+    insert into public.factories (name) values ('QC Factory');
+    raise exception 'Quality added a factory';
+  exception when insufficient_privilege then null;
+  end;
+end $$;
 insert into public.qc_checks (order_id, kind, result, pieces_checked, defects) values (:'save_order', 'inline', 'pass', 50, 2);
 insert into public.qc_checks (order_id, kind, result, pieces_checked, defects, notes, checked_on)
   values (:'save_order', 'final', 'fail', 80, 9, 'Loose threads, wrong wash care label', current_date - 1);
@@ -180,11 +224,15 @@ do $$ begin
     if sqlerrm not like '%can''t be changed%' then raise; end if;
   end;
 end $$;
-insert into public.qc_checks (order_id, kind, result, pieces_checked, defects) values (:'save_order', 'final', 'pass', 80, 1);
+insert into public.qc_checks (order_id, kind, result, pieces_checked, defects) values (:'save_order', 'midline', 'pass', 40, 0);
+do $$ begin
+  if public.final_qc_passed((select id from public.orders)) then raise exception 'a mid-line pass counted as the final'; end if;
+end $$;
+insert into public.qc_checks (order_id, kind, result, pieces_checked, defects) values (:'save_order', 'recheck', 'pass', 80, 1);
 do $$ begin
   if not public.final_qc_passed((select id from public.orders)) then raise exception 'the passing re-check did not count'; end if;
   -- Cancelling the passing check puts the order back to needing a final QC.
-  update public.qc_checks set cancelled_at = now(), cancel_reason = 'Entered on the wrong order' where kind = 'final' and result = 'pass';
+  update public.qc_checks set cancelled_at = now(), cancel_reason = 'Entered on the wrong order' where kind = 'recheck' and result = 'pass';
   if public.final_qc_passed((select id from public.orders)) then raise exception 'a cancelled check still counted'; end if;
   begin
     update public.qc_checks set cancelled_at = null where cancelled_at is not null;
@@ -192,9 +240,38 @@ do $$ begin
   exception when raise_exception then
     if sqlerrm not like '%already cancelled%' then raise; end if;
   end;
-  if (select count(*) from public.history where table_name = 'qc_checks') <> 4 then raise exception 'QC history not kept'; end if;
+  if (select count(*) from public.history where table_name = 'qc_checks') <> 5 then raise exception 'QC history not kept'; end if;
 end $$;
 insert into public.qc_checks (order_id, kind, result, pieces_checked, defects) values (:'save_order', 'final', 'pass', 80, 0);
+
+-- QC photos sit under the company's own folder and are taken off a check, never deleted.
+insert into public.qc_photos (qc_id, path)
+  select id, (select id from public.companies where name = 'Sourcingo') || '/' || order_id || '/qc/' || id || '/a.jpg'
+  from public.qc_checks where cancelled_at is null and kind = 'final' and result = 'pass';
+do $$ begin
+  begin
+    insert into public.qc_photos (qc_id, path) select id, 'cccccccc-0000-0000-0000-000000000002/x/qc/y/b.jpg' from public.qc_checks limit 1;
+    raise exception 'a photo path outside the company folder was accepted';
+  exception when check_violation then null;
+  end;
+  update public.qc_photos set removed_at = now();
+  if (select count(*) from public.qc_photos where removed_at is not null) <> 1 then raise exception 'photo not taken off'; end if;
+  begin
+    update public.qc_photos set path = 'other';
+    raise exception 'a photo path was changed';
+  exception when insufficient_privilege then null;
+  end;
+  if public.is_member_folder('not-a-company') then raise exception 'a non-company folder was allowed'; end if;
+  if not public.is_member_folder((select id::text from public.companies where name = 'Sourcingo')) then raise exception 'own company folder refused'; end if;
+end $$;
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000b');
+do $$ begin
+  update public.qc_photos set removed_at = null;
+  if exists (select 1 from public.qc_photos where removed_at is null) then raise exception 'a merchandiser changed a QC photo'; end if;
+  update public.qc_checks set cancelled_at = now(), cancel_reason = 'x';
+  if exists (select 1 from public.qc_checks where cancel_reason = 'x') then raise exception 'a merchandiser cancelled QC'; end if;
+  if (select count(*) from public.qc_checks) <> 5 then raise exception 'a merchandiser should still see QC'; end if;
+end $$;
 
 -- Editing keeps the lines it is given (same id), drops the ones left out, and adds new ones in order.
 select public.save_order(

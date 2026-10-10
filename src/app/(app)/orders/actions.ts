@@ -1,9 +1,9 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { getMe } from "@/lib/auth";
+import { canEditOrders, canRecordQc, getMe } from "@/lib/auth";
 import { friendly } from "@/lib/errors";
-import { STAGES, todayIST } from "@/lib/format";
+import { QC_KINDS, STAGES, todayIST } from "@/lib/format";
 import { createClient } from "@/lib/supabase/server";
 
 export type OrderInput = {
@@ -32,6 +32,7 @@ const num = (s: string) => s.replace(/[,₹\s]/g, "");
 export async function saveOrder(order: OrderInput, lines: LineInput[]): Promise<{ error?: string; id?: string }> {
   const me = await getMe();
   if (!me?.role) return { error: "Your account is not switched on yet." };
+  if (!canEditOrders(me.role)) return { error: "Only the orders team can change orders." };
   if (!order.buyer_id) return { error: "Pick the buyer." };
   if (!order.buyer_po.trim()) return { error: "Enter the buyer's PO number." };
 
@@ -68,6 +69,7 @@ export type ProgressInput = { stage: string; revised_ship_date: string; delay_re
 export async function saveProgress(id: string, p: ProgressInput): Promise<{ error?: string }> {
   const me = await getMe();
   if (!me?.role) return { error: "Your account is not switched on yet." };
+  if (!canEditOrders(me.role)) return { error: "Only the orders team can change orders." };
   if (p.stage && !STAGES.some((s) => s.key === p.stage)) return { error: "Pick a stage from the list." };
   if (p.revised_ship_date && !/^\d{4}-\d{2}-\d{2}$/.test(p.revised_ship_date)) return { error: "Enter the new ship date as a date." };
   if (p.revised_ship_date && !p.delay_reason.trim()) return { error: "Say why the ship date moved, so everyone knows." };
@@ -93,10 +95,11 @@ export async function saveProgress(id: string, p: ProgressInput): Promise<{ erro
 export type QcInput = { kind: string; checked_on: string; result: string; pieces_checked: string; defects: string; notes: string };
 
 // Records one inspection. Saved checks are never edited, only cancelled with a reason.
-export async function addQc(orderId: string, q: QcInput): Promise<{ error?: string }> {
+export async function addQc(orderId: string, q: QcInput): Promise<{ error?: string; id?: string }> {
   const me = await getMe();
   if (!me?.role || !me.companyId) return { error: "Your account is not switched on yet." };
-  if (q.kind !== "inline" && q.kind !== "final") return { error: "Pick Inline or Final." };
+  if (!canRecordQc(me.role)) return { error: "Only the Quality team records QC." };
+  if (!QC_KINDS.some((k) => k.key === q.kind)) return { error: "Pick the type of check." };
   if (q.result !== "pass" && q.result !== "fail") return { error: "Pick Pass or Fail." };
   if (!/^\d{4}-\d{2}-\d{2}$/.test(q.checked_on)) return { error: "Enter the date of the check." };
   if (q.checked_on > todayIST()) return { error: "The check date can't be in the future." };
@@ -108,12 +111,38 @@ export async function addQc(orderId: string, q: QcInput): Promise<{ error?: stri
   if (q.result === "fail" && !q.notes.trim()) return { error: "Write what failed in the notes, so the factory knows what to fix." };
 
   const supabase = await createClient();
-  const { error } = await supabase.from("qc_checks").insert({
+  const { data, error } = await supabase.from("qc_checks").insert({
     company_id: me.companyId, order_id: orderId, kind: q.kind, checked_on: q.checked_on, result: q.result,
     pieces_checked: pieces, defects, notes: q.notes.trim() || null, checked_by: me.id,
-  });
+  }).select("id").single();
   if (error) return { error: friendly(error) };
   revalidatePath("/");
+  revalidatePath(`/orders/${orderId}`);
+  return { id: data.id };
+}
+
+// Lists photos the browser has just uploaded to storage against a QC check.
+export async function addQcPhotos(orderId: string, qcId: string, paths: string[]): Promise<{ error?: string }> {
+  const me = await getMe();
+  if (!me?.role || !me.companyId) return { error: "Your account is not switched on yet." };
+  if (!canRecordQc(me.role)) return { error: "Only the Quality team records QC." };
+  const prefix = `${me.companyId}/${orderId}/qc/${qcId}/`;
+  if (!paths.length || paths.some((p) => !p.startsWith(prefix) || p.includes(".."))) return { error: "Those photos didn't upload properly. Try again." };
+  const supabase = await createClient();
+  const { error } = await supabase.from("qc_photos").insert(paths.map((path) => ({ company_id: me.companyId, qc_id: qcId, path, created_by: me.id })));
+  if (error) return { error: friendly(error) };
+  revalidatePath(`/orders/${orderId}`);
+  return {};
+}
+
+// Takes a photo off a check. The file itself is kept.
+export async function removeQcPhoto(orderId: string, id: string): Promise<{ error?: string }> {
+  const me = await getMe();
+  if (!me?.role) return { error: "Your account is not switched on yet." };
+  if (!canRecordQc(me.role)) return { error: "Only the Quality team records QC." };
+  const supabase = await createClient();
+  const { error } = await supabase.from("qc_photos").update({ removed_at: new Date().toISOString() }).eq("id", id).is("removed_at", null);
+  if (error) return { error: friendly(error) };
   revalidatePath(`/orders/${orderId}`);
   return {};
 }
@@ -121,6 +150,7 @@ export async function addQc(orderId: string, q: QcInput): Promise<{ error?: stri
 export async function cancelQc(orderId: string, id: string, reason: string): Promise<{ error?: string }> {
   const me = await getMe();
   if (!me?.role) return { error: "Your account is not switched on yet." };
+  if (!canRecordQc(me.role)) return { error: "Only the Quality team records QC." };
   if (!reason.trim()) return { error: "Say why this QC check is being cancelled." };
   const supabase = await createClient();
   const { data, error } = await supabase
