@@ -43,7 +43,7 @@ export default async function TodayPage({ searchParams }: PageProps<"/today">) {
   const [{ data: pos }, { data: stages }, { data: checks }] = ids.length
     ? await Promise.all([
         supabase.from("factory_pos").select("order_id, factory_id, plan_requested_on, plan_requested_at, factory_sent_at, released_at").in("order_id", ids),
-        supabase.from("line_stages").select("order_id, line_id, stage, planned_on, done_on, not_needed").in("order_id", ids),
+        supabase.from("line_stages").select("order_id, line_id, stage, label, planned_on, done_on, not_needed, factory_on").in("order_id", ids),
         supabase.from("qc_checks").select("order_id, kind, result, checked_on").in("order_id", ids).is("cancelled_at", null)
           .order("checked_on", { ascending: false }).order("created_at", { ascending: false }),
       ])
@@ -52,7 +52,8 @@ export default async function TodayPage({ searchParams }: PageProps<"/today">) {
   const buyerCode = new Map(buyers.map((b) => [b.id, b.code]));
   const factoryName = new Map(factories.map((f) => [f.id, f.name]));
   const label = (o: (typeof open)[number]) => `${o.order_no} · ${buyerCode.get(o.buyer_id) ?? ""} ${o.buyer_po}`.trim();
-  const stepLabel = (k: string) => TNA_STEPS.find((s) => s.key === k)?.label ?? k;
+  const extraLabel = new Map((stages ?? []).filter((s) => s.label).map((s) => [s.stage, String(s.label)]));
+  const stepLabel = (k: string) => TNA_STEPS.find((s) => s.key === k)?.label ?? extraLabel.get(k) ?? k;
   const stageOf = new Map((stages ?? []).map((s) => [`${s.line_id}:${s.stage}`, s]));
 
   // Factory POs: ask for the plan, chase it, release it. A factory that hasn't sent its TNA within 24 hours is critical.
@@ -65,8 +66,14 @@ export default async function TodayPage({ searchParams }: PageProps<"/today">) {
       const po = (pos ?? []).find((p) => p.order_id === o.id && p.factory_id === f);
       if (po?.released_at) continue;
       const fl = lines.filter((l) => l.factory_id === f);
-      const gaps = fl.reduce((n, l) => n + (l.factory_rate == null ? 1 : 0)
-        + TNA_STEPS.filter((s) => { const r = stageOf.get(`${l.id}:${s.key}`); return !r || (!r.planned_on && !r.not_needed); }).length, 0);
+      // Each style's steps: standard ones not marked not needed, plus its extra steps.
+      const rows = fl.flatMap((l) => [
+        ...TNA_STEPS.map((s) => stageOf.get(`${l.id}:${s.key}`) ?? { planned_on: null, factory_on: null, not_needed: false }),
+        ...(stages ?? []).filter((s) => s.line_id === l.id && s.stage.startsWith("extra_")),
+      ]).filter((r) => !r.not_needed);
+      const noTarget = rows.filter((r) => !r.planned_on).length;
+      const gaps = fl.filter((l) => l.factory_rate == null).length + noTarget
+        + rows.filter((r) => !r.factory_on || (r.planned_on && r.factory_on > r.planned_on)).length;
       const dueAt = po?.plan_requested_at ? planDueAt(po.plan_requested_at) : null;
       if (dueAt && !po?.factory_sent_at && dueAt.getTime() < now) {
         const hours = Math.floor((now - dueAt.getTime()) / 3_600_000);
@@ -78,9 +85,9 @@ export default async function TodayPage({ searchParams }: PageProps<"/today">) {
         continue;
       }
       const chip = !gaps ? { text: "Ready to release", cls: "ok" }
-        : !po?.plan_requested_at && !po?.plan_requested_on ? { text: "Ask for the plan", cls: "bad" }
+        : !po?.plan_requested_at && !po?.plan_requested_on ? (noTarget ? { text: `Set ${plural(noTarget, "target")}`, cls: "bad" } : { text: "Ask the factory", cls: "bad" })
         : !po?.factory_sent_at && dueAt ? { text: `Factory TNA due ${at.format(dueAt)}`, cls: "warn" }
-        : po?.factory_sent_at ? { text: "Factory sent TNA, finish your plan", cls: "warn" }
+        : po?.factory_sent_at ? { text: "Factory sent TNA, review it", cls: "warn" }
         : { text: `Plan asked ${day(po?.plan_requested_on)}`, cls: "warn" };
       poItems.push({
         key: `${o.id}:${f}`, orderId: o.id, title: `${label(o)} · ${factoryName.get(f) ?? "Factory"}`,
@@ -141,7 +148,7 @@ export default async function TodayPage({ searchParams }: PageProps<"/today">) {
   const sections = [
     ...(team ? [
       { id: "critical", title: "Critical: factory TNA overdue", hint: `Factories that haven't sent their TNA within ${PLAN_HOURS} hours of being asked.`, items: critical, empty: "No factory is past its deadline." },
-      { id: "pos", title: "Factory plans and POs", hint: `Ask each factory for its TNA (it has ${PLAN_HOURS} hours), fill your plan, and release the PO once both are in.`, items: poItems, empty: "Every factory PO is released." },
+      { id: "pos", title: "Factory plans and POs", hint: `Set each style's steps and targets, ask the factory for its TNA (it has ${PLAN_HOURS} hours), and release the PO once its dates are in and on target.`, items: poItems, empty: "Every factory PO is released." },
     ] : []),
     { id: "overdue", title: "Overdue TNA steps", hint: "Planned date has passed and no done date is entered.", items: overdue, empty: "Nothing is overdue." },
     { id: "week", title: "Due in the next 7 days", hint: "TNA steps planned for this week.", items: thisWeek, empty: "Nothing planned this week." },

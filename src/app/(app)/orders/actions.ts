@@ -90,7 +90,7 @@ export async function saveProgress(id: string, p: ProgressInput): Promise<{ erro
   return {};
 }
 
-export type LineStageInput = { line_id: string; stage: string; planned_on: string; done_on: string; not_needed: boolean };
+export type LineStageInput = { line_id: string; stage: string; planned_on: string; done_on: string; not_needed: boolean; label?: string };
 
 // Saves the planned (TNA) and actual dates of an open order's styles; Quality saves done dates only.
 // The order's stage follows on its own.
@@ -100,7 +100,8 @@ export async function saveLineStages(orderId: string, rows: LineStageInput[]): P
   if (!canEnterDone(me.role)) return { error: "Only the orders team and Quality can change production." };
   if (!rows.length) return {};
   const isDate = (d: string) => !d || /^\d{4}-\d{2}-\d{2}$/.test(d);
-  if (rows.some((r) => !TNA_STEPS.some((s) => s.key === r.stage) || !isDate(r.planned_on) || !isDate(r.done_on))) return { error: "Enter the dates as dates." };
+  const knownStep = (r: LineStageInput) => TNA_STEPS.some((s) => s.key === r.stage) || (/^extra_[0-9a-f]{8}$/.test(r.stage) && !!r.label?.trim());
+  if (rows.some((r) => !knownStep(r) || !isDate(r.planned_on) || !isDate(r.done_on))) return { error: "Enter the dates as dates, and give every extra step a name." };
   const clean = rows.map((r) => (r.not_needed ? { ...r, planned_on: "", done_on: "" } : r));
   const today = todayIST();
   if (rows.some((r) => r.done_on > today)) return { error: "A done date can't be in the future. Use the plan date for what's expected." };

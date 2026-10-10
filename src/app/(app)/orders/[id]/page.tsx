@@ -7,7 +7,7 @@ import { OrderForm } from "../order-form";
 import { OrderHistory } from "./order-history";
 import { OrderProduction } from "./order-production";
 import { OrderQc, type QcCheck } from "./order-qc";
-import { OrderStyles, type FactoryGroup, type StepQc } from "./order-styles";
+import { OrderStyles, type ExtraStep, type FactoryGroup, type StepQc } from "./order-styles";
 import { loadTeam, personName } from "@/lib/data";
 import { PHOTO_BUCKET } from "@/lib/storage";
 import { formOptions } from "../options";
@@ -37,7 +37,7 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
       .order("created_at", { ascending: false }),
     loadTeam(),
     getMe(),
-    supabase.from("line_stages").select("line_id, stage, planned_on, done_on, not_needed, factory_on").eq("order_id", id),
+    supabase.from("line_stages").select("line_id, stage, planned_on, done_on, not_needed, factory_on, label, added_at").eq("order_id", id).order("added_at"),
     supabase.from("factory_pos").select("factory_id, plan_requested_on, plan_requested_at, buffer_days, factory_sent_at, released_at").eq("order_id", id),
   ]);
   const canEdit = canEditOrders(me?.role);
@@ -129,6 +129,10 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
         now={new Date().toISOString()}
         dueDate={due ?? ""}
         groups={groups}
+        initialExtras={(lineStages ?? []).filter((r) => r.stage.startsWith("extra_")).reduce<Record<string, ExtraStep[]>>((acc, r) => {
+          (acc[r.line_id] ??= []).push({ stage: r.stage, label: str(r.label) });
+          return acc;
+        }, {})}
         factoryDates={Object.fromEntries((lineStages ?? []).filter((r) => r.factory_on).map((r) => [`${r.line_id}:${r.stage}`, String(r.factory_on)]))}
         initial={Object.fromEntries((lineStages ?? []).map((r) => [`${r.line_id}:${r.stage}`, { planned_on: str(r.planned_on), done_on: str(r.done_on), not_needed: !!r.not_needed }]))}
         qc={stepQc}
