@@ -57,7 +57,7 @@ export async function OrderHistory({ orderId }: { orderId: string }) {
       const step = TNA_STEPS.find((s) => s.key === a.stage)?.label ?? String(a.stage);
       const what = `${styleName.get(String(a.line_id)) ?? "a style"} ${step.toLowerCase()}`;
       if (a.not_needed && !b.not_needed) return `Marked ${what} not needed`;
-      const parts = [["planned_on", "plan"], ["done_on", "done"]]
+      const parts = [["factory_on", "factory date"], ["planned_on", "plan"], ["done_on", "done"]]
         .filter(([k]) => (b[k] ?? null) !== (a[k] ?? null))
         .map(([k, label]) => `${label} ${a[k] ? day(String(a[k])) : "cleared"}`);
       return parts.length ? `Set ${what}: ${parts.join(", ")}` : null;
@@ -66,7 +66,10 @@ export async function OrderHistory({ orderId }: { orderId: string }) {
       const b = r.before ?? {}, a = r.after ?? {};
       const factory = factoryName.get(String(a.factory_id)) ?? "a factory";
       if (a.released_at && !b.released_at) return a.note ? `${factory}'s PO counted as released (${a.note})` : `Released the PO to ${factory}`;
-      if (a.plan_requested_on && a.plan_requested_on !== b.plan_requested_on) return `Asked ${factory} for its plan`;
+      if (a.factory_sent_at && a.factory_sent_at !== b.factory_sent_at) return `${factory} sent its TNA`;
+      if ((a.plan_requested_at && a.plan_requested_at !== b.plan_requested_at) || (a.plan_requested_on && a.plan_requested_on !== b.plan_requested_on)) {
+        return `Asked ${factory} for its plan${a.buffer_days != null ? `, keeping ${a.buffer_days} days buffer` : ""}`;
+      }
       return null;
     }
     const isOrder = r.table_name === "orders";

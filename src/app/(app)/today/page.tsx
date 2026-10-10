@@ -1,13 +1,14 @@
 import Link from "next/link";
 import { canEditOrders, getMe } from "@/lib/auth";
 import { loadBuyers, loadFactories } from "@/lib/data";
-import { day, daysBetween, dueDate, PLAN_DUE_DAYS, qcKindLabel, SHIP_QC, TNA_STEPS, todayIST } from "@/lib/format";
+import { day, daysBetween, dueDate, nowMs, planDueAt, PLAN_HOURS, qcKindLabel, SHIP_QC, TNA_STEPS, todayIST } from "@/lib/format";
 import { NO_COMPANY } from "@/lib/names";
 import { createClient } from "@/lib/supabase/server";
 
 type Item = { key: string; orderId: string; title: string; detail: string; chip: { text: string; cls: string }; sort: string };
 
 const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;
+const at = new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit", timeZone: "Asia/Kolkata" });
 const addDays = (d: string, n: number) => new Date(Date.parse(d) + n * 86_400_000).toISOString().slice(0, 10);
 const when = (date: string, today: string) => {
   const n = daysBetween(today, date);
@@ -41,7 +42,7 @@ export default async function TodayPage({ searchParams }: PageProps<"/today">) {
 
   const [{ data: pos }, { data: stages }, { data: checks }] = ids.length
     ? await Promise.all([
-        supabase.from("factory_pos").select("order_id, factory_id, plan_requested_on, released_at").in("order_id", ids),
+        supabase.from("factory_pos").select("order_id, factory_id, plan_requested_on, plan_requested_at, factory_sent_at, released_at").in("order_id", ids),
         supabase.from("line_stages").select("order_id, line_id, stage, planned_on, done_on, not_needed").in("order_id", ids),
         supabase.from("qc_checks").select("order_id, kind, result, checked_on").in("order_id", ids).is("cancelled_at", null)
           .order("checked_on", { ascending: false }).order("created_at", { ascending: false }),
@@ -54,8 +55,10 @@ export default async function TodayPage({ searchParams }: PageProps<"/today">) {
   const stepLabel = (k: string) => TNA_STEPS.find((s) => s.key === k)?.label ?? k;
   const stageOf = new Map((stages ?? []).map((s) => [`${s.line_id}:${s.stage}`, s]));
 
-  // Factory POs: ask for the plan, chase it, release it.
+  // Factory POs: ask for the plan, chase it, release it. A factory that hasn't sent its TNA within 24 hours is critical.
+  const now = nowMs();
   const poItems: Item[] = [];
+  const critical: Item[] = [];
   for (const o of open) {
     const lines = o.order_lines ?? [];
     for (const f of [...new Set(lines.map((l) => l.factory_id).filter(Boolean))] as string[]) {
@@ -64,15 +67,25 @@ export default async function TodayPage({ searchParams }: PageProps<"/today">) {
       const fl = lines.filter((l) => l.factory_id === f);
       const gaps = fl.reduce((n, l) => n + (l.factory_rate == null ? 1 : 0)
         + TNA_STEPS.filter((s) => { const r = stageOf.get(`${l.id}:${s.key}`); return !r || (!r.planned_on && !r.not_needed); }).length, 0);
-      const asked = po?.plan_requested_on;
+      const dueAt = po?.plan_requested_at ? planDueAt(po.plan_requested_at) : null;
+      if (dueAt && !po?.factory_sent_at && dueAt.getTime() < now) {
+        const hours = Math.floor((now - dueAt.getTime()) / 3_600_000);
+        critical.push({
+          key: `crit:${o.id}:${f}`, orderId: o.id, title: `${label(o)} · ${factoryName.get(f) ?? "Factory"}`,
+          detail: `No TNA within ${PLAN_HOURS} hours. Chase the factory, or move the styles to another factory.`,
+          chip: { text: hours ? `${plural(hours, "hour")} past deadline` : "Just past deadline", cls: "bad" }, sort: dueAt.toISOString(),
+        });
+        continue;
+      }
       const chip = !gaps ? { text: "Ready to release", cls: "ok" }
-        : !asked ? { text: "Ask for the plan", cls: "bad" }
-        : daysBetween(asked, today) > PLAN_DUE_DAYS ? { text: `Plan late, asked ${plural(daysBetween(asked, today), "day")} ago`, cls: "bad" }
-        : { text: `Plan asked ${day(asked)}`, cls: "warn" };
+        : !po?.plan_requested_at && !po?.plan_requested_on ? { text: "Ask for the plan", cls: "bad" }
+        : !po?.factory_sent_at && dueAt ? { text: `Factory TNA due ${at.format(dueAt)}`, cls: "warn" }
+        : po?.factory_sent_at ? { text: "Factory sent TNA, finish your plan", cls: "warn" }
+        : { text: `Plan asked ${day(po?.plan_requested_on)}`, cls: "warn" };
       poItems.push({
         key: `${o.id}:${f}`, orderId: o.id, title: `${label(o)} · ${factoryName.get(f) ?? "Factory"}`,
         detail: gaps ? `${plural(gaps, "item")} missing before the PO can be released` : "Plan is complete. Release the PO on the order.",
-        chip, sort: `${!gaps ? 0 : !asked ? 1 : 2}${o.order_no}`,
+        chip, sort: `${!gaps ? 0 : !po?.plan_requested_at && !po?.plan_requested_on ? 1 : 2}${o.order_no}`,
       });
     }
     if (lines.some((l) => !l.factory_id)) {
@@ -126,7 +139,10 @@ export default async function TodayPage({ searchParams }: PageProps<"/today">) {
 
   const team = canEditOrders(me?.role);
   const sections = [
-    ...(team ? [{ id: "pos", title: "Factory plans and POs", hint: `Ask each factory for its TNA plan, chase it after ${PLAN_DUE_DAYS} days, and release the PO once it's complete.`, items: poItems, empty: "Every factory PO is released." }] : []),
+    ...(team ? [
+      { id: "critical", title: "Critical: factory TNA overdue", hint: `Factories that haven't sent their TNA within ${PLAN_HOURS} hours of being asked.`, items: critical, empty: "No factory is past its deadline." },
+      { id: "pos", title: "Factory plans and POs", hint: `Ask each factory for its TNA (it has ${PLAN_HOURS} hours), fill your plan, and release the PO once both are in.`, items: poItems, empty: "Every factory PO is released." },
+    ] : []),
     { id: "overdue", title: "Overdue TNA steps", hint: "Planned date has passed and no done date is entered.", items: overdue, empty: "Nothing is overdue." },
     { id: "week", title: "Due in the next 7 days", hint: "TNA steps planned for this week.", items: thisWeek, empty: "Nothing planned this week." },
     { id: "qc", title: "QC coming up", hint: "Steps Quality checks, planned within a week, without a passed check yet.", items: qcItems, empty: "No QC due this week." },

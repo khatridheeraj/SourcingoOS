@@ -383,7 +383,7 @@ do $$ begin
     perform public.release_factory_po((select id from public.orders), '20000000-0000-0000-0000-000000000001');
     raise exception 'a PO with an incomplete plan was released';
   exception when raise_exception then
-    if sqlerrm not like 'The plan is not complete yet. Missing: OZ-103 (Greige, Fit sample%; OZ-101 (factory rate, Greige%' then raise; end if;
+    if sqlerrm not like 'The plan is not complete yet. Missing: OZ-103 (factory dates: Greige%plan: Greige%| OZ-101 (factory rate; factory dates: Greige%' then raise; end if;
   end;
   begin
     insert into public.line_stages (order_id, line_id, stage, not_needed, planned_on)
@@ -400,7 +400,113 @@ select public.save_line_stages(:'save_order', (
     'fabric', 'printing', 'cutting', 'stitching', 'finishing', 'packed', 'final_qc', 'ex_factory']) st
   where l.order_id = :'save_order' and l.removed_at is null));
 update public.order_lines set factory_rate = 240 where style = 'OZ-101';
+do $$ begin
+  perform public.release_factory_po((select id from public.orders), '20000000-0000-0000-0000-000000000001');
+  raise exception 'a PO was released without the factory''s dates';
+exception when raise_exception then
+  if sqlerrm not like 'The plan is not complete yet. Missing: OZ-103 (factory dates: Greige, Fit sample%' then raise; end if;
+end $$;
+do $$ begin
+  update public.line_stages set factory_on = '2026-11-01';
+  raise exception 'the merchandiser entered the factory''s dates';
+exception when insufficient_privilege then null;
+end $$;
+do $$ begin
+  insert into public.line_stages (order_id, line_id, stage, not_needed)
+    select id, (select id from public.order_lines where style = 'OZ-101'), 'final_qc', true from public.orders
+    on conflict (line_id, stage) do update set not_needed = true, planned_on = null;
+  raise exception 'a mandatory step was marked not needed';
+exception when check_violation then null;
+end $$;
+-- The factory's own login enters its dates in its panel, once it has been asked for its plan.
+reset role;
+insert into auth.users (id, email) values ('00000000-0000-0000-0000-0000000000fa', 'vendor@knits.in');
+set role authenticated;
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000a');
+do $$ begin
+  begin
+    perform public.add_factory_member('vendor@knits.in', '10000000-0000-0000-0000-000000000001');
+    raise exception 'a factory login was tied to a buyer id';
+  exception when raise_exception then
+    if sqlerrm not like 'Pick one of your factories%' then raise; end if;
+  end;
+  if public.add_factory_member('vendor@knits.in', '20000000-0000-0000-0000-000000000001') <> 'added' then raise exception 'factory login not added'; end if;
+  begin
+    update public.members set role = 'merchandiser' where user_id = '00000000-0000-0000-0000-0000000000fa';
+    raise exception 'a factory login became staff';
+  exception when raise_exception then
+    if sqlerrm not like 'A factory login stays%' then raise; end if;
+  end;
+end $$;
+select pg_temp.as_user('00000000-0000-0000-0000-0000000000fa');
+do $$ begin
+  if jsonb_array_length(public.factory_tna() -> 'orders') <> 0 then raise exception 'the factory saw a PO before it was asked for a plan'; end if;
+end $$;
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000b');
+do $$ begin
+  perform public.request_factory_plan((select id from public.orders), '20000000-0000-0000-0000-000000000001', 90);
+  raise exception 'a plan was requested with a target date in the past';
+exception when raise_exception then
+  if sqlerrm not like 'With that buffer the target date is already past%' then raise; end if;
+end $$;
+select public.request_factory_plan(:'save_order', '20000000-0000-0000-0000-000000000001', 7);
+select pg_temp.as_user('00000000-0000-0000-0000-0000000000fa');
+do $$ begin
+  if (public.factory_tna() -> 'orders' -> 0 ->> 'target') <> '2026-11-24' or (public.factory_tna() -> 'orders' -> 0 ->> 'plan_due_at') is null then
+    raise exception 'factory panel shows no target date or deadline: %', public.factory_tna() -> 'orders' -> 0;
+  end if;
+  begin
+    perform public.save_factory_tna((select (public.factory_tna() -> 'orders' -> 0 ->> 'order_id')::uuid),
+      jsonb_build_array(jsonb_build_object('line_id', (public.factory_tna() -> 'orders' -> 0 -> 'lines' -> 0 ->> 'id'), 'stage', 'ex_factory', 'factory_on', '2026-12-28')));
+    raise exception 'a factory date after the target was accepted';
+  exception when raise_exception then
+    if sqlerrm not like 'Every date must be on or before the target date 24 Nov 2026%' then raise; end if;
+  end;
+end $$;
+do $$ begin
+  if exists (select 1 from public.orders) or exists (select 1 from public.order_lines) or exists (select 1 from public.buyers)
+     or exists (select 1 from public.line_stages) or exists (select 1 from public.history) or exists (select 1 from public.factory_pos) then
+    raise exception 'a factory login can read company data';
+  end if;
+  if jsonb_array_length(public.factory_tna() -> 'orders') <> 1 or jsonb_array_length(public.factory_tna() -> 'orders' -> 0 -> 'lines') <> 2 then
+    raise exception 'factory panel does not show its order: %', public.factory_tna();
+  end if;
+  if (public.factory_tna() -> 'orders' -> 0 -> 'lines' -> 0 -> 'stages' -> 0 ->> 'planned_on') is not null then
+    raise exception 'the factory saw the merchandiser''s plan before release';
+  end if;
+  begin
+    perform public.save_line_stages((select (public.factory_tna() -> 'orders' -> 0 ->> 'order_id')::uuid), '[]');
+    raise exception 'the factory changed the plan';
+  exception when raise_exception then
+    if sqlerrm not like 'Only the orders team and Quality%' then raise; end if;
+  end;
+end $$;
+select public.save_factory_tna(:'save_order', (
+  select jsonb_agg(jsonb_build_object('line_id', l ->> 'id', 'stage', st, 'factory_on', '2026-11-04'))
+  from jsonb_array_elements(public.factory_tna() -> 'orders' -> 0 -> 'lines') l cross join unnest(array['greige', 'fit_sample', 'strike_off', 'pp_sample', 'size_set',
+    'fabric', 'printing', 'cutting', 'stitching', 'finishing', 'packed', 'final_qc', 'ex_factory']) st));
+do $$ begin
+  if (public.factory_tna() -> 'orders' -> 0 ->> 'sent_at') is null then raise exception 'factory TNA not marked as sent'; end if;
+end $$;
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000b');
+do $$ begin
+  if (select count(*) from public.line_stages where factory_on is not null) <> 24 then
+    raise exception 'factory dates: % (printing is not needed, so 24)', (select count(*) from public.line_stages where factory_on is not null);
+  end if;
+end $$;
 select public.release_factory_po(:'save_order', '20000000-0000-0000-0000-000000000001');
+select pg_temp.as_user('00000000-0000-0000-0000-0000000000fa');
+do $$ begin
+  if (public.factory_tna() -> 'orders' -> 0 -> 'lines' -> 0 -> 'stages' -> 0 ->> 'planned_on') is null then
+    raise exception 'the factory does not see the agreed plan after release';
+  end if;
+  perform public.save_factory_tna((select (public.factory_tna() -> 'orders' -> 0 ->> 'order_id')::uuid),
+    jsonb_build_array(jsonb_build_object('line_id', (select (public.factory_tna() -> 'orders' -> 0 -> 'lines' -> 0 ->> 'id')), 'stage', 'fabric', 'factory_on', '2026-11-20')));
+  raise exception 'the factory changed its dates after release';
+exception when raise_exception then
+  if sqlerrm not like 'The PO is released%' then raise; end if;
+end $$;
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000b');
 do $$ begin
   if (select released_at is null or released_by <> auth.uid() from public.factory_pos where order_id = (select id from public.orders)) then
     raise exception 'factory PO not released';
@@ -443,11 +549,18 @@ exception when raise_exception then
   if sqlerrm not like 'Only the orders team%' then raise; end if;
 end $$;
 select pg_temp.as_user('00000000-0000-0000-0000-0000000000a9');
+-- Quality enters done dates, but never the plan.
+select public.save_line_stages(:'save_order', jsonb_build_array(
+  jsonb_build_object('line_id', (select id from public.order_lines where style = 'OZ-101'), 'stage', 'cutting', 'planned_on', '2030-01-01', 'done_on', '2026-11-12')));
 do $$ begin
-  perform public.save_line_stages((select id from public.orders), '[]');
-  raise exception 'Quality changed style dates';
+  if (select done_on::text || '|' || planned_on::text from public.line_stages
+      where stage = 'cutting' and line_id = (select id from public.order_lines where style = 'OZ-101')) <> '2026-11-12|2026-11-01' then
+    raise exception 'Quality''s done date not saved, or its plan date was taken';
+  end if;
+  update public.line_stages set planned_on = '2030-01-01' where stage = 'cutting';
+  raise exception 'Quality changed a plan date';
 exception when raise_exception then
-  if sqlerrm not like 'Only the orders team%' then raise; end if;
+  if sqlerrm not like 'Only the orders team can change the plan%' then raise; end if;
 end $$;
 select pg_temp.as_user('00000000-0000-0000-0000-00000000000b');
 

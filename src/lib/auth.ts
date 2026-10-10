@@ -2,7 +2,7 @@ import { cache } from "react";
 import type { Role } from "@/lib/auth-roles";
 import { createClient } from "@/lib/supabase/server";
 
-export { canEditOrders, canRecordQc, ROLES, roleLabel, type Role } from "@/lib/auth-roles";
+export { canEditOrders, canEnterDone, canRecordQc, ROLES, roleLabel, type Role } from "@/lib/auth-roles";
 
 export type Me = { id: string; email: string; fullName: string | null; companyId: string | null; companyName: string | null; role: Role | null };
 

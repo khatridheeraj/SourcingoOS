@@ -6,6 +6,8 @@ import { canEditOrders, getMe, roleLabel } from "@/lib/auth";
 export default async function AppLayout({ children }: LayoutProps<"/">) {
   const me = await getMe();
   if (!me) redirect("/login");
+  // A factory login only has its own panel.
+  if (me.role === "factory") redirect("/factory");
 
   const items = [
     { href: "/today", label: "Today" },
