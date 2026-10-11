@@ -13,7 +13,7 @@ export type DispatchFactory = { id: string; name: string; lines: { id: string; s
 export type Dispatch = {
   id: string; factoryName: string; billNo: string; billDate: string; purchaseTaxable: number; purchaseGst: number;
   purchasedAt: string; invoiceDueAt: string; invoiceNo: string | null; invoiceTaxable: number | null; invoiceGst: number | null; invoicedAt: string | null;
-  ewayNo: string | null; ewayDate: string | null; ewayValidUntil: string | null; ewayUrl: string | null;
+  ewayNo: string | null; ewayDate: string | null; ewayValidUntil: string | null; ewayUrl: string | null; ewayFromTally: boolean;
   transporter: string | null; vehicleNo: string | null; lrNo: string | null; lrDate: string | null; lrUrl: string | null; cartons: number | null;
   shippedAt: string | null; grnDueOn: string | null; grnUrl: string | null; grnQty: number | null; grnNotes: string | null; grnAt: string | null;
   photoUrls: string[]; lines: { style: string; qty: number; purchaseRate: number; saleRate: number | null }[];
@@ -171,7 +171,7 @@ export function OrderDispatch({ orderId, companyId, open, factories, dispatches,
                 <p className="mt-2 text-[13px]">Invoice <b>{d.invoiceNo}</b>: {money((d.invoiceTaxable ?? 0) + (d.invoiceGst ?? 0))} with GST, made {at.format(new Date(d.invoicedAt))}.</p>
               )}
               {d.ewayNo && (
-                <p className="text-[13px]">E-way bill <b className="num">{d.ewayNo}</b> of {day(d.ewayDate)}{d.ewayValidUntil && `, valid till ${day(d.ewayValidUntil)}`}. {d.ewayUrl && <a className="link" href={d.ewayUrl} target="_blank" rel="noreferrer">Open</a>}</p>
+                <p className="text-[13px]">E-way bill <b className="num">{d.ewayNo}</b> of {day(d.ewayDate)}{d.ewayValidUntil && `, valid till ${day(d.ewayValidUntil)}`}{d.ewayFromTally && ", from Tally"}. {d.ewayUrl && <a className="link" href={d.ewayUrl} target="_blank" rel="noreferrer">Open</a>}</p>
               )}
               {d.shippedAt && (
                 <div className="text-[13px]">
@@ -189,7 +189,7 @@ export function OrderDispatch({ orderId, companyId, open, factories, dispatches,
               )}
 
               {open && next === 1 && <InvoiceStep d={d} today={today} late={invoiceLate} pending={pending} onSave={(v) => step(d.id, () => recordDispatchInvoice(orderId, d.id, v))} />}
-              {open && next === 2 && <EwayStep today={today} pending={pending} onSave={(v, file) => step(d.id, async (folder) => recordEwayBill(orderId, d.id, { ...v, path: await uploadDoc(folder, file) }))} />}
+              {open && next === 2 && <EwayStep invoiceNo={d.invoiceNo ?? ""} today={today} pending={pending} onSave={(v, file) => step(d.id, async (folder) => recordEwayBill(orderId, d.id, { ...v, path: await uploadDoc(folder, file) }))} />}
               {open && next === 3 && <ShipStep today={today} pending={pending} onSave={(v, lr, photos) => step(d.id, async (folder) => recordShipping(orderId, d.id, { ...v, lr_path: await uploadDoc(folder, lr), photos: await uploadPhotos(folder, photos) }))} />}
               {next === 4 && <GrnStep d={d} pcs={pcs} late={grnLate} pending={pending} onSave={(v, file) => step(d.id, async (folder) => recordGrn(orderId, d.id, { ...v, path: await uploadDoc(folder, file) }))} />}
               {error[d.id] && <p className="mt-2 text-[13px] font-semibold text-bad" role="alert">{error[d.id]}</p>}
@@ -212,26 +212,39 @@ function InvoiceStep({ d, today, late, pending, onSave }: {
         {late ? `Emergency: the invoice was due by ${at.format(new Date(d.invoiceDueAt))}.` : `Invoice the buyer by ${at.format(new Date(d.invoiceDueAt))}.`}
       </p>
       <div className="fgrid">
-        <label className="field"><span>Invoice number <i>*</i></span><input className="inp" value={v.invoice_no} onChange={(e) => setV({ ...v, invoice_no: e.target.value })} aria-label="Invoice number" /></label>
+        <label className="field"><span>Tally invoice number <i>*</i></span><input className="inp" value={v.invoice_no} onChange={(e) => setV({ ...v, invoice_no: e.target.value })} aria-label="Invoice number" /></label>
         <label className="field"><span>Invoice date <i>*</i></span><input className="inp" type="date" value={v.invoice_date} onChange={(e) => setV({ ...v, invoice_date: e.target.value })} aria-label="Invoice date" /></label>
         <label className="field"><span>Value before GST ₹ <i>*</i></span><input className="inp" inputMode="decimal" value={v.taxable} onChange={(e) => setV({ ...v, taxable: e.target.value })} aria-label="Invoice value before GST" /></label>
         <label className="field"><span>GST ₹</span><input className="inp" inputMode="decimal" value={v.gst} onChange={(e) => setV({ ...v, gst: e.target.value })} aria-label="Invoice GST" /></label>
       </div>
       <div className="row mt-3">
         <button className="btn primary" disabled={pending}>{pending ? "Saving…" : "Save invoice"}</button>
-        <span className="muted text-[13px]">It also goes into Payments. Total {money(n(v.taxable) + n(v.gst))}.</span>
+        <span className="muted text-[13px]">Make the invoice in Tally, with its e-way bill, then enter it here. It also goes into Payments. Total {money(n(v.taxable) + n(v.gst))}.</span>
       </div>
     </form>
   );
 }
 
-function EwayStep({ today, pending, onSave }: { today: string; pending: boolean; onSave: (v: { no: string; date: string; valid_until: string }, file: File) => void }) {
+// The e-way bill comes from Tally with invoice invoiceNo. Typing it in is for when Tally hasn't synced yet.
+function EwayStep({ invoiceNo, today, pending, onSave }: {
+  invoiceNo: string; today: string; pending: boolean; onSave: (v: { no: string; date: string; valid_until: string }, file: File) => void;
+}) {
+  const [byHand, setByHand] = useState(false);
   const [v, setV] = useState({ no: "", date: today, valid_until: "" });
   const [file, setFile] = useState<File | null>(null);
   const [err, setErr] = useState("");
+  if (!byHand) {
+    return (
+      <div className="mt-3 rounded-[10px] bg-surface-2 p-3 text-[13px]">
+        <p className="font-semibold text-warn">Waiting for the e-way bill of invoice {invoiceNo} from Tally.</p>
+        <p className="muted mt-1">It fills in here by itself once Tally has made it and the app reads Tally.</p>
+        <button type="button" className="btn sm mt-2" onClick={() => setByHand(true)}>Enter it by hand instead</button>
+      </div>
+    );
+  }
   return (
     <form className="mt-3 rounded-[10px] bg-surface-2 p-3" onSubmit={(e) => { e.preventDefault(); if (!file) return setErr("Attach the e-way bill."); setErr(""); onSave(v, file); }}>
-      <p className="mb-2 text-[13px] font-semibold text-warn">Make the e-way bill for this invoice on the e-way bill portal, then add it here.</p>
+      <p className="mb-2 text-[13px] font-semibold text-warn">Enter the e-way bill for invoice {invoiceNo} and attach its copy.</p>
       <div className="fgrid">
         <label className="field"><span>E-way bill number <i>*</i></span><input className="inp" inputMode="numeric" value={v.no} onChange={(e) => setV({ ...v, no: e.target.value })} aria-label="E-way bill number" placeholder="12 digits" /></label>
         <label className="field"><span>Date <i>*</i></span><input className="inp" type="date" value={v.date} onChange={(e) => setV({ ...v, date: e.target.value })} aria-label="E-way bill date" /></label>

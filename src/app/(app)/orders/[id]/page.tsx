@@ -117,7 +117,7 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
     id: d.id, factoryName: factoryLabel(d.factory_id), billNo: d.purchase_bill_no, billDate: d.purchase_bill_date,
     purchaseTaxable: Number(d.purchase_taxable), purchaseGst: Number(d.purchase_gst), purchasedAt: d.purchased_at, invoiceDueAt: d.invoice_due_at,
     invoiceNo: d.invoice_no, invoiceTaxable: d.invoice_taxable == null ? null : Number(d.invoice_taxable), invoiceGst: d.invoice_gst == null ? null : Number(d.invoice_gst),
-    invoicedAt: d.invoiced_at, ewayNo: d.eway_bill_no, ewayDate: d.eway_bill_date, ewayValidUntil: d.eway_valid_until, ewayUrl: url(d.eway_path),
+    invoicedAt: d.invoiced_at, ewayNo: d.eway_bill_no, ewayDate: d.eway_bill_date, ewayValidUntil: d.eway_valid_until, ewayUrl: url(d.eway_path), ewayFromTally: !!d.eway_from_tally,
     transporter: d.transporter, vehicleNo: d.vehicle_no, lrNo: d.lr_no, lrDate: d.lr_date, lrUrl: url(d.lr_path), cartons: d.cartons,
     shippedAt: d.shipped_at, grnDueOn: d.grn_due_on, grnUrl: url(d.grn_path), grnQty: d.grn_received_qty, grnNotes: d.grn_notes, grnAt: d.grn_at,
     photoUrls: dispatchPhotos.filter((p) => p.dispatch_id === d.id).map((p) => url(p.path)).filter(Boolean) as string[],
