@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Nav } from "@/components/nav";
 import { canEditOrders, getMe, roleLabel } from "@/lib/auth";
+import { createClient } from "@/lib/supabase/server";
 
 export default async function AppLayout({ children }: LayoutProps<"/">) {
   const me = await getMe();
@@ -9,9 +10,19 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
   // A factory login only has its own panel.
   if (me.role === "factory") redirect("/factory");
 
+  // Buyer POs waiting for the orders team, shown on the menu.
+  let toCheck = 0;
+  if (canEditOrders(me.role) && me.companyId) {
+    const supabase = await createClient();
+    const { count } = await supabase.from("incoming_pos").select("id", { count: "exact", head: true })
+      .eq("company_id", me.companyId).in("status", ["to_check", "failed"]);
+    toCheck = count ?? 0;
+  }
+
   const items = [
     { href: "/today", label: "Today" },
     { href: "/", label: "Orders" },
+    ...(canEditOrders(me.role) ? [{ href: "/pos", label: toCheck ? `Incoming POs (${toCheck})` : "Incoming POs" }] : []),
     ...(canEditOrders(me.role) ? [{ href: "/buyers", label: "Buyers" }, { href: "/factories", label: "Factories" }] : []),
     ...(me.role === "owner" || me.role === "accounts" ? [{ href: "/payments", label: "Payments" }] : []),
     ...(me.role === "owner" ? [{ href: "/team", label: "Team" }] : []),
