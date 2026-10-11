@@ -1,7 +1,8 @@
 // Turns database errors into words the team understands.
 export function friendly(error: { message: string; code?: string } | null | undefined): string {
   if (!error) return "";
-  const m = error.message;
+  const m = error.message ?? "";
+  if (!m && !error.code) return "Something went wrong. Try again.";
   if (m.includes("orders_buyer_po_key")) return "This buyer PO is already in the system. Open the existing order instead.";
   if (m.includes("order_lines_style_key")) return "The same style and colour is on this order twice. Combine them into one line.";
   if (m.includes("buyers_code_key")) return "Another buyer already has this code.";
@@ -11,6 +12,9 @@ export function friendly(error: { message: string; code?: string } | null | unde
   if (m.includes("credit_notes_no_key")) return "That credit note number is already in the system.";
   if (m.includes("cheques_no_key")) return "This buyer's cheque with that number is already recorded.";
   if (m.includes("buyers_code_check")) return "Use 2 to 20 capital letters, numbers or dashes for the code.";
+  if (m.includes("qc_fail_needs_notes")) return "Write what failed in the notes, so the factory knows what to fix.";
+  if (m.includes("qc_defects_within_checked")) return "Defects can't be more than the pieces checked.";
+  if (m.includes("qc_cancel_needs_reason")) return "Say why this QC check is being cancelled.";
   if (m.includes("qty_check") || m.includes("order_lines_qty")) return "Every line needs a quantity above zero.";
   if (m.includes("violates foreign key") && m.includes("buyer")) return "This buyer has orders, so it can't be deleted. Mark it inactive instead.";
   if (m.includes("violates foreign key") && m.includes("factor")) return "This factory is on orders, so it can't be deleted. Mark it inactive instead.";

@@ -1,16 +1,18 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Nav } from "@/components/nav";
-import { getMe, roleLabel } from "@/lib/auth";
+import { canEditOrders, getMe, roleLabel } from "@/lib/auth";
 
 export default async function AppLayout({ children }: LayoutProps<"/">) {
   const me = await getMe();
   if (!me) redirect("/login");
+  // A factory login only has its own panel.
+  if (me.role === "factory") redirect("/factory");
 
   const items = [
+    { href: "/today", label: "Today" },
     { href: "/", label: "Orders" },
-    { href: "/buyers", label: "Buyers" },
-    { href: "/factories", label: "Factories" },
+    ...(canEditOrders(me.role) ? [{ href: "/buyers", label: "Buyers" }, { href: "/factories", label: "Factories" }] : []),
     ...(me.role === "owner" || me.role === "accounts" ? [{ href: "/payments", label: "Payments" }, { href: "/tally", label: "Tally" }] : []),
     ...(me.role === "owner" ? [{ href: "/team", label: "Team" }] : []),
   ];

@@ -1,5 +1,5 @@
 import { loadFactories, loadTeam } from "@/lib/data";
-import { day, STATUS } from "@/lib/format";
+import { day, qcKindLabel, stageLabel, STATUS, TNA_STEPS } from "@/lib/format";
 import { personName } from "@/lib/names";
 import { createClient } from "@/lib/supabase/server";
 
@@ -7,6 +7,7 @@ type Row = { id: number; table_name: string; action: string; actor: string | nul
 
 const ORDER_FIELDS: Record<string, string> = {
   buyer_po: "buyer PO", po_date: "PO date", ship_date: "ship date", status: "status", merchandiser_id: "merchandiser", notes: "notes", buyer_id: "buyer",
+  stage: "stage", revised_ship_date: "new ship date", delay_reason: "reason for delay",
 };
 const LINE_FIELDS: Record<string, string> = {
   style: "style", description: "description", colour: "colour", qty: "quantity", buyer_rate: "buyer rate", factory_id: "factory", factory_rate: "factory rate",
@@ -17,7 +18,7 @@ const time = new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "short", 
 // Every change to this order and its styles, newest first, from the permanent history.
 export async function OrderHistory({ orderId }: { orderId: string }) {
   const supabase = await createClient();
-  const [{ data }, team, factories] = await Promise.all([
+  const [{ data }, team, factories, { data: styleRows }] = await Promise.all([
     supabase
       .from("history")
       .select("id, table_name, action, actor, at, before, after")
@@ -27,11 +28,14 @@ export async function OrderHistory({ orderId }: { orderId: string }) {
       .limit(100),
     loadTeam(),
     loadFactories(),
+    supabase.from("order_lines").select("id, style").eq("order_id", orderId),
   ]);
+  const styleName = new Map((styleRows ?? []).map((l) => [l.id, l.style]));
   const people = new Map(team.map((m) => [m.user_id, personName(m)]));
   const factoryName = new Map(factories.map((f) => [f.id, f.name]));
 
   const show = (k: string, v: unknown) => {
+    if (k === "stage") return stageLabel(v == null ? null : String(v));
     if (v == null || v === "") return "blank";
     if (k === "factory_id") return factoryName.get(String(v)) ?? "a factory";
     if (k === "merchandiser_id") return people.get(String(v)) ?? "someone";
@@ -41,11 +45,40 @@ export async function OrderHistory({ orderId }: { orderId: string }) {
   };
 
   const describe = (r: Row) => {
+    if (r.table_name === "qc_checks") {
+      const c = (r.after ?? r.before) as { kind?: string; result?: string; cancel_reason?: string };
+      const what = `${qcKindLabel(c.kind ?? "").toLowerCase()} QC`;
+      if (r.action === "insert") return `Recorded ${what}: ${c.result === "pass" ? "Pass" : "Fail"}`;
+      if (r.after?.cancelled_at && !r.before?.cancelled_at) return `Cancelled a ${what} (${c.cancel_reason})`;
+      return null;
+    }
+    if (r.table_name === "line_stages") {
+      const b = r.before ?? {}, a = r.after ?? {};
+      const step = TNA_STEPS.find((s) => s.key === a.stage)?.label ?? String(a.label ?? b.label ?? a.stage);
+      const what = `${styleName.get(String(a.line_id)) ?? "a style"} ${step.toLowerCase()}`;
+      if (a.not_needed && !b.not_needed) return a.label ? `Removed the ${what} step` : `Marked ${what} not needed`;
+      if (a.label && r.action === "insert") return `Added a step to ${styleName.get(String(a.line_id)) ?? "a style"}: ${a.label}${a.planned_on ? `, target ${day(String(a.planned_on))}` : ""}`;
+      const parts = [["factory_on", "factory date"], ["planned_on", "target"], ["done_on", "done"]]
+        .filter(([k]) => (b[k] ?? null) !== (a[k] ?? null))
+        .map(([k, label]) => `${label} ${a[k] ? day(String(a[k])) : "cleared"}`);
+      return parts.length ? `Set ${what}: ${parts.join(", ")}` : null;
+    }
+    if (r.table_name === "factory_pos") {
+      const b = r.before ?? {}, a = r.after ?? {};
+      const factory = factoryName.get(String(a.factory_id)) ?? "a factory";
+      if (a.released_at && !b.released_at) return a.note ? `${factory}'s PO counted as released (${a.note})` : `Released the PO to ${factory}`;
+      if (a.factory_sent_at && a.factory_sent_at !== b.factory_sent_at) return `${factory} sent its TNA`;
+      if ((a.plan_requested_at && a.plan_requested_at !== b.plan_requested_at) || (a.plan_requested_on && a.plan_requested_on !== b.plan_requested_on)) {
+        return `Asked ${factory} for its plan${a.buffer_days != null ? `, keeping ${a.buffer_days} days buffer` : ""}`;
+      }
+      return null;
+    }
     const isOrder = r.table_name === "orders";
     const style = String((r.after ?? r.before)?.style ?? "");
     if (r.action === "insert") return isOrder ? "Entered the order" : `Added style ${style}`;
     if (r.action === "delete") return isOrder ? "Deleted the order" : `Removed style ${style}`;
     if (!isOrder && r.after?.removed_at && !r.before?.removed_at) return `Removed style ${style}`;
+    if (!isOrder && r.after?.photo_path !== r.before?.photo_path) return `${r.before?.photo_path ? "Changed" : "Added"} the photo of ${style}`;
     const fields = isOrder ? ORDER_FIELDS : LINE_FIELDS;
     const changes = Object.entries(fields)
       .filter(([k]) => JSON.stringify(r.before?.[k] ?? null) !== JSON.stringify(r.after?.[k] ?? null))
