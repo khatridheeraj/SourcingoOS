@@ -25,9 +25,9 @@ Open orders, styles, TNA and samples aren't in Tally, so they don't come from he
 
 1. In TallyPrime, press **F1 (Help) › Settings › Connectivity › Client/Server configuration**. Set **TallyPrime acts as** to **Both** and the port to **9000**. Keep the company open.
 2. In Sourcingo OS, open **Tally › Setup**, enter the company name exactly as Tally shows it, tick **Read Tally**, save, and press **Make sync key**.
-3. Copy this folder to the Tally PC, open PowerShell in it and run:
-   `powershell -ExecutionPolicy Bypass -File .\install-windows.ps1`
-   It installs Node.js if needed, asks for the sync key, runs one read and sets the reader to start at sign-in.
+3. Copy the install command it shows. On the Tally PC, open **PowerShell** from the Start menu, paste it and press Enter.
+   It downloads the reader from the app (`setup.ps1`) into `%LOCALAPPDATA%\SourcingoTallyReader`, installs Node.js if needed,
+   runs one read and sets the reader to start at sign-in. Running it again with a new key updates the reader and the key.
 
 `sync.log` in this folder records each read.
 

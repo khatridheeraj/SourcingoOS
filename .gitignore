@@ -41,3 +41,6 @@ yarn-error.log*
 next-env.d.ts
 !.env.example
 deno.lock
+
+# copied from tally-bridge at build time
+/public/tally-reader/

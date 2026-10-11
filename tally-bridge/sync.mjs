@@ -24,7 +24,8 @@ if (!existsSync(configPath)) {
   log("config.json is missing. Copy config.example.json to config.json and fill in the sync key from the Tally page in Sourcingo OS.");
   process.exit(1);
 }
-const config = JSON.parse(readFileSync(configPath, "utf8"));
+// Windows PowerShell 5 saves UTF-8 with a byte-order mark, which JSON.parse rejects.
+const config = JSON.parse(readFileSync(configPath, "utf8").replace(/^\uFEFF/, ""));
 for (const k of ["supabaseUrl", "supabaseKey", "syncKey"]) {
   if (!config[k] || String(config[k]).includes("PASTE")) {
     log(`config.json needs "${k}".`);
