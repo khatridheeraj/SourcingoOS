@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import type { Buyer } from "@/lib/data";
 import { saveBuyer, type BuyerInput } from "./actions";
+import { GrnDays } from "./grn-days";
 
 const blank: BuyerInput = { code: "", realName: "", city: "", notes: "", active: true };
 
@@ -59,7 +60,7 @@ export function BuyerList({ buyers, owner, openOrders }: { buyers: Buyer[]; owne
       ) : (
         <div className="table-wrap">
           <table className="tbl">
-            <thead><tr><th>Code</th>{owner && <th>Real name</th>}<th>City</th><th className="r">Open orders</th><th>Notes</th><th></th>{owner && <th></th>}</tr></thead>
+            <thead><tr><th>Code</th>{owner && <th>Real name</th>}<th>City</th><th className="r">Open orders</th><th>GRN within</th><th>Notes</th><th></th>{owner && <th></th>}</tr></thead>
             <tbody>
               {buyers.map((b) => (
                 <tr key={b.id}>
@@ -67,6 +68,7 @@ export function BuyerList({ buyers, owner, openOrders }: { buyers: Buyer[]; owne
                   {owner && <td>{b.realName}</td>}
                   <td>{b.city}</td>
                   <td className="r num">{openOrders[b.id] ?? 0}</td>
+                  <td><GrnDays buyerId={b.id} code={b.code} value={b.grn_days} owner={owner} /></td>
                   <td className="muted">{b.notes}</td>
                   <td>{!b.active && <span className="chip">Inactive</span>}</td>
                   {owner && (

@@ -4,6 +4,7 @@ import { canEditOrders, canEnterDone, canRecordQc, getMe } from "@/lib/auth";
 import { day, qty, SHIP_QC, TNA_STEPS, todayIST } from "@/lib/format";
 import { createClient } from "@/lib/supabase/server";
 import { OrderForm } from "../order-form";
+import { OrderDispatch, type Dispatch, type DispatchFactory } from "./order-dispatch";
 import { OrderHistory } from "./order-history";
 import { OrderProduction } from "./order-production";
 import { OrderQc, type QcCheck } from "./order-qc";
@@ -41,6 +42,16 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
     supabase.from("factory_pos").select("factory_id, plan_requested_on, plan_requested_at, buffer_days, factory_sent_at, released_at").eq("order_id", id),
   ]);
   const canEdit = canEditOrders(me?.role);
+  // Dispatches (purchase to GRN) are for the orders team only.
+  const [{ data: dRows }, { data: dLines }, { data: dPhotos }] = canEdit
+    ? await Promise.all([
+        supabase.from("dispatches").select("*").eq("order_id", id).is("cancelled_at", null).order("purchased_at"),
+        supabase.from("dispatch_lines").select("dispatch_id, line_id, qty, purchase_rate, sale_rate").in("line_id", (o.order_lines ?? []).map((l) => l.id)),
+        supabase.from("dispatch_photos").select("dispatch_id, path").order("created_at"),
+      ])
+    : [{ data: [] }, { data: [] }, { data: [] }];
+  const dispatchIds = new Set((dRows ?? []).map((d) => d.id));
+  const dispatchPhotos = (dPhotos ?? []).filter((p) => dispatchIds.has(p.dispatch_id));
   const people = new Map(team.map((m) => [m.user_id, personName(m)]));
   // Photos come from private storage through links that work for an hour.
   const qcIds = (qc ?? []).map((c) => c.id);
@@ -51,7 +62,8 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
       ])
     : [{ data: [] }, { data: [] }];
   const stylePaths = lines.map((l) => l.photo_path).filter(Boolean) as string[];
-  const allPaths = [...(photoRows ?? []).map((p) => p.path), ...stylePaths];
+  const dispatchPaths = [...(dRows ?? []).flatMap((d) => [d.eway_path, d.lr_path, d.grn_path]), ...dispatchPhotos.map((p) => p.path)].filter(Boolean) as string[];
+  const allPaths = [...(photoRows ?? []).map((p) => p.path), ...stylePaths, ...dispatchPaths];
   const { data: signed } = allPaths.length
     ? await supabase.storage.from(PHOTO_BUCKET).createSignedUrls(allPaths, 3600)
     : { data: [] };
@@ -91,6 +103,27 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
     }
     g.lines.push({ id: l.id, style: l.style, colour: str(l.colour), qty: l.qty, photoUrl: (l.photo_path && urlByPath.get(l.photo_path)) || null, hasRate: l.factory_rate != null });
   }
+  const factoryLabel = (fid: string) => opts.factories.find((f) => f.id === fid)?.label ?? "Factory";
+  const dispatchFactories: DispatchFactory[] = groups.filter((g) => g.factoryId).map((g) => ({
+    id: g.factoryId!, name: g.factoryName,
+    lines: lines.filter((l) => l.factory_id === g.factoryId).map((l) => ({
+      id: l.id, style: l.style, colour: str(l.colour), qty: l.qty, factoryRate: str(l.factory_rate), buyerRate: str(l.buyer_rate),
+    })),
+  }));
+  const styleOf = new Map(lines.map((l) => [l.id, l.style]));
+  const url = (p: string | null) => (p && urlByPath.get(p)) || null;
+  const dispatches: Dispatch[] = (dRows ?? []).map((d) => ({
+    id: d.id, factoryName: factoryLabel(d.factory_id), billNo: d.purchase_bill_no, billDate: d.purchase_bill_date,
+    purchaseTaxable: Number(d.purchase_taxable), purchaseGst: Number(d.purchase_gst), purchasedAt: d.purchased_at, invoiceDueAt: d.invoice_due_at,
+    invoiceNo: d.invoice_no, invoiceTaxable: d.invoice_taxable == null ? null : Number(d.invoice_taxable), invoiceGst: d.invoice_gst == null ? null : Number(d.invoice_gst),
+    invoicedAt: d.invoiced_at, ewayNo: d.eway_bill_no, ewayDate: d.eway_bill_date, ewayValidUntil: d.eway_valid_until, ewayUrl: url(d.eway_path),
+    transporter: d.transporter, vehicleNo: d.vehicle_no, lrNo: d.lr_no, lrDate: d.lr_date, lrUrl: url(d.lr_path), cartons: d.cartons,
+    shippedAt: d.shipped_at, grnDueOn: d.grn_due_on, grnUrl: url(d.grn_path), grnQty: d.grn_received_qty, grnNotes: d.grn_notes, grnAt: d.grn_at,
+    photoUrls: dispatchPhotos.filter((p) => p.dispatch_id === d.id).map((p) => url(p.path)).filter(Boolean) as string[],
+    lines: (dLines ?? []).filter((l) => l.dispatch_id === d.id).map((l) => ({
+      style: styleOf.get(l.line_id) ?? "", qty: l.qty, purchaseRate: Number(l.purchase_rate), saleRate: l.sale_rate == null ? null : Number(l.sale_rate),
+    })),
+  }));
   // Quality's latest result for each TNA step it checks (checks are newest first).
   const stepQc: Record<string, StepQc> = {};
   for (const s of TNA_STEPS) {
@@ -137,6 +170,10 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
         initial={Object.fromEntries((lineStages ?? []).map((r) => [`${r.line_id}:${r.stage}`, { planned_on: str(r.planned_on), done_on: str(r.done_on), not_needed: !!r.not_needed }]))}
         qc={stepQc}
       />
+      {canEdit && (
+        <OrderDispatch orderId={o.id} companyId={o.company_id} open={o.status === "open"} factories={dispatchFactories}
+          dispatches={dispatches} now={Date.parse(new Date().toISOString())} today={todayIST()} />
+      )}
       <OrderQc orderId={o.id} companyId={o.company_id} open={o.status === "open"} canRecord={canRecordQc(me?.role)} today={todayIST()} checks={checks} finalPassed={finalPassed} />
       {canEdit ? <OrderForm
         key={o.updated_at}

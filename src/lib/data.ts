@@ -2,7 +2,7 @@ import { NO_COMPANY } from "@/lib/names";
 import { getMe } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 
-export type Buyer = { id: string; code: string; city: string | null; notes: string | null; active: boolean; realName: string | null };
+export type Buyer = { id: string; code: string; city: string | null; notes: string | null; active: boolean; grn_days: number | null; realName: string | null };
 export type Factory = { id: string; name: string; city: string | null; contact_name: string | null; phone: string | null; notes: string | null; active: boolean };
 export type Member = { user_id: string; role: string; active: boolean; factory_id: string | null; email: string; full_name: string | null };
 export type Invite = { email: string; role: string; factory_id: string | null; created_at: string };
@@ -17,7 +17,7 @@ async function scope() {
 export async function loadBuyers(): Promise<Buyer[]> {
   const { companyId, supabase } = await scope();
   const [{ data: buyers }, { data: names }] = await Promise.all([
-    supabase.from("buyers").select("id, code, city, notes, active").eq("company_id", companyId).order("code"),
+    supabase.from("buyers").select("id, code, city, notes, active, grn_days").eq("company_id", companyId).order("code"),
     supabase.from("buyer_names").select("buyer_id, real_name").eq("company_id", companyId),
   ]);
   const byId = new Map((names ?? []).map((n) => [n.buyer_id as string, n.real_name as string]));

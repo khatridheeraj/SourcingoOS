@@ -22,3 +22,16 @@ export async function saveBuyer(b: BuyerInput): Promise<{ error?: string }> {
   revalidatePath("/", "layout");
   return {};
 }
+
+// Days the buyer takes to send its GRN after goods ship; the merchandiser is reminded when it is due. Blank uses 7.
+export async function setGrnDays(buyerId: string, days: string): Promise<{ error?: string }> {
+  const me = await getMe();
+  if (me?.role !== "owner") return { error: "Only the owner can set GRN days." };
+  const v = days.trim() === "" ? null : Number(days);
+  if (v != null && (!Number.isInteger(v) || v < 0 || v > 120)) return { error: "Use 0 to 120 days." };
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("set_buyer_grn_days", { p_buyer: buyerId, p_days: v });
+  if (error) return { error: friendly(error) };
+  revalidatePath("/buyers");
+  return {};
+}
