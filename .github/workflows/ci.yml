@@ -43,3 +43,12 @@ jobs:
         with:
           node-version: 22
       - run: node --test tally-bridge/test/*.test.mjs
+
+  functions:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.1.4
+      - run: deno check --node-modules-dir=none supabase/functions/po-inbox/index.ts

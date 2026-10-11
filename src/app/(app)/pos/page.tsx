@@ -3,13 +3,11 @@ import { redirect } from "next/navigation";
 import { canEditOrders, getMe } from "@/lib/auth";
 import { loadBuyers } from "@/lib/data";
 import { qty } from "@/lib/format";
-import type { PoReading } from "@/lib/po-reader";
+import type { PoReading } from "@/lib/po-inbox";
 import { createClient } from "@/lib/supabase/server";
 import { AddPo } from "./add-po";
+import { AiKey } from "./ai-key";
 import { STATE } from "./state";
-
-// Reading files can take a minute or two after an upload.
-export const maxDuration = 300;
 
 const TABS = [
   { key: "to_check", label: "To check" },
@@ -26,11 +24,12 @@ export default async function IncomingPosPage({ searchParams }: PageProps<"/pos"
   const sp = await searchParams;
   const tab = TABS.some((t) => t.key === sp.show) ? String(sp.show) : "to_check";
   const supabase = await createClient();
-  const [{ data, error }, buyers] = await Promise.all([
+  const [{ data, error }, buyers, { data: aiKey }] = await Promise.all([
     supabase.from("incoming_pos")
       .select("id, source, email_from, email_subject, received_at, files, status, read, read_error, buyer_id, buyer_po, matched_order_id, order_id, created_by, orders!incoming_pos_order_fkey(order_no), matched:orders!incoming_pos_matched_fkey(order_no)")
       .eq("company_id", me.companyId).order("received_at", { ascending: false }).limit(300),
     loadBuyers(),
+    supabase.rpc("ai_key_status"),
   ]);
   const code = new Map(buyers.map((b) => [b.id, b.code]));
   const all = data ?? [];
@@ -47,9 +46,7 @@ export default async function IncomingPosPage({ searchParams }: PageProps<"/pos"
         </div>
       </div>
 
-      {!(process.env.SUPABASE_SECRET_KEY && (process.env.ANTHROPIC_API_KEY || process.env.PO_READER_MOCK === "1")) && (
-        <div className="errbox">PO reading isn&apos;t switched on yet: the app&apos;s server key and AI key still need to be added. Files you add wait here until then.</div>
-      )}
+      <AiKey owner={me.role === "owner"} status={(aiKey ?? { set: false }) as { set: boolean; last4?: string; set_at?: string }} />
 
       <AddPo companyId={me.companyId} />
 

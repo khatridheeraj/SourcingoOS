@@ -1,4 +1,5 @@
-import ExcelJS from "exceljs";
+import ExcelJS from "npm:exceljs@4.4.0";
+import { encodeBase64 } from "jsr:@std/encoding@1/base64";
 
 // Reads buyer POs (PDF, Excel, CSV or a photo) with Claude and returns each PO found as plain data.
 
@@ -88,7 +89,7 @@ async function excelText(bytes: Uint8Array): Promise<string> {
   return out.join("\n").slice(0, 200_000);
 }
 
-const b64 = (bytes: Uint8Array) => Buffer.from(bytes).toString("base64");
+const b64 = (bytes: Uint8Array) => encodeBase64(bytes);
 const ext = (name: string) => name.split(".").pop()?.toLowerCase() ?? "";
 
 // Turns each file into something Claude can read. Files it can't read are listed so the reading says so.
@@ -113,13 +114,13 @@ async function contentFor(files: PoFile[]) {
 }
 
 export async function readPos(
+  key: string | null,
   files: PoFile[],
   email: { from: string | null; subject: string | null; body: string | null } | null,
   buyers: { code: string; name: string | null }[],
 ): Promise<PoReading[]> {
-  if (process.env.PO_READER_MOCK === "1") return mockReading(files);
-  const key = process.env.ANTHROPIC_API_KEY;
-  if (!key) throw new Error("The AI key (ANTHROPIC_API_KEY) is not set up yet.");
+  if (Deno.env.get("PO_READER_MOCK") === "1") return mockReading(files);
+  if (!key) throw new Error("The AI key is not set up yet. The owner adds it on the Incoming POs page.");
 
   const { blocks, skipped } = await contentFor(files);
   if (!blocks.length) {
