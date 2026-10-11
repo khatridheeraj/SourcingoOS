@@ -26,8 +26,17 @@ test("reads Tally's replies, including the control characters it adds", () => {
     `<ALLLEDGERENTRIES.LIST><LEDGERNAME>HDFC</LEDGERNAME><AMOUNT>-5000.00</AMOUNT></ALLLEDGERENTRIES.LIST></VOUCHER>`);
   assert.deepEqual(v, {
     guid: "x-1", vtype: "Receipt", number: "12", date: "2026-10-06", party: "A & B", amount: 5000, reference: null, narration: "Chq 269734",
-    bills: [{ name: "SPL/1", amount: 3000 }, { name: "SPL/2", amount: 2000 }],
+    bills: [{ name: "SPL/1", amount: 3000 }, { name: "SPL/2", amount: 2000 }], eway_bill_no: null, eway_bill_date: null, eway_valid_until: null, irn: null,
   });
+});
+
+test("reads the e-way bill Tally made with a sales invoice", () => {
+  const [v] = parseVouchers(`<VOUCHER VCHTYPE="Sales"><DATE>20261004</DATE><GUID>s-1</GUID><VOUCHERNUMBER>SPL/9</VOUCHERNUMBER>` +
+    `<PARTYLEDGERNAME>A</PARTYLEDGERNAME><ALLLEDGERENTRIES.LIST><LEDGERNAME>A</LEDGERNAME><AMOUNT>-100.00</AMOUNT></ALLLEDGERENTRIES.LIST>` +
+    `<EWAYBILLDETAILS.LIST><BILLDATE>4-Oct-2026</BILLDATE></EWAYBILLDETAILS.LIST>` +
+    `<EWAYBILLDETAILS.LIST><BILLDATE>20261004</BILLDATE><BILLNUMBER>331009876543</BILLNUMBER><VALIDUPTO>20261006</VALIDUPTO></EWAYBILLDETAILS.LIST>` +
+    `<IRN>abc123</IRN></VOUCHER>`);
+  assert.deepEqual([v.eway_bill_no, v.eway_bill_date, v.eway_valid_until, v.irn], ["331009876543", "2026-10-04", "2026-10-06", "abc123"]);
 });
 
 test("dates, numbers and financial years", () => {

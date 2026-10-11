@@ -8,7 +8,8 @@ const amt = (n) => (Math.round(Number(n) * 100) / 100).toFixed(2);
 
 // ledgers: [{name, parent, balance (Tally sign: debit negative), gstin}]
 // items: [{name, unit, qty, value}]
-// vouchers: [{guid, vtype, number, date: "YYYY-MM-DD", party, amount, cancelled, optional, bills: [{name, amount}]}]
+// vouchers: [{guid, vtype, number, date: "YYYY-MM-DD", party, amount, cancelled, optional, bills: [{name, amount}],
+//             eway: {no, date, valid_until}, irn}]
 export function fakeTally({ company = "Sourcingo Test", ledgers = [], items = [], vouchers = [] } = {}) {
   const books = { company, ledgers, items, vouchers, requests: [], writes: [] };
 
@@ -36,7 +37,10 @@ export function fakeTally({ company = "Sourcingo Test", ledgers = [], items = []
           `<ALLLEDGERENTRIES.LIST><LEDGERNAME>${esc(v.party ?? "")}</LEDGERNAME><AMOUNT>${amt(sign * v.amount)}</AMOUNT>` +
           (v.bills ?? []).map((b) => `<BILLALLOCATIONS.LIST><NAME>${esc(b.name)}</NAME><AMOUNT>${amt(sign * b.amount)}</AMOUNT></BILLALLOCATIONS.LIST>`).join("") +
           `</ALLLEDGERENTRIES.LIST>` +
-          `<ALLLEDGERENTRIES.LIST><LEDGERNAME>Other side</LEDGERNAME><AMOUNT>${amt(-sign * v.amount)}</AMOUNT></ALLLEDGERENTRIES.LIST></VOUCHER>`;
+          `<ALLLEDGERENTRIES.LIST><LEDGERNAME>Other side</LEDGERNAME><AMOUNT>${amt(-sign * v.amount)}</AMOUNT></ALLLEDGERENTRIES.LIST>` +
+          (v.eway ? `<EWAYBILLDETAILS.LIST><BILLDATE>${tallyDate(v.eway.date)}</BILLDATE><BILLNUMBER>${esc(v.eway.no)}</BILLNUMBER>` +
+                    `<VALIDUPTO>${tallyDate(v.eway.valid_until)}</VALIDUPTO></EWAYBILLDETAILS.LIST>` : "") +
+          (v.irn ? `<IRN>${esc(v.irn)}</IRN>` : "") + `</VOUCHER>`;
       }).join(""));
     }
     return wrap("");

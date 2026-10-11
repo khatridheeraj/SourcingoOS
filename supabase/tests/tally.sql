@@ -195,3 +195,18 @@ exception when sqlstate '28000' then null;
 end $$;
 select public.tally_bridge_hello(:'key2');
 reset role;
+
+-- ---------------------------------------------------------------- e-way bills made in Tally come along with the invoice
+set role anon;
+select public.tally_bridge_snapshot(:'key2', jsonb_build_object(
+  'from', '2026-07-01', 'to', '2026-10-10',
+  'vouchers', jsonb_build_array(
+    jsonb_build_object('guid', 'g2', 'vtype', 'Sales', 'number', 'SPL/002', 'date', '2026-07-01', 'party', 'M/s Ozia Clothing Pvt. Ltd.', 'amount', 52000,
+                       'eway_bill_no', '331009876543', 'eway_bill_date', '2026-07-01', 'eway_valid_until', '2026-07-03', 'irn', 'abc123'))));
+reset role;
+do $$ begin
+  if (select row(eway_bill_no, eway_bill_date, eway_valid_until, irn)::text from public.tally_vouchers where guid = 'g2')
+     <> '(331009876543,2026-07-01,2026-07-03,abc123)' then
+    raise exception 'e-way bill not kept: %', (select row(eway_bill_no, eway_bill_date, eway_valid_until, irn)::text from public.tally_vouchers where guid = 'g2');
+  end if;
+end $$;

@@ -9,7 +9,8 @@ changes or cancels anything in Tally.
 - Every ledger with its closing balance and GSTIN, so the app shows what each buyer owes and what we owe each factory.
 - Stock items with quantity and value.
 - Vouchers from the "Read vouchers from" date (or the start of last financial year): sales, credit notes, receipts,
-  purchases and payments, with the bills each one is set against. Cancelled and optional vouchers are skipped.
+  purchases and payments, with the bills each one is set against, and each sales invoice's e-way bill number, date and
+  validity (and IRN) when Tally made them. Cancelled and optional vouchers are skipped.
 
 **What the app does with it** (the Tally page, owner and Accounts only)
 

@@ -53,7 +53,9 @@ export const vouchersRequest = (company, from, to) =>
   collectionRequest(company, "SgoVouchers", "Voucher",
     ["Date", "VoucherTypeName", "VoucherNumber", "PartyLedgerName", "Amount", "GUID", "Narration", "Reference",
      "IsCancelled", "IsOptional", "AllLedgerEntries.LedgerName", "AllLedgerEntries.Amount",
-     "AllLedgerEntries.BillAllocations.Name", "AllLedgerEntries.BillAllocations.Amount"],
+     "AllLedgerEntries.BillAllocations.Name", "AllLedgerEntries.BillAllocations.Amount",
+     // E-way bill and e-invoice details, filled when Tally is linked to the e-way bill and IRP portals.
+     "EWayBillDetails.BillNumber", "EWayBillDetails.BillDate", "EWayBillDetails.ValidUpto", "IRN", "IRNAckNo"],
     { SVFROMDATE: tallyDate(from), SVTODATE: tallyDate(to) });
 
 // ───────────────────────── reading replies ─────────────────────────
@@ -137,6 +139,7 @@ export function parseVouchers(xml) {
     const party = val(v, "PARTYLEDGERNAME");
     const entries = [...kids(v, "ALLLEDGERENTRIES.LIST"), ...kids(v, "LEDGERENTRIES.LIST")];
     const partyEntry = entries.find((e) => val(e, "LEDGERNAME") === party);
+    const eway = kids(v, "EWAYBILLDETAILS.LIST").find((e) => val(e, "BILLNUMBER"));
     const amount = partyEntry ? Math.abs(num(val(partyEntry, "AMOUNT")))
       : val(v, "AMOUNT") ? Math.abs(num(val(v, "AMOUNT")))
       : entries.reduce((s, e) => s + Math.max(0, num(val(e, "AMOUNT"))), 0);
@@ -151,6 +154,10 @@ export function parseVouchers(xml) {
       narration: val(v, "NARRATION") || null,
       // The bills the party's line is set against, e.g. the invoice a credit note or receipt settles.
       bills: partyEntry ? kids(partyEntry, "BILLALLOCATIONS.LIST").map((b) => ({ name: val(b, "NAME"), amount: Math.abs(num(val(b, "AMOUNT"))) })).filter((b) => b.name) : [],
+      eway_bill_no: val(eway, "BILLNUMBER") || null,
+      eway_bill_date: isoDate(val(eway, "BILLDATE")),
+      eway_valid_until: isoDate(val(eway, "VALIDUPTO")),
+      irn: val(v, "IRN") || null,
     };
   }).filter((v) => v.guid && v.date);
 }

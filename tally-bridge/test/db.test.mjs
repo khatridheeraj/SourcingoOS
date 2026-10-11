@@ -50,7 +50,8 @@ test("Tally's books reach the app, and Accounts brings in what's missing", { ski
     items: [{ name: "K-22 Kurta", unit: "Pcs", qty: 120, value: 30000 }],
     vouchers: [
       { guid: "g0", vtype: "Sales", number: "SPL/26-27/146", date: "2026-10-01", party: "M/s Ozia Retail Pvt Ltd", amount: 10000 },
-      { guid: "g1", vtype: "Sales", number: "SPL/26-27/147", date: "2026-10-04", party: "M/s Ozia Retail Pvt Ltd", amount: 26250 },
+      { guid: "g1", vtype: "Sales", number: "SPL/26-27/147", date: "2026-10-04", party: "M/s Ozia Retail Pvt Ltd", amount: 26250,
+        eway: { no: "331009876543", date: "2026-10-04", valid_until: "2026-10-06" } },
       { guid: "g2", vtype: "Credit Note", number: "CN/3", date: "2026-10-05", party: "M/s Ozia Retail Pvt Ltd", amount: 1250, bills: [{ name: "SPL/26-27/147", amount: 1250 }] },
     ],
   });
@@ -64,6 +65,7 @@ test("Tally's books reach the app, and Accounts brings in what's missing", { ski
   assert.equal(psql("select tally_ledger from public.factories"), "Okhla Stitchers");
   assert.equal(psql("select balance from public.tally_ledgers where name like 'M/s%'"), "35000.00");
   assert.equal(psql("select agent_info->>'tally' from public.tally_settings"), "online");
+  assert.equal(psql("select eway_bill_no || ' ' || eway_valid_until from public.tally_vouchers where guid = 'g1'"), "331009876543 2026-10-06");
 
   // Accounts brings in the invoice and credit note that are only in Tally.
   const out = JSON.parse(as(ACCOUNTS, "select public.tally_import(array['g0', 'g1', 'g2'])::text"));
