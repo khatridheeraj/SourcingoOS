@@ -156,10 +156,42 @@ export default async function TodayPage({ searchParams }: PageProps<"/today">) {
     detail: `${p.source === "email" ? `Email from ${p.email_from ?? "unknown"}` : "Added from a file"} · received ${at.format(new Date(p.received_at))}`,
     chip: p.status === "failed" ? { text: "Couldn't read", cls: "bad" } : { text: "Check and add", cls: "warn" }, sort: p.received_at,
   }));
+  // Dispatch: invoice within 4 hours of the purchase (an emergency after that), then e-way bill and shipping, then the GRN.
+  const { data: disp } = team && ids.length
+    ? await supabase.from("dispatches").select("id, order_id, purchase_bill_no, invoice_due_at, invoiced_at, eway_at, shipped_at, grn_due_on, grn_at")
+        .in("order_id", ids).is("cancelled_at", null).is("grn_at", null)
+    : { data: [] };
+  const orderOf = new Map(open.map((o) => [o.id, o]));
+  const emergency: Item[] = [];
+  const dispatchItems: Item[] = [];
+  const grnItems: Item[] = [];
+  for (const d of disp ?? []) {
+    const o = orderOf.get(d.order_id);
+    if (!o) continue;
+    const base = { orderId: o.id, href: `/orders/${o.id}#dispatch` };
+    if (!d.invoiced_at) {
+      const late = Date.parse(d.invoice_due_at) < now;
+      (late ? emergency : dispatchItems).push({ ...base, key: `inv:${d.id}`, title: `${label(o)} · invoice for bill ${d.purchase_bill_no}`,
+        detail: `${late ? "Was due" : "Due"} ${at.format(new Date(d.invoice_due_at))}`,
+        chip: late ? { text: "Emergency", cls: "bad" } : { text: "Invoice within 4 hours", cls: "warn" }, sort: d.invoice_due_at });
+    } else if (!d.eway_at || !d.shipped_at) {
+      dispatchItems.push({ ...base, key: `ship:${d.id}`, title: `${label(o)} · bill ${d.purchase_bill_no}`,
+        detail: !d.eway_at ? "Invoiced; add the e-way bill" : "E-way bill in; add goods photos and the LR",
+        chip: { text: !d.eway_at ? "E-way bill" : "Photos and LR", cls: "warn" }, sort: d.invoiced_at });
+    } else if (d.grn_due_on && d.grn_due_on <= addDays(today, 3)) {
+      grnItems.push({ ...base, key: `grn:${d.id}`, title: `${label(o)} · GRN for bill ${d.purchase_bill_no}`,
+        detail: `Shipped; buyer's GRN due ${day(d.grn_due_on)}`, chip: when(d.grn_due_on, today), sort: d.grn_due_on });
+    }
+  }
+  for (const list of [emergency, dispatchItems, grnItems]) list.sort((a, b) => a.sort.localeCompare(b.sort));
+
   const sections = [
     ...(team ? [
+      { id: "emergency", title: "Emergency: invoice overdue", hint: "Goods purchased more than 4 hours ago and the buyer isn't invoiced yet.", items: emergency, empty: "Every purchase is invoiced in time." },
       { id: "critical", title: "Critical: factory TNA overdue", hint: `Factories that haven't sent their TNA within ${PLAN_HOURS} hours of being asked.`, items: critical, empty: "No factory is past its deadline." },
       { id: "incoming", title: "New buyer POs to check", hint: "Picked up from email or added from a file. Check the AI's reading and add each as an order.", items: incomingItems, empty: "No new buyer POs waiting." },
+      { id: "dispatch", title: "Dispatch to finish", hint: "Invoices due within 4 hours, then the e-way bill, goods photos and LR for each invoice.", items: dispatchItems, empty: "Nothing waiting to dispatch." },
+      { id: "grn", title: "GRN due", hint: "Shipped goods whose buyer GRN is due within 3 days or overdue.", items: grnItems, empty: "No GRN due." },
       { id: "pos", title: "Factory plans and POs", hint: `Set each style's steps and targets, ask the factory for its TNA (it has ${PLAN_HOURS} hours), and release the PO once its dates are in and on target.`, items: poItems, empty: "Every factory PO is released." },
     ] : []),
     { id: "overdue", title: "Overdue TNA steps", hint: "Planned date has passed and no done date is entered.", items: overdue, empty: "Nothing is overdue." },
