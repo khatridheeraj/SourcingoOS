@@ -16,7 +16,8 @@ const books = () => fakeTally({
   ledgers: [{ name: "Ozia Retail & Co", parent: "Sundry Debtors", balance: -26250, gstin: "09abcde1234f1z5" }, { name: "Okhla Stitchers", parent: "Sundry Creditors", balance: 42000 }],
   items: [{ name: "K-22 Kurta", unit: "Pcs", qty: 120, value: 30000 }],
   vouchers: [
-    { guid: "g1", vtype: "Sales", number: "SPL/26-27/147", date: "2026-10-04", party: "Ozia Retail & Co", amount: 26250 },
+    { guid: "g1", vtype: "Sales", number: "SPL/26-27/147", date: "2026-10-04", party: "Ozia Retail & Co", amount: 26250,
+      eway: { no: "331009876543", date: "2026-10-04", valid_until: "2026-10-06" }, irn: "a1b2c3" },
     { guid: "g2", vtype: "Credit Note", number: "CN/3", date: "2026-10-05", party: "Ozia Retail & Co", amount: 1250, bills: [{ name: "SPL/26-27/147", amount: 1250 }] },
     { guid: "g3", vtype: "Sales", number: "SPL/25-26/900", date: "2026-03-30", party: "Ozia Retail & Co", amount: 999 },   // before read_from
     { guid: "g4", vtype: "Sales", number: "SPL/26-27/148", date: "2026-10-06", party: "Ozia Retail & Co", amount: 5, cancelled: true },
@@ -45,8 +46,11 @@ test("a round reads Tally over HTTP, sends it to the app and never writes to Tal
     assert.deepEqual(s.vouchers.map((v) => v.guid), ["g1", "g2"]);
     assert.deepEqual(s.vouchers[1], {
       guid: "g2", vtype: "Credit Note", number: "CN/3", date: "2026-10-05", party: "Ozia Retail & Co", amount: 1250, reference: null, narration: null,
-      bills: [{ name: "SPL/26-27/147", amount: 1250 }],
+      bills: [{ name: "SPL/26-27/147", amount: 1250 }], eway_bill_no: null, eway_bill_date: null, eway_valid_until: null, irn: null,
     });
+    // The e-way bill Tally made with the invoice comes along with it.
+    assert.deepEqual([s.vouchers[0].eway_bill_no, s.vouchers[0].eway_bill_date, s.vouchers[0].eway_valid_until, s.vouchers[0].irn],
+      ["331009876543", "2026-10-04", "2026-10-06", "a1b2c3"]);
     assert.equal(tally.books.writes.length, 0);
     assert.match(logs.at(-1), /Read 2 ledgers, 1 stock items and 2 vouchers/);
 
