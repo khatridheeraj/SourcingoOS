@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 import { OrderForm } from "../order-form";
 import { OrderDispatch, type Dispatch, type DispatchFactory } from "./order-dispatch";
 import { OrderHistory } from "./order-history";
+import { OrderMargin } from "./order-margin";
 import { OrderProduction } from "./order-production";
 import { OrderQc, type QcCheck } from "./order-qc";
 import { OrderStyles, type ExtraStep, type FactoryGroup, type StepQc } from "./order-styles";
@@ -151,6 +152,15 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
         stageAt={o.stage_at}
         initial={{ revised_ship_date: str(o.revised_ship_date), delay_reason: str(o.delay_reason) }}
       />
+      {canEdit && (
+        <OrderMargin
+          styles={lines.map((l) => ({
+            id: l.id, style: l.style, colour: str(l.colour), qty: l.qty,
+            buyerRate: l.buyer_rate == null ? null : Number(l.buyer_rate), factoryRate: l.factory_rate == null ? null : Number(l.factory_rate),
+          }))}
+          dispatches={dispatches}
+        />
+      )}
       <OrderStyles
         orderId={o.id}
         orderNo={o.order_no}

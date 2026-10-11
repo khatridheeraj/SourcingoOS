@@ -3,6 +3,7 @@ import Link from "next/link";
 import { canEditOrders, getMe } from "@/lib/auth";
 import { loadBuyers, loadFactories } from "@/lib/data";
 import { day, daysBetween, dueDate, money, qty, SHIP_QC, stageLabel, STATUS, todayIST } from "@/lib/format";
+import { marginCls, pct, planMargin } from "@/lib/margin";
 import { createClient } from "@/lib/supabase/server";
 
 const TABS = [
@@ -13,7 +14,7 @@ const TABS = [
   { key: "all", label: "All" },
 ];
 
-type Line = { style: string; qty: number; buyer_rate: number | null; factory_id: string | null };
+type Line = { style: string; qty: number; buyer_rate: number | null; factory_id: string | null; factory_rate: number | null };
 
 export default async function OrdersPage({ searchParams }: PageProps<"/">) {
   const sp = await searchParams;
@@ -25,7 +26,7 @@ export default async function OrdersPage({ searchParams }: PageProps<"/">) {
   const supabase = await createClient();
   let query = supabase
     .from("orders")
-    .select("id, order_no, buyer_id, buyer_po, ship_date, revised_ship_date, delay_reason, stage, status, order_lines(style, qty, buyer_rate, factory_id)")
+    .select("id, order_no, buyer_id, buyer_po, ship_date, revised_ship_date, delay_reason, stage, status, order_lines(style, qty, buyer_rate, factory_id, factory_rate)")
     .eq("company_id", companyId)
     .is("order_lines.removed_at", null)
     .order("ship_date", { ascending: true, nullsFirst: false })
@@ -64,6 +65,7 @@ export default async function OrdersPage({ searchParams }: PageProps<"/">) {
       styles: lines.map((l) => l.style),
       pieces: lines.reduce((s, l) => s + l.qty, 0),
       value: prices && lines.every((l) => l.buyer_rate != null) ? lines.reduce((s, l) => s + l.qty * (l.buyer_rate ?? 0), 0) : null,
+      margin: prices ? planMargin(lines) : null,
       factoryNames,
       missingFactory,
       due: dueDate(o),
@@ -81,6 +83,7 @@ export default async function OrdersPage({ searchParams }: PageProps<"/">) {
   const open = rows.filter((r) => r.status === "open");
   const late = all.filter(isLate).length;
   const noFactory = open.filter((r) => r.missingFactory).length;
+  const openMargin = prices ? planMargin(open.flatMap((r) => (r.order_lines ?? []) as Line[])) : null;
 
   return (
     <>
@@ -98,6 +101,9 @@ export default async function OrdersPage({ searchParams }: PageProps<"/">) {
           <div className="tile"><span>Pieces on open orders</span><b>{qty(open.reduce((s, r) => s + r.pieces, 0))}</b></div>
           <Link href="/?status=late" className={`tile ${late ? "alarm" : ""}`}><span>Late, past ship date</span><b>{late}</b></Link>
           <div className={`tile ${noFactory ? "alarm" : ""}`}><span>Styles without a factory</span><b>{noFactory}</b></div>
+          {openMargin && openMargin.sale > 0 && (
+            <div className="tile"><span>Margin on open orders</span><b className={marginCls(openMargin.pct)}>{money(openMargin.margin)}</b><span className="mt-1">{pct(openMargin.pct)} of {money(openMargin.sale)}</span></div>
+          )}
         </div>
       )}
 
@@ -133,7 +139,8 @@ export default async function OrdersPage({ searchParams }: PageProps<"/">) {
                   <span className={STATUS[r.status]?.cls}>{STATUS[r.status]?.label}</span>
                 </div>
                 <div className="font-semibold">{r.buyer_po} <span className="code muted font-normal">{r.buyer}</span></div>
-                <div className="muted text-[13px]">{r.styles.length} {r.styles.length === 1 ? "style" : "styles"} · {qty(r.pieces)} pcs{r.value != null && ` · ${money(r.value)}`}</div>
+                <div className="muted text-[13px]">{r.styles.length} {r.styles.length === 1 ? "style" : "styles"} · {qty(r.pieces)} pcs{r.value != null && ` · ${money(r.value)}`}
+                  {r.margin && r.margin.sale > 0 && <> · margin <span className={marginCls(r.margin.pct)}>{pct(r.margin.pct)}</span></>}</div>
                 <div className="row text-[13px]">
                   {r.due ? <span>Ships {day(r.due)}</span> : <span className="muted">No ship date</span>}
                   {r.status === "open" && <span className="chip">{stageLabel(r.stage)}</span>}
@@ -150,7 +157,7 @@ export default async function OrdersPage({ searchParams }: PageProps<"/">) {
             <thead>
               <tr>
                 <th>Order</th><th>Buyer</th><th>Buyer PO</th><th>Styles</th><th className="r">Pieces</th>
-                {prices && <th className="r">Value</th>}<th>Factory</th><th>Ship date</th><th>Stage</th>
+                {prices && <><th className="r">Value</th><th className="r">Margin</th></>}<th>Factory</th><th>Ship date</th><th>Stage</th>
               </tr>
             </thead>
             <tbody>
@@ -162,6 +169,11 @@ export default async function OrdersPage({ searchParams }: PageProps<"/">) {
                   <td>{r.styles.length <= 2 ? r.styles.join(", ") : `${r.styles.slice(0, 2).join(", ")} +${r.styles.length - 2}`}</td>
                   <td className="r num">{qty(r.pieces)}</td>
                   {prices && <td className="r num">{money(r.value)}</td>}
+                  {prices && (
+                    <td className="r num whitespace-nowrap">
+                      {r.margin && r.margin.sale > 0 && <>{money(r.margin.margin)}<div className={`text-xs ${marginCls(r.margin.pct)}`}>{pct(r.margin.pct)}{r.margin.missing > 0 && " · rate missing"}</div></>}
+                    </td>
+                  )}
                   <td>
                     {r.factoryNames.join(", ")}
                     {r.missingFactory && <span className="chip warn ml-1">Needs factory</span>}
