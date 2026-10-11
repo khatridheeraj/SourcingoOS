@@ -17,6 +17,7 @@ const TYPES = {
 const MIN_PHOTO = 30 * 1024; // smaller pictures are logos and signatures
 
 function setUp() {
+  Session.getActiveUser().getEmail(); // asks Google for the address too, so the app can check who is sending
   ScriptApp.getProjectTriggers().forEach((t) => ScriptApp.deleteTrigger(t));
   ScriptApp.newTrigger("pickUpPos").timeBased().everyMinutes(10).create();
   pickUpPos();
