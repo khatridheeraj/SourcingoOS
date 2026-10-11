@@ -1,8 +1,8 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
-// /api/cron and /api/inbound-po check their own keys.
-const PUBLIC_PATHS = ["/login", "/auth", "/api/cron", "/api/inbound-po"];
+// /api/cron checks its own key.
+const PUBLIC_PATHS = ["/login", "/auth", "/api/cron"];
 
 // Refreshes the Supabase session cookie on every request and sends
 // signed-out visitors to /login.

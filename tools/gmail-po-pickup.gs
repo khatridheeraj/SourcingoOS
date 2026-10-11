@@ -9,7 +9,7 @@
  * Set up once: paste this into a new project at script.google.com while signed in to the mailbox,
  * put the key in KEY, run setUp, and allow access when Google asks.
  */
-const APP = "https://sourcingo-os.vercel.app";
+const APP = "https://zwqoogevoxpafzbdnptz.supabase.co/functions/v1/po-inbox";
 const KEY = "PASTE_THE_KEY_HERE";
 const TYPES = {
   pdf: "application/pdf", jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp", csv: "text/csv",
@@ -51,7 +51,8 @@ function handOver(msg) {
     return TYPES[ext] && !(TYPES[ext].indexOf("image/") === 0 && a.getSize() < MIN_PHOTO);
   });
   if (!files.length) return false;
-  const start = post("/api/inbound-po", {
+  const start = post({
+    action: "receive",
     key: KEY,
     email: { email_id: msg.getId(), from: msg.getFrom(), subject: msg.getSubject(), body: msg.getPlainBody().slice(0, 8000),
              received_at: msg.getDate().toISOString() },
@@ -65,12 +66,12 @@ function handOver(msg) {
     const res = UrlFetchApp.fetch(u.url, { method: "put", contentType: u.type, payload: files[i].getBytes(), muteHttpExceptions: true });
     if (res.getResponseCode() >= 300) throw new Error("upload failed: " + res.getContentText());
   }
-  post("/api/inbound-po/ready", { key: KEY, id: start.id });
+  post({ action: "ready", key: KEY, id: start.id });
   return true;
 }
 
-function post(path, body) {
-  const res = UrlFetchApp.fetch(APP + path, { method: "post", contentType: "application/json", payload: JSON.stringify(body), muteHttpExceptions: true });
+function post(body) {
+  const res = UrlFetchApp.fetch(APP, { method: "post", contentType: "application/json", payload: JSON.stringify(body), muteHttpExceptions: true });
   const data = JSON.parse(res.getContentText() || "{}");
   if (res.getResponseCode() >= 300) throw new Error(data.error || res.getContentText());
   return data;

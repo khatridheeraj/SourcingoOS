@@ -3,16 +3,13 @@ import { notFound, redirect } from "next/navigation";
 import { canEditOrders, getMe } from "@/lib/auth";
 import { day, money, nowMs, qty } from "@/lib/format";
 import { PO_BUCKET, type StoredFile } from "@/lib/po-files";
-import type { PoReading } from "@/lib/po-reader";
+import type { PoReading } from "@/lib/po-inbox";
 import { createClient } from "@/lib/supabase/server";
 import type { LineInput } from "../../orders/actions";
 import { OrderForm } from "../../orders/order-form";
 import { formOptions } from "../../orders/options";
 import { STATE } from "../state";
 import { PoActions } from "./po-actions";
-
-// Reading again runs after the click and can take a minute or two.
-export const maxDuration = 300;
 
 const when = new Intl.DateTimeFormat("en-IN", { timeZone: "Asia/Kolkata", day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit" });
 
