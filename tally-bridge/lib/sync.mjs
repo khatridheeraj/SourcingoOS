@@ -3,7 +3,7 @@
 // This program only reads Tally. It never writes anything into it.
 import { companiesRequest, itemsRequest, ledgersRequest, parseCompanies, parseItems, parseLedgers, parseVouchers, vouchersRequest } from "./xml.mjs";
 
-export const VERSION = "2.1.0";
+export const VERSION = "2.1.1";
 
 // Indian financial year start for a date: 2026-10-04 -> 2026-04-01.
 export function fyStart(iso) {

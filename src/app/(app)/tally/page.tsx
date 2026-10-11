@@ -92,7 +92,7 @@ export default async function TallyPage({ searchParams }: PageProps<"/tally">) {
           <ol className="ml-5 list-decimal space-y-1.5 text-[13.5px]">
             <li>Open TallyPrime and the company.</li>
             <li>Press <b>F1 (Help) › Settings › Connectivity › Client/Server configuration</b>. Set <b>TallyPrime acts as</b> to <b>Both</b> and <b>Port</b> to <b>9000</b>, then Ctrl+A.</li>
-            <li>Install the Sourcingo Tally reader there and paste the sync key when it asks. Claude can do this step once connected to that computer.</li>
+            <li>Press <b>Make sync key</b> above (the owner, on any computer), copy the install command it shows, then on the Tally computer open <b>PowerShell</b> from the Start menu, paste it and press Enter.</li>
             <li>Keep Tally open during the day. The reader checks every minute and reads Tally every 15 minutes. It never changes anything in Tally.</li>
           </ol>
           {s?.agent_info?.version && <p className="text-xs muted">Reader version {s.agent_info.version} · last check-in {ago(s.agent_seen_at)}{s.agent_info.companies?.length ? ` · open in Tally: ${s.agent_info.companies.join(", ")}` : ""}</p>}

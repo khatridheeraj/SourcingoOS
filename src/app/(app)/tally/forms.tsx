@@ -54,7 +54,7 @@ export function KeyMaker({ hint, made }: { hint: string | null; made: string | n
   const router = useRouter();
   const [key, setKey] = useState("");
   const [error, setError] = useState("");
-  const [copied, setCopied] = useState(false);
+  const [copied, setCopied] = useState("");
   const [pending, start] = useTransition();
   return (
     <div className="stack">
@@ -62,11 +62,7 @@ export function KeyMaker({ hint, made }: { hint: string | null; made: string | n
         {hint ? <>A key ending <b className="code">…{hint}</b> was made {made ? day(made.slice(0, 10)) : ""}. A new key stops the old one working.</> : "The office computer needs this key to send Tally's books to the app."}
       </p>
       {key ? (
-        <div className="warnbox stack">
-          <b>Copy this key now. It won&apos;t be shown again.</b>
-          <code className="code break-all select-all">{key}</code>
-          <div><button type="button" className="btn sm" onClick={() => { navigator.clipboard?.writeText(key); setCopied(true); }}>{copied ? "Copied" : "Copy key"}</button></div>
-        </div>
+        <InstallCommand syncKey={key} copied={copied} onCopy={setCopied} />
       ) : (
         <div>
           <button type="button" className="btn" disabled={pending} onClick={() => {
@@ -80,6 +76,24 @@ export function KeyMaker({ hint, made }: { hint: string | null; made: string | n
         </div>
       )}
       {error && <div className="errbox" role="alert">{error}</div>}
+    </div>
+  );
+}
+
+// The new key shown once, inside the one command that installs the reader on the Tally PC.
+function InstallCommand({ syncKey, copied, onCopy }: { syncKey: string; copied: string; onCopy: (what: string) => void }) {
+  const origin = typeof window === "undefined" ? "https://sourcingo-os.vercel.app" : window.location.origin;
+  const command = `$env:SOURCINGO_URL='${origin}'; $env:SOURCINGO_SYNC_KEY='${syncKey}'; irm ${origin}/tally-reader/setup.ps1 | iex`;
+  const copy = (text: string, what: string) => { navigator.clipboard?.writeText(text); onCopy(what); };
+  return (
+    <div className="warnbox stack">
+      <b>Copy this now. The key won&apos;t be shown again.</b>
+      <p className="text-[13.5px]">On the Tally computer, open the Start menu, type <b>PowerShell</b>, open it, paste this and press Enter. It installs the reader with this key and runs a first read.</p>
+      <code className="code break-all select-all">{command}</code>
+      <div className="row">
+        <button type="button" className="btn sm primary" onClick={() => copy(command, "command")}>{copied === "command" ? "Copied" : "Copy install command"}</button>
+        <button type="button" className="btn sm" onClick={() => copy(syncKey, "key")}>{copied === "key" ? "Copied" : "Copy key only"}</button>
+      </div>
     </div>
   );
 }

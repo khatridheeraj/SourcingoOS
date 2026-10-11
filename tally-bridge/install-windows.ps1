@@ -20,7 +20,7 @@ if (-not (Test-Path config.json)) {
   $key = Read-Host "Paste the sync key from Sourcingo OS (Tally page)"
   $cfg = Get-Content config.example.json -Raw | ConvertFrom-Json
   $cfg.syncKey = $key.Trim()
-  $cfg | ConvertTo-Json | Set-Content config.json -Encoding UTF8
+  [IO.File]::WriteAllText((Join-Path $PSScriptRoot "config.json"), ($cfg | ConvertTo-Json))
 }
 
 # 3. Check Tally answers on its port before going further.
