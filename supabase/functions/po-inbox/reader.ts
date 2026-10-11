@@ -81,7 +81,7 @@ async function excelRows(bytes: Uint8Array): Promise<Sheet[]> {
   wb.eachSheet((ws) => {
     const rows: string[][] = [];
     ws.eachRow((row) => {
-      const cells = (row.values as unknown[]).slice(1).map((v) => {
+      const cells = Array.from((row.values as unknown[]).slice(1), (v) => {
         if (v == null) return "";
         if (v instanceof Date) return v.toISOString().slice(0, 10);
         if (typeof v === "object") {

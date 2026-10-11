@@ -58,7 +58,7 @@ function poNumber(texts: string[]): string | null {
   for (const text of texts) {
     for (const m of text.matchAll(PO_LABEL)) {
       const v = m[1].replace(/[.\-/]+$/, "");
-      if (v.length >= 3 && !/^SO\/\d+/i.test(v) && !/^(19|20)\d{2}$/.test(v)) return v;
+      if ((v.match(/\d/g) ?? []).length >= 3 && !/^SO\/\d+/i.test(v) && !/^(19|20)\d{2}$/.test(v)) return v;
     }
   }
   return null;
@@ -203,6 +203,19 @@ function csvRows(text: string): Row[] {
 
 const ext = (name: string) => name.split(".").pop()?.toLowerCase() ?? "";
 
+// Words that say an email is about a buyer's PO, and ones that say it is about goods already sent.
+const PO_WORDS = /(^|[^a-z])(p\.?\s?o|purchase\s*orders?|new\s*orders?)([^a-z]|$)/i;
+const NOT_PO_WORDS = /(invoice|packing\s*list|inward|grn|lr\s*copy|debit\s*note|credit\s*note|receipt|e-?way\s*bill)/i;
+
+// An emailed file is taken as a PO only when something says so: the subject or a file name mentions a PO,
+// a file is titled "purchase order", or a known buyer sent it. Anything else (bills, letters, packing lists) is skipped.
+function looksLikePo(subject: string, fileNames: string[], sheets: Sheet[], buyerFromSender: boolean): boolean {
+  const named = [subject, ...fileNames].join(" ");
+  const titled = sheets.some((s) => s.rows.slice(0, 15).some((r) => r.some((c) => /purchase\s*order/i.test(c))));
+  if (PO_WORDS.test(named) || titled) return true;
+  return buyerFromSender && !NOT_PO_WORDS.test(named);
+}
+
 // --- The reading ---
 
 export async function readPosFree(
@@ -220,7 +233,7 @@ export async function readPosFree(
         const got = await pdfSheets(f.bytes);
         if (got.every((s) => s.rows.length === 0)) doubts.push(`${f.name} is a scan with no text: type its styles in from the file.`);
         sheets.push(...got);
-      } else if (e === "xlsx") sheets.push(...await excelRows(f.bytes));
+      } else if (e === "xlsx") sheets.push(...(await excelRows(f.bytes)).map((s) => ({ ...s, rows: s.rows.map((r) => Array.from(r, (c) => c ?? "")) })));
       else if (e === "csv" || f.type === "text/csv") sheets.push({ name: f.name, rows: csvRows(new TextDecoder().decode(f.bytes)) });
       else doubts.push(`${f.name} is ${e === "xls" ? "an old Excel file" : "a photo"}: type its styles in from the file.`);
     } catch {
@@ -234,12 +247,16 @@ export async function readPosFree(
 
   const all = texts.join("\n").toLowerCase();
   const sender = (email?.from ?? "").toLowerCase();
+  const shortName = (b: { name: string | null }) => (b.name ?? "").toLowerCase().replace(/\b(pvt|private|ltd|limited|llp|inc|co)\b\.?/g, "").trim();
+  const fromBuyer = (b: { name: string | null }) => {
+    const word = shortName(b).split(/\s+/)[0] ?? "";
+    return word.length >= 4 && sender.includes(word);
+  };
   const buyer = buyers.find((b) => {
-    const name = (b.name ?? "").toLowerCase().replace(/\b(pvt|private|ltd|limited|llp|inc|co)\b\.?/g, "").trim();
-    if (name.length < 3) return false;
-    const word = name.split(/\s+/)[0];
-    return all.includes(name) || (word.length >= 4 && sender.includes(word));
+    const name = shortName(b);
+    return name.length >= 3 && (all.includes(name) || fromBuyer(b));
   });
+  if (email && !looksLikePo(email.subject ?? "", files.map((f) => f.name), sheets, buyers.some(fromBuyer))) return [];
 
   const reading: PoReading = {
     buyer_name: buyer?.name ?? null,
