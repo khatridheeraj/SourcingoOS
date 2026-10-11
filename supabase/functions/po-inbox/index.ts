@@ -6,6 +6,8 @@ import { readPos, type PoFile } from "./reader.ts";
 //   {action: "receive", key, email, files}  the Gmail script hands over one email; answers with upload links.
 //   {action: "ready", key, id}              the script has uploaded the files; reading starts.
 //   {action: "read", id}                    the orders team (signed in) added a file or asked to read again.
+// The Gmail script proves itself with a mailbox key, or with google_token: the mailbox's own Google sign-in,
+// so the script holds no secret. A Google mailbox is registered as the key "google:<address>".
 // Reading runs after the answer is sent and saves its result, or its error, on the incoming PO.
 
 const PO_BUCKET = "po-files";
@@ -23,6 +25,18 @@ const CORS = {
 const json = (body: unknown, status = 200) => Response.json(body, { status, headers: CORS });
 
 const admin = () => createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });
+
+// The mailbox key a request proves: its Google sign-in, checked with Google, or a plain key.
+async function mailboxKey(body: Record<string, unknown>): Promise<string | null> {
+  if (typeof body.google_token === "string" && body.google_token) {
+    const res = await fetch(`https://oauth2.googleapis.com/tokeninfo?access_token=${encodeURIComponent(body.google_token)}`);
+    if (!res.ok) return null;
+    const info = await res.json() as { email?: string; email_verified?: string | boolean };
+    if (!info.email || String(info.email_verified) !== "true") return null;
+    return `google:${info.email.toLowerCase()}`;
+  }
+  return typeof body.key === "string" && !body.key.startsWith("google:") ? body.key : null;
+}
 
 // The company a mailbox script's key belongs to, or null for an unknown key.
 async function companyForKey(db: SupabaseClient, key: unknown): Promise<string | null> {
@@ -70,7 +84,8 @@ function inBackground(work: Promise<void>) {
 }
 
 async function receive(db: SupabaseClient, body: Record<string, unknown>) {
-  const company = await companyForKey(db, body.key);
+  const key = await mailboxKey(body);
+  const company = await companyForKey(db, key);
   if (!company) return json({ error: "Unknown mailbox key." }, 401);
   const files = (Array.isArray(body.files) ? body.files : []) as { name?: unknown; size?: unknown }[];
   const wanted = files.flatMap((f) => {
@@ -81,7 +96,7 @@ async function receive(db: SupabaseClient, body: Record<string, unknown>) {
   });
   if (!wanted.length) return json({ skipped: "No PO files in this email." });
 
-  const { data: id, error } = await db.rpc("receive_email_po", { p_key: body.key, p_email: body.email ?? {} });
+  const { data: id, error } = await db.rpc("receive_email_po", { p_key: key, p_email: body.email ?? {} });
   if (error) return json({ error: error.message }, 400);
   if (!id) return json({ duplicate: true });
 
@@ -99,7 +114,7 @@ async function receive(db: SupabaseClient, body: Record<string, unknown>) {
 }
 
 async function ready(db: SupabaseClient, body: Record<string, unknown>) {
-  const company = await companyForKey(db, body.key);
+  const company = await companyForKey(db, await mailboxKey(body));
   if (!company) return json({ error: "Unknown mailbox key." }, 401);
   const { data: row } = await db.from("incoming_pos").select("id, status").eq("id", String(body.id ?? "")).eq("company_id", company).maybeSingle();
   if (!row) return json({ error: "No such email." }, 404);

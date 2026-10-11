@@ -2,15 +2,14 @@
  * Sourcingo OS: picks up buyer POs from this Gmail mailbox.
  *
  * Every 10 minutes it looks at emails from the last 3 days that have a PDF, Excel, CSV or photo attached,
- * and hands each new one to the app (Incoming POs). The app's AI reads it and sets aside anything that isn't
- * a buyer PO, so nothing needs sorting here. Nothing is ever sent, changed or deleted in the mailbox, except
- * a "Sourcingo OS/Picked up" label on emails it handed over.
+ * and hands each new one to the app (Incoming POs), which reads it into a draft for the team to check.
+ * Nothing is ever sent, changed or deleted in the mailbox, except a "Sourcingo OS/Picked up" label on emails
+ * it handed over. It holds no password: the app checks the mailbox's own Google sign-in.
  *
- * Set up once: paste this into a new project at script.google.com while signed in to the mailbox,
- * put the key in KEY, run setUp, and allow access when Google asks.
+ * Set up once: open this project while signed in to the mailbox, pick setUp at the top, press Run,
+ * and allow access when Google asks.
  */
 const APP = "https://zwqoogevoxpafzbdnptz.supabase.co/functions/v1/po-inbox";
-const KEY = "PASTE_THE_KEY_HERE";
 const TYPES = {
   pdf: "application/pdf", jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp", csv: "text/csv",
   xls: "application/vnd.ms-excel", xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -53,7 +52,7 @@ function handOver(msg) {
   if (!files.length) return false;
   const start = post({
     action: "receive",
-    key: KEY,
+    google_token: ScriptApp.getOAuthToken(),
     email: { email_id: msg.getId(), from: msg.getFrom(), subject: msg.getSubject(), body: msg.getPlainBody().slice(0, 8000),
              received_at: msg.getDate().toISOString() },
     files: files.map((a) => ({ name: a.getName(), size: a.getSize() })),
@@ -66,7 +65,7 @@ function handOver(msg) {
     const res = UrlFetchApp.fetch(u.url, { method: "put", contentType: u.type, payload: files[i].getBytes(), muteHttpExceptions: true });
     if (res.getResponseCode() >= 300) throw new Error("upload failed: " + res.getContentText());
   }
-  post({ action: "ready", key: KEY, id: start.id });
+  post({ action: "ready", google_token: ScriptApp.getOAuthToken(), id: start.id });
   return true;
 }
 
