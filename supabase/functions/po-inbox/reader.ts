@@ -16,9 +16,13 @@ export type PoReading = {
   doubts: string[];
 };
 
-const MODEL = "claude-sonnet-5-5";
+// The quick, low-cost model reads first; the stronger one reads again only when the first reading has gaps.
+const FIRST_MODEL = "claude-haiku-5-5";
+const BACKUP_MODEL = "claude-sonnet-5-5";
 const IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
 const MAX_IMAGE = 5 * 1024 * 1024;
+
+const orNull = (type: string, description?: string) => ({ anyOf: [{ type }, { type: "null" }], ...(description ? { description } : {}) });
 
 const SCHEMA = {
   type: "object",
@@ -29,34 +33,37 @@ const SCHEMA = {
       items: {
         type: "object",
         properties: {
-          buyer_name: { type: ["string", "null"], description: "The buyer company that issued the PO, as printed." },
-          buyer_code: { type: ["string", "null"], description: "The matching code from the buyer list, only when the buyer clearly is one of them." },
-          po_number: { type: ["string", "null"], description: "The buyer's PO number exactly as printed." },
-          po_date: { type: ["string", "null"], description: "PO date as YYYY-MM-DD." },
-          ship_date: { type: ["string", "null"], description: "Delivery / ship / dispatch date as YYYY-MM-DD. The latest if there are several." },
+          buyer_name: orNull("string", "The buyer company that issued the PO, as printed."),
+          buyer_code: orNull("string", "The matching code from the buyer list, only when the buyer clearly is one of them."),
+          po_number: orNull("string", "The buyer's PO number exactly as printed."),
+          po_date: orNull("string", "PO date as YYYY-MM-DD."),
+          ship_date: orNull("string", "Delivery / ship / dispatch date as YYYY-MM-DD. The latest if there are several."),
           lines: {
             type: "array",
             items: {
               type: "object",
               properties: {
                 style: { type: "string", description: "Style number or article code. Use the item name if there is no code." },
-                description: { type: ["string", "null"] },
-                colour: { type: ["string", "null"] },
-                sizes: { type: ["string", "null"], description: "Size breakup like 'S 50, M 50, L 50'." },
+                description: orNull("string"),
+                colour: orNull("string"),
+                sizes: orNull("string", "Size breakup like 'S 50, M 50, L 50'."),
                 qty: { type: "integer", description: "Total pieces for this style and colour." },
-                rate: { type: ["number", "null"], description: "Price per piece in rupees, before tax." },
+                rate: orNull("number", "Price per piece in rupees, before tax."),
               },
               required: ["style", "description", "colour", "sizes", "qty", "rate"],
+              additionalProperties: false,
             },
           },
-          notes: { type: ["string", "null"], description: "Anything the merchandiser must know: packing, labels, penalties, payment terms." },
+          notes: orNull("string", "Anything the merchandiser must know: packing, labels, penalties, payment terms."),
           doubts: { type: "array", items: { type: "string" }, description: "Anything unclear or unreadable that a person should check." },
         },
         required: ["buyer_name", "buyer_code", "po_number", "po_date", "ship_date", "lines", "notes", "doubts"],
+        additionalProperties: false,
       },
     },
   },
   required: ["pos"],
+  additionalProperties: false,
 };
 
 const PROMPT = `You read purchase orders for Sourcingo, a garment sourcing company in India.
@@ -132,26 +139,44 @@ export async function readPos(
     skipped.length ? `These files could not be opened: ${skipped.join(", ")}.` : "",
   ].filter(Boolean).join("\n\n");
 
+  const content = [...blocks, { type: "text", text: context }];
+  const first = await ask(key, FIRST_MODEL, content).catch(() => null);
+  if (first && !hasGaps(first)) return first;
+  return ask(key, BACKUP_MODEL, content);
+}
+
+// A reading worth a second look: a doubt, a missing PO number or date, or a style without pieces.
+function hasGaps(pos: PoReading[]): boolean {
+  return pos.some((p) => p.doubts.length > 0 || !p.po_number || !p.ship_date || !p.lines.length || p.lines.some((l) => l.qty <= 0));
+}
+
+async function ask(key: string, model: string, content: unknown[]): Promise<PoReading[]> {
   const res = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: { "x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json" },
     body: JSON.stringify({
-      model: MODEL,
+      model,
       max_tokens: 16000,
       system: PROMPT,
-      tools: [{ name: "record_pos", description: "Record the buyer POs found in the files.", input_schema: SCHEMA }],
-      tool_choice: { type: "tool", name: "record_pos" },
-      messages: [{ role: "user", content: [...blocks, { type: "text", text: context }] }],
+      output_config: { format: { type: "json_schema", schema: SCHEMA } },
+      messages: [{ role: "user", content }],
     }),
   });
   if (!res.ok) {
     const text = await res.text();
     throw new Error(`The AI could not read the files (${res.status}). ${text.slice(0, 300)}`);
   }
-  const data = (await res.json()) as { content: { type: string; name?: string; input?: { pos?: PoReading[] } }[] };
-  const call = data.content.find((c) => c.type === "tool_use" && c.name === "record_pos");
-  if (!call?.input?.pos) throw new Error("The AI gave no answer. Try reading again.");
-  return call.input.pos.map(clean);
+  const data = (await res.json()) as { stop_reason?: string; content: { type: string; text?: string }[] };
+  if (data.stop_reason === "max_tokens") throw new Error("These files are too long to read in one go. Split the PO into smaller files.");
+  const answer = data.content.find((c) => c.type === "text")?.text;
+  let parsed: { pos?: PoReading[] } | null = null;
+  try {
+    parsed = answer ? JSON.parse(answer) : null;
+  } catch {
+    parsed = null;
+  }
+  if (!Array.isArray(parsed?.pos)) throw new Error("The AI gave no answer. Try reading again.");
+  return parsed.pos.map(clean);
 }
 
 const isoDate = (s: unknown) => (typeof s === "string" && /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : null);
