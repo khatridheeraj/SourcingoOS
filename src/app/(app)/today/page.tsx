@@ -5,7 +5,7 @@ import { day, daysBetween, dueDate, nowMs, planDueAt, PLAN_HOURS, qcKindLabel, S
 import { NO_COMPANY } from "@/lib/names";
 import { createClient } from "@/lib/supabase/server";
 
-type Item = { key: string; orderId: string; title: string; detail: string; chip: { text: string; cls: string }; sort: string };
+type Item = { key: string; orderId: string; href?: string; title: string; detail: string; chip: { text: string; cls: string }; sort: string };
 
 const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;
 const at = new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit", timeZone: "Asia/Kolkata" });
@@ -145,9 +145,21 @@ export default async function TodayPage({ searchParams }: PageProps<"/today">) {
   }).sort((a, b) => a.sort.localeCompare(b.sort));
 
   const team = canEditOrders(me?.role);
+  // Buyer POs picked up from email or added from a file, waiting to be checked and added as orders.
+  const { data: incoming } = team
+    ? await supabase.from("incoming_pos").select("id, buyer_id, buyer_po, email_subject, source, email_from, received_at, status")
+        .eq("company_id", companyId).in("status", ["to_check", "failed"]).order("received_at")
+    : { data: [] };
+  const incomingItems: Item[] = (incoming ?? []).map((p) => ({
+    key: `in:${p.id}`, orderId: "", href: `/pos/${p.id}`,
+    title: `${p.buyer_po ?? p.email_subject ?? "PO"}${p.buyer_id ? ` · ${buyerCode.get(p.buyer_id) ?? ""}` : ""}`,
+    detail: `${p.source === "email" ? `Email from ${p.email_from ?? "unknown"}` : "Added from a file"} · received ${at.format(new Date(p.received_at))}`,
+    chip: p.status === "failed" ? { text: "Couldn't read", cls: "bad" } : { text: "Check and add", cls: "warn" }, sort: p.received_at,
+  }));
   const sections = [
     ...(team ? [
       { id: "critical", title: "Critical: factory TNA overdue", hint: `Factories that haven't sent their TNA within ${PLAN_HOURS} hours of being asked.`, items: critical, empty: "No factory is past its deadline." },
+      { id: "incoming", title: "New buyer POs to check", hint: "Picked up from email or added from a file. Check the AI's reading and add each as an order.", items: incomingItems, empty: "No new buyer POs waiting." },
       { id: "pos", title: "Factory plans and POs", hint: `Set each style's steps and targets, ask the factory for its TNA (it has ${PLAN_HOURS} hours), and release the PO once its dates are in and on target.`, items: poItems, empty: "Every factory PO is released." },
     ] : []),
     { id: "overdue", title: "Overdue TNA steps", hint: "Planned date has passed and no done date is entered.", items: overdue, empty: "Nothing is overdue." },
@@ -191,7 +203,7 @@ export default async function TodayPage({ searchParams }: PageProps<"/today">) {
             <ul className="flex flex-col divide-y divide-line">
               {s.items.map((i) => (
                 <li key={i.key}>
-                  <Link href={`/orders/${i.orderId}`} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2.5 hover:bg-surface-2">
+                  <Link href={i.href ?? `/orders/${i.orderId}`} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2.5 hover:bg-surface-2">
                     <div className="min-w-0 grow">
                       <div className="font-semibold">{i.title}</div>
                       <div className="muted text-[13px]">{i.detail}</div>

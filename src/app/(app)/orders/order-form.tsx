@@ -11,12 +11,13 @@ type Option = { id: string; label: string };
 const blankLine = (): LineInput => ({ style: "", description: "", colour: "", qty: "", buyer_rate: "", factory_id: "", factory_rate: "" });
 const n = (s: string) => Number(s.replace(/[,₹\s]/g, "")) || 0;
 
-export function OrderForm({ initial, initialLines, buyers, factories, team }: {
+export function OrderForm({ initial, initialLines, buyers, factories, team, incomingId }: {
   initial: OrderInput;
   initialLines: LineInput[];
   buyers: Option[];
   factories: Option[];
   team: Option[];
+  incomingId?: string;
 }) {
   const router = useRouter();
   const [order, setOrder] = useState(initial);
@@ -42,8 +43,8 @@ export function OrderForm({ initial, initialLines, buyers, factories, team }: {
     e.preventDefault();
     setError("");
     start(async () => {
-      const res = await saveOrder(order, lines);
-      if (res.error) return setError(res.error);
+      const res = await saveOrder(order, lines, incomingId);
+      if (res.error && !res.id) return setError(res.error);
       setSaved(true);
       if (!order.id && res.id) router.replace(`/orders/${res.id}?saved=1`);
       else router.refresh();

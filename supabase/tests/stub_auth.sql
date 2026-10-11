@@ -10,3 +10,8 @@ create function auth.uid() returns uuid language sql stable
   as $$ select coalesce(nullif(current_setting('request.jwt.claim.sub', true), ''),
                         (nullif(current_setting('request.jwt.claims', true), '')::jsonb ->> 'sub'))::uuid $$;
 grant usage on schema auth, public to anon, authenticated;
+do $$ begin
+  if not exists (select 1 from pg_roles where rolname = 'service_role') then create role service_role bypassrls; end if;
+end $$;
+alter role service_role bypassrls;
+grant usage on schema auth, public to service_role;

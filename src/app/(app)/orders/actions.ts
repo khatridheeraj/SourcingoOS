@@ -29,7 +29,8 @@ export type LineInput = {
 
 const num = (s: string) => s.replace(/[,₹\s]/g, "");
 
-export async function saveOrder(order: OrderInput, lines: LineInput[]): Promise<{ error?: string; id?: string }> {
+// incomingId: the incoming PO this order was made from, marked added once the order is saved.
+export async function saveOrder(order: OrderInput, lines: LineInput[], incomingId?: string): Promise<{ error?: string; id?: string }> {
   const me = await getMe();
   if (!me?.role) return { error: "Your account is not switched on yet." };
   if (!canEditOrders(me.role)) return { error: "Only the orders team can change orders." };
@@ -59,6 +60,11 @@ export async function saveOrder(order: OrderInput, lines: LineInput[]): Promise<
     })),
   });
   if (error) return { error: friendly(error) };
+  if (incomingId) {
+    const { error: link } = await supabase.rpc("link_incoming_po", { p_id: incomingId, p_order: data });
+    if (link) return { error: `The order is saved, but the PO list didn't update: ${friendly(link)}`, id: data as string };
+    revalidatePath("/pos");
+  }
   revalidatePath("/");
   return { id: data as string };
 }
