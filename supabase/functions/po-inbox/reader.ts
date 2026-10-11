@@ -1,7 +1,9 @@
 import ExcelJS from "npm:exceljs@4.4.0";
 import { encodeBase64 } from "jsr:@std/encoding@1/base64";
+import { readPosFree, type Sheet } from "./free-reader.ts";
 
-// Reads buyer POs (PDF, Excel, CSV or a photo) with Claude and returns each PO found as plain data.
+// Reads buyer POs (PDF, Excel, CSV or a photo) and returns each PO found as plain data.
+// With an AI key, Claude reads them; without one, the free reader fills in what it can find.
 
 export type PoFile = { name: string; type: string; bytes: Uint8Array };
 export type PoLine = { style: string; description: string | null; colour: string | null; sizes: string | null; qty: number; rate: number | null };
@@ -20,6 +22,8 @@ const MODEL = "claude-sonnet-5-5";
 const IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
 const MAX_IMAGE = 5 * 1024 * 1024;
 
+const orNull = (type: string, description?: string) => ({ anyOf: [{ type }, { type: "null" }], ...(description ? { description } : {}) });
+
 const SCHEMA = {
   type: "object",
   properties: {
@@ -29,34 +33,37 @@ const SCHEMA = {
       items: {
         type: "object",
         properties: {
-          buyer_name: { type: ["string", "null"], description: "The buyer company that issued the PO, as printed." },
-          buyer_code: { type: ["string", "null"], description: "The matching code from the buyer list, only when the buyer clearly is one of them." },
-          po_number: { type: ["string", "null"], description: "The buyer's PO number exactly as printed." },
-          po_date: { type: ["string", "null"], description: "PO date as YYYY-MM-DD." },
-          ship_date: { type: ["string", "null"], description: "Delivery / ship / dispatch date as YYYY-MM-DD. The latest if there are several." },
+          buyer_name: orNull("string", "The buyer company that issued the PO, as printed."),
+          buyer_code: orNull("string", "The matching code from the buyer list, only when the buyer clearly is one of them."),
+          po_number: orNull("string", "The buyer's PO number exactly as printed."),
+          po_date: orNull("string", "PO date as YYYY-MM-DD."),
+          ship_date: orNull("string", "Delivery / ship / dispatch date as YYYY-MM-DD. The latest if there are several."),
           lines: {
             type: "array",
             items: {
               type: "object",
               properties: {
                 style: { type: "string", description: "Style number or article code. Use the item name if there is no code." },
-                description: { type: ["string", "null"] },
-                colour: { type: ["string", "null"] },
-                sizes: { type: ["string", "null"], description: "Size breakup like 'S 50, M 50, L 50'." },
+                description: orNull("string"),
+                colour: orNull("string"),
+                sizes: orNull("string", "Size breakup like 'S 50, M 50, L 50'."),
                 qty: { type: "integer", description: "Total pieces for this style and colour." },
-                rate: { type: ["number", "null"], description: "Price per piece in rupees, before tax." },
+                rate: orNull("number", "Price per piece in rupees, before tax."),
               },
               required: ["style", "description", "colour", "sizes", "qty", "rate"],
+              additionalProperties: false,
             },
           },
-          notes: { type: ["string", "null"], description: "Anything the merchandiser must know: packing, labels, penalties, payment terms." },
+          notes: orNull("string", "Anything the merchandiser must know: packing, labels, penalties, payment terms."),
           doubts: { type: "array", items: { type: "string" }, description: "Anything unclear or unreadable that a person should check." },
         },
         required: ["buyer_name", "buyer_code", "po_number", "po_date", "ship_date", "lines", "notes", "doubts"],
+        additionalProperties: false,
       },
     },
   },
   required: ["pos"],
+  additionalProperties: false,
 };
 
 const PROMPT = `You read purchase orders for Sourcingo, a garment sourcing company in India.
@@ -66,12 +73,13 @@ Find every purchase order that a BUYER issued TO Sourcingo (Sourcingo is the sup
 Copy numbers exactly; never guess a quantity or price. If something is unreadable, leave it null and say so in doubts.
 Dates are Indian (day before month) unless clearly otherwise. Combine sizes of the same style and colour into one line.`;
 
-async function excelText(bytes: Uint8Array): Promise<string> {
+// Each sheet of an Excel file as rows of cell text.
+async function excelRows(bytes: Uint8Array): Promise<Sheet[]> {
   const wb = new ExcelJS.Workbook();
   await wb.xlsx.load(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer);
-  const out: string[] = [];
+  const sheets: Sheet[] = [];
   wb.eachSheet((ws) => {
-    out.push(`# Sheet: ${ws.name}`);
+    const rows: string[][] = [];
     ws.eachRow((row) => {
       const cells = (row.values as unknown[]).slice(1).map((v) => {
         if (v == null) return "";
@@ -83,10 +91,16 @@ async function excelText(bytes: Uint8Array): Promise<string> {
         }
         return String(v);
       });
-      if (cells.some((c) => c.trim())) out.push(cells.join(" | "));
+      if (cells.some((c) => c.trim())) rows.push(cells);
     });
+    sheets.push({ name: ws.name, rows });
   });
-  return out.join("\n").slice(0, 200_000);
+  return sheets;
+}
+
+async function excelText(bytes: Uint8Array): Promise<string> {
+  const sheets = await excelRows(bytes);
+  return sheets.map((s) => [`# Sheet: ${s.name}`, ...s.rows.map((r) => r.join(" | "))].join("\n")).join("\n").slice(0, 200_000);
 }
 
 const b64 = (bytes: Uint8Array) => encodeBase64(bytes);
@@ -119,8 +133,8 @@ export async function readPos(
   email: { from: string | null; subject: string | null; body: string | null } | null,
   buyers: { code: string; name: string | null }[],
 ): Promise<PoReading[]> {
+  if (!key) return readPosFree(files, email, buyers, excelRows);
   if (Deno.env.get("PO_READER_MOCK") === "1") return mockReading(files);
-  if (!key) throw new Error("The AI key is not set up yet. The owner adds it on the Incoming POs page.");
 
   const { blocks, skipped } = await contentFor(files);
   if (!blocks.length) {
@@ -132,6 +146,11 @@ export async function readPos(
     skipped.length ? `These files could not be opened: ${skipped.join(", ")}.` : "",
   ].filter(Boolean).join("\n\n");
 
+  const content = [...blocks, { type: "text", text: context }];
+  return ask(key, content);
+}
+
+async function ask(key: string, content: unknown[]): Promise<PoReading[]> {
   const res = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: { "x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json" },
@@ -139,19 +158,25 @@ export async function readPos(
       model: MODEL,
       max_tokens: 16000,
       system: PROMPT,
-      tools: [{ name: "record_pos", description: "Record the buyer POs found in the files.", input_schema: SCHEMA }],
-      tool_choice: { type: "tool", name: "record_pos" },
-      messages: [{ role: "user", content: [...blocks, { type: "text", text: context }] }],
+      output_config: { format: { type: "json_schema", schema: SCHEMA } },
+      messages: [{ role: "user", content }],
     }),
   });
   if (!res.ok) {
     const text = await res.text();
     throw new Error(`The AI could not read the files (${res.status}). ${text.slice(0, 300)}`);
   }
-  const data = (await res.json()) as { content: { type: string; name?: string; input?: { pos?: PoReading[] } }[] };
-  const call = data.content.find((c) => c.type === "tool_use" && c.name === "record_pos");
-  if (!call?.input?.pos) throw new Error("The AI gave no answer. Try reading again.");
-  return call.input.pos.map(clean);
+  const data = (await res.json()) as { stop_reason?: string; content: { type: string; text?: string }[] };
+  if (data.stop_reason === "max_tokens") throw new Error("These files are too long to read in one go. Split the PO into smaller files.");
+  const answer = data.content.find((c) => c.type === "text")?.text;
+  let parsed: { pos?: PoReading[] } | null = null;
+  try {
+    parsed = answer ? JSON.parse(answer) : null;
+  } catch {
+    parsed = null;
+  }
+  if (!Array.isArray(parsed?.pos)) throw new Error("The AI gave no answer. Try reading again.");
+  return parsed.pos.map(clean);
 }
 
 const isoDate = (s: unknown) => (typeof s === "string" && /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : null);

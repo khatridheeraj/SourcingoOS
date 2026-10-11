@@ -9,7 +9,7 @@ import { createClient } from "@/lib/supabase/server";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
-// A PO file the team uploaded (for example one shared in a WhatsApp group). The AI reads it straight after.
+// A PO file the team uploaded (for example one shared in a WhatsApp group). It is read straight after.
 export async function addPoFiles(id: string, files: StoredFile[]): Promise<{ error?: string }> {
   const me = await getMe();
   if (!canEditOrders(me?.role) || !me?.companyId) return { error: "Only the orders team can add POs." };

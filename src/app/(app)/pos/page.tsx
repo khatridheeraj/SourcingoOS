@@ -42,7 +42,7 @@ export default async function IncomingPosPage({ searchParams }: PageProps<"/pos"
       <div className="head">
         <div className="grow">
           <h1>Incoming POs</h1>
-          <p>Buyer POs picked up from email, or added from a file. The AI reads each one into a draft; check it and add it as an order.</p>
+          <p>Buyer POs picked up from email, or added from a file. Each one is read into a draft; check it against the file and add it as an order.</p>
         </div>
       </div>
 
