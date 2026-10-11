@@ -7,9 +7,8 @@
 --   * keeps factory logins out of the history and buyer emails and keys to the owner.
 
 -- ---------------------------------------------------------------- where a change came from
-alter table public.history add column source text;
-update public.history set source = case when actor is not null then 'app' else 'database' end;
-alter table public.history alter column source set not null;
+alter table public.history add column source text not null default 'database';
+update public.history set source = 'app' where actor is not null;
 create index history_at_idx on public.history (company_id, at desc, id desc);
 create index history_actor_idx on public.history (company_id, actor, at desc);
 
@@ -118,7 +117,7 @@ begin
     where e.classid = 'pg_catalog.pg_class'::regclass and e.command_tag = 'CREATE TABLE'
       and n.nspname = 'public' and cl.relkind in ('r', 'p') and cl.relname <> 'history'
   loop
-    if exists (select 1 from pg_catalog.pg_attribute a where a.attrelid = c.tbl and a.attname = 'company_id' and not a.attisdropped)
+    if exists (select 1 from pg_catalog.pg_attribute a where a.attrelid = c.tbl and a.attname = 'company_id')
        and not exists (select 1 from pg_catalog.pg_trigger t where t.tgrelid = c.tbl and t.tgfoid = 'public.record_history()'::regprocedure) then
       execute format('create trigger %I after insert or update or delete on %s for each row execute function public.record_history()',
                      c.relname || '_history', c.tbl);
