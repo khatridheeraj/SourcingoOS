@@ -8,7 +8,7 @@ import { addPoFiles } from "./actions";
 
 const ACCEPT = Object.keys(PO_FILE_TYPES).map((e) => `.${e}`).join(",");
 
-// Add a PO that came another way, such as a WhatsApp group: pick the PO's file (or photos of its pages) and the AI reads it.
+// Add a PO that came another way, such as a WhatsApp group: pick the PO's file (or photos of its pages) and it is read into a draft.
 export function AddPo({ companyId }: { companyId: string }) {
   const router = useRouter();
   const input = useRef<HTMLInputElement>(null);
@@ -46,14 +46,14 @@ export function AddPo({ companyId }: { companyId: string }) {
   return (
     <div className="panel">
       <h2>Add a PO from a file</h2>
-      <p className="muted text-[13px]">For POs that came on WhatsApp or by hand. Pick the PO file, or photos of all its pages together. The AI reads it into a draft for you to check.</p>
+      <p className="muted text-[13px]">For POs that came on WhatsApp or by hand. Pick the PO file, or photos of all its pages together. It is read into a draft for you to check.</p>
       <div className="row mt-3">
         <label className={`btn primary ${pending ? "opacity-60" : ""}`}>
           {pending ? "Uploading…" : "Choose PO file"}
           <input ref={input} type="file" multiple accept={ACCEPT} className="sr-only" disabled={pending}
             onChange={(e) => upload(e.target.files)} aria-label="PO file" />
         </label>
-        {done && !error && <span className="text-[13px] font-semibold text-ok">Added. The AI is reading it; it shows below in a minute.</span>}
+        {done && !error && <span className="text-[13px] font-semibold text-ok">Added. It is being read and shows below in a minute.</span>}
         {error && <span className="text-[13px] font-semibold text-bad" role="alert">{error}</span>}
       </div>
     </div>

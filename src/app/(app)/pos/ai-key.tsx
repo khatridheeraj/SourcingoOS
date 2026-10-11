@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { setAiKey } from "./actions";
 
-// The AI key that reads POs. Until it is in, POs wait here unread; the owner pastes it once.
+// The optional AI key. Without it, POs are read for free from their text; with it, the AI also reads scans and photos.
 export function AiKey({ owner, status }: { owner: boolean; status: { set: boolean; last4?: string } }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -19,7 +19,15 @@ export function AiKey({ owner, status }: { owner: boolean; status: { set: boolea
       </p>
     ) : null;
   }
-  if (!owner) return <div className="errbox">PO reading isn&apos;t switched on yet: the owner still needs to add the AI key. Files you add wait here until then.</div>;
+  if (!owner) return null;
+  if (!status.set && !open) {
+    return (
+      <p className="muted text-[13px]">
+        PO reading is free: it fills in what it finds in Excel, CSV and PDF POs. Scans and photos are typed in.{" "}
+        <button type="button" className="link" onClick={() => setOpen(true)}>Add a paid AI key</button> later to read those too.
+      </p>
+    );
+  }
 
   function save(e: React.FormEvent) {
     e.preventDefault();
@@ -35,16 +43,16 @@ export function AiKey({ owner, status }: { owner: boolean; status: { set: boolea
 
   return (
     <form className="panel" onSubmit={save}>
-      <h2>{status.set ? "Change the AI key" : "Switch on PO reading"}</h2>
+      <h2>{status.set ? "Change the AI key" : "Add an AI key"}</h2>
       {!status.set && (
         <p className="mb-3 text-[13px]">
-          The AI that reads POs needs a key. At <a className="link" href="https://console.anthropic.com/settings/keys" target="_blank" rel="noreferrer">console.anthropic.com</a>, add a few dollars of credit under Billing, then create a key under API Keys and paste it here. Only the PO reader can see it.
+          The AI that reads POs needs a key. At <a className="link" href="https://console.anthropic.com/settings/keys" target="_blank" rel="noreferrer">console.anthropic.com</a>, add credit under Billing, then create a key under API Keys and paste it here. Only the PO reader can see it.
         </p>
       )}
       <div className="row">
         <input className="inp grow" type="password" autoComplete="off" placeholder="sk-ant-..." value={key} onChange={(e) => setKey(e.target.value)} aria-label="AI key" />
         <button className="btn primary" disabled={pending || !key.trim()}>{pending ? "Saving…" : "Save key"}</button>
-        {status.set && <button type="button" className="btn" onClick={() => setOpen(false)}>Cancel</button>}
+        <button type="button" className="btn" onClick={() => setOpen(false)}>Cancel</button>
       </div>
       {error && <div className="errbox mt-2">{error}</div>}
     </form>

@@ -1,7 +1,9 @@
 import ExcelJS from "npm:exceljs@4.4.0";
 import { encodeBase64 } from "jsr:@std/encoding@1/base64";
+import { readPosFree, type Sheet } from "./free-reader.ts";
 
-// Reads buyer POs (PDF, Excel, CSV or a photo) with Claude and returns each PO found as plain data.
+// Reads buyer POs (PDF, Excel, CSV or a photo) and returns each PO found as plain data.
+// With an AI key, Claude reads them; without one, the free reader fills in what it can find.
 
 export type PoFile = { name: string; type: string; bytes: Uint8Array };
 export type PoLine = { style: string; description: string | null; colour: string | null; sizes: string | null; qty: number; rate: number | null };
@@ -16,9 +18,7 @@ export type PoReading = {
   doubts: string[];
 };
 
-// The quick, low-cost model reads first; the stronger one reads again only when the first reading has gaps.
-const FIRST_MODEL = "claude-haiku-5-5";
-const BACKUP_MODEL = "claude-sonnet-5-5";
+const MODEL = "claude-sonnet-5-5";
 const IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif"];
 const MAX_IMAGE = 5 * 1024 * 1024;
 
@@ -73,12 +73,13 @@ Find every purchase order that a BUYER issued TO Sourcingo (Sourcingo is the sup
 Copy numbers exactly; never guess a quantity or price. If something is unreadable, leave it null and say so in doubts.
 Dates are Indian (day before month) unless clearly otherwise. Combine sizes of the same style and colour into one line.`;
 
-async function excelText(bytes: Uint8Array): Promise<string> {
+// Each sheet of an Excel file as rows of cell text.
+async function excelRows(bytes: Uint8Array): Promise<Sheet[]> {
   const wb = new ExcelJS.Workbook();
   await wb.xlsx.load(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer);
-  const out: string[] = [];
+  const sheets: Sheet[] = [];
   wb.eachSheet((ws) => {
-    out.push(`# Sheet: ${ws.name}`);
+    const rows: string[][] = [];
     ws.eachRow((row) => {
       const cells = (row.values as unknown[]).slice(1).map((v) => {
         if (v == null) return "";
@@ -90,10 +91,16 @@ async function excelText(bytes: Uint8Array): Promise<string> {
         }
         return String(v);
       });
-      if (cells.some((c) => c.trim())) out.push(cells.join(" | "));
+      if (cells.some((c) => c.trim())) rows.push(cells);
     });
+    sheets.push({ name: ws.name, rows });
   });
-  return out.join("\n").slice(0, 200_000);
+  return sheets;
+}
+
+async function excelText(bytes: Uint8Array): Promise<string> {
+  const sheets = await excelRows(bytes);
+  return sheets.map((s) => [`# Sheet: ${s.name}`, ...s.rows.map((r) => r.join(" | "))].join("\n")).join("\n").slice(0, 200_000);
 }
 
 const b64 = (bytes: Uint8Array) => encodeBase64(bytes);
@@ -126,8 +133,8 @@ export async function readPos(
   email: { from: string | null; subject: string | null; body: string | null } | null,
   buyers: { code: string; name: string | null }[],
 ): Promise<PoReading[]> {
+  if (!key) return readPosFree(files, email, buyers, excelRows);
   if (Deno.env.get("PO_READER_MOCK") === "1") return mockReading(files);
-  if (!key) throw new Error("The AI key is not set up yet. The owner adds it on the Incoming POs page.");
 
   const { blocks, skipped } = await contentFor(files);
   if (!blocks.length) {
@@ -140,22 +147,15 @@ export async function readPos(
   ].filter(Boolean).join("\n\n");
 
   const content = [...blocks, { type: "text", text: context }];
-  const first = await ask(key, FIRST_MODEL, content).catch(() => null);
-  if (first && !hasGaps(first)) return first;
-  return ask(key, BACKUP_MODEL, content);
+  return ask(key, content);
 }
 
-// A reading worth a second look: a doubt, a missing PO number or date, or a style without pieces.
-function hasGaps(pos: PoReading[]): boolean {
-  return pos.some((p) => p.doubts.length > 0 || !p.po_number || !p.ship_date || !p.lines.length || p.lines.some((l) => l.qty <= 0));
-}
-
-async function ask(key: string, model: string, content: unknown[]): Promise<PoReading[]> {
+async function ask(key: string, content: unknown[]): Promise<PoReading[]> {
   const res = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: { "x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json" },
     body: JSON.stringify({
-      model,
+      model: MODEL,
       max_tokens: 16000,
       system: PROMPT,
       output_config: { format: { type: "json_schema", schema: SCHEMA } },

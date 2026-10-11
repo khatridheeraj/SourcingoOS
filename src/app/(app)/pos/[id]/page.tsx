@@ -76,13 +76,13 @@ export default async function IncomingPoPage({ params }: PageProps<"/pos/[id]">)
       </div>
 
       {(po.status === "reading" || po.status === "receiving") && (
-        <div className="empty"><b>The AI is reading this PO</b>{stuck ? "This is taking too long. Use Read again." : "Reload in a minute."}</div>
+        <div className="empty"><b>Reading this PO</b>{stuck ? "This is taking too long. Use Read again." : "Reload in a minute."}</div>
       )}
       {po.status === "failed" && <div className="errbox">Couldn&apos;t read this PO: {po.read_error} You can still type it in below, or use Read again.</div>}
       {po.status === "added" && order && (
         <div className="panel"><b>Added as order <Link href={`/orders/${po.order_id}`} className="link code">{order.order_no}</Link>.</b></div>
       )}
-      {po.status === "not_po" && <div className="empty"><b>Set aside</b>The AI found no new buyer PO here, or someone set it aside. Put it back if it is one.</div>}
+      {po.status === "not_po" && <div className="empty"><b>Set aside</b>No new buyer PO was found here, or someone set it aside. Put it back if it is one.</div>}
 
       {checking && (read.notes || (read.doubts?.length ?? 0) > 0 || !po.buyer_id || matched) && (
         <div className="panel">
@@ -101,7 +101,7 @@ export default async function IncomingPoPage({ params }: PageProps<"/pos/[id]">)
           </ul>
           {lines.length > 0 && (
             <p className="muted mt-2 text-[13px]">
-              The AI read {lines.length} {lines.length === 1 ? "style" : "styles"}, {qty(lines.reduce((t, l) => t + (l.qty || 0), 0))} pcs
+              Read {lines.length} {lines.length === 1 ? "style" : "styles"}, {qty(lines.reduce((t, l) => t + (l.qty || 0), 0))} pcs
               {lines.every((l) => l.rate != null) && <>, worth {money(lines.reduce((t, l) => t + l.qty * (l.rate ?? 0), 0))}</>}
               {read.ship_date && <>, shipping {day(read.ship_date)}</>}. Check each line against the file.
             </p>
