@@ -1,0 +1,15 @@
+{
+  "name": "sourcingo-tally-reader",
+  "version": "2.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Reads TallyPrime into Sourcingo OS. Runs on the PC where Tally runs, and only reads Tally.",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node sync.mjs",
+    "once": "node sync.mjs --once",
+    "test": "node --test test/*.test.mjs"
+  }
+}

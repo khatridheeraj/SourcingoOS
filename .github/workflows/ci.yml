@@ -39,3 +39,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: supabase/tests/run.sh
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node --test tally-bridge/test/*.test.mjs

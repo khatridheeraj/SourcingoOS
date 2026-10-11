@@ -1,0 +1,8 @@
+{
+  "supabaseUrl": "https://zwqoogevoxpafzbdnptz.supabase.co",
+  "supabaseKey": "sb_publishable_zrLLwsylesI6Xaf6EwZoDQ_d7nOIppF",
+  "syncKey": "PASTE THE SYNC KEY FROM THE TALLY PAGE IN SOURCINGO OS",
+  "tallyUrl": "http://localhost:9000",
+  "pollSeconds": 60,
+  "readMinutes": 15
+}
