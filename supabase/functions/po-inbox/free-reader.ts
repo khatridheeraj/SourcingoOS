@@ -1,4 +1,3 @@
-import { getDocumentProxy } from "npm:unpdf@1.8.1";
 import type { PoFile, PoLine, PoReading } from "./reader.ts";
 
 // Reads buyer POs without AI, at no cost: finds the PO number, dates and buyer in the email and the files,
@@ -131,6 +130,8 @@ function combine(lines: PoLine[]): PoLine[] {
 // --- Files into rows of cells ---
 
 async function pdfSheets(bytes: Uint8Array): Promise<Sheet[]> {
+  // Loaded only when a PDF comes in, so a problem with it can't stop emails from being picked up.
+  const { getDocumentProxy } = await import("npm:unpdf@1.8.1");
   const pdf = await getDocumentProxy(bytes);
   const sheets: Sheet[] = [];
   for (let p = 1; p <= Math.min(pdf.numPages, 20); p++) {
