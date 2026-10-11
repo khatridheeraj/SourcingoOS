@@ -13,7 +13,7 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
     { href: "/today", label: "Today" },
     { href: "/", label: "Orders" },
     ...(canEditOrders(me.role) ? [{ href: "/buyers", label: "Buyers" }, { href: "/factories", label: "Factories" }] : []),
-    ...(me.role === "owner" || me.role === "accounts" ? [{ href: "/payments", label: "Payments" }] : []),
+    ...(me.role === "owner" || me.role === "accounts" ? [{ href: "/payments", label: "Payments" }, { href: "/tally", label: "Tally" }] : []),
     ...(me.role === "owner" ? [{ href: "/team", label: "Team" }] : []),
   ];
 
