@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { fetchAll } from "@/lib/fetch-all";
 import { day, money, qty } from "@/lib/format";
 import { NO_COMPANY } from "@/lib/names";
 import { createClient } from "@/lib/supabase/server";
@@ -45,10 +46,10 @@ export default async function TallyPage({ searchParams }: PageProps<"/tally">) {
   const supabase = await createClient();
   const [set, led, vch, items, buyers, factories] = await Promise.all([
     supabase.from("tally_settings").select("enabled, tally_company, read_from, key_hint, key_created_at, agent_seen_at, agent_info, snapshot_at, snapshot_counts").eq("company_id", companyId).maybeSingle(),
-    supabase.from("tally_ledgers").select("name, parent, balance, gstin").eq("company_id", companyId).is("gone_at", null).order("name"),
-    supabase.from("tally_vouchers").select("guid, vtype, kind, number, vdate, party, amount, reference, bills").eq("company_id", companyId).is("gone_at", null).in("kind", ["sales", "credit_note", "receipt"]).order("vdate"),
-    supabase.from("tally_items").select("name, parent, unit, qty, value").eq("company_id", companyId).is("gone_at", null).order("name"),
-    supabase.from("buyers").select("id, tally_ledger").eq("company_id", companyId),
+    fetchAll((a, z) => supabase.from("tally_ledgers").select("name, parent, balance, gstin").eq("company_id", companyId).is("gone_at", null).order("name").range(a, z)),
+    fetchAll((a, z) => supabase.from("tally_vouchers").select("guid, vtype, kind, number, vdate, party, amount, reference, bills").eq("company_id", companyId).is("gone_at", null).in("kind", ["sales", "credit_note", "receipt"]).order("vdate").order("guid").range(a, z)),
+    fetchAll((a, z) => supabase.from("tally_items").select("name, parent, unit, qty, value").eq("company_id", companyId).is("gone_at", null).order("name").range(a, z)),
+    supabase.rpc("buyer_ledgers"),
     supabase.from("factories").select("id, name, tally_ledger, active").eq("company_id", companyId).order("name"),
   ]);
   const s = set.data as Settings | null;
@@ -58,7 +59,7 @@ export default async function TallyPage({ searchParams }: PageProps<"/tally">) {
   const read = !!s?.snapshot_at;
   const c = compareWithTally({
     books: b, vouchers, ledgers,
-    buyers: (buyers.data ?? []).map((x) => ({ id: x.id, ledger: x.tally_ledger })),
+    buyers: ((buyers.data ?? []) as { id: string; tally_ledger: string | null }[]).map((x) => ({ id: x.id, ledger: x.tally_ledger })),
     factories: (factories.data ?? []).map((x) => ({ id: x.id, ledger: x.tally_ledger })),
     from: s?.snapshot_counts?.from ?? null, to: s?.snapshot_counts?.to ?? null,
   });

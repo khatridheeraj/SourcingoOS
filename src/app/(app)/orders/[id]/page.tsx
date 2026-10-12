@@ -1,3 +1,4 @@
+import type { LinePrice } from "@/lib/margin";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { canEditOrders, canEnterDone, canRecordQc, getMe } from "@/lib/auth";
@@ -23,13 +24,17 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
   const supabase = await createClient();
   const { data: o } = await supabase
     .from("orders")
-    .select("id, company_id, order_no, buyer_id, buyer_po, po_date, ship_date, status, merchandiser_id, notes, stage, stage_at, revised_ship_date, delay_reason, created_at, updated_at, order_lines(id, style, description, colour, qty, buyer_rate, factory_id, factory_rate, position, photo_path)")
+    .select("id, company_id, order_no, buyer_id, buyer_po, po_date, ship_date, status, merchandiser_id, notes, stage, stage_at, revised_ship_date, delay_reason, created_at, updated_at, order_lines(id, style, description, colour, qty, factory_id, position, photo_path)")
     .eq("id", id)
     .is("order_lines.removed_at", null)
     .maybeSingle();
   if (!o) notFound();
 
-  const lines = [...(o.order_lines ?? [])].sort((a, b) => a.position - b.position);
+  // Rates come separately: the database gives them only to the orders team and Accounts.
+  const { data: prices } = await supabase.rpc("line_prices", { p_orders: [id] });
+  const priceOf = new Map(((prices ?? []) as LinePrice[]).map((p) => [p.id, p]));
+  const lines = [...(o.order_lines ?? [])].sort((a, b) => a.position - b.position)
+    .map((l) => ({ ...l, buyer_rate: priceOf.get(l.id)?.buyer_rate ?? null, factory_rate: priceOf.get(l.id)?.factory_rate ?? null }));
   const [{ data: qc }, team, me, { data: lineStages }, { data: factoryPos }] = await Promise.all([
     supabase
       .from("qc_checks")
