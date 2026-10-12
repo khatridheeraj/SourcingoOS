@@ -2,7 +2,7 @@ import { NO_COMPANY } from "@/lib/names";
 import Link from "next/link";
 import { canEditOrders, getMe } from "@/lib/auth";
 import { loadBuyers, loadFactories } from "@/lib/data";
-import { day, daysBetween, dueDate, money, qty, SHIP_QC, stageLabel, STATUS, todayIST } from "@/lib/format";
+import { day, daysBetween, dueDate, money, qty, SHIP_QC, stageLabel, stageReached, STATUS, todayIST } from "@/lib/format";
 import { marginCls, pct, planMargin } from "@/lib/margin";
 import { createClient } from "@/lib/supabase/server";
 
@@ -69,7 +69,7 @@ export default async function OrdersPage({ searchParams }: PageProps<"/">) {
       factoryNames,
       missingFactory,
       due: dueDate(o),
-      needsQc: o.status === "open" && o.stage === "packed" && finalQc.get(o.id) !== "pass",
+      needsQc: o.status === "open" && stageReached(o.stage, "packed") && finalQc.get(o.id) !== "pass",
       late: isLate(o),
       lateBy: isLate(o) ? daysBetween(dueDate(o)!, today) : 0,
     };
@@ -188,7 +188,7 @@ export default async function OrdersPage({ searchParams }: PageProps<"/">) {
                   <td>
                     {r.status === "open"
                       ? <>
-                          <span className={r.stage === "packed" ? "chip ok" : r.stage ? "chip info" : "chip"}>{stageLabel(r.stage)}</span>
+                          <span className={stageReached(r.stage, "packed") ? "chip ok" : r.stage ? "chip info" : "chip"}>{stageLabel(r.stage)}</span>
                           {r.needsQc && <span className="chip warn ml-1">Needs final QC</span>}
                         </>
                       : <span className={STATUS[r.status]?.cls}>{STATUS[r.status]?.label}</span>}

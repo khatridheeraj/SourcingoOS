@@ -15,15 +15,10 @@ export const STATUS: Record<string, { label: string; cls: string }> = {
 };
 
 // Production stages, in the order an order moves through the floor.
-export const STAGES = [
-  { key: "fabric", label: "Fabric" },
-  { key: "printing", label: "Printing / dyeing" },
-  { key: "cutting", label: "Cutting" },
-  { key: "stitching", label: "Stitching" },
-  { key: "finishing", label: "Finishing" },
-  { key: "packed", label: "Packed" },
-] as const;
-export const stageLabel = (s: string | null | undefined) => STAGES.find((x) => x.key === s)?.label ?? "Not started";
+// An order's stage is the furthest standard TNA step its slowest style has done (set by the database).
+export const stageLabel = (s: string | null | undefined) => TNA_STEPS.find((x) => x.key === s)?.label ?? "Not started";
+export const stageReached = (s: string | null | undefined, step: string) =>
+  !!s && TNA_STEPS.findIndex((x) => x.key === s) >= TNA_STEPS.findIndex((x) => x.key === step);
 
 // The date an order is now expected to ship: the new date if it slipped, else the buyer's date.
 export const dueDate = (o: { ship_date: string | null; revised_ship_date?: string | null }) => o.revised_ship_date || o.ship_date;
