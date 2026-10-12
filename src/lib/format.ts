@@ -17,7 +17,7 @@ export const STATUS: Record<string, { label: string; cls: string }> = {
 // Production stages, in the order an order moves through the floor.
 export const STAGES = [
   { key: "fabric", label: "Fabric" },
-  { key: "printing", label: "Printing" },
+  { key: "printing", label: "Printing / dyeing" },
   { key: "cutting", label: "Cutting" },
   { key: "stitching", label: "Stitching" },
   { key: "finishing", label: "Finishing" },
@@ -57,17 +57,19 @@ export const DEFAULT_BUFFER_DAYS = 7;
 export const nowMs = () => Date.now();
 export const planDueAt = (requestedAt: string) => new Date(Date.parse(requestedAt) + PLAN_HOURS * 3_600_000);
 
-// Required steps can't be marked not needed; every style goes through them.
+// Every style goes through all the standard steps (none can be marked not needed); extra steps can be added per style.
 export const TNA_STEPS: { key: string; label: string; qc?: string[]; required?: boolean }[] = [
-  { key: "greige", label: "Greige", qc: ["greige"] },
-  { key: "fit_sample", label: "Fit sample", qc: ["fit_sample"] },
-  { key: "strike_off", label: "Strike off", qc: ["strike_off"] },
-  { key: "pp_sample", label: "PP sample", qc: ["pp_sample"], required: true },
-  { key: "size_set", label: "Size set", qc: ["size_set"] },
+  { key: "greige", label: "Greige", qc: ["greige"], required: true },
+  { key: "fit_sample", label: "Fit sample", qc: ["fit_sample"], required: true },
   { key: "fabric", label: "Fabric", required: true },
-  { key: "printing", label: "Printing" },
-  { key: "cutting", label: "Cutting", qc: ["inline"], required: true },
-  { key: "stitching", label: "Stitching", qc: ["midline"], required: true },
+  { key: "printing", label: "Printing / dyeing", required: true },
+  { key: "strike_off", label: "Strike off", qc: ["strike_off"], required: true },
+  { key: "pp_sample", label: "PP sample", qc: ["pp_sample"], required: true },
+  { key: "size_set", label: "Size set", qc: ["size_set"], required: true },
+  { key: "cutting", label: "Cutting", required: true },
+  { key: "stitching", label: "Stitching", required: true },
+  { key: "inline", label: "Inline", qc: ["inline"], required: true },
+  { key: "midline", label: "Mid-line", qc: ["midline"], required: true },
   { key: "finishing", label: "Finishing", required: true },
   { key: "packed", label: "Packed", required: true },
   { key: "final_qc", label: "Final QC", qc: ["final", "recheck"], required: true },
