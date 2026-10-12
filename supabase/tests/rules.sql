@@ -578,6 +578,15 @@ select public.save_line_stages(:'save_order', (select jsonb_agg(jsonb_build_obje
 do $$ begin
   if (select stage from public.orders) is distinct from 'midline' then raise exception 'order stage not moved to Mid-line: %', (select stage from public.orders); end if;
 end $$;
+-- A new style with nothing done holds the order back; removing it moves the order forward again.
+insert into public.order_lines (order_id, position, style, qty) values (:'save_order', 9, 'OZ-NEW', 10);
+do $$ begin
+  if (select stage from public.orders) is not null then raise exception 'new style did not hold the order back: %', (select stage from public.orders); end if;
+end $$;
+update public.order_lines set removed_at = now() where style = 'OZ-NEW';
+do $$ begin
+  if (select stage from public.orders) is distinct from 'midline' then raise exception 'removing a style did not move the order on: %', (select stage from public.orders); end if;
+end $$;
 select pg_temp.as_user('00000000-0000-0000-0000-0000000000a9');
 do $$ begin
   perform public.release_factory_po((select id from public.orders), '20000000-0000-0000-0000-000000000001');

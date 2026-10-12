@@ -33,7 +33,7 @@ export default async function PaymentsPage({ searchParams }: PageProps<"/payment
   const unpaid = b.invoices.filter((i) => i.state === "open" || i.state === "part" || i.state === "covered");
   const uncovered = unpaid.filter((i) => i.uncovered > 0);
   const overdue = unpaid.filter((i) => i.overdue);
-  const held = b.cheques.filter((c) => c.status === "in_hand" || c.status === "deposited");
+  const held = b.cheques.filter((c) => (c.status === "in_hand" && !c.stale) || c.status === "deposited");
   const todos = paymentTodos(b, buyerCode, money, day);
   const rs = (v: number) => money(Math.round(v));
   const link = (extra: Record<string, string>) => `/payments?${new URLSearchParams(Object.entries({ tab, q, buyer, ...extra }).filter(([, v]) => v))}`;
@@ -108,7 +108,7 @@ export default async function PaymentsPage({ searchParams }: PageProps<"/payment
       .filter((c) =>
         status === "all" ? true
         : status === "pending" ? c.status === "in_hand" || c.status === "deposited"
-        : status === "deposit" ? c.status === "in_hand" && c.cheque_date <= t
+        : status === "deposit" ? c.status === "in_hand" && c.cheque_date <= t && !c.stale
         : c.status === status)
       .filter((c) => !buyer || c.buyer_id === buyer)
       .filter((c) => !q || [c.cheque_no, c.bank, c.notes, buyerLabel(c.buyer_id), ...c.invoices.map((x) => x.invoice.invoice_no)].join(" ").toLowerCase().includes(q))

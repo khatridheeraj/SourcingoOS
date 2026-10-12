@@ -74,7 +74,8 @@ export function makeBooks(raw: { invoices: Invoice[]; creditNotes: CreditNote[];
       .map((a) => ({ cheque: chequeById.get(a.cheque_id)!, amount: n(a.amount) }))
       .filter((x) => x.cheque)
       .sort((a, z) => a.cheque.cheque_date.localeCompare(z.cheque.cheque_date));
-    const live = cheques.filter((x) => LIVE.includes(x.cheque.status));
+    // An expired cheque still in hand can't be banked, so it no longer pays the invoice.
+    const live = cheques.filter((x) => LIVE.includes(x.cheque.status) && !(x.cheque.status === "in_hand" && addDays(x.cheque.cheque_date, CHEQUE_VALID_DAYS) < t));
     const covered = live.reduce((a, x) => a + x.amount, 0);
     const received = live.filter((x) => x.cheque.status === "cleared").reduce((a, x) => a + x.amount, 0);
     const cancelled = !!i.cancelled_at;
@@ -123,7 +124,7 @@ export function buyerTotals(b: Books) {
     if (i.overdue) r.overdue += i.outstanding;
     r.open++;
   }
-  for (const c of b.cheques) if (c.status === "in_hand" || c.status === "deposited") row(c.buyer_id).held += n(c.amount);
+  for (const c of b.cheques) if ((c.status === "in_hand" && !c.stale) || c.status === "deposited") row(c.buyer_id).held += n(c.amount);
   return [...m.values()].sort((a, z) => z.outstanding - a.outstanding);
 }
 

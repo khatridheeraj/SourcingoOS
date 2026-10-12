@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { day, daysBetween, stageLabel } from "@/lib/format";
+import { day, dayAt, daysBetween, stageLabel } from "@/lib/format";
 import { saveProgress, type ProgressInput } from "../actions";
 
 // Where the order stands against its ship date, and its new ship date if it slipped.
@@ -54,7 +54,7 @@ export function OrderProduction({ id, open, canEdit, shipDate, today, stage, sta
       {!open && <p className="muted text-[13px] mb-3">This order is closed. Production details are kept as they were.</p>}
 
       <p className="text-[13px]">
-        Order stage: <b>{stageLabel(stage)}</b>{stageAt && <span className="muted"> · since {day(stageAt.slice(0, 10))}</span>}
+        Order stage: <b>{stageLabel(stage)}</b>{stageAt && <span className="muted"> · since {dayAt(stageAt)}</span>}
         <span className="muted"> · set by the slowest style below</span>
       </p>
 

@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { day, qty, TNA_STEPS } from "@/lib/format";
+import { day, dayAt, qty, TNA_STEPS } from "@/lib/format";
 import { saveFactoryTna, type FactoryDateInput } from "./actions";
 
 type Stage = { stage: string; label: string | null; factory_on: string | null; planned_on: string | null; done_on: string | null };
@@ -63,9 +63,9 @@ export function FactoryOrder({ order, now }: { order: PanelOrder; now: string })
 
   const late = !released && !order.sent_at && !!order.plan_due_at && order.plan_due_at < now;
   const beyond = order.target ? Object.values(dates).some((d) => d && d > order.target!) : false;
-  const status = released ? { text: `PO released ${day(order.released_at!.slice(0, 10))}`, cls: "ok" }
+  const status = released ? { text: `PO released ${dayAt(order.released_at!)}`, cls: "ok" }
     : late ? { text: `Overdue: was due ${at.format(new Date(order.plan_due_at!))}`, cls: "bad" }
-    : order.sent_at && !missing ? { text: `Your TNA sent ${day(order.sent_at.slice(0, 10))}, waiting for release`, cls: "info" }
+    : order.sent_at && !missing ? { text: `Your TNA sent ${dayAt(order.sent_at)}, waiting for release`, cls: "info" }
     : { text: missing ? `${missing} ${missing === 1 ? "date" : "dates"} to fill` : "Ready to send", cls: "warn" };
 
   function fields(lineId: string, style: string, label: string, st: Stage) {
@@ -109,7 +109,7 @@ export function FactoryOrder({ order, now }: { order: PanelOrder; now: string })
                 {TNA_STEPS.map((s) => {
                   const st = stageOf(l.id, s.key);
                   return st ? <td key={s.key} className="tna-cell">{fields(l.id, l.style, s.label, st)}</td>
-                    : <td key={s.key} className="tna-cell muted text-xs">Not needed</td>;
+                    : <td key={s.key} className="tna-cell muted text-xs">Not set yet</td>;
                 })}
                 <td className="tna-cell min-w-[160px]">
                   {extrasOf(l).map((st) => (

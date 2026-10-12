@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { day, money } from "@/lib/format";
+import { day, dayAt, money } from "@/lib/format";
 import { bringIn, makeSyncKey, saveTallySettings, setLedger, type TallySettingsInput } from "./actions";
 
 function Message({ error, ok }: { error: string; ok: string }) {
@@ -59,7 +59,7 @@ export function KeyMaker({ hint, made }: { hint: string | null; made: string | n
   return (
     <div className="stack">
       <p className="text-[13.5px]">
-        {hint ? <>A key ending <b className="code">…{hint}</b> was made {made ? day(made.slice(0, 10)) : ""}. A new key stops the old one working.</> : "The office computer needs this key to send Tally's books to the app."}
+        {hint ? <>A key ending <b className="code">…{hint}</b> was made {made ? dayAt(made) : ""}. A new key stops the old one working.</> : "The office computer needs this key to send Tally's books to the app."}
       </p>
       {key ? (
         <InstallCommand syncKey={key} copied={copied} onCopy={setCopied} />

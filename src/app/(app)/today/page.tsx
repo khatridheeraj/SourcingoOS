@@ -42,7 +42,7 @@ export default async function TodayPage({ searchParams }: PageProps<"/today">) {
 
   const [{ data: pos }, { data: stages }, { data: checks }] = ids.length
     ? await Promise.all([
-        supabase.from("factory_pos").select("order_id, factory_id, plan_requested_on, plan_requested_at, factory_sent_at, released_at").in("order_id", ids),
+        supabase.from("factory_pos").select("order_id, factory_id, plan_requested_on, plan_requested_at, factory_sent_at, released_at, buffer_days").in("order_id", ids),
         supabase.from("line_stages").select("order_id, line_id, stage, label, planned_on, done_on, not_needed, factory_on").in("order_id", ids),
         supabase.from("qc_checks").select("order_id, kind, result, checked_on").in("order_id", ids).is("cancelled_at", null)
           .order("checked_on", { ascending: false }).order("created_at", { ascending: false }),
@@ -51,7 +51,7 @@ export default async function TodayPage({ searchParams }: PageProps<"/today">) {
 
   const buyerCode = new Map(buyers.map((b) => [b.id, b.code]));
   const factoryName = new Map(factories.map((f) => [f.id, f.name]));
-  const label = (o: (typeof open)[number]) => `${o.order_no} · ${buyerCode.get(o.buyer_id) ?? ""} ${o.buyer_po}`.trim();
+  const label = (o: Pick<(typeof open)[number], "order_no" | "buyer_id" | "buyer_po">) => `${o.order_no} · ${buyerCode.get(o.buyer_id) ?? ""} ${o.buyer_po}`.trim();
   const extraLabel = new Map((stages ?? []).filter((s) => s.label).map((s) => [s.stage, String(s.label)]));
   const stepLabel = (k: string) => TNA_STEPS.find((s) => s.key === k)?.label ?? extraLabel.get(k) ?? k;
   const stageOf = new Map((stages ?? []).map((s) => [`${s.line_id}:${s.stage}`, s]));
@@ -64,16 +64,31 @@ export default async function TodayPage({ searchParams }: PageProps<"/today">) {
     const lines = o.order_lines ?? [];
     for (const f of [...new Set(lines.map((l) => l.factory_id).filter(Boolean))] as string[]) {
       const po = (pos ?? []).find((p) => p.order_id === o.id && p.factory_id === f);
-      if (po?.released_at) continue;
       const fl = lines.filter((l) => l.factory_id === f);
       // Each style's steps: standard ones not marked not needed, plus its extra steps.
       const rows = fl.flatMap((l) => [
-        ...TNA_STEPS.map((s) => stageOf.get(`${l.id}:${s.key}`) ?? { planned_on: null, factory_on: null, not_needed: false }),
+        ...TNA_STEPS.map((s) => stageOf.get(`${l.id}:${s.key}`) ?? { planned_on: null, factory_on: null, not_needed: false, done_on: null }),
         ...(stages ?? []).filter((s) => s.line_id === l.id && s.stage.startsWith("extra_")),
       ]).filter((r) => !r.not_needed);
       const noTarget = rows.filter((r) => !r.planned_on).length;
+      if (po?.released_at) {
+        // A released PO's steps without a target can't show as late, so ask for the missing targets.
+        const untracked = rows.filter((r) => !r.planned_on && !r.done_on).length;
+        if (untracked) {
+          poItems.push({
+            key: `${o.id}:${f}`, orderId: o.id, title: `${label(o)} · ${factoryName.get(f) ?? "Factory"}`,
+            detail: `PO released, but ${plural(untracked, "step")} across ${plural(fl.length, "style")} ${untracked === 1 ? "has" : "have"} no target date, so ${untracked === 1 ? "it isn't" : "they aren't"} tracked for delays`,
+            chip: { text: `Set ${plural(untracked, "target")}`, cls: "bad" }, sort: `1${o.order_no}`,
+          });
+        }
+        continue;
+      }
+      // The PO target date: delivery less the buffer. Targets after it block the release, as on the order page.
+      const due = o.revised_ship_date || o.ship_date;
+      const target = due && po?.buffer_days != null ? addDays(due, -po.buffer_days) : "";
       const gaps = fl.filter((l) => l.factory_rate == null).length + noTarget
-        + rows.filter((r) => !r.factory_on || (r.planned_on && r.factory_on > r.planned_on)).length;
+        + rows.filter((r) => !r.factory_on || (r.planned_on && r.factory_on > r.planned_on)).length
+        + (target ? rows.filter((r) => r.planned_on && r.planned_on > target).length : 0);
       const dueAt = po?.plan_requested_at ? planDueAt(po.plan_requested_at) : null;
       if (dueAt && !po?.factory_sent_at && dueAt.getTime() < now) {
         const hours = Math.floor((now - dueAt.getTime()) / 3_600_000);
@@ -157,11 +172,17 @@ export default async function TodayPage({ searchParams }: PageProps<"/today">) {
     chip: p.status === "failed" ? { text: "Couldn't read", cls: "bad" } : { text: "Check and add", cls: "warn" }, sort: p.received_at,
   }));
   // Dispatch: invoice within 4 hours of the purchase (an emergency after that), then e-way bill and shipping, then the GRN.
-  const { data: disp } = team && ids.length
+  // Dispatches of every order, shipped ones too: an order marked shipped still waits for the buyer's GRN.
+  const { data: disp } = team
     ? await supabase.from("dispatches").select("id, order_id, purchase_bill_no, invoice_due_at, invoiced_at, eway_at, shipped_at, grn_due_on, grn_at")
-        .in("order_id", ids).is("cancelled_at", null).is("grn_at", null)
+        .eq("company_id", companyId).is("cancelled_at", null).is("grn_at", null)
     : { data: [] };
-  const orderOf = new Map(open.map((o) => [o.id, o]));
+  const shippedIds = [...new Set((disp ?? []).map((d) => d.order_id))].filter((id) => !(orders ?? []).some((o) => o.id === id));
+  const { data: shipped } = shippedIds.length
+    ? await supabase.from("orders").select("id, order_no, buyer_id, buyer_po, ship_date, revised_ship_date, merchandiser_id").in("id", shippedIds)
+    : { data: [] };
+  const orderOf = new Map<string, Pick<(typeof open)[number], "id" | "order_no" | "buyer_id" | "buyer_po">>(
+    [...open, ...(shipped ?? []).filter((o) => who === "all" || o.merchandiser_id === me?.id)].map((o) => [o.id, o]));
   const emergency: Item[] = [];
   const dispatchItems: Item[] = [];
   const grnItems: Item[] = [];
@@ -192,7 +213,7 @@ export default async function TodayPage({ searchParams }: PageProps<"/today">) {
       { id: "incoming", title: "New buyer POs to check", hint: "Picked up from email or added from a file. Check the AI's reading and add each as an order.", items: incomingItems, empty: "No new buyer POs waiting." },
       { id: "dispatch", title: "Dispatch to finish", hint: "Invoices due within 4 hours, then the e-way bill, goods photos and LR for each invoice.", items: dispatchItems, empty: "Nothing waiting to dispatch." },
       { id: "grn", title: "GRN due", hint: "Shipped goods whose buyer GRN is due within 3 days or overdue.", items: grnItems, empty: "No GRN due." },
-      { id: "pos", title: "Factory plans and POs", hint: `Set each style's steps and targets, ask the factory for its TNA (it has ${PLAN_HOURS} hours), and release the PO once its dates are in and on target.`, items: poItems, empty: "Every factory PO is released." },
+      { id: "pos", title: "Factory plans and POs", hint: `Set each style's steps and targets, ask the factory for its TNA (it has ${PLAN_HOURS} hours), and release the PO once its dates are in and on target. Released POs show here too while any step has no target date.`, items: poItems, empty: "Every factory PO is released and every step has a target." },
     ] : []),
     { id: "overdue", title: "Overdue TNA steps", hint: "Planned date has passed and no done date is entered.", items: overdue, empty: "Nothing is overdue." },
     { id: "week", title: "Due in the next 7 days", hint: "TNA steps planned for this week.", items: thisWeek, empty: "Nothing planned this week." },

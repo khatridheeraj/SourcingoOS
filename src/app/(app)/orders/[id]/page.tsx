@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { canEditOrders, canEnterDone, canRecordQc, getMe } from "@/lib/auth";
-import { day, qty, SHIP_QC, TNA_STEPS, todayIST } from "@/lib/format";
+import { day, dayAt, qty, SHIP_QC, TNA_STEPS, todayIST } from "@/lib/format";
 import { createClient } from "@/lib/supabase/server";
 import { OrderForm } from "../order-form";
 import { OrderDispatch, type Dispatch, type DispatchFactory } from "./order-dispatch";
@@ -138,7 +138,7 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
         <div className="grow">
           <Link href="/" className="link text-xs">← Orders</Link>
           <h1><span className="code text-[19px]">{o.order_no}</span> · {o.buyer_po}</h1>
-          <p>Entered {day(o.created_at.slice(0, 10))}{o.updated_at.slice(0, 16) !== o.created_at.slice(0, 16) && `, last changed ${day(o.updated_at.slice(0, 10))}`}</p>
+          <p>Entered {dayAt(o.created_at)}{o.updated_at.slice(0, 16) !== o.created_at.slice(0, 16) && `, last changed ${dayAt(o.updated_at)}`}</p>
         </div>
       </div>
       {saved && <div className="okbox">Order saved as {o.order_no}.</div>}
