@@ -9,12 +9,21 @@ import type { LineInput } from "../../orders/actions";
 import { OrderForm } from "../../orders/order-form";
 import { formOptions } from "../../orders/options";
 import { STATE } from "../state";
+import { NewBuyer } from "./new-buyer";
 import { PoActions } from "./po-actions";
 
 const when = new Intl.DateTimeFormat("en-IN", { timeZone: "Asia/Kolkata", day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit" });
 
-export default async function IncomingPoPage({ params }: PageProps<"/pos/[id]">) {
+// A code for a new buyer: initials of its name and the next number, like BYR-FC-0015.
+function suggestCode(name: string, codes: string[]): string {
+  const initials = name.replace(/[^a-z\s]/gi, " ").trim().split(/\s+/).filter(Boolean).slice(0, 3).map((w) => w[0].toUpperCase()).join("") || "NEW";
+  const next = Math.max(0, ...codes.map((c) => Number(c.match(/(\d+)$/)?.[1] ?? 0))) + 1;
+  return `BYR-${initials}-${String(next).padStart(4, "0")}`;
+}
+
+export default async function IncomingPoPage({ params, searchParams }: PageProps<"/pos/[id]">) {
   const { id } = await params;
+  const { buyer: added } = await searchParams;
   const me = await getMe();
   if (!canEditOrders(me?.role)) redirect("/");
   const supabase = await createClient();
@@ -30,6 +39,8 @@ export default async function IncomingPoPage({ params }: PageProps<"/pos/[id]">)
     formOptions({ buyerId: po.buyer_id ?? undefined }),
     owner ? supabase.rpc("incoming_po_buyer_name", { p_id: id }) : Promise.resolve({ data: null }),
   ]);
+  const newBuyerId = typeof added === "string" && o.buyers.some((b) => b.id === added) ? added : "";
+  const buyerId = po.buyer_id ?? newBuyerId;
   const urlOf = new Map((signed ?? []).map((s) => [s.path, s.signedUrl]));
   const read = (po.read ?? {}) as Partial<PoReading>;
   const lines = read.lines ?? [];
@@ -84,16 +95,17 @@ export default async function IncomingPoPage({ params }: PageProps<"/pos/[id]">)
       )}
       {po.status === "not_po" && <div className="empty"><b>Set aside</b>No new buyer PO was found here, or someone set it aside. Put it back if it is one.</div>}
 
-      {checking && (read.notes || (read.doubts?.length ?? 0) > 0 || !po.buyer_id || matched) && (
+      {checking && (read.notes || (read.doubts?.length ?? 0) > 0 || !buyerId || matched) && (
         <div className="panel">
           <h2>Check before adding</h2>
           <ul className="flex list-disc flex-col gap-1 pl-5 text-[13px]">
             {matched && (
               <li className="text-bad">This PO number is already order <Link href={`/orders/${po.matched_order_id}`} className="link code">{matched.order_no}</Link>. If this is a revision, update that order, then set this one aside.</li>
             )}
-            {!po.buyer_id && po.status === "to_check" && (
+            {!buyerId && po.status === "to_check" && (
               <li className="text-bad">
-                Buyer not recognised{owner && buyerName ? `: the PO says "${buyerName}"` : ""}. {owner ? "Add the buyer in Buyers, or pick the right one below." : "Pick the buyer below, or ask the owner to add a new buyer."}
+                Buyer not recognised{owner && buyerName ? `: the PO says "${buyerName}"` : ""}. {owner ? "Pick the right one below, or add it as a new buyer." : "Pick the buyer below, or ask the owner to add a new buyer."}
+                {owner && <div><NewBuyer name={(buyerName as string | null) ?? ""} code={suggestCode((buyerName as string | null) ?? "", o.buyers.map((b) => b.label.split(" · ")[0]))} /></div>}
               </li>
             )}
             {(read.doubts ?? []).map((d, i) => <li key={i} className="text-warn">{d}</li>)}
@@ -114,9 +126,10 @@ export default async function IncomingPoPage({ params }: PageProps<"/pos/[id]">)
           <div className="empty"><b>No buyers yet</b>Add buyers first in <Link href="/buyers" className="link">Buyers</Link>.</div>
         ) : (
           <OrderForm
+            key={buyerId}
             incomingId={po.id}
             initial={{
-              buyer_id: po.buyer_id ?? "", buyer_po: po.buyer_po ?? "", po_date: read.po_date ?? "", ship_date: read.ship_date ?? "",
+              buyer_id: buyerId, buyer_po: po.buyer_po ?? "", po_date: read.po_date ?? "", ship_date: read.ship_date ?? "",
               status: "open", merchandiser_id: o.meId, notes: read.notes ?? "",
             }}
             initialLines={initialLines}
