@@ -17,7 +17,7 @@ export const STATUS: Record<string, { label: string; cls: string }> = {
 // Production stages, in the order an order moves through the floor.
 export const STAGES = [
   { key: "fabric", label: "Fabric" },
-  { key: "printing", label: "Printing" },
+  { key: "printing", label: "Printing / dyeing" },
   { key: "cutting", label: "Cutting" },
   { key: "stitching", label: "Stitching" },
   { key: "finishing", label: "Finishing" },
@@ -61,13 +61,15 @@ export const planDueAt = (requestedAt: string) => new Date(Date.parse(requestedA
 export const TNA_STEPS: { key: string; label: string; qc?: string[]; required?: boolean }[] = [
   { key: "greige", label: "Greige", qc: ["greige"] },
   { key: "fit_sample", label: "Fit sample", qc: ["fit_sample"] },
+  { key: "fabric", label: "Fabric", required: true },
+  { key: "printing", label: "Printing / dyeing" },
   { key: "strike_off", label: "Strike off", qc: ["strike_off"] },
   { key: "pp_sample", label: "PP sample", qc: ["pp_sample"], required: true },
   { key: "size_set", label: "Size set", qc: ["size_set"] },
-  { key: "fabric", label: "Fabric", required: true },
-  { key: "printing", label: "Printing" },
-  { key: "cutting", label: "Cutting", qc: ["inline"], required: true },
-  { key: "stitching", label: "Stitching", qc: ["midline"], required: true },
+  { key: "cutting", label: "Cutting", required: true },
+  { key: "stitching", label: "Stitching", required: true },
+  { key: "inline", label: "Inline", qc: ["inline"] },
+  { key: "midline", label: "Mid-line", qc: ["midline"] },
   { key: "finishing", label: "Finishing", required: true },
   { key: "packed", label: "Packed", required: true },
   { key: "final_qc", label: "Final QC", qc: ["final", "recheck"], required: true },

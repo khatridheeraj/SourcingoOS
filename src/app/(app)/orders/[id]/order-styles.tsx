@@ -363,7 +363,7 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
                           return (
                             <div key={x.stage} className={`mb-2 rounded-md border border-line p-1.5 ${v?.cls === "bad" ? "bg-bad-soft" : v?.cls === "ok" ? "bg-ok-soft" : ""}`}>
                               <div className="row justify-between text-[12.5px] font-semibold">{x.label}
-                                {editable && !released && (
+                                {editable && !get(l.id, x.stage).done_on && (
                                   <button type="button" className="link text-xs" aria-label={`Remove ${x.label} from ${l.style}`}
                                     onClick={() => set(l.id, x.stage, { not_needed: true })}>Remove</button>
                                 )}
@@ -372,7 +372,7 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
                             </div>
                           );
                         })}
-                        {editable && !released && (
+                        {editable && (
                           <div className="flex gap-1">
                             <input className="inp min-w-0 grow" value={newStep[l.id] ?? ""} placeholder="e.g. Embroidery" maxLength={60}
                               aria-label={`New step for ${l.style}`} onChange={(e) => setNewStep((n) => ({ ...n, [l.id]: e.target.value }))}
@@ -380,7 +380,7 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
                             <button type="button" className="btn sm" onClick={() => addExtra(l.id)}>Add step</button>
                           </div>
                         )}
-                        {!(extras[l.id] ?? []).some((x) => !get(l.id, x.stage).not_needed) && !(editable && !released) && <span className="muted text-xs">None</span>}
+                        {!(extras[l.id] ?? []).some((x) => !get(l.id, x.stage).not_needed) && !editable && <span className="muted text-xs">None</span>}
                       </td>
                     </tr>
                   ))}

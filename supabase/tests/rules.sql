@@ -397,7 +397,7 @@ select public.save_line_stages(:'save_order', (
   select jsonb_agg(jsonb_build_object('line_id', l.id, 'stage', st, 'planned_on', case when st = 'printing' then '' else '2026-11-01' end,
                                       'not_needed', st = 'printing'))
   from public.order_lines l cross join unnest(array['greige', 'fit_sample', 'strike_off', 'pp_sample', 'size_set',
-    'fabric', 'printing', 'cutting', 'stitching', 'finishing', 'packed', 'final_qc', 'ex_factory']) st
+    'fabric', 'printing', 'cutting', 'stitching', 'inline', 'midline', 'finishing', 'packed', 'final_qc', 'ex_factory']) st
   where l.order_id = :'save_order' and l.removed_at is null));
 update public.order_lines set factory_rate = 240 where style = 'OZ-101';
 do $$ begin
@@ -516,8 +516,8 @@ do $$ begin
 end $$;
 select pg_temp.as_user('00000000-0000-0000-0000-00000000000b');
 do $$ begin
-  if (select count(*) from public.line_stages where factory_on is not null) <> 25 then
-    raise exception 'factory dates: % (printing is not needed on either style, Embroidery is extra on one: 25)', (select count(*) from public.line_stages where factory_on is not null);
+  if (select count(*) from public.line_stages where factory_on is not null) <> 29 then
+    raise exception 'factory dates: % (printing is not needed on either style, Embroidery is extra on one: 29)', (select count(*) from public.line_stages where factory_on is not null);
   end if;
   perform public.release_factory_po((select id from public.orders), '20000000-0000-0000-0000-000000000001');
   raise exception 'released with factory dates later than the targets';
@@ -543,7 +543,7 @@ do $$ begin
   if (select released_at is null or released_by <> auth.uid() from public.factory_pos where order_id = (select id from public.orders)) then
     raise exception 'factory PO not released';
   end if;
-  if (select count(*) from public.line_stages) <> 27 then raise exception 'full TNA not saved: %', (select count(*) from public.line_stages); end if;
+  if (select count(*) from public.line_stages) <> 31 then raise exception 'full TNA not saved: %', (select count(*) from public.line_stages); end if;
   begin
     update public.factory_pos set released_at = null;
     raise exception 'a release was undone';
@@ -560,7 +560,7 @@ select public.save_line_stages(:'save_order', jsonb_build_array(
   jsonb_build_object('line_id', (select id from public.order_lines where style = 'OZ-101'), 'stage', 'fabric', 'planned_on', '2026-11-01', 'done_on', '2026-11-02')));
 do $$ begin
   if (select stage from public.orders) <> 'fabric' then raise exception 'order stage not moved to fabric: %', (select stage from public.orders); end if;
-  if (select count(*) from public.line_stages) <> 27 then raise exception 'saving again added a duplicate row'; end if;
+  if (select count(*) from public.line_stages) <> 31 then raise exception 'saving again added a duplicate row'; end if;
   begin
     perform public.save_line_stages((select id from public.orders), jsonb_build_array(
       jsonb_build_object('line_id', (select id from public.order_lines where style = 'OZ-101'), 'stage', 'sewing')));
