@@ -1,11 +1,13 @@
-// Prints Vercel's deploy result for the latest commits on main, read from
-// GitHub commit statuses (Vercel posts one per deploy). Exits 1 if the
-// newest commit's deploy failed, so a check can't miss a broken release.
+// Prints Vercel's production deploy result for the latest commits on main,
+// read from GitHub deployments (Vercel records one per deploy). Exits 1 if the
+// newest commit's production deploy failed, so a check can't miss a broken
+// release. Preview deploys of the same commit (from a branch pointing at it)
+// are ignored: only production decides what the live app runs.
 //   node scripts/deploy-status.mjs [count]
 const repo = "khatridheeraj/SourcingoOS";
 const count = Number(process.argv[2] ?? 3);
 const api = (path) =>
-  fetch(`https://api.github.com/repos/${repo}/${path}`, {
+  fetch(path.startsWith("https://") ? path : `https://api.github.com/repos/${repo}/${path}`, {
     headers: { Accept: "application/vnd.github+json" },
   }).then((r) => {
     if (!r.ok) throw new Error(`GitHub ${r.status} for ${path}`);
@@ -15,12 +17,12 @@ const api = (path) =>
 const commits = await api(`commits?sha=main&per_page=${count}`);
 let newestFailed = false;
 for (const [i, c] of commits.entries()) {
-  const { statuses } = await api(`commits/${c.sha}/status`);
-  const vercel = statuses.find((s) => s.context === "Vercel");
-  const state = vercel?.state ?? "not reported";
-  if (i === 0 && state === "failure") newestFailed = true;
+  const [deploy] = await api(`deployments?sha=${c.sha}&environment=Production&per_page=1`);
+  const [latest] = deploy ? await api(deploy.statuses_url) : [];
+  const state = latest?.state ?? "not reported";
+  if (i === 0 && (state === "failure" || state === "error")) newestFailed = true;
   const title = c.commit.message.split("\n")[0];
   console.log(`${c.sha.slice(0, 7)}  ${state.padEnd(12)}  ${title}`);
-  if (vercel && state !== "success") console.log(`         ${vercel.description}`);
+  if (latest && state !== "success") console.log(`         ${latest.description}`);
 }
 process.exit(newestFailed ? 1 : 0);
