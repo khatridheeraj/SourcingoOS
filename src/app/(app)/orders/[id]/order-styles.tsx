@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { day, daysBetween, DEFAULT_BUFFER_DAYS, planDueAt, PLAN_HOURS, TNA_STEPS } from "@/lib/format";
+import { day, dayAt, daysBetween, DEFAULT_BUFFER_DAYS, planDueAt, PLAN_HOURS, TNA_STEPS } from "@/lib/format";
 import { uploadPhotos } from "@/lib/photos";
 import { releaseFactoryPo, requestPlan, saveLineStages, setStylePhoto, type LineStageInput } from "../actions";
 
@@ -134,7 +134,8 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
     return gaps.length ? `${l.style}: ${gaps.join("; ")}` : "";
   }).filter(Boolean);
 
-  const late = lines.filter((l) => steps(l.id).some((s) => verdict(get(l.id, s.key), today)?.cls === "bad")).length;
+  // Behind plan: a step still open past its target (a step done late is history, not behind).
+  const late = lines.filter((l) => steps(l.id).some((s) => { const c = get(l.id, s.key); return !c.not_needed && !c.done_on && !!c.planned_on && c.planned_on < today; })).length;
 
   function copyPlan(g: FactoryGroup) {
     const first = g.lines[0];
@@ -238,7 +239,7 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
         {late > 0 && <span className="chip bad">{late} {late === 1 ? "style" : "styles"} behind plan</span>}
       </div>
       <p className="muted mb-3 text-[13px]">
-        First set each style&apos;s steps (mark any not needed, add extra steps) and your target date for every step, then ask the factory.
+        First set your target date for every step of each style (add extra steps if a style needs them), then ask the factory.
         The factory gives its own date for each step in its panel. Release the PO once every factory date is in and none is later than its target.
         After release the orders team and Quality enter done dates. Quality&apos;s latest result shows under each step it checks.
       </p>
@@ -254,10 +255,10 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
         const toAsk = targetGaps(g, target);
         const asked = !!(g.planRequestedAt || g.planRequestedOn);
         const status = !g.factoryId ? { text: "No factory chosen", cls: "warn" }
-          : released ? { text: `PO released ${day(g.releasedAt.slice(0, 10))}`, cls: "ok" }
+          : released ? { text: `PO released ${dayAt(g.releasedAt)}`, cls: "ok" }
           : !gaps.length ? { text: "Plan complete, ready to release", cls: "info" }
           : critical ? { text: `Critical: no TNA from the factory, due ${at.format(dueAt!)}`, cls: "bad" }
-          : g.factorySentAt ? { text: `Factory sent its TNA ${day(g.factorySentAt.slice(0, 10))}`, cls: "warn" }
+          : g.factorySentAt ? { text: `Factory sent its TNA ${dayAt(g.factorySentAt)}`, cls: "warn" }
           : dueAt ? { text: `Waiting for the factory's TNA, due ${at.format(dueAt)}`, cls: "warn" }
           : toAsk.length ? { text: "Set your targets, then ask the factory", cls: "bad" }
           : { text: "Targets set, ask the factory", cls: "warn" };

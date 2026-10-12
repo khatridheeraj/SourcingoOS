@@ -4,6 +4,8 @@ const date = new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "short", 
 export const qty = (n: number | null | undefined) => (n == null ? "" : inr.format(n));
 export const money = (n: number | null | undefined) => (n == null ? "" : `₹${inr.format(n)}`);
 export const day = (d: string | null | undefined) => (d ? date.format(new Date(`${d}T00:00:00+05:30`)) : "");
+// The India date of a timestamp (a UTC timestamp's first 10 characters can be the day before).
+export const dayAt = (ts: string | null | undefined) => (ts ? date.format(new Date(ts)) : "");
 
 // Today's date in India as YYYY-MM-DD.
 export const todayIST = () => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(new Date());
@@ -14,7 +16,6 @@ export const STATUS: Record<string, { label: string; cls: string }> = {
   cancelled: { label: "Cancelled", cls: "chip" },
 };
 
-// Production stages, in the order an order moves through the floor.
 // An order's stage is the furthest standard TNA step its slowest style has done (set by the database).
 export const stageLabel = (s: string | null | undefined) => TNA_STEPS.find((x) => x.key === s)?.label ?? "Not started";
 export const stageReached = (s: string | null | undefined, step: string) =>

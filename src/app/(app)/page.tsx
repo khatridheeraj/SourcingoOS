@@ -54,7 +54,7 @@ export default async function OrdersPage({ searchParams }: PageProps<"/">) {
   const owner = me?.role === "owner";
   const prices = canEditOrders(me?.role);
 
-  const rows = (data ?? []).map((o) => {
+  const built = (data ?? []).map((o) => {
     const lines = (o.order_lines ?? []) as Line[];
     const b = buyerById.get(o.buyer_id);
     const factoryNames = [...new Set(lines.map((l) => (l.factory_id ? factoryById.get(l.factory_id)?.name : null)).filter(Boolean))] as string[];
@@ -73,14 +73,16 @@ export default async function OrdersPage({ searchParams }: PageProps<"/">) {
       late: isLate(o),
       lateBy: isLate(o) ? daysBetween(dueDate(o)!, today) : 0,
     };
-  })
+  });
+  const rows = built
     .filter((r) => status !== "late" || r.late)
     .filter((r) => !q || [r.order_no, r.buyer, r.buyer_po, ...r.styles, ...r.factoryNames].join(" ").toLowerCase().includes(q))
     .sort((a, b) => (a.due ?? "9999").localeCompare(b.due ?? "9999") || a.order_no.localeCompare(b.order_no));
 
   const all = counts.data ?? [];
   const openCount = all.filter((o) => o.status === "open").length;
-  const open = rows.filter((r) => r.status === "open");
+  // Tiles count every open order, whatever is typed in the search box.
+  const open = built.filter((r) => r.status === "open");
   const late = all.filter(isLate).length;
   const noFactory = open.filter((r) => r.missingFactory).length;
   const openMargin = prices ? planMargin(open.flatMap((r) => (r.order_lines ?? []) as Line[])) : null;
@@ -100,7 +102,7 @@ export default async function OrdersPage({ searchParams }: PageProps<"/">) {
           <div className="tile"><span>Open orders</span><b>{openCount}</b></div>
           <div className="tile"><span>Pieces on open orders</span><b>{qty(open.reduce((s, r) => s + r.pieces, 0))}</b></div>
           <Link href="/?status=late" className={`tile ${late ? "alarm" : ""}`}><span>Late, past ship date</span><b>{late}</b></Link>
-          <div className={`tile ${noFactory ? "alarm" : ""}`}><span>Styles without a factory</span><b>{noFactory}</b></div>
+          <div className={`tile ${noFactory ? "alarm" : ""}`}><span>Orders needing a factory</span><b>{noFactory}</b></div>
           {openMargin && openMargin.sale > 0 && (
             <div className="tile"><span>Margin on open orders</span><b className={marginCls(openMargin.pct)}>{money(openMargin.margin)}</b><span className="mt-1">{pct(openMargin.pct)} of {money(openMargin.sale)}</span></div>
           )}
