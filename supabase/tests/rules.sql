@@ -392,10 +392,9 @@ do $$ begin
   exception when check_violation then null;
   end;
 end $$;
--- Fill every step (printing not needed), add the missing factory rate, then release.
+-- Fill every step (all are mandatory), add the missing factory rate, then release.
 select public.save_line_stages(:'save_order', (
-  select jsonb_agg(jsonb_build_object('line_id', l.id, 'stage', st, 'planned_on', case when st = 'printing' then '' else '2026-11-01' end,
-                                      'not_needed', st = 'printing'))
+  select jsonb_agg(jsonb_build_object('line_id', l.id, 'stage', st, 'planned_on', '2026-11-01'))
   from public.order_lines l cross join unnest(array['greige', 'fit_sample', 'strike_off', 'pp_sample', 'size_set',
     'fabric', 'printing', 'cutting', 'stitching', 'inline', 'midline', 'finishing', 'packed', 'final_qc', 'ex_factory']) st
   where l.order_id = :'save_order' and l.removed_at is null));
@@ -413,7 +412,7 @@ exception when insufficient_privilege then null;
 end $$;
 do $$ begin
   insert into public.line_stages (order_id, line_id, stage, not_needed)
-    select id, (select id from public.order_lines where style = 'OZ-101'), 'final_qc', true from public.orders
+    select id, (select id from public.order_lines where style = 'OZ-101'), 'printing', true from public.orders
     on conflict (line_id, stage) do update set not_needed = true, planned_on = null;
   raise exception 'a mandatory step was marked not needed';
 exception when check_violation then null;
@@ -516,8 +515,8 @@ do $$ begin
 end $$;
 select pg_temp.as_user('00000000-0000-0000-0000-00000000000b');
 do $$ begin
-  if (select count(*) from public.line_stages where factory_on is not null) <> 29 then
-    raise exception 'factory dates: % (printing is not needed on either style, Embroidery is extra on one: 29)', (select count(*) from public.line_stages where factory_on is not null);
+  if (select count(*) from public.line_stages where factory_on is not null) <> 31 then
+    raise exception 'factory dates: % (15 steps on each style, Embroidery is extra on one: 31)', (select count(*) from public.line_stages where factory_on is not null);
   end if;
   perform public.release_factory_po((select id from public.orders), '20000000-0000-0000-0000-000000000001');
   raise exception 'released with factory dates later than the targets';

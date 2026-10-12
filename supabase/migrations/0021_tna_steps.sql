@@ -23,3 +23,7 @@ language sql stable security definer set search_path = '' as $$
   from public.line_stages s
   where s.line_id = p_line and s.stage like 'extra\_%' and not s.not_needed and public.can_see_line(p_line)
 $$;
+
+-- Every standard step is mandatory (Dheeraj, 2026-10-12): none can be marked not needed. Only extra steps can be removed.
+alter table public.line_stages drop constraint line_stages_mandatory;
+alter table public.line_stages add constraint line_stages_mandatory check (not (not_needed and stage not like 'extra\_%'));
