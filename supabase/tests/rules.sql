@@ -572,6 +572,12 @@ do $$ begin
   exception when insufficient_privilege then null;
   end;
 end $$;
+-- The stage follows all 15 standard steps: Mid-line done on every style reads as Mid-line, not Not started.
+select public.save_line_stages(:'save_order', (select jsonb_agg(jsonb_build_object('line_id', id, 'stage', 'midline', 'planned_on', '2026-11-05', 'done_on', '2026-11-04'))
+  from public.order_lines where removed_at is null));
+do $$ begin
+  if (select stage from public.orders) is distinct from 'midline' then raise exception 'order stage not moved to Mid-line: %', (select stage from public.orders); end if;
+end $$;
 select pg_temp.as_user('00000000-0000-0000-0000-0000000000a9');
 do $$ begin
   perform public.release_factory_po((select id from public.orders), '20000000-0000-0000-0000-000000000001');
