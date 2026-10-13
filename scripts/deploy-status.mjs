@@ -9,7 +9,7 @@ const repo = "khatridheeraj/SourcingoOS";
 const count = Number(process.argv[2] ?? 3);
 const api = (path) =>
   fetch(path.startsWith("https://") ? path : `https://api.github.com/repos/${repo}/${path}`, {
-    headers: { Accept: "application/vnd.github+json" },
+    headers: { Accept: "application/vnd.github+json", ...(process.env.GITHUB_TOKEN ? { Authorization: `Bearer ${process.env.GITHUB_TOKEN}` } : {}) },
   }).then((r) => {
     if (!r.ok) throw new Error(`GitHub ${r.status} for ${path}`);
     return r.json();
