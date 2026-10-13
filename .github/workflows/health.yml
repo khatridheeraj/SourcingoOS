@@ -1,0 +1,29 @@
+name: Health check
+
+# Hourly during the India working day. A failed run makes GitHub email the owner.
+on:
+  schedule:
+    - cron: "15 3-16 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  deployments: read
+  statuses: read
+
+jobs:
+  health:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Tally reader, email pickup, PO reading, database size
+        run: node scripts/health.mjs
+      - name: Newest production deploy
+        if: always()
+        run: node scripts/deploy-status.mjs 3
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
