@@ -716,3 +716,42 @@ do $$ begin
   if (select status from public.orders where buyer_po = 'OWNER-SHIPPED') <> 'shipped' then raise exception 'owner could not ship'; end if;
 end $$;
 reset role;
+
+-- Real buyer names and prices stay in the database: staff can't read a buyer's Tally ledger, Quality can't read rates.
+update public.buyers set tally_ledger = 'M/s Ozia Clothing Pvt. Ltd.' where id = '10000000-0000-0000-0000-000000000001';
+update public.order_lines set buyer_rate = 320, factory_rate = 240 where style = 'OZ-101';
+set role authenticated;
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000b');
+do $$ begin
+  begin
+    perform tally_ledger from public.buyers;
+    raise exception 'merchandiser read a Tally ledger name';
+  exception when insufficient_privilege then null;
+  end;
+  if exists (select 1 from public.buyer_ledgers()) then raise exception 'merchandiser got ledger names from buyer_ledgers'; end if;
+  if not exists (select 1 from public.line_prices(array(select id from public.orders)) where buyer_rate = 320 and factory_rate = 240) then
+    raise exception 'merchandiser lost the rates';
+  end if;
+  if exists (select 1 from public.history where table_name = 'buyers') then raise exception 'merchandiser read buyer history'; end if;
+end $$;
+select pg_temp.as_user('00000000-0000-0000-0000-0000000000a9');
+do $$ begin
+  begin
+    perform buyer_rate from public.order_lines;
+    raise exception 'Quality read a buyer rate';
+  exception when insufficient_privilege then null;
+  end;
+  begin
+    perform factory_rate from public.order_lines;
+    raise exception 'Quality read a factory rate';
+  exception when insufficient_privilege then null;
+  end;
+  if exists (select 1 from public.line_prices(array(select id from public.orders))) then raise exception 'Quality got rates from line_prices'; end if;
+  if exists (select 1 from public.history where table_name in ('order_lines', 'dispatch_lines')) then raise exception 'Quality read rates in the history'; end if;
+  if not exists (select 1 from public.order_lines) then raise exception 'Quality lost the styles'; end if;
+end $$;
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000a');
+do $$ begin
+  if not exists (select 1 from public.buyer_ledgers() where tally_ledger like 'M/s Ozia%') then raise exception 'owner lost the ledger link'; end if;
+end $$;
+reset role;

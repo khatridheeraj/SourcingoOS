@@ -94,3 +94,25 @@ test("read range defaults to the start of last financial year", () => {
   // Just after midnight in India is already the next day.
   assert.equal(readRange({}, new Date("2026-10-09T19:00:00Z")).to, "2026-10-10");
 });
+
+test("the reader never sends Tally anything that could change its books", async () => {
+  const { assertReadOnly } = await import("../lib/sync.mjs");
+  const { ledgersRequest, itemsRequest, vouchersRequest, companiesRequest } = await import("../lib/xml.mjs");
+  for (const xml of [ledgersRequest("Sourcingo Test"), itemsRequest("Sourcingo Test"), vouchersRequest("Sourcingo Test", "2026-04-01", "2026-10-12"), companiesRequest()]) {
+    assert.doesNotThrow(() => assertReadOnly(xml));
+  }
+  for (const xml of [
+    "<ENVELOPE><HEADER><TALLYREQUEST>Import Data</TALLYREQUEST></HEADER><BODY><IMPORTDATA></IMPORTDATA></BODY></ENVELOPE>",
+    "<ENVELOPE><HEADER><VERSION>1</VERSION><TALLYREQUEST>Import</TALLYREQUEST><TYPE>Data</TYPE></HEADER></ENVELOPE>",
+    '<ENVELOPE><HEADER><TALLYREQUEST>Export</TALLYREQUEST></HEADER><BODY><VOUCHER ACTION="Create"></VOUCHER></BODY></ENVELOPE>',
+    '<ENVELOPE><HEADER><TALLYREQUEST>Export</TALLYREQUEST></HEADER><COLLECTION ISMODIFY="Yes"></COLLECTION></ENVELOPE>',
+    "<ENVELOPE><HEADER><TALLYREQUEST>Export</TALLYREQUEST><TALLYREQUEST>Import</TALLYREQUEST></HEADER></ENVELOPE>",
+    "<ENVELOPE></ENVELOPE>",
+  ]) {
+    assert.throws(() => assertReadOnly(xml), /only reads from Tally/);
+  }
+  let sent = false;
+  const client = tallyClient("http://127.0.0.1:9");
+  await assert.rejects(client("<ENVELOPE><HEADER><TALLYREQUEST>Import Data</TALLYREQUEST></HEADER></ENVELOPE>").finally(() => { sent = true; }), /only reads/);
+  assert.ok(sent);
+});

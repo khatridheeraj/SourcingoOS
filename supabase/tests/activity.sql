@@ -133,8 +133,9 @@ end $$;
 set role authenticated;
 select set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-00000000000b', false);
 do $$ begin
-  if not exists (select 1 from public.history where table_name = 'buyers') then raise exception 'merchandiser cannot see buyer changes'; end if;
-  if exists (select 1 from public.history where table_name in ('buyer_names', 'ai_keys', 'tally_vouchers', 'tally_settings')) then
+  -- Buyer rows carry the Tally ledger, which is usually the real name, so their history stays with the owner and Accounts.
+  if not exists (select 1 from public.history where table_name = 'factories') then raise exception 'merchandiser cannot see factory changes'; end if;
+  if exists (select 1 from public.history where table_name in ('buyers', 'buyer_names', 'ai_keys', 'tally_vouchers', 'tally_settings', 'tally_ledgers')) then
     raise exception 'merchandiser sees owner or money history';
   end if;
   insert into public.history (company_id, table_name, row_id, action, source) select id, 'x', 'x', 'insert', 'app' from public.companies;

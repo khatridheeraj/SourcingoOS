@@ -59,9 +59,20 @@ export function createSync({ tally, cloud, log = () => {}, now = () => new Date(
   return { round, state };
 }
 
+// Tally is read-only for Sourcingo OS: only export (read) requests may reach it, never an import,
+// alter, delete or any other request that could change the books.
+export function assertReadOnly(xml) {
+  const s = String(xml);
+  const kinds = [...s.matchAll(/<TALLYREQUEST>\s*([^<]*?)\s*<\/TALLYREQUEST>/gi)].map((m) => m[1].toLowerCase());
+  if (kinds.length !== 1 || kinds[0] !== "export" || /ISMODIFY\s*=\s*"yes"/i.test(s) || /\bACTION\s*=\s*"/i.test(s) || /<IMPORTDATA>/i.test(s)) {
+    throw new Error("Blocked: the Sourcingo Tally reader only reads from Tally and never changes it.");
+  }
+}
+
 // Talks to Tally's built-in server (F1 > Settings > Connectivity).
 export function tallyClient(url, timeoutMs = 120000) {
   return async (xml) => {
+    assertReadOnly(xml);
     const res = await fetch(url, {
       method: "POST", body: xml, headers: { "Content-Type": "text/xml;charset=utf-8" }, signal: AbortSignal.timeout(timeoutMs),
     });

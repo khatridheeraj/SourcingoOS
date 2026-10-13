@@ -1,4 +1,6 @@
 // Margin is what the buyer pays less what the factory charges, before GST and freight.
+// A line's rates, from line_prices() (only the orders team and Accounts get them).
+export type LinePrice = { id: string; buyer_rate: number | null; factory_rate: number | null };
 export type MarginLine = { qty: number; buyer_rate: number | string | null; factory_rate: number | string | null };
 export type Margin = { sale: number; cost: number; margin: number; pct: number | null; missing: number };
 

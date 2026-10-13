@@ -3,7 +3,7 @@ import Link from "next/link";
 import { canEditOrders, getMe } from "@/lib/auth";
 import { loadBuyers, loadFactories } from "@/lib/data";
 import { day, daysBetween, dueDate, money, qty, SHIP_QC, stageLabel, stageReached, STATUS, todayIST } from "@/lib/format";
-import { marginCls, pct, planMargin } from "@/lib/margin";
+import { type LinePrice, marginCls, pct, planMargin } from "@/lib/margin";
 import { createClient } from "@/lib/supabase/server";
 
 const TABS = [
@@ -14,7 +14,7 @@ const TABS = [
   { key: "all", label: "All" },
 ];
 
-type Line = { style: string; qty: number; buyer_rate: number | null; factory_id: string | null; factory_rate: number | null };
+type Line = { id: string; style: string; qty: number; buyer_rate: number | null; factory_id: string | null; factory_rate: number | null };
 
 export default async function OrdersPage({ searchParams }: PageProps<"/">) {
   const sp = await searchParams;
@@ -26,7 +26,7 @@ export default async function OrdersPage({ searchParams }: PageProps<"/">) {
   const supabase = await createClient();
   let query = supabase
     .from("orders")
-    .select("id, order_no, buyer_id, buyer_po, ship_date, revised_ship_date, delay_reason, stage, status, order_lines(style, qty, buyer_rate, factory_id, factory_rate)")
+    .select("id, order_no, buyer_id, buyer_po, ship_date, revised_ship_date, delay_reason, stage, status, order_lines(id, style, qty, factory_id)")
     .eq("company_id", companyId)
     .is("order_lines.removed_at", null)
     .order("ship_date", { ascending: true, nullsFirst: false })
@@ -53,14 +53,20 @@ export default async function OrdersPage({ searchParams }: PageProps<"/">) {
   };
   const owner = me?.role === "owner";
   const prices = canEditOrders(me?.role);
+  // Rates come separately: the database gives them only to the orders team and Accounts.
+  const { data: rates } = prices && data?.length ? await supabase.rpc("line_prices", { p_orders: data.map((o) => o.id) }) : { data: [] };
+  const rateOf = new Map(((rates ?? []) as LinePrice[]).map((r) => [r.id, r]));
+  const withRates = (o: { order_lines: { id: string; style: string; qty: number; factory_id: string | null }[] | null }): Line[] =>
+    (o.order_lines ?? []).map((l) => ({ ...l, buyer_rate: rateOf.get(l.id)?.buyer_rate ?? null, factory_rate: rateOf.get(l.id)?.factory_rate ?? null }));
 
   const built = (data ?? []).map((o) => {
-    const lines = (o.order_lines ?? []) as Line[];
+    const lines = withRates(o);
     const b = buyerById.get(o.buyer_id);
     const factoryNames = [...new Set(lines.map((l) => (l.factory_id ? factoryById.get(l.factory_id)?.name : null)).filter(Boolean))] as string[];
     const missingFactory = lines.some((l) => !l.factory_id);
     return {
       ...o,
+      lines,
       buyer: b ? (owner && b.realName ? `${b.code} · ${b.realName}` : b.code) : "",
       styles: lines.map((l) => l.style),
       pieces: lines.reduce((s, l) => s + l.qty, 0),
@@ -85,7 +91,7 @@ export default async function OrdersPage({ searchParams }: PageProps<"/">) {
   const open = built.filter((r) => r.status === "open");
   const late = all.filter(isLate).length;
   const noFactory = open.filter((r) => r.missingFactory).length;
-  const openMargin = prices ? planMargin(open.flatMap((r) => (r.order_lines ?? []) as Line[])) : null;
+  const openMargin = prices ? planMargin(open.flatMap((r) => r.lines)) : null;
 
   return (
     <>

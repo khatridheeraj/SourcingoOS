@@ -1,5 +1,7 @@
+import type { LinePrice } from "@/lib/margin";
 import Link from "next/link";
 import { canEditOrders, getMe } from "@/lib/auth";
+import { fetchAll } from "@/lib/fetch-all";
 import { loadBuyers, loadFactories } from "@/lib/data";
 import { day, daysBetween, dueDate, nowMs, planDueAt, PLAN_HOURS, qcKindLabel, SHIP_QC, TNA_STEPS, todayIST } from "@/lib/format";
 import { NO_COMPANY } from "@/lib/names";
@@ -27,7 +29,7 @@ export default async function TodayPage({ searchParams }: PageProps<"/today">) {
   const [{ data: orders }, buyers, factories] = await Promise.all([
     supabase
       .from("orders")
-      .select("id, order_no, buyer_id, buyer_po, ship_date, revised_ship_date, merchandiser_id, order_lines(id, style, factory_id, factory_rate)")
+      .select("id, order_no, buyer_id, buyer_po, ship_date, revised_ship_date, merchandiser_id, order_lines(id, style, factory_id)")
       .eq("company_id", companyId)
       .eq("status", "open")
       .is("order_lines.removed_at", null),
@@ -43,7 +45,7 @@ export default async function TodayPage({ searchParams }: PageProps<"/today">) {
   const [{ data: pos }, { data: stages }, { data: checks }] = ids.length
     ? await Promise.all([
         supabase.from("factory_pos").select("order_id, factory_id, plan_requested_on, plan_requested_at, factory_sent_at, released_at, buffer_days").in("order_id", ids),
-        supabase.from("line_stages").select("order_id, line_id, stage, label, planned_on, done_on, not_needed, factory_on").in("order_id", ids),
+        fetchAll((a, z) => supabase.from("line_stages").select("order_id, line_id, stage, label, planned_on, done_on, not_needed, factory_on").in("order_id", ids).order("id").range(a, z)),
         supabase.from("qc_checks").select("order_id, kind, result, checked_on").in("order_id", ids).is("cancelled_at", null)
           .order("checked_on", { ascending: false }).order("created_at", { ascending: false }),
       ])
@@ -58,6 +60,9 @@ export default async function TodayPage({ searchParams }: PageProps<"/today">) {
 
   // Factory POs: ask for the plan, chase it, release it. A factory that hasn't sent its TNA within 24 hours is critical.
   const now = nowMs();
+  // Factory rates come separately: the database gives them only to the orders team and Accounts.
+  const { data: rates } = canEditOrders(me?.role) && ids.length ? await supabase.rpc("line_prices", { p_orders: ids }) : { data: [] };
+  const hasRate = new Set(((rates ?? []) as LinePrice[]).filter((r) => r.factory_rate != null).map((r) => r.id));
   const poItems: Item[] = [];
   const critical: Item[] = [];
   for (const o of open) {
@@ -86,7 +91,7 @@ export default async function TodayPage({ searchParams }: PageProps<"/today">) {
       // The PO target date: delivery less the buffer. Targets after it block the release, as on the order page.
       const due = o.revised_ship_date || o.ship_date;
       const target = due && po?.buffer_days != null ? addDays(due, -po.buffer_days) : "";
-      const gaps = fl.filter((l) => l.factory_rate == null).length + noTarget
+      const gaps = fl.filter((l) => !hasRate.has(l.id)).length + noTarget
         + rows.filter((r) => !r.factory_on || (r.planned_on && r.factory_on > r.planned_on)).length
         + (target ? rows.filter((r) => r.planned_on && r.planned_on > target).length : 0);
       const dueAt = po?.plan_requested_at ? planDueAt(po.plan_requested_at) : null;
