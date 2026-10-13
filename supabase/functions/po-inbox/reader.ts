@@ -127,12 +127,21 @@ async function contentFor(files: PoFile[]) {
   return { blocks, skipped };
 }
 
+const OUR_DOMAINS = ["sourcingo.in"];
+export function sentByUs(from: string | null, subject: string | null): boolean {
+  const address = (from ?? "").toLowerCase().match(/[^\s<>"]+@([^\s<>"]+)/)?.[1] ?? "";
+  return OUR_DOMAINS.includes(address) && !/^\s*(fwd?|fw)\s*:/i.test(subject ?? "");
+}
+
 export async function readPos(
   key: string | null,
   files: PoFile[],
   email: { from: string | null; subject: string | null; body: string | null } | null,
   buyers: { code: string; name: string | null }[],
 ): Promise<PoReading[]> {
+  // An email the team sent themselves (a factory PO going out, a reply with an attachment) is never a
+  // buyer's PO. A forward is: a buyer's PO passed on by a colleague.
+  if (email && sentByUs(email.from, email.subject)) return [];
   if (!key) return readPosFree(files, email, buyers, excelRows);
   if (Deno.env.get("PO_READER_MOCK") === "1") return mockReading(files);
 

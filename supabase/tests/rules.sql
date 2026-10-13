@@ -595,6 +595,12 @@ exception when raise_exception then
   if sqlerrm not like 'Only the orders team%' then raise; end if;
 end $$;
 select pg_temp.as_user('00000000-0000-0000-0000-0000000000a9');
+-- Quality's done dates move the order's stage too (it can't edit orders itself).
+select public.save_line_stages(:'save_order', (select jsonb_agg(jsonb_build_object('line_id', id, 'stage', 'finishing', 'planned_on', '2026-11-05', 'done_on', '2026-11-06'))
+  from public.order_lines where removed_at is null));
+do $$ begin
+  if (select stage from public.orders) is distinct from 'finishing' then raise exception 'Quality''s done dates did not move the stage: %', (select stage from public.orders); end if;
+end $$;
 -- Quality enters done dates, but never the plan.
 select public.save_line_stages(:'save_order', jsonb_build_array(
   jsonb_build_object('line_id', (select id from public.order_lines where style = 'OZ-101'), 'stage', 'cutting', 'planned_on', '2030-01-01', 'done_on', '2026-11-12')));
