@@ -61,6 +61,7 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
   initial: Dates;
   initialExtras: Record<string, ExtraStep[]>;
   factoryDates: FactoryDates;
+  // Quality's latest result for each style's step, keyed "line:step".
   qc: Record<string, StepQc>;
 }) {
   const router = useRouter();
@@ -312,16 +313,7 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
                 <thead>
                   <tr>
                     <th>Style</th>
-                    {TNA_STEPS.map((s) => {
-                      const q = qc[s.key];
-                      return (
-                        <th key={s.key}>
-                          {s.label}
-                          {q && <div><span className={`chip ${q.result === "pass" ? "ok" : q.result === "fail" ? "bad" : "warn"}`}>
-                            QC {q.result} {day(q.checkedOn)}</span></div>}
-                        </th>
-                      );
-                    })}
+                    {TNA_STEPS.map((s) => <th key={s.key}>{s.label}</th>)}
                     <th>Extra steps</th>
                   </tr>
                 </thead>
@@ -353,11 +345,15 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
                           </div>
                         </div>
                       </td>
-                      {TNA_STEPS.map((s) => (
-                        <td key={s.key} className={`tna-cell ${verdict(get(l.id, s.key), today)?.cls ?? ""} ${get(l.id, s.key).not_needed ? "opacity-60" : ""}`}>
-                          {stepFields(l, s, released, target)}
-                        </td>
-                      ))}
+                      {TNA_STEPS.map((s) => {
+                        const q = qc[`${l.id}:${s.key}`];
+                        return (
+                          <td key={s.key} className={`tna-cell ${verdict(get(l.id, s.key), today)?.cls ?? ""} ${get(l.id, s.key).not_needed ? "opacity-60" : ""}`}>
+                            {q && <div className="mb-1"><span className={`chip ${q.result === "pass" ? "ok" : "bad"}`}>QC {q.result} {day(q.checkedOn)}</span></div>}
+                            {stepFields(l, s, released, target)}
+                          </td>
+                        );
+                      })}
                       <td className="tna-cell min-w-[190px]">
                         {(extras[l.id] ?? []).filter((x) => !get(l.id, x.stage).not_needed).map((x) => {
                           const v = verdict(get(l.id, x.stage), today);

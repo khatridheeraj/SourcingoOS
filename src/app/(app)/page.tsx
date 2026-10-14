@@ -4,6 +4,7 @@ import { canEditOrders, getMe } from "@/lib/auth";
 import { loadBuyers, loadFactories } from "@/lib/data";
 import { day, daysBetween, dueDate, money, qty, SHIP_QC, stageLabel, stageReached, STATUS, todayIST } from "@/lib/format";
 import { type LinePrice, marginCls, pct, planMargin } from "@/lib/margin";
+import { fetchAll } from "@/lib/fetch-all";
 import { createClient } from "@/lib/supabase/server";
 
 const TABS = [
@@ -37,12 +38,12 @@ export default async function OrdersPage({ searchParams }: PageProps<"/">) {
     loadBuyers(),
     loadFactories(),
     supabase.from("orders").select("status, ship_date, revised_ship_date").eq("company_id", companyId),
-    supabase.from("qc_checks").select("order_id, result").eq("company_id", companyId).in("kind", SHIP_QC).is("cancelled_at", null)
-      .order("checked_on", { ascending: false }).order("created_at", { ascending: false }),
+    fetchAll((a, z) => supabase.from("qc_checks").select("line_id, result").eq("company_id", companyId).in("kind", SHIP_QC).is("cancelled_at", null)
+      .order("checked_on", { ascending: false }).order("created_at", { ascending: false }).order("id").range(a, z)),
   ]);
-  // Each order's latest final QC result (rows come newest first).
+  // Each style's latest final QC result (rows come newest first).
   const finalQc = new Map<string, string>();
-  for (const c of qc ?? []) if (!finalQc.has(c.order_id)) finalQc.set(c.order_id, c.result);
+  for (const c of qc ?? []) if (!finalQc.has(c.line_id)) finalQc.set(c.line_id, c.result);
 
   const buyerById = new Map(buyers.map((b) => [b.id, b]));
   const factoryById = new Map(factories.map((f) => [f.id, f]));
@@ -75,7 +76,7 @@ export default async function OrdersPage({ searchParams }: PageProps<"/">) {
       factoryNames,
       missingFactory,
       due: dueDate(o),
-      needsQc: o.status === "open" && stageReached(o.stage, "packed") && finalQc.get(o.id) !== "pass",
+      needsQc: o.status === "open" && stageReached(o.stage, "packed") && lines.some((l) => finalQc.get(l.id) !== "pass"),
       late: isLate(o),
       lateBy: isLate(o) ? daysBetween(dueDate(o)!, today) : 0,
     };
