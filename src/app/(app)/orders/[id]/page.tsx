@@ -2,7 +2,8 @@ import type { LinePrice } from "@/lib/margin";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { canEditOrders, canEnterDone, canRecordQc, getMe } from "@/lib/auth";
-import { day, dayAt, qty, SHIP_QC, TNA_STEPS, todayIST } from "@/lib/format";
+import { day, dayAt, qty, TNA_STEPS, todayIST } from "@/lib/format";
+import { allStylesPassed, latestFor } from "@/lib/qc";
 import { createClient } from "@/lib/supabase/server";
 import { OrderForm } from "../order-form";
 import { OrderDispatch, type Dispatch, type DispatchFactory } from "./order-dispatch";
@@ -38,7 +39,7 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
   const [{ data: qc }, team, me, { data: lineStages }, { data: factoryPos }] = await Promise.all([
     supabase
       .from("qc_checks")
-      .select("id, kind, checked_on, result, pieces_checked, defects, notes, checked_by, cancelled_at, cancel_reason")
+      .select("id, line_id, kind, checked_on, result, pieces_checked, defects, notes, checked_by, cancelled_at, cancel_reason")
       .eq("order_id", id)
       .order("checked_on", { ascending: false })
       .order("created_at", { ascending: false }),
@@ -83,7 +84,8 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
     comments: (commentRows ?? []).filter((m) => m.qc_id === c.id)
       .map((m) => ({ id: m.id, body: m.body, at: m.created_at, by: (m.created_by && people.get(m.created_by)) || "Someone" })),
   }));
-  const finalPassed = checks.find((c) => SHIP_QC.includes(c.kind) && !c.cancelled_at)?.result === "pass";
+  const liveChecks = checks.filter((c) => !c.cancelled_at);
+  const finalPassed = allStylesPassed(liveChecks, lines.map((l) => l.id));
   const opts = await formOptions({ buyerId: o.buyer_id, factoryIds: lines.map((l) => l.factory_id).filter(Boolean) as string[] });
 
   const due = o.revised_ship_date || o.ship_date;
@@ -130,11 +132,11 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
       style: styleOf.get(l.line_id) ?? "", qty: l.qty, purchaseRate: Number(l.purchase_rate), saleRate: l.sale_rate == null ? null : Number(l.sale_rate),
     })),
   }));
-  // Quality's latest result for each TNA step it checks (checks are newest first).
+  // Quality's latest result for each style's TNA steps that it checks (checks are newest first).
   const stepQc: Record<string, StepQc> = {};
-  for (const s of TNA_STEPS) {
-    const c = checks.find((x) => !x.cancelled_at && s.qc?.includes(x.kind));
-    if (c) stepQc[s.key] = { result: c.result, checkedOn: c.checked_on, kind: c.kind };
+  for (const l of lines) for (const s of TNA_STEPS) {
+    const c = s.qc ? latestFor(liveChecks, l.id, s.qc) : undefined;
+    if (c) stepQc[`${l.id}:${s.key}`] = { result: c.result, checkedOn: c.checked_on, kind: c.kind };
   }
 
   return (
@@ -189,7 +191,8 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
         <OrderDispatch orderId={o.id} companyId={o.company_id} open={o.status === "open"} factories={dispatchFactories}
           dispatches={dispatches} now={Date.parse(new Date().toISOString())} today={todayIST()} />
       )}
-      <OrderQc orderId={o.id} companyId={o.company_id} open={o.status === "open"} canRecord={canRecordQc(me?.role)} today={todayIST()} checks={checks} finalPassed={finalPassed} />
+      <OrderQc orderId={o.id} companyId={o.company_id} open={o.status === "open"} canRecord={canRecordQc(me?.role)} today={todayIST()} checks={checks} finalPassed={finalPassed}
+        styles={lines.map((l) => ({ id: l.id, style: l.style, colour: str(l.colour), qty: l.qty }))} />
       {canEdit ? <OrderForm
         key={o.updated_at}
         initial={{

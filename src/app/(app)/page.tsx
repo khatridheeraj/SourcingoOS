@@ -3,6 +3,7 @@ import Link from "next/link";
 import { canEditOrders, getMe } from "@/lib/auth";
 import { loadBuyers, loadFactories } from "@/lib/data";
 import { day, daysBetween, dueDate, money, qty, SHIP_QC, stageLabel, stageReached, STATUS, todayIST } from "@/lib/format";
+import { allStylesPassed } from "@/lib/qc";
 import { type LinePrice, marginCls, pct, planMargin } from "@/lib/margin";
 import { createClient } from "@/lib/supabase/server";
 
@@ -37,12 +38,12 @@ export default async function OrdersPage({ searchParams }: PageProps<"/">) {
     loadBuyers(),
     loadFactories(),
     supabase.from("orders").select("status, ship_date, revised_ship_date").eq("company_id", companyId),
-    supabase.from("qc_checks").select("order_id, result").eq("company_id", companyId).in("kind", SHIP_QC).is("cancelled_at", null)
+    supabase.from("qc_checks").select("order_id, line_id, kind, result").eq("company_id", companyId).in("kind", SHIP_QC).is("cancelled_at", null)
       .order("checked_on", { ascending: false }).order("created_at", { ascending: false }),
   ]);
-  // Each order's latest final QC result (rows come newest first).
-  const finalQc = new Map<string, string>();
-  for (const c of qc ?? []) if (!finalQc.has(c.order_id)) finalQc.set(c.order_id, c.result);
+  // Each order's final QC checks, newest first; an order passes when every style's latest final passed.
+  const finalQc = new Map<string, NonNullable<typeof qc>>();
+  for (const c of qc ?? []) finalQc.set(c.order_id, [...(finalQc.get(c.order_id) ?? []), c]);
 
   const buyerById = new Map(buyers.map((b) => [b.id, b]));
   const factoryById = new Map(factories.map((f) => [f.id, f]));
@@ -75,7 +76,7 @@ export default async function OrdersPage({ searchParams }: PageProps<"/">) {
       factoryNames,
       missingFactory,
       due: dueDate(o),
-      needsQc: o.status === "open" && stageReached(o.stage, "packed") && finalQc.get(o.id) !== "pass",
+      needsQc: o.status === "open" && stageReached(o.stage, "packed") && !allStylesPassed(finalQc.get(o.id) ?? [], lines.map((l) => l.id)),
       late: isLate(o),
       lateBy: isLate(o) ? daysBetween(dueDate(o)!, today) : 0,
     };

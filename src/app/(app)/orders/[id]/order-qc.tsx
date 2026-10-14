@@ -3,11 +3,12 @@
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { day, QC_KINDS, qcKindLabel, SHIP_QC } from "@/lib/format";
+import { latestFor } from "@/lib/qc";
 import { REPORT_ACCEPT, uploadPhotos, uploadReports } from "@/lib/photos";
 import { addQcComment, addQcFiles, cancelQc, recordQc, removeQcPhoto, type QcFile, type QcInput } from "../actions";
 
 export type QcCheck = {
-  id: string; kind: string; checked_on: string; result: string; pieces_checked: number | null; defects: number;
+  id: string; line_id: string | null; kind: string; checked_on: string; result: string; pieces_checked: number | null; defects: number;
   notes: string | null; by: string; cancelled_at: string | null; cancel_reason: string | null;
   photos: { id: string; url: string }[];
   reports: { id: string; url: string; name: string }[];
@@ -27,9 +28,12 @@ async function upload(folder: string, photos: File[], reports: File[]): Promise<
   ];
 }
 
-// Sampling and production inspections on this order. Saved checks are cancelled, never edited.
-// The Quality team records them with proof; everyone else can read them and comment.
-export function OrderQc({ orderId, companyId, open, canRecord, today, checks, finalPassed }: {
+export type QcStyle = { id: string; style: string; colour: string; qty: number };
+
+// Sampling and production inspections, kept style by style: one PO can carry many styles and each has its own
+// QC record. Saved checks are cancelled, never edited. The Quality team records them with proof; everyone else
+// can read them and comment.
+export function OrderQc({ orderId, companyId, open, canRecord, today, checks, finalPassed, styles }: {
   orderId: string;
   companyId: string;
   open: boolean;
@@ -37,9 +41,10 @@ export function OrderQc({ orderId, companyId, open, canRecord, today, checks, fi
   today: string;
   checks: QcCheck[];
   finalPassed: boolean;
+  styles: QcStyle[];
 }) {
   const router = useRouter();
-  const blank: QcInput = { kind: "", checked_on: today, result: "", pieces_checked: "", defects: "", notes: "" };
+  const blank: QcInput = { line_id: styles.length === 1 ? styles[0].id : "", kind: "", checked_on: today, result: "", pieces_checked: "", defects: "", notes: "" };
   const [adding, setAdding] = useState(false);
   const [q, setQ] = useState(blank);
   const [photos, setPhotos] = useState<File[]>([]);
@@ -52,6 +57,10 @@ export function OrderQc({ orderId, companyId, open, canRecord, today, checks, fi
   const set = (k: keyof QcInput, v: string) => setQ({ ...q, [k]: v });
   const can = open && canRecord;
 
+  function startFor(lineId: string) {
+    setQ({ ...blank, line_id: lineId }); setAdding(true); setError("");
+  }
+
   function reset() {
     setAdding(false); setError(""); setQ(blank); setPhotos([]); setReports([]);
   }
@@ -60,6 +69,7 @@ export function OrderQc({ orderId, companyId, open, canRecord, today, checks, fi
     e.preventDefault();
     setError("");
     setNotice("");
+    if (styles.length && !q.line_id) return setError("Pick the style this check is for.");
     if (!q.kind) return setError("Pick the type of check.");
     if (!q.result) return setError("Pick Pass or Fail.");
     if (!photos.length) return setError("Add at least one photo as proof of the check.");
@@ -130,22 +140,43 @@ export function OrderQc({ orderId, companyId, open, canRecord, today, checks, fi
   }
 
   const live = checks.filter((c) => !c.cancelled_at);
+  const styleFinal = (id: string) => latestFor(live, id, SHIP_QC)?.result;
+  const passedStyles = styles.filter((st) => styleFinal(st.id) === "pass").length;
   const lastFinal = live.find((c) => SHIP_QC.includes(c.kind));
+  // Each style's own checks. Checks saved before style-wise QC have no style and are shown for the whole PO.
+  const sections = [
+    ...styles.map((st) => ({ key: st.id, style: st as QcStyle | null, list: checks.filter((c) => c.line_id === st.id) })),
+    { key: "po", style: null, list: checks.filter((c) => !c.line_id) },
+  ].filter((x) => x.style || x.list.length);
 
   return (
     <section className="panel">
       <div className="row mb-3">
         <h2 className="font-bold text-base">Quality checks</h2>
-        {finalPassed ? <span className="chip ok">Final QC passed</span>
+        {finalPassed ? <span className="chip ok">Final QC passed{styles.length > 1 ? " for every style" : ""}</span>
+          : styles.length > 1 && passedStyles ? <span className="chip warn">Final QC passed for {passedStyles} of {styles.length} styles</span>
           : lastFinal ? <span className="chip bad">Final QC failed</span>
           : open ? <span className="chip warn">Final QC not done</span> : null}
-        {can && !adding && <button type="button" className="btn sm ml-auto" onClick={() => setAdding(true)}>Record QC</button>}
+        {can && !adding && <button type="button" className="btn sm ml-auto" onClick={() => startFor(styles.length === 1 ? styles[0].id : "")}>Record QC</button>}
       </div>
       {notice && <p className="mb-3 text-[13px] font-semibold text-bad" role="status">{notice}</p>}
-      {open && !finalPassed && <p className="muted mb-3 text-[13px]">The order can be marked Shipped once its latest final QC has passed.{!canRecord && " The Quality team records QC; you can comment on any check."}</p>}
+      {open && !finalPassed && <p className="muted mb-3 text-[13px]">Each style keeps its own QC. The order can be marked Shipped once every style&apos;s latest final QC has passed.{!canRecord && " The Quality team records QC; you can comment on any check."}</p>}
 
       {adding && (
         <form onSubmit={submit} className="mb-4 rounded-[10px] border border-line p-3">
+          {styles.length > 0 && (
+            <div className="field mb-3">
+              <span>Style <i>*</i></span>
+              <div className="steps" role="group" aria-label="Style">
+                {styles.map((st) => (
+                  <button key={st.id} type="button" aria-pressed={q.line_id === st.id} onClick={() => set("line_id", st.id)}>
+                    {st.style}{st.colour ? ` · ${st.colour}` : ""}
+                  </button>
+                ))}
+              </div>
+              <small>Every style has its own QC record, with its own photos and reports.</small>
+            </div>
+          )}
           <div className="field">
             <span>Type of check <i>*</i></span>
             <div className="steps" role="group" aria-label="Type of check">
@@ -201,11 +232,26 @@ export function OrderQc({ orderId, companyId, open, canRecord, today, checks, fi
         </form>
       )}
 
-      {checks.length === 0 ? (
-        !adding && <p className="muted text-[13px]">No QC recorded yet.</p>
-      ) : (
-        <ul className="flex flex-col gap-2">
-          {checks.map((c) => {
+      {styles.length === 0 && checks.length === 0 && !adding && <p className="muted text-[13px]">No QC recorded yet.</p>}
+      <div className="flex flex-col gap-4">
+        {sections.map((sec) => {
+          const fin = sec.style ? styleFinal(sec.style.id) : undefined;
+          return (
+            <div key={sec.key}>
+              <div className="row mb-2">
+                {sec.style ? (
+                  <>
+                    <b className="code">{sec.style.style}</b>
+                    <span className="muted text-xs">{[sec.style.colour, `${sec.style.qty} pcs`].filter(Boolean).join(" · ")}</span>
+                    {fin === "pass" ? <span className="chip ok">Final passed</span> : fin === "fail" ? <span className="chip bad">Final failed</span>
+                      : open ? <span className="chip warn">Final not done</span> : null}
+                    {can && !adding && <button type="button" className="btn sm ml-auto" onClick={() => startFor(sec.style!.id)}>Record QC for {sec.style.style}</button>}
+                  </>
+                ) : <b>Whole PO <span className="muted text-xs font-normal">(recorded before style-wise QC, counts for every style)</span></b>}
+              </div>
+              {sec.list.length === 0 ? <p className="muted text-[13px]">No QC recorded for this style yet.</p> : (
+                <ul className="flex flex-col gap-2">
+          {sec.list.map((c) => {
             const editable = can && !c.cancelled_at;
             return (
               <li key={c.id} className={`rounded-[10px] border border-line p-3 text-[13px] ${c.cancelled_at ? "opacity-60" : ""}`}>
@@ -289,7 +335,11 @@ export function OrderQc({ orderId, companyId, open, canRecord, today, checks, fi
             );
           })}
         </ul>
-      )}
+              )}
+            </div>
+          );
+        })}
+      </div>
     </section>
   );
 }
