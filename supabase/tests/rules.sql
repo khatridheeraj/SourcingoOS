@@ -267,15 +267,16 @@ end $$;
 -- A check is recorded with its proof in one step: no photo, no check. Reports ride along.
 do $$
 declare v_co text := (select id::text from public.companies where name = 'Sourcingo'); v_id uuid := gen_random_uuid(); v_order uuid := (select id from public.orders);
+        v_line uuid := (select id from public.order_lines where order_id = (select id from public.orders) order by position limit 1);
 begin
   begin
-    perform public.record_qc(v_order, jsonb_build_object('kind', 'greige', 'result', 'pass'),
+    perform public.record_qc(v_order, jsonb_build_object('line_id', v_line, 'kind', 'greige', 'result', 'pass'),
       jsonb_build_array(jsonb_build_object('path', v_co || '/o/qc/x/r.pdf', 'kind', 'report', 'file_name', 'Greige report.pdf')));
     raise exception 'a check without a photo was accepted';
   exception when raise_exception then
     if sqlerrm not like 'Add at least one photo%' then raise; end if;
   end;
-  perform public.record_qc(v_order, jsonb_build_object('id', v_id, 'kind', 'greige', 'result', 'pass', 'pieces_checked', '20'),
+  perform public.record_qc(v_order, jsonb_build_object('id', v_id, 'line_id', v_line, 'kind', 'greige', 'result', 'pass', 'pieces_checked', '20'),
     jsonb_build_array(jsonb_build_object('path', v_co || '/' || v_order || '/qc/' || v_id || '/1.jpg', 'kind', 'photo'),
                       jsonb_build_object('path', v_co || '/' || v_order || '/qc/' || v_id || '/2.pdf', 'kind', 'report', 'file_name', 'Greige report.pdf')));
   if (select count(*) from public.qc_photos where qc_id = v_id) <> 2 then raise exception 'check files not saved'; end if;

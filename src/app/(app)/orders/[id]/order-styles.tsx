@@ -312,16 +312,7 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
                 <thead>
                   <tr>
                     <th>Style</th>
-                    {TNA_STEPS.map((s) => {
-                      const q = qc[s.key];
-                      return (
-                        <th key={s.key}>
-                          {s.label}
-                          {q && <div><span className={`chip ${q.result === "pass" ? "ok" : q.result === "fail" ? "bad" : "warn"}`}>
-                            QC {q.result} {day(q.checkedOn)}</span></div>}
-                        </th>
-                      );
-                    })}
+                    {TNA_STEPS.map((s) => <th key={s.key}>{s.label}</th>)}
                     <th>Extra steps</th>
                   </tr>
                 </thead>
@@ -356,6 +347,10 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
                       {TNA_STEPS.map((s) => (
                         <td key={s.key} className={`tna-cell ${verdict(get(l.id, s.key), today)?.cls ?? ""} ${get(l.id, s.key).not_needed ? "opacity-60" : ""}`}>
                           {stepFields(l, s, released, target)}
+                          {qc[`${l.id}:${s.key}`] && (() => {
+                            const q = qc[`${l.id}:${s.key}`];
+                            return <div className="mt-1"><span className={`chip ${q.result === "pass" ? "ok" : "bad"}`}>QC {q.result} {day(q.checkedOn)}</span></div>;
+                          })()}
                         </td>
                       ))}
                       <td className="tna-cell min-w-[190px]">
