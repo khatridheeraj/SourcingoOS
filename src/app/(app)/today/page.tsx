@@ -46,8 +46,8 @@ export default async function TodayPage({ searchParams }: PageProps<"/today">) {
     ? await Promise.all([
         supabase.from("factory_pos").select("order_id, factory_id, plan_requested_on, plan_requested_at, factory_sent_at, released_at, buffer_days").in("order_id", ids),
         fetchAll((a, z) => supabase.from("line_stages").select("order_id, line_id, stage, label, planned_on, done_on, not_needed, factory_on").in("order_id", ids).order("id").range(a, z)),
-        supabase.from("qc_checks").select("order_id, kind, result, checked_on").in("order_id", ids).is("cancelled_at", null)
-          .order("checked_on", { ascending: false }).order("created_at", { ascending: false }),
+        fetchAll((a, z) => supabase.from("qc_checks").select("line_id, kind, result, checked_on").in("order_id", ids).is("cancelled_at", null)
+          .order("checked_on", { ascending: false }).order("created_at", { ascending: false }).order("id").range(a, z)),
       ])
     : [{ data: [] }, { data: [] }, { data: [] }];
 
@@ -122,15 +122,16 @@ export default async function TodayPage({ searchParams }: PageProps<"/today">) {
   poItems.sort((a, b) => a.sort.localeCompare(b.sort));
 
   // TNA steps not done, by order and step: overdue first, then this week.
-  const steps = new Map<string, { o: (typeof open)[number]; stage: string; date: string; styles: string[] }>();
+  const steps = new Map<string, { o: (typeof open)[number]; stage: string; date: string; styles: string[]; lines: { id: string; style: string }[] }>();
   for (const s of stages ?? []) {
     if (s.done_on || s.not_needed || !s.planned_on || s.planned_on > week) continue;
     const o = open.find((x) => x.id === s.order_id);
     const line = o?.order_lines?.find((l) => l.id === s.line_id);
     if (!o || !line) continue;
     const k = `${o.id}:${s.stage}`;
-    const cur = steps.get(k) ?? { o, stage: s.stage, date: s.planned_on, styles: [] as string[] };
+    const cur = steps.get(k) ?? { o, stage: s.stage, date: s.planned_on, styles: [] as string[], lines: [] as { id: string; style: string }[] };
     cur.styles.push(line.style);
+    cur.lines.push(line);
     if (s.planned_on < cur.date) cur.date = s.planned_on;
     steps.set(k, cur);
   }
@@ -141,17 +142,18 @@ export default async function TodayPage({ searchParams }: PageProps<"/today">) {
   const overdue = stepItems.filter((i) => i.chip.cls === "bad");
   const thisWeek = stepItems.filter((i) => i.chip.cls !== "bad");
 
-  // QC coming up: a TNA step Quality checks, planned within a week, with no passed check of that kind yet.
-  const latest = (orderId: string, kinds: string[]) => (checks ?? []).find((c) => c.order_id === orderId && kinds.includes(c.kind));
+  // QC coming up: a TNA step Quality checks, planned within a week, for the styles without a passed check of that kind yet.
+  const latest = (lineId: string, kinds: string[]) => (checks ?? []).find((c) => c.line_id === lineId && kinds.includes(c.kind));
   const qcItems: Item[] = [];
   for (const [k, v] of steps) {
     const kinds = TNA_STEPS.find((s) => s.key === v.stage)?.qc;
     if (!kinds) continue;
-    const last = latest(v.o.id, kinds);
-    if (last?.result === "pass") continue;
+    const due = v.lines.filter((l) => latest(l.id, kinds)?.result !== "pass");
+    if (!due.length) continue;
+    const failed = due.map((l) => latest(l.id, kinds)).filter((c) => c?.result === "fail");
     qcItems.push({
       key: `qc:${k}`, orderId: v.o.id, title: `${label(v.o)} · ${kinds.map(qcKindLabel).join(" or ")} QC`,
-      detail: `${v.styles.join(", ")} · ${stepLabel(v.stage).toLowerCase()} planned ${day(v.date)}${last ? ` · last check failed ${day(last.checked_on)}` : ""}`,
+      detail: `${due.map((l) => l.style).join(", ")} · ${stepLabel(v.stage).toLowerCase()} planned ${day(v.date)}${failed.length ? ` · ${failed.length === 1 ? "a style's" : `${failed.length} styles'`} last check failed` : ""}`,
       chip: when(v.date, today), sort: v.date + v.o.order_no,
     });
   }
@@ -160,8 +162,9 @@ export default async function TodayPage({ searchParams }: PageProps<"/today">) {
   // Shipping within two weeks without a passed final QC.
   const shipItems: Item[] = open.flatMap((o) => {
     const due = dueDate(o);
-    if (!due || due > addDays(today, 14) || latest(o.id, SHIP_QC)?.result === "pass") return [];
-    return [{ key: `ship:${o.id}`, orderId: o.id, title: label(o), detail: `Ships ${day(due)}, final QC not passed yet`, chip: when(due, today), sort: due + o.order_no }];
+    const notPassed = (o.order_lines ?? []).filter((l) => latest(l.id, SHIP_QC)?.result !== "pass");
+    if (!due || due > addDays(today, 14) || !notPassed.length) return [];
+    return [{ key: `ship:${o.id}`, orderId: o.id, title: label(o), detail: `Ships ${day(due)}, final QC not passed yet for ${notPassed.map((l) => l.style).join(", ")}`, chip: when(due, today), sort: due + o.order_no }];
   }).sort((a, b) => a.sort.localeCompare(b.sort));
 
   const team = canEditOrders(me?.role);

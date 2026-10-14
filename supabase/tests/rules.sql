@@ -161,7 +161,7 @@ end $$;
 
 -- QC belongs to the Quality team: a merchandiser can't record it.
 do $$ begin
-  insert into public.qc_checks (order_id, kind, result) select id, 'inline', 'pass' from public.orders;
+  insert into public.qc_checks (order_id, line_id, kind, result) select order_id, id, 'inline', 'pass' from public.order_lines limit 1;
   raise exception 'a merchandiser recorded QC';
 exception when insufficient_privilege then null;
 end $$;
@@ -202,18 +202,29 @@ do $$ begin
   exception when insufficient_privilege then null;
   end;
 end $$;
-insert into public.qc_checks (order_id, kind, result, pieces_checked, defects) values (:'save_order', 'inline', 'pass', 50, 2);
-insert into public.qc_checks (order_id, kind, result, pieces_checked, defects, notes, checked_on)
-  values (:'save_order', 'final', 'fail', 80, 9, 'Loose threads, wrong wash care label', current_date - 1);
+-- Every check is for one style of the order.
+select id as l101 from public.order_lines where style = 'OZ-101' \gset
+select id as l102 from public.order_lines where style = 'OZ-102' \gset
+do $$ begin
+  begin
+    insert into public.qc_checks (order_id, kind, result) select id, 'inline', 'pass' from public.orders;
+    raise exception 'a check without a style was accepted';
+  exception when raise_exception then
+    if sqlerrm not like 'Pick the style%' then raise; end if;
+  end;
+end $$;
+insert into public.qc_checks (order_id, line_id, kind, result, pieces_checked, defects) values (:'save_order', :'l101', 'inline', 'pass', 50, 2);
+insert into public.qc_checks (order_id, line_id, kind, result, pieces_checked, defects, notes, checked_on)
+  values (:'save_order', :'l101', 'final', 'fail', 80, 9, 'Loose threads, wrong wash care label', current_date - 1);
 do $$ begin
   if public.final_qc_passed((select id from public.orders)) then raise exception 'a failed final QC counted as passed'; end if;
   begin
-    insert into public.qc_checks (order_id, kind, result) select id, 'final', 'fail' from public.orders;
+    insert into public.qc_checks (order_id, line_id, kind, result) select order_id, id, 'final', 'fail' from public.order_lines where style = 'OZ-101';
     raise exception 'a failed check without notes was accepted';
   exception when check_violation then null;
   end;
   begin
-    insert into public.qc_checks (order_id, kind, result, pieces_checked, defects) select id, 'final', 'pass', 10, 11 from public.orders;
+    insert into public.qc_checks (order_id, line_id, kind, result, pieces_checked, defects) select order_id, id, 'final', 'pass', 10, 11 from public.order_lines where style = 'OZ-101';
     raise exception 'more defects than pieces checked was accepted';
   exception when check_violation then null;
   end;
@@ -224,11 +235,15 @@ do $$ begin
     if sqlerrm not like '%can''t be changed%' then raise; end if;
   end;
 end $$;
-insert into public.qc_checks (order_id, kind, result, pieces_checked, defects) values (:'save_order', 'midline', 'pass', 40, 0);
+insert into public.qc_checks (order_id, line_id, kind, result, pieces_checked, defects) values (:'save_order', :'l101', 'midline', 'pass', 40, 0);
 do $$ begin
   if public.final_qc_passed((select id from public.orders)) then raise exception 'a mid-line pass counted as the final'; end if;
 end $$;
-insert into public.qc_checks (order_id, kind, result, pieces_checked, defects) values (:'save_order', 'recheck', 'pass', 80, 1);
+insert into public.qc_checks (order_id, line_id, kind, result, pieces_checked, defects) values (:'save_order', :'l101', 'recheck', 'pass', 80, 1);
+do $$ begin
+  if public.final_qc_passed((select id from public.orders)) then raise exception 'one style passing passed the whole order'; end if;
+end $$;
+insert into public.qc_checks (order_id, line_id, kind, result, pieces_checked, defects) values (:'save_order', :'l102', 'final', 'pass', 60, 0);
 do $$ begin
   if not public.final_qc_passed((select id from public.orders)) then raise exception 'the passing re-check did not count'; end if;
   -- Cancelling the passing check puts the order back to needing a final QC.
@@ -240,14 +255,14 @@ do $$ begin
   exception when raise_exception then
     if sqlerrm not like '%already cancelled%' then raise; end if;
   end;
-  if (select count(*) from public.history where table_name = 'qc_checks') <> 5 then raise exception 'QC history not kept'; end if;
+  if (select count(*) from public.history where table_name = 'qc_checks') <> 6 then raise exception 'QC history not kept'; end if;
 end $$;
-insert into public.qc_checks (order_id, kind, result, pieces_checked, defects) values (:'save_order', 'final', 'pass', 80, 0);
+insert into public.qc_checks (order_id, line_id, kind, result, pieces_checked, defects) values (:'save_order', :'l101', 'final', 'pass', 80, 0);
 
 -- QC photos sit under the company's own folder and are taken off a check, never deleted.
 insert into public.qc_photos (qc_id, path)
   select id, (select id from public.companies where name = 'Sourcingo') || '/' || order_id || '/qc/' || id || '/a.jpg'
-  from public.qc_checks where cancelled_at is null and kind = 'final' and result = 'pass';
+  from public.qc_checks where cancelled_at is null and kind = 'final' and result = 'pass' and line_id = :'l101';
 do $$ begin
   begin
     insert into public.qc_photos (qc_id, path) select id, 'cccccccc-0000-0000-0000-000000000002/x/qc/y/b.jpg' from public.qc_checks limit 1;
@@ -267,15 +282,30 @@ end $$;
 -- A check is recorded with its proof in one step: no photo, no check. Reports ride along.
 do $$
 declare v_co text := (select id::text from public.companies where name = 'Sourcingo'); v_id uuid := gen_random_uuid(); v_order uuid := (select id from public.orders);
+  v_line uuid := (select id from public.order_lines where style = 'OZ-101');
 begin
   begin
     perform public.record_qc(v_order, jsonb_build_object('kind', 'greige', 'result', 'pass'),
+      jsonb_build_array(jsonb_build_object('path', v_co || '/o/qc/x/1.jpg', 'kind', 'photo')));
+    raise exception 'a check without a style was accepted';
+  exception when raise_exception then
+    if sqlerrm not like 'Pick the style%' then raise; end if;
+  end;
+  begin
+    perform public.record_qc(v_order, jsonb_build_object('kind', 'greige', 'result', 'pass', 'line_id', gen_random_uuid()),
+      jsonb_build_array(jsonb_build_object('path', v_co || '/o/qc/x/1.jpg', 'kind', 'photo')));
+    raise exception 'a check for a style not on the order was accepted';
+  exception when raise_exception then
+    if sqlerrm not like 'That style isn''t on this order%' then raise; end if;
+  end;
+  begin
+    perform public.record_qc(v_order, jsonb_build_object('kind', 'greige', 'result', 'pass', 'line_id', v_line),
       jsonb_build_array(jsonb_build_object('path', v_co || '/o/qc/x/r.pdf', 'kind', 'report', 'file_name', 'Greige report.pdf')));
     raise exception 'a check without a photo was accepted';
   exception when raise_exception then
     if sqlerrm not like 'Add at least one photo%' then raise; end if;
   end;
-  perform public.record_qc(v_order, jsonb_build_object('id', v_id, 'kind', 'greige', 'result', 'pass', 'pieces_checked', '20'),
+  perform public.record_qc(v_order, jsonb_build_object('id', v_id, 'line_id', v_line, 'kind', 'greige', 'result', 'pass', 'pieces_checked', '20'),
     jsonb_build_array(jsonb_build_object('path', v_co || '/' || v_order || '/qc/' || v_id || '/1.jpg', 'kind', 'photo'),
                       jsonb_build_object('path', v_co || '/' || v_order || '/qc/' || v_id || '/2.pdf', 'kind', 'report', 'file_name', 'Greige report.pdf')));
   if (select count(*) from public.qc_photos where qc_id = v_id) <> 2 then raise exception 'check files not saved'; end if;
@@ -309,7 +339,7 @@ do $$ begin
   if (select count(*) from public.qc_photos where removed_at is not null) <> 1 then raise exception 'a merchandiser changed a QC photo'; end if;
   update public.qc_checks set cancelled_at = now(), cancel_reason = 'x';
   if exists (select 1 from public.qc_checks where cancel_reason = 'x') then raise exception 'a merchandiser cancelled QC'; end if;
-  if (select count(*) from public.qc_checks) <> 6 then raise exception 'a merchandiser should still see QC'; end if;
+  if (select count(*) from public.qc_checks) <> 7 then raise exception 'a merchandiser should still see QC'; end if;
 end $$;
 
 -- Editing keeps the lines it is given (same id), drops the ones left out, and adds new ones in order.

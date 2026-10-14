@@ -7,7 +7,7 @@ import { REPORT_ACCEPT, uploadPhotos, uploadReports } from "@/lib/photos";
 import { addQcComment, addQcFiles, cancelQc, recordQc, removeQcPhoto, type QcFile, type QcInput } from "../actions";
 
 export type QcCheck = {
-  id: string; kind: string; checked_on: string; result: string; pieces_checked: number | null; defects: number;
+  id: string; line_id: string; kind: string; checked_on: string; result: string; pieces_checked: number | null; defects: number;
   notes: string | null; by: string; cancelled_at: string | null; cancel_reason: string | null;
   photos: { id: string; url: string }[];
   reports: { id: string; url: string; name: string }[];
@@ -27,9 +27,11 @@ async function upload(folder: string, photos: File[], reports: File[]): Promise<
   ];
 }
 
-// Sampling and production inspections on this order. Saved checks are cancelled, never edited.
+export type QcStyle = { id: string; style: string; colour: string; qty: number };
+
+// Sampling and production inspections, kept separately for each style of the order. Saved checks are cancelled, never edited.
 // The Quality team records them with proof; everyone else can read them and comment.
-export function OrderQc({ orderId, companyId, open, canRecord, today, checks, finalPassed }: {
+export function OrderQc({ orderId, companyId, open, canRecord, today, checks, finalPassed, styles }: {
   orderId: string;
   companyId: string;
   open: boolean;
@@ -37,9 +39,10 @@ export function OrderQc({ orderId, companyId, open, canRecord, today, checks, fi
   today: string;
   checks: QcCheck[];
   finalPassed: boolean;
+  styles: QcStyle[];
 }) {
   const router = useRouter();
-  const blank: QcInput = { kind: "", checked_on: today, result: "", pieces_checked: "", defects: "", notes: "" };
+  const blank: QcInput = { line_id: "", kind: "", checked_on: today, result: "", pieces_checked: "", defects: "", notes: "" };
   const [adding, setAdding] = useState(false);
   const [q, setQ] = useState(blank);
   const [photos, setPhotos] = useState<File[]>([]);
@@ -52,6 +55,10 @@ export function OrderQc({ orderId, companyId, open, canRecord, today, checks, fi
   const set = (k: keyof QcInput, v: string) => setQ({ ...q, [k]: v });
   const can = open && canRecord;
 
+  function startFor(lineId: string) {
+    setQ({ ...blank, line_id: lineId }); setPhotos([]); setReports([]); setError(""); setAdding(true);
+  }
+
   function reset() {
     setAdding(false); setError(""); setQ(blank); setPhotos([]); setReports([]);
   }
@@ -60,6 +67,7 @@ export function OrderQc({ orderId, companyId, open, canRecord, today, checks, fi
     e.preventDefault();
     setError("");
     setNotice("");
+    if (!q.line_id) return setError("Pick the style this check is for.");
     if (!q.kind) return setError("Pick the type of check.");
     if (!q.result) return setError("Pick Pass or Fail.");
     if (!photos.length) return setError("Add at least one photo as proof of the check.");
@@ -129,83 +137,104 @@ export function OrderQc({ orderId, companyId, open, canRecord, today, checks, fi
     });
   }
 
-  const live = checks.filter((c) => !c.cancelled_at);
-  const lastFinal = live.find((c) => SHIP_QC.includes(c.kind));
+  // Each style's latest final QC or re-check (checks come newest first).
+  const finalOf = (lineId: string) => checks.find((c) => c.line_id === lineId && !c.cancelled_at && SHIP_QC.includes(c.kind));
+  const passedCount = styles.filter((st) => finalOf(st.id)?.result === "pass").length;
+  const anyFailed = styles.some((st) => finalOf(st.id)?.result === "fail");
+  // Checks on styles that were later taken off the order stay visible in their own group.
+  const gone = checks.filter((c) => !styles.some((st) => st.id === c.line_id));
+  const groups = gone.length ? [...styles, { id: "", style: "Styles taken off the order", colour: "", qty: 0 }] : styles;
+  const styleName = (id: string) => styles.find((st) => st.id === id)?.style ?? "";
+
+  const form = (
+    <form onSubmit={submit} className="mb-4 rounded-[10px] border border-line p-3">
+      <p className="mb-3 text-[13px]">New check for <b className="code">{styleName(q.line_id)}</b>. Its photos and reports belong to this style only.</p>
+      <div className="field">
+        <span>Type of check <i>*</i></span>
+        <div className="steps" role="group" aria-label="Type of check">
+          {QC_KINDS.map((k) => (
+            <button key={k.key} type="button" aria-pressed={q.kind === k.key} onClick={() => set("kind", k.key)}>{k.label}</button>
+          ))}
+        </div>
+        <small>Greige to size set: samples and approvals. Inline and mid-line: during production. Final before shipping; re-check after a failed final.</small>
+      </div>
+      <div className="fgrid mt-3">
+        <div className="field">
+          <span>Result <i>*</i></span>
+          <div className="steps" role="group" aria-label="Result">
+            <button type="button" aria-pressed={q.result === "pass"} onClick={() => set("result", "pass")}>Pass</button>
+            <button type="button" aria-pressed={q.result === "fail"} onClick={() => set("result", "fail")}>Fail</button>
+          </div>
+        </div>
+        <label className="field">
+          <span>Date checked</span>
+          <input className="inp" type="date" max={today} value={q.checked_on} onChange={(e) => set("checked_on", e.target.value)} />
+        </label>
+        <label className="field">
+          <span>Pieces checked</span>
+          <input className="inp" inputMode="numeric" value={q.pieces_checked} onChange={(e) => set("pieces_checked", e.target.value)} />
+        </label>
+        <label className="field">
+          <span>Defects found</span>
+          <input className="inp" inputMode="numeric" value={q.defects} placeholder="0" onChange={(e) => set("defects", e.target.value)} />
+        </label>
+      </div>
+      <label className="field mt-3">
+        <span>Notes{q.result === "fail" && <i> *</i>}</span>
+        <textarea className="inp" rows={2} value={q.notes} onChange={(e) => set("notes", e.target.value)}
+          placeholder={q.result === "fail" ? "What failed, and what the factory must fix" : "Anything worth remembering"} />
+      </label>
+      <div className="fgrid mt-3">
+        <label className="field">
+          <span>Photos <i>*</i></span>
+          <input className="inp" type="file" accept="image/*" multiple onChange={(e) => setPhotos([...(e.target.files ?? [])])} />
+          <small>{photos.length ? `${photos.length} ${photos.length === 1 ? "photo" : "photos"} ready` : "At least one photo as proof. Add as many as you need."}</small>
+        </label>
+        <label className="field">
+          <span>Reports</span>
+          <input className="inp" type="file" accept={REPORT_ACCEPT} multiple onChange={(e) => setReports([...(e.target.files ?? [])])} />
+          <small>{reports.length ? `${reports.length} ${reports.length === 1 ? "report" : "reports"} ready` : "Inspection reports: PDF, Excel, Word or CSV, up to 10 MB each."}</small>
+        </label>
+      </div>
+      <div className="row mt-3">
+        <button className="btn primary" disabled={pending}>{pending ? (busy ? "Uploading proof…" : "Saving…") : `Save QC${q.line_id ? ` for ${styleName(q.line_id)}` : ""}`}</button>
+        <button type="button" className="btn" onClick={reset}>Close</button>
+        {error && <span className="text-[13px] font-semibold text-bad" role="alert">{error}</span>}
+      </div>
+    </form>
+  );
 
   return (
     <section className="panel">
       <div className="row mb-3">
         <h2 className="font-bold text-base">Quality checks</h2>
-        {finalPassed ? <span className="chip ok">Final QC passed</span>
-          : lastFinal ? <span className="chip bad">Final QC failed</span>
-          : open ? <span className="chip warn">Final QC not done</span> : null}
-        {can && !adding && <button type="button" className="btn sm ml-auto" onClick={() => setAdding(true)}>Record QC</button>}
+        {finalPassed ? <span className="chip ok">Final QC passed for every style</span>
+          : anyFailed ? <span className="chip bad">Final QC failed on a style</span>
+          : open ? <span className="chip warn">Final QC passed for {passedCount} of {styles.length} {styles.length === 1 ? "style" : "styles"}</span> : null}
       </div>
       {notice && <p className="mb-3 text-[13px] font-semibold text-bad" role="status">{notice}</p>}
-      {open && !finalPassed && <p className="muted mb-3 text-[13px]">The order can be marked Shipped once its latest final QC has passed.{!canRecord && " The Quality team records QC; you can comment on any check."}</p>}
+      {open && !finalPassed && <p className="muted mb-3 text-[13px]">Each style has its own QC. The order can be marked Shipped once every style&apos;s latest final QC has passed.{!canRecord && " The Quality team records QC; you can comment on any check."}</p>}
 
-      {adding && (
-        <form onSubmit={submit} className="mb-4 rounded-[10px] border border-line p-3">
-          <div className="field">
-            <span>Type of check <i>*</i></span>
-            <div className="steps" role="group" aria-label="Type of check">
-              {QC_KINDS.map((k) => (
-                <button key={k.key} type="button" aria-pressed={q.kind === k.key} onClick={() => set("kind", k.key)}>{k.label}</button>
-              ))}
-            </div>
-            <small>Greige to size set: samples and approvals. Inline and mid-line: during production. Final before shipping; re-check after a failed final.</small>
-          </div>
-          <div className="fgrid mt-3">
-            <div className="field">
-              <span>Result <i>*</i></span>
-              <div className="steps" role="group" aria-label="Result">
-                <button type="button" aria-pressed={q.result === "pass"} onClick={() => set("result", "pass")}>Pass</button>
-                <button type="button" aria-pressed={q.result === "fail"} onClick={() => set("result", "fail")}>Fail</button>
+
+      <div className="flex flex-col gap-4">
+        {groups.map((st) => {
+          const mine = st.id ? checks.filter((c) => c.line_id === st.id) : gone;
+          const fin = st.id ? finalOf(st.id) : undefined;
+          return (
+            <div key={st.id || "gone"}>
+              <div className="row mb-2">
+                <b className={st.id ? "code" : ""}>{st.style}</b>
+                {st.id && <span className="muted text-xs">{[st.colour, `${st.qty} pcs`].filter(Boolean).join(" · ")}</span>}
+                {st.id && (fin ? <span className={`chip ${fin.result === "pass" ? "ok" : "bad"}`}>Final QC {fin.result === "pass" ? "passed" : "failed"}</span>
+                  : open && <span className="chip warn">Final QC not done</span>)}
+                {st.id && can && !(adding && q.line_id === st.id) && (
+                  <button type="button" className="btn sm ml-auto" onClick={() => startFor(st.id)}>Record QC</button>
+                )}
               </div>
-            </div>
-            <label className="field">
-              <span>Date checked</span>
-              <input className="inp" type="date" max={today} value={q.checked_on} onChange={(e) => set("checked_on", e.target.value)} />
-            </label>
-            <label className="field">
-              <span>Pieces checked</span>
-              <input className="inp" inputMode="numeric" value={q.pieces_checked} onChange={(e) => set("pieces_checked", e.target.value)} />
-            </label>
-            <label className="field">
-              <span>Defects found</span>
-              <input className="inp" inputMode="numeric" value={q.defects} placeholder="0" onChange={(e) => set("defects", e.target.value)} />
-            </label>
-          </div>
-          <label className="field mt-3">
-            <span>Notes{q.result === "fail" && <i> *</i>}</span>
-            <textarea className="inp" rows={2} value={q.notes} onChange={(e) => set("notes", e.target.value)}
-              placeholder={q.result === "fail" ? "What failed, and what the factory must fix" : "Anything worth remembering"} />
-          </label>
-          <div className="fgrid mt-3">
-            <label className="field">
-              <span>Photos <i>*</i></span>
-              <input className="inp" type="file" accept="image/*" multiple onChange={(e) => setPhotos([...(e.target.files ?? [])])} />
-              <small>{photos.length ? `${photos.length} ${photos.length === 1 ? "photo" : "photos"} ready` : "At least one photo as proof. Add as many as you need."}</small>
-            </label>
-            <label className="field">
-              <span>Reports</span>
-              <input className="inp" type="file" accept={REPORT_ACCEPT} multiple onChange={(e) => setReports([...(e.target.files ?? [])])} />
-              <small>{reports.length ? `${reports.length} ${reports.length === 1 ? "report" : "reports"} ready` : "Inspection reports: PDF, Excel, Word or CSV, up to 10 MB each."}</small>
-            </label>
-          </div>
-          <div className="row mt-3">
-            <button className="btn primary" disabled={pending}>{pending ? (busy ? "Uploading proof…" : "Saving…") : "Save QC"}</button>
-            <button type="button" className="btn" onClick={reset}>Close</button>
-            {error && <span className="text-[13px] font-semibold text-bad" role="alert">{error}</span>}
-          </div>
-        </form>
-      )}
-
-      {checks.length === 0 ? (
-        !adding && <p className="muted text-[13px]">No QC recorded yet.</p>
-      ) : (
-        <ul className="flex flex-col gap-2">
-          {checks.map((c) => {
+              {st.id && adding && q.line_id === st.id && form}
+              {mine.length === 0 ? (!(adding && q.line_id === st.id) && <p className="muted text-[13px]">No QC recorded for this style yet.</p>) : (
+              <ul className="flex flex-col gap-2">
+          {mine.map((c) => {
             const editable = can && !c.cancelled_at;
             return (
               <li key={c.id} className={`rounded-[10px] border border-line p-3 text-[13px] ${c.cancelled_at ? "opacity-60" : ""}`}>
@@ -288,8 +317,12 @@ export function OrderQc({ orderId, companyId, open, canRecord, today, checks, fi
               </li>
             );
           })}
-        </ul>
-      )}
+              </ul>
+              )}
+            </div>
+          );
+        })}
+      </div>
     </section>
   );
 }

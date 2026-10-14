@@ -161,7 +161,7 @@ export async function setStylePhoto(orderId: string, lineId: string, path: strin
   return {};
 }
 
-export type QcInput = { kind: string; checked_on: string; result: string; pieces_checked: string; defects: string; notes: string };
+export type QcInput = { line_id: string; kind: string; checked_on: string; result: string; pieces_checked: string; defects: string; notes: string };
 
 export type QcFile = { path: string; kind: "photo" | "report"; file_name: string };
 
@@ -173,6 +173,7 @@ export async function recordQc(orderId: string, qcId: string, q: QcInput, files:
   const me = await getMe();
   if (!me?.role || !me.companyId) return { error: "Your account is not switched on yet." };
   if (!canRecordQc(me.role)) return { error: "Only the Quality team records QC." };
+  if (!/^[0-9a-f-]{36}$/i.test(q.line_id)) return { error: "Pick the style this check is for." };
   if (!QC_KINDS.some((k) => k.key === q.kind)) return { error: "Pick the type of check." };
   if (q.result !== "pass" && q.result !== "fail") return { error: "Pick Pass or Fail." };
   if (!/^\d{4}-\d{2}-\d{2}$/.test(q.checked_on)) return { error: "Enter the date of the check." };
@@ -189,7 +190,7 @@ export async function recordQc(orderId: string, qcId: string, q: QcInput, files:
   const supabase = await createClient();
   const { error } = await supabase.rpc("record_qc", {
     p_order: orderId,
-    p: { id: qcId, kind: q.kind, checked_on: q.checked_on, result: q.result, pieces_checked: pieces == null ? "" : String(pieces), defects: String(defects), notes: q.notes },
+    p: { id: qcId, line_id: q.line_id, kind: q.kind, checked_on: q.checked_on, result: q.result, pieces_checked: pieces == null ? "" : String(pieces), defects: String(defects), notes: q.notes },
     p_files: files,
   });
   if (error) return { error: friendly(error) };

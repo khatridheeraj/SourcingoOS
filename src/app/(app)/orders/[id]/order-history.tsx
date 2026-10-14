@@ -46,10 +46,10 @@ export async function OrderHistory({ orderId }: { orderId: string }) {
 
   const describe = (r: Row) => {
     if (r.table_name === "qc_checks") {
-      const c = (r.after ?? r.before) as { kind?: string; result?: string; cancel_reason?: string };
-      const what = `${qcKindLabel(c.kind ?? "").toLowerCase()} QC`;
+      const c = (r.after ?? r.before) as { kind?: string; result?: string; cancel_reason?: string; line_id?: string };
+      const what = `${c.line_id && styleName.has(c.line_id) ? `${styleName.get(c.line_id)} ` : ""}${qcKindLabel(c.kind ?? "").toLowerCase()} QC`;
       if (r.action === "insert") return `Recorded ${what}: ${c.result === "pass" ? "Pass" : "Fail"}`;
-      if (r.after?.cancelled_at && !r.before?.cancelled_at) return `Cancelled a ${what} (${c.cancel_reason})`;
+      if (r.after?.cancelled_at && !r.before?.cancelled_at) return `Cancelled the ${what} (${c.cancel_reason})`;
       return null;
     }
     if (r.table_name === "line_stages") {
