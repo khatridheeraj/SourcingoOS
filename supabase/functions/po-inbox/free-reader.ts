@@ -224,28 +224,29 @@ export async function readPosFree(
   buyers: { code: string; name: string | null }[],
   excelRows: (bytes: Uint8Array) => Promise<Sheet[]>,
 ): Promise<PoReading[]> {
-  const doubts: string[] = [];
-  const sheets: Sheet[] = [];
+  const parts: { name: string; sheets: Sheet[]; doubts: string[] }[] = [];
   for (const f of files) {
     const e = ext(f.name);
+    const part = { name: f.name, sheets: [] as Sheet[], doubts: [] as string[] };
+    parts.push(part);
     try {
       if (f.type === "application/pdf" || e === "pdf") {
         const got = await pdfSheets(f.bytes);
-        if (got.every((s) => s.rows.length === 0)) doubts.push(`${f.name} is a scan with no text: type its styles in from the file.`);
-        sheets.push(...got);
-      } else if (e === "xlsx") sheets.push(...(await excelRows(f.bytes)).map((s) => ({ ...s, rows: s.rows.map((r) => Array.from(r, (c) => c ?? "")) })));
-      else if (e === "csv" || f.type === "text/csv") sheets.push({ name: f.name, rows: csvRows(new TextDecoder().decode(f.bytes)) });
-      else doubts.push(`${f.name} is ${e === "xls" ? "an old Excel file" : "a photo"}: type its styles in from the file.`);
+        if (got.every((s) => s.rows.length === 0)) part.doubts.push(`${f.name} is a scan with no text: type its styles in from the file.`);
+        part.sheets.push(...got);
+      } else if (e === "xlsx") part.sheets.push(...(await excelRows(f.bytes)).map((s) => ({ ...s, rows: s.rows.map((r) => Array.from(r, (c) => c ?? "")) })));
+      else if (e === "csv" || f.type === "text/csv") part.sheets.push({ name: f.name, rows: csvRows(new TextDecoder().decode(f.bytes)) });
+      else part.doubts.push(`${f.name} is ${e === "xls" ? "an old Excel file" : "a photo"}: type its styles in from the file.`);
     } catch {
-      doubts.push(`Couldn't open ${f.name}: type its styles in from the file.`);
+      part.doubts.push(`Couldn't open ${f.name}: type its styles in from the file.`);
     }
   }
+  const sheets = parts.flatMap((p) => p.sheets);
+  const textOf = (ss: Sheet[]) => ss.flatMap((s) => s.rows.map((r) => r.filter(Boolean).join(" | "))).join("\n");
+  const linesOf = (ss: Sheet[]) => ss.reduce<PoLine[]>((got, s) => (got.length ? got : linesFrom(s.rows)), []);
+  const emailTexts = [email?.subject ?? "", email?.body ?? ""];
 
-  const fileText = sheets.flatMap((s) => s.rows.map((r) => r.filter(Boolean).join(" | "))).join("\n");
-  const texts = [email?.subject ?? "", email?.body ?? "", fileText];
-  const lines = sheets.reduce<PoLine[]>((got, s) => (got.length ? got : linesFrom(s.rows)), []);
-
-  const all = texts.join("\n").toLowerCase();
+  const all = [...emailTexts, textOf(sheets)].join("\n").toLowerCase();
   const sender = (email?.from ?? "").toLowerCase();
   const shortName = (b: { name: string | null }) => (b.name ?? "").toLowerCase().replace(/\b(pvt|private|ltd|limited|llp|inc|co)\b\.?/g, "").trim();
   const fromBuyer = (b: { name: string | null }) => {
@@ -258,21 +259,35 @@ export async function readPosFree(
   });
   if (email && !looksLikePo(email.subject ?? "", files.map((f) => f.name), sheets, buyers.some(fromBuyer))) return [];
 
-  const reading: PoReading = {
-    buyer_name: buyer?.name ?? null,
-    buyer_code: buyer?.code ?? null,
-    po_number: poNumber(texts),
-    po_date: labelledDate(texts, PO_DATE_LABEL),
-    ship_date: labelledDate(texts, SHIP_LABEL),
-    lines,
-    notes: null,
-    doubts: [],
+  const reading = (texts: string[], lines: PoLine[], doubts: string[], from: string | null): PoReading => {
+    const r: PoReading = {
+      buyer_name: buyer?.name ?? null,
+      buyer_code: buyer?.code ?? null,
+      po_number: poNumber(texts),
+      po_date: labelledDate(texts, PO_DATE_LABEL),
+      ship_date: labelledDate(texts, SHIP_LABEL),
+      lines,
+      notes: null,
+      doubts: from ? [`From the file ${from}.`] : [],
+    };
+    if (!r.po_number) r.doubts.push("PO number not found: type it in.");
+    if (!r.ship_date) r.doubts.push("Delivery date not found: type it in.");
+    if (!lines.length && !doubts.length) r.doubts.push("No style table found: type the styles in from the file.");
+    if (lines.some((l) => l.rate == null)) r.doubts.push("Some rates not found: fill them in.");
+    r.doubts.push(...doubts);
+    if (lines.length) r.doubts.push("Filled in automatically without AI: check each line against the file.");
+    return r;
   };
-  if (!reading.po_number) reading.doubts.push("PO number not found: type it in.");
-  if (!reading.ship_date) reading.doubts.push("Delivery date not found: type it in.");
-  if (!lines.length && !doubts.length) reading.doubts.push("No style table found: type the styles in from the file.");
-  if (lines.some((l) => l.rate == null)) reading.doubts.push("Some rates not found: fill them in.");
-  reading.doubts.push(...doubts);
-  if (lines.length) reading.doubts.push("Filled in automatically without AI: check each line against the file.");
-  return [reading];
+
+  // Several files that each carry their own PO number or style table are separate POs: one reading each.
+  // The file's own text comes first, so its PO number and dates win over the email's.
+  const own = parts.filter((p) => p.sheets.length && (poNumber([textOf(p.sheets)]) || linesOf(p.sheets).length));
+  if (own.length >= 2) {
+    const rest = parts.filter((p) => !own.includes(p));
+    return own.map((p, i) => reading([textOf(p.sheets), ...emailTexts], linesOf(p.sheets), [
+      ...p.doubts,
+      ...(i === 0 ? rest.map((x) => `Also in this email: ${x.name}. Check whether it is another PO.`) : []),
+    ], p.name));
+  }
+  return [reading([...emailTexts, textOf(sheets)], linesOf(sheets), parts.flatMap((p) => p.doubts), null)];
 }
