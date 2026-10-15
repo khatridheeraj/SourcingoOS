@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { day, QC_KINDS, qcKindLabel, SHIP_QC } from "@/lib/format";
-import { REPORT_ACCEPT, uploadPhotos, uploadReports } from "@/lib/photos";
+import { REPORT_ACCEPT, REPORT_MAX_MB, uploadPhotos, uploadReports } from "@/lib/photos";
 import { addQcComment, addQcFiles, cancelQc, recordQc, removeQcPhoto, type QcFile, type QcInput } from "../actions";
 
 export type QcCheck = {
@@ -193,7 +193,7 @@ export function OrderQc({ orderId, companyId, open, canRecord, today, checks, fi
         <label className="field">
           <span>Reports</span>
           <input className="inp" type="file" accept={REPORT_ACCEPT} multiple onChange={(e) => setReports([...(e.target.files ?? [])])} />
-          <small>{reports.length ? `${reports.length} ${reports.length === 1 ? "report" : "reports"} ready` : "Inspection reports: PDF, Excel, Word or CSV, up to 10 MB each."}</small>
+          <small>{reports.length ? `${reports.length} ${reports.length === 1 ? "report" : "reports"} ready` : `Inspection reports: PDF, Excel, Word or CSV, up to ${REPORT_MAX_MB} MB each.`}</small>
         </label>
       </div>
       <div className="row mt-3">
