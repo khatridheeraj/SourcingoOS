@@ -30,7 +30,8 @@ export type LineInput = {
 const num = (s: string) => s.replace(/[,₹\s]/g, "");
 
 // incomingId: the incoming PO this order was made from, marked added once the order is saved.
-export async function saveOrder(order: OrderInput, lines: LineInput[], incomingId?: string): Promise<{ error?: string; id?: string }> {
+// existing: the order that already holds this buyer PO, so the form can link to it.
+export async function saveOrder(order: OrderInput, lines: LineInput[], incomingId?: string): Promise<{ error?: string; id?: string; existing?: { id: string; orderNo: string } }> {
   const me = await getMe();
   if (!me?.role) return { error: "Your account is not switched on yet." };
   if (!canEditOrders(me.role)) return { error: "Only the orders team can change orders." };
@@ -59,7 +60,18 @@ export async function saveOrder(order: OrderInput, lines: LineInput[], incomingI
       factory_rate: num(l.factory_rate),
     })),
   });
-  if (error) return { error: friendly(error) };
+  if (error) {
+    if (error.message?.includes("orders_buyer_po_key")) {
+      const po = order.buyer_po.trim().toLowerCase();
+      const { data: same } = await supabase.from("orders").select("id, order_no, buyer_po").eq("buyer_id", order.buyer_id).ilike("buyer_po", po.replace(/[\\%_]/g, "\\$&"));
+      const hit = (same ?? []).find((o) => o.id !== order.id && o.buyer_po.trim().toLowerCase() === po);
+      if (hit) return {
+        error: `PO ${order.buyer_po.trim()} from this buyer is already order ${hit.order_no}. To add these styles, open ${hit.order_no} and add them there.`,
+        existing: { id: hit.id, orderNo: hit.order_no },
+      };
+    }
+    return { error: friendly(error) };
+  }
   if (incomingId) {
     const { error: link } = await supabase.rpc("link_incoming_po", { p_id: incomingId, p_order: data });
     if (link) return { error: `The order is saved, but the PO list didn't update: ${friendly(link)}`, id: data as string };

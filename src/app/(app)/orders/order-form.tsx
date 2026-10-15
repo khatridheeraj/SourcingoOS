@@ -23,6 +23,7 @@ export function OrderForm({ initial, initialLines, buyers, factories, team, inco
   const [order, setOrder] = useState(initial);
   const [lines, setLines] = useState<LineInput[]>(initialLines.length ? initialLines : [blankLine()]);
   const [error, setError] = useState("");
+  const [existing, setExisting] = useState<{ id: string; orderNo: string } | null>(null);
   const [saved, setSaved] = useState(false);
   const [pending, start] = useTransition();
 
@@ -42,9 +43,13 @@ export function OrderForm({ initial, initialLines, buyers, factories, team, inco
   function submit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
+    setExisting(null);
     start(async () => {
       const res = await saveOrder(order, lines, incomingId);
-      if (res.error && !res.id) return setError(res.error);
+      if (res.error && !res.id) {
+        setExisting(res.existing ?? null);
+        return setError(res.error);
+      }
       setSaved(true);
       if (!order.id && res.id) router.replace(`/orders/${res.id}?saved=1`);
       else router.refresh();
@@ -143,6 +148,7 @@ export function OrderForm({ initial, initialLines, buyers, factories, team, inco
           {cost > 0 && value > 0 && <> · margin <b className="num">{money(value - cost)}</b></>}
         </div>
         {error && <span className="text-[13px] font-semibold text-bad" role="alert">{error}</span>}
+        {existing && <Link href={`/orders/${existing.id}`} className="link text-[13px] font-semibold">Open {existing.orderNo}</Link>}
         {saved && !error && <span className="text-[13px] font-semibold text-ok">Saved</span>}
         <button className="btn primary" disabled={pending}>{pending ? "Saving…" : order.id ? "Save changes" : "Save order"}</button>
       </div>
