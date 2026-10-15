@@ -34,6 +34,7 @@ const REPORT_TYPES: Record<string, string> = {
   docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
 };
 export const REPORT_ACCEPT = Object.keys(REPORT_TYPES).map((e) => `.${e}`).join(",");
+export const REPORT_MAX_MB = 50;
 
 // Uploads report files (PDF, Excel, Word, CSV) as they are, and returns their storage paths with the original names.
 export async function uploadReports(folder: string, files: File[]): Promise<{ path: string; file_name: string }[]> {
@@ -43,7 +44,7 @@ export async function uploadReports(folder: string, files: File[]): Promise<{ pa
     const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
     const type = REPORT_TYPES[ext];
     if (!type) throw new Error(`${file.name} isn't a PDF, Excel, Word or CSV file.`);
-    if (file.size > 10 * 1024 * 1024) throw new Error(`${file.name} is over 10 MB.`);
+    if (file.size > REPORT_MAX_MB * 1024 * 1024) throw new Error(`${file.name} is over ${REPORT_MAX_MB} MB. Save it as a smaller PDF, or split it into two.`);
     const path = `${folder}/${crypto.randomUUID()}.${ext}`;
     const { error } = await supabase.storage.from(PHOTO_BUCKET).upload(path, file, { contentType: type });
     if (error) throw new Error(`Couldn't upload ${file.name}: ${error.message}`);
