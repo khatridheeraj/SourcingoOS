@@ -43,7 +43,7 @@ function valid(y: number, mo: number, d: number): string | null {
 
 // A number as printed: "1,250", "₹ 450.00", "Rs.450/-". Null when the cell isn't a number.
 export function parseNumber(s: string): number | null {
-  const t = s.replace(/(rs\.?|inr|₹|\/-|pcs|nos?\.?)/gi, "").replace(/,/g, "").trim();
+  const t = s.replace(/(rs\.?|inr|₹|\/-|pcs|nos?\.?)/gi, "").replace(/,/g, "").replace(/\/$/, "").trim();
   if (!/^\d+(\.\d+)?$/.test(t)) return null;
   return Number(t);
 }
@@ -125,6 +125,65 @@ function combine(lines: PoLine[]): PoLine[] {
     if (had.rate == null) had.rate = l.rate;
   }
   return [...by.values()];
+}
+
+// A one-style PO sheet with no table, laid out as labels and values:
+//   Style No. | AV-142,  Design Name | CORD-SET,  Rate | 485/,  ... Size | S | M | L | XL | TOTAL  then  TOP/PANT | ... | 500
+const FORM = {
+  style: /^(style|style\s*(no|number|code|#)\.?|article\s*(no|code)?\.?|art\.?\s*no\.?|design\s*no\.?|sku)\s*:?$/i,
+  description: /^(design\s*name|description|item\s*name|product\s*name)\s*:?$/i,
+  colour: /^(colou?r|shade)\s*:?$/i,
+  rate: /^(rate|price|unit\s*price|rate\s*\/\s*pc|rate\s*per\s*pc)\s*:?$/i,
+  qty: /^(qty|quantity|total\s*qty|order\s*qty|total\s*quantity|total\s*pcs)\.?\s*:?$/i,
+};
+function formLine(rows: Row[]): PoLine | null {
+  const cells = (r: Row) => r.map((c) => c.trim()).filter(Boolean);
+  const value = (re: RegExp) => {
+    for (const r of rows) {
+      const cs = cells(r);
+      const i = cs.findIndex((c) => re.test(c.replace(/\s+/g, " ")));
+      if (i >= 0 && cs[i + 1]) return cs[i + 1];
+    }
+    return null;
+  };
+  const style = value(FORM.style)?.replace(/\s*-\s*/g, "-");
+  if (!style || !/\d/.test(style)) return null;
+  let qty = parseNumber(value(FORM.qty) ?? "");
+  if (qty == null) {
+    // A size grid whose last column is the total: the total is the last number on the row below.
+    for (let i = 0; i + 1 < rows.length && qty == null; i++) {
+      const head = cells(rows[i]);
+      if (head.length >= 3 && /^total$/i.test(head[head.length - 1])) {
+        const below = cells(rows[i + 1]);
+        qty = parseNumber(below[below.length - 1] ?? "");
+      }
+    }
+  }
+  if (!qty) return null;
+  return {
+    style,
+    description: value(FORM.description),
+    colour: value(FORM.colour),
+    sizes: null,
+    qty: Math.round(qty),
+    rate: parseNumber(value(FORM.rate) ?? ""),
+  };
+}
+
+// A date standing alone near the top of the first page, the way many POs print their date without a label.
+function topDate(sheets: Sheet[]): string | null {
+  for (const r of sheets[0]?.rows.slice(0, 4) ?? []) {
+    for (const c of r) if (/^\s*[\d./-]{8,10}\s*$/.test(c)) { const d = parseDate(c); if (d) return d; }
+  }
+  return null;
+}
+
+// "Delivery: 30 to 45 days" counts from the PO date; the later end is used.
+const DAYS_LABEL = /(?:delivery|deliver|ship(?:ment)?|dispatch)[^\n]{0,20}?(?:(\d{1,3})\s*(?:to|-|–)\s*)?(\d{1,3})\s*days/i;
+function addDays(iso: string, days: number): string {
+  const d = new Date(`${iso}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
 }
 
 // --- Files into rows of cells ---
@@ -252,7 +311,12 @@ export async function readPosFree(
   }
   const sheets = parts.flatMap((p) => p.sheets);
   const textOf = (ss: Sheet[]) => ss.flatMap((s) => s.rows.map((r) => r.filter(Boolean).join(" | "))).join("\n");
-  const linesOf = (ss: Sheet[]) => ss.reduce<PoLine[]>((got, s) => (got.length ? got : linesFrom(s.rows)), []);
+  const linesOf = (ss: Sheet[]) => {
+    const table = ss.reduce<PoLine[]>((got, s) => (got.length ? got : linesFrom(s.rows)), []);
+    if (table.length) return table;
+    const form = ss.length ? formLine(ss.flatMap((s) => s.rows)) : null;
+    return form ? [form] : [];
+  };
   const emailTexts = [email?.subject ?? "", email?.body ?? ""];
 
   const all = [...emailTexts, textOf(sheets)].join("\n").toLowerCase();
@@ -268,17 +332,24 @@ export async function readPosFree(
   });
   if (email && !looksLikePo(email.subject ?? "", files.map((f) => f.name), sheets, buyers.some(fromBuyer))) return [];
 
-  const reading = (texts: string[], lines: PoLine[], doubts: string[], from: string | null): PoReading => {
+  const reading = (texts: string[], lines: PoLine[], doubts: string[], from: string | null, own: Sheet[]): PoReading => {
     const r: PoReading = {
       buyer_name: buyer?.name ?? null,
       buyer_code: buyer?.code ?? null,
       po_number: poNumber(texts),
-      po_date: labelledDate(texts, PO_DATE_LABEL),
+      po_date: labelledDate(texts, PO_DATE_LABEL) ?? topDate(own),
       ship_date: labelledDate(texts, SHIP_LABEL),
       lines,
       notes: null,
       doubts: from ? [`From the file ${from}.`] : [],
     };
+    if (!r.ship_date && r.po_date) {
+      const m = texts.map((t) => t.match(DAYS_LABEL)).find(Boolean);
+      if (m) {
+        r.ship_date = addDays(r.po_date, Number(m[2]));
+        r.doubts.push(`Delivery is "${m[0].replace(/\s*\|\s*/g, " ").trim()}": set to ${m[2]} days after the PO date. Check it.`);
+      }
+    }
     if (!r.po_number) r.doubts.push("PO number not found: type it in.");
     if (!r.ship_date) r.doubts.push("Delivery date not found: type it in.");
     if (!lines.length && !doubts.length) r.doubts.push("No style table found: type the styles in from the file.");
@@ -294,15 +365,21 @@ export async function readPosFree(
   const docs = parts.filter((p, i) => DOC_EXT.test(p.name) && parts.findIndex((q) => q.hash === p.hash) === i);
   if (docs.length >= 2) {
     const rest = parts.filter((p) => !DOC_EXT.test(p.name));
-    return docs.map((p, i) => {
+    const readings = docs.map((p, i) => {
       const lines = linesOf(p.sheets);
       const hint = !lines.length && styleInName(p.name);
       return reading([textOf(p.sheets), ...emailTexts], lines, [
         ...p.doubts,
         ...(hint ? [`The file name says ${hint}: check whether that is the style.`] : []),
         ...(i === 0 ? rest.map((x) => `Also in this email: ${x.name}. Check whether it is another PO.`) : []),
-      ], p.name);
+      ], p.name, p.sheets);
     });
+    // Two files with the same PO number is usually a typing slip on the buyer's side.
+    readings.forEach((r, i) => {
+      const same = readings.filter((x, j) => j !== i && r.po_number && x.po_number === r.po_number).map((x) => docs[readings.indexOf(x)].name);
+      if (same.length) r.doubts.push(`${same.join(", ")} has the same PO number ${r.po_number}: ask the buyer which number is right.`);
+    });
+    return readings;
   }
-  return [reading([...emailTexts, textOf(sheets)], linesOf(sheets), parts.flatMap((p) => p.doubts), null)];
+  return [reading([...emailTexts, textOf(sheets)], linesOf(sheets), parts.flatMap((p) => p.doubts), null, sheets)];
 }
