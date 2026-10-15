@@ -18,7 +18,7 @@ export default async function BuyersPage() {
       <div className="head">
         <div className="grow">
           <h1>Buyers</h1>
-          <p>{owner ? "The team sees only the code. Real names are visible to you alone." : "Buyers are shown by code."}</p>
+          <p>The team sees buyers by name. Factory logins never see buyers.</p>
         </div>
       </div>
       <BuyerList buyers={buyers} owner={owner} openOrders={openOrders} />

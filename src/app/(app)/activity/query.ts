@@ -1,5 +1,5 @@
 import { AREAS, ENTRY_COLUMNS, OTHER_AREA, type Names } from "@/lib/activity";
-import { loadBuyers, loadFactories, loadTeam, personName } from "@/lib/data";
+import { buyerName, loadBuyers, loadFactories, loadTeam, personName } from "@/lib/data";
 import { createClient } from "@/lib/supabase/server";
 
 export type Filters = { who: string; area: string; action: string; from: string; to: string };
@@ -40,7 +40,7 @@ export async function loadNames(companyId: string): Promise<Names> {
   ]);
   return {
     people: new Map(team.map((m) => [m.user_id, personName(m)])),
-    buyers: new Map(buyers.map((b) => [b.id, b.code])),
+    buyers: new Map(buyers.map((b) => [b.id, buyerName(b)])),
     factories: new Map(factories.map((x) => [x.id, x.name])),
     orders: new Map((orders ?? []).map((o) => [o.id as string, o.order_no as string])),
   };

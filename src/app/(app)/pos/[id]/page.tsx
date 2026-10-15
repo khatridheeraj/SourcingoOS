@@ -105,7 +105,7 @@ export default async function IncomingPoPage({ params, searchParams }: PageProps
             {!buyerId && po.status === "to_check" && (
               <li className="text-bad">
                 Buyer not recognised{owner && buyerName ? `: the PO says "${buyerName}"` : ""}. {owner ? "Pick the right one below, or add it as a new buyer." : "Pick the buyer below, or ask the owner to add a new buyer."}
-                {owner && <div><NewBuyer name={(buyerName as string | null) ?? ""} code={suggestCode((buyerName as string | null) ?? "", o.buyers.map((b) => b.label.split(" · ")[0]))} /></div>}
+                {owner && <div><NewBuyer name={(buyerName as string | null) ?? ""} code={suggestCode((buyerName as string | null) ?? "", o.buyers.map((b) => b.code))} /></div>}
               </li>
             )}
             {(read.doubts ?? []).map((d, i) => <li key={i} className="text-warn">{d}</li>)}

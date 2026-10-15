@@ -1,7 +1,7 @@
 import { NO_COMPANY } from "@/lib/names";
 import Link from "next/link";
 import { canEditOrders, getMe } from "@/lib/auth";
-import { loadBuyers, loadFactories } from "@/lib/data";
+import { buyerName, loadBuyers, loadFactories } from "@/lib/data";
 import { day, daysBetween, dueDate, money, qty, SHIP_QC, stageLabel, stageReached, STATUS, todayIST } from "@/lib/format";
 import { type LinePrice, marginCls, pct, planMargin } from "@/lib/margin";
 import { fetchAll } from "@/lib/fetch-all";
@@ -52,7 +52,6 @@ export default async function OrdersPage({ searchParams }: PageProps<"/">) {
     const due = dueDate(o);
     return o.status === "open" && !!due && due < today;
   };
-  const owner = me?.role === "owner";
   const prices = canEditOrders(me?.role);
   // Rates come separately: the database gives them only to the orders team and Accounts.
   const { data: rates } = prices && data?.length ? await supabase.rpc("line_prices", { p_orders: data.map((o) => o.id) }) : { data: [] };
@@ -68,7 +67,7 @@ export default async function OrdersPage({ searchParams }: PageProps<"/">) {
     return {
       ...o,
       lines,
-      buyer: b ? (owner && b.realName ? `${b.code} · ${b.realName}` : b.code) : "",
+      buyer: b ? buyerName(b) : "",
       styles: lines.map((l) => l.style),
       pieces: lines.reduce((s, l) => s + l.qty, 0),
       value: prices && lines.every((l) => l.buyer_rate != null) ? lines.reduce((s, l) => s + l.qty * (l.buyer_rate ?? 0), 0) : null,
@@ -147,7 +146,7 @@ export default async function OrdersPage({ searchParams }: PageProps<"/">) {
                   <b className="code text-accent">{r.order_no}</b>
                   <span className={STATUS[r.status]?.cls}>{STATUS[r.status]?.label}</span>
                 </div>
-                <div className="font-semibold">{r.buyer_po} <span className="code muted font-normal">{r.buyer}</span></div>
+                <div className="font-semibold">{r.buyer_po} <span className="muted font-normal">{r.buyer}</span></div>
                 <div className="muted text-[13px]">{r.styles.length} {r.styles.length === 1 ? "style" : "styles"} · {qty(r.pieces)} pcs{r.value != null && ` · ${money(r.value)}`}
                   {r.margin && r.margin.sale > 0 && <> · margin <span className={marginCls(r.margin.pct)}>{pct(r.margin.pct)}</span></>}</div>
                 <div className="row text-[13px]">
@@ -173,7 +172,7 @@ export default async function OrdersPage({ searchParams }: PageProps<"/">) {
               {rows.map((r) => (
                 <tr key={r.id} className="click">
                   <td><Link href={`/orders/${r.id}`} className="link code">{r.order_no}</Link></td>
-                  <td className="code whitespace-nowrap">{r.buyer}</td>
+                  <td className="whitespace-nowrap">{r.buyer}</td>
                   <td className="whitespace-nowrap">{r.buyer_po}</td>
                   <td>{r.styles.length <= 2 ? r.styles.join(", ") : `${r.styles.slice(0, 2).join(", ")} +${r.styles.length - 2}`}</td>
                   <td className="r num">{qty(r.pieces)}</td>

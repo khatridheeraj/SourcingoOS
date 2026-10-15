@@ -131,11 +131,11 @@ export function buyerTotals(b: Books) {
 export type Todo = { sev: "bad" | "warn" | "info"; title: string; detail: string; href: string; key: string };
 
 // The day's payment jobs, most urgent first.
-export function paymentTodos(b: Books, code: (id: string) => string, money: (v: number) => string, day: (d: string) => string): Todo[] {
+export function paymentTodos(b: Books, buyer: (id: string) => string, money: (v: number) => string, day: (d: string) => string): Todo[] {
   const t = b.today;
   const out: Todo[] = [];
   for (const c of b.cheques) {
-    const who = `${code(c.buyer_id)} · ${money(c.amount)}`;
+    const who = `${buyer(c.buyer_id)} · ${money(c.amount)}`;
     if (c.status === "bounced" && c.invoices.some((x) => (b.invoiceRowById.get(x.invoice.id)?.uncovered ?? 0) > 0)) {
       out.push({ sev: "bad", title: `Cheque ${c.cheque_no} bounced`, detail: `${who}. Ask the buyer for a new cheque.`, href: `/payments/cheques/${c.id}`, key: c.bounced_on ?? "" });
     } else if (c.status === "in_hand" && c.stale) {
@@ -156,12 +156,12 @@ export function paymentTodos(b: Books, code: (id: string) => string, money: (v: 
   }
   for (const i of b.invoices) {
     if (i.uncovered > 0 && i.overdue) {
-      out.push({ sev: "bad", title: `Overdue: invoice ${i.invoice_no}`, detail: `${code(i.buyer_id)} · due ${day(i.due!)} · ${money(i.uncovered)} has no cheque`, href: `/payments/invoices/${i.id}`, key: i.due ?? "" });
+      out.push({ sev: "bad", title: `Overdue: invoice ${i.invoice_no}`, detail: `${buyer(i.buyer_id)} · due ${day(i.due!)} · ${money(i.uncovered)} has no cheque`, href: `/payments/invoices/${i.id}`, key: i.due ?? "" });
     }
   }
   const noTerms = new Set(b.invoices.filter((i) => !i.due && (i.state === "open" || i.state === "part")).map((i) => i.buyer_id));
   for (const id of noTerms) {
-    out.push({ sev: "info", title: `Set credit days for ${code(id)}`, detail: "So the app knows when its invoices fall due.", href: "/payments?tab=buyers", key: "9" });
+    out.push({ sev: "info", title: `Set credit days for ${buyer(id)}`, detail: "So the app knows when its invoices fall due.", href: "/payments?tab=buyers", key: "9" });
   }
   const rank = { bad: 0, warn: 1, info: 2 };
   return out.sort((a, z) => rank[a.sev] - rank[z.sev] || a.key.localeCompare(z.key));

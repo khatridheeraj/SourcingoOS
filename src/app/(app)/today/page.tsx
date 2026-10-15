@@ -2,7 +2,7 @@ import type { LinePrice } from "@/lib/margin";
 import Link from "next/link";
 import { canEditOrders, getMe } from "@/lib/auth";
 import { fetchAll } from "@/lib/fetch-all";
-import { loadBuyers, loadFactories } from "@/lib/data";
+import { buyerName, loadBuyers, loadFactories } from "@/lib/data";
 import { day, daysBetween, dueDate, nowMs, planDueAt, PLAN_HOURS, qcKindLabel, SHIP_QC, TNA_STEPS, todayIST } from "@/lib/format";
 import { NO_COMPANY } from "@/lib/names";
 import { createClient } from "@/lib/supabase/server";
@@ -51,9 +51,9 @@ export default async function TodayPage({ searchParams }: PageProps<"/today">) {
       ])
     : [{ data: [] }, { data: [] }, { data: [] }];
 
-  const buyerCode = new Map(buyers.map((b) => [b.id, b.code]));
+  const buyerOf = new Map(buyers.map((b) => [b.id, buyerName(b)]));
   const factoryName = new Map(factories.map((f) => [f.id, f.name]));
-  const label = (o: Pick<(typeof open)[number], "order_no" | "buyer_id" | "buyer_po">) => `${o.order_no} · ${buyerCode.get(o.buyer_id) ?? ""} ${o.buyer_po}`.trim();
+  const label = (o: Pick<(typeof open)[number], "order_no" | "buyer_id" | "buyer_po">) => `${o.order_no} · ${buyerOf.get(o.buyer_id) ?? ""} ${o.buyer_po}`.trim();
   const extraLabel = new Map((stages ?? []).filter((s) => s.label).map((s) => [s.stage, String(s.label)]));
   const stepLabel = (k: string) => TNA_STEPS.find((s) => s.key === k)?.label ?? extraLabel.get(k) ?? k;
   const stageOf = new Map((stages ?? []).map((s) => [`${s.line_id}:${s.stage}`, s]));
@@ -175,7 +175,7 @@ export default async function TodayPage({ searchParams }: PageProps<"/today">) {
     : { data: [] };
   const incomingItems: Item[] = (incoming ?? []).map((p) => ({
     key: `in:${p.id}`, orderId: "", href: `/pos/${p.id}`,
-    title: `${p.buyer_po ?? p.email_subject ?? "PO"}${p.buyer_id ? ` · ${buyerCode.get(p.buyer_id) ?? ""}` : ""}`,
+    title: `${p.buyer_po ?? p.email_subject ?? "PO"}${p.buyer_id ? ` · ${buyerOf.get(p.buyer_id) ?? ""}` : ""}`,
     detail: `${p.source === "email" ? `Email from ${p.email_from ?? "unknown"}` : "Added from a file"} · received ${at.format(new Date(p.received_at))}`,
     chip: p.status === "failed" ? { text: "Couldn't read", cls: "bad" } : { text: "Check and add", cls: "warn" }, sort: p.received_at,
   }));

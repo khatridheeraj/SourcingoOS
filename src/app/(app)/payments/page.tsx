@@ -22,7 +22,7 @@ function InvoiceChip({ i }: { i: InvoiceRow }) {
 }
 
 export default async function PaymentsPage({ searchParams }: PageProps<"/payments">) {
-  const { books: b, buyerLabel, buyerCode, error, owner } = await loadBooks();
+  const { books: b, buyerLabel, error } = await loadBooks();
   const sp = await searchParams;
   const p = (k: string) => String(sp[k] ?? "").trim();
   const tab = TABS.some((t) => t.key === p("tab")) ? p("tab") : "today";
@@ -34,7 +34,7 @@ export default async function PaymentsPage({ searchParams }: PageProps<"/payment
   const uncovered = unpaid.filter((i) => i.uncovered > 0);
   const overdue = unpaid.filter((i) => i.overdue);
   const held = b.cheques.filter((c) => (c.status === "in_hand" && !c.stale) || c.status === "deposited");
-  const todos = paymentTodos(b, buyerCode, money, day);
+  const todos = paymentTodos(b, buyerLabel, money, day);
   const rs = (v: number) => money(Math.round(v));
   const link = (extra: Record<string, string>) => `/payments?${new URLSearchParams(Object.entries({ tab, q, buyer, ...extra }).filter(([, v]) => v))}`;
 
@@ -84,7 +84,7 @@ export default async function PaymentsPage({ searchParams }: PageProps<"/payment
                 {list.map((i) => (
                   <tr key={i.id} className="click">
                     <td><Link href={`/payments/invoices/${i.id}`} className="link code">{i.invoice_no}</Link></td>
-                    <td className="code whitespace-nowrap">{buyerLabel(i.buyer_id)}</td>
+                    <td className="whitespace-nowrap">{buyerLabel(i.buyer_id)}</td>
                     <td className="whitespace-nowrap">{day(i.invoice_date)}</td>
                     <td className={`whitespace-nowrap ${i.overdue ? "font-semibold text-bad" : ""}`}>{i.due ? day(i.due) : <span className="muted">No credit days</span>}</td>
                     <td className="r num whitespace-nowrap">
@@ -133,7 +133,7 @@ export default async function PaymentsPage({ searchParams }: PageProps<"/payment
     );
   } else if (tab === "buyers") {
     const totals = new Map(buyerTotals(b).map((r) => [r.buyer_id, r]));
-    const list = [...b.buyerById.values()].sort((a, z) => (totals.get(z.id)?.outstanding ?? 0) - (totals.get(a.id)?.outstanding ?? 0) || a.code.localeCompare(z.code));
+    const list = [...b.buyerById.values()].sort((a, z) => (totals.get(z.id)?.outstanding ?? 0) - (totals.get(a.id)?.outstanding ?? 0) || buyerLabel(a.id).localeCompare(buyerLabel(z.id)));
     body = (
       <>
         <p className="text-xs muted">Credit days decide when an invoice falls due, counted from the invoice date. An invoice with its own due date keeps it.</p>
@@ -145,7 +145,7 @@ export default async function PaymentsPage({ searchParams }: PageProps<"/payment
                 const r = totals.get(x.id);
                 return (
                   <tr key={x.id}>
-                    <td className="code whitespace-nowrap">{buyerLabel(x.id)}</td>
+                    <td className="whitespace-nowrap">{buyerLabel(x.id)}</td>
                     <td><CreditDays buyerId={x.id} value={x.credit_days} /></td>
                     <td className="r num">{r?.open ? <Link className="link" href={`/payments?tab=invoices&buyer=${x.id}`}>{r.open}</Link> : ""}</td>
                     <td className="r num whitespace-nowrap">{r?.outstanding ? money(r.outstanding) : ""}</td>
@@ -179,7 +179,7 @@ export default async function PaymentsPage({ searchParams }: PageProps<"/payment
         ) : (
           <p className="muted">Nothing to do on payments today.</p>
         )}
-        {next && <p className="text-xs muted">Next post-dated cheque: {next.cheque_no} ({buyerCode(next.buyer_id)}, {money(next.amount)}) can go to the bank on {day(next.cheque_date)}.</p>}
+        {next && <p className="text-xs muted">Next post-dated cheque: {next.cheque_no} ({buyerLabel(next.buyer_id)}, {money(next.amount)}) can go to the bank on {day(next.cheque_date)}.</p>}
       </section>
     );
   }
@@ -211,7 +211,6 @@ export default async function PaymentsPage({ searchParams }: PageProps<"/payment
         ))}
       </nav>
       {body}
-      {!owner && <p className="text-xs muted">Buyers are shown by code.</p>}
     </>
   );
 }

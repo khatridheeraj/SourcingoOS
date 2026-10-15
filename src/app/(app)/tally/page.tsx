@@ -128,7 +128,7 @@ export default async function TallyPage({ searchParams }: PageProps<"/tally">) {
               <tbody>
                 {c.balances.map((r) => (
                   <tr key={r.buyerId}>
-                    <td className="code whitespace-nowrap">{buyerLabel(r.buyerId)}</td>
+                    <td className="whitespace-nowrap">{buyerLabel(r.buyerId)}</td>
                     <td><LedgerLink kind="buyer" id={r.buyerId} value={r.ledger} listId="debtors" />{r.ledger && !r.found && read && <div className="text-xs text-bad">Not found in Tally</div>}</td>
                     <td className="r num whitespace-nowrap">{r.tally == null ? "" : money(r.tally)}</td>
                     <td className="r num whitespace-nowrap">{money(r.app)}</td>
@@ -225,7 +225,7 @@ export default async function TallyPage({ searchParams }: PageProps<"/tally">) {
                   {c.onlyInApp.map((r) => (
                     <tr key={r.kind + r.no}>
                       <td><Link className="link code" href={`/payments/invoices/${r.id}`}>{r.no}</Link><div className="text-xs muted">{r.kind === "invoice" ? "Invoice" : "Credit note"}</div></td>
-                      <td className="code whitespace-nowrap">{buyerLabel(r.buyerId)}</td>
+                      <td className="whitespace-nowrap">{buyerLabel(r.buyerId)}</td>
                       <td className="whitespace-nowrap">{day(r.date)}</td>
                       <td className="r num whitespace-nowrap">{money(r.amount)}</td>
                     </tr>
@@ -246,7 +246,7 @@ export default async function TallyPage({ searchParams }: PageProps<"/tally">) {
                   {c.chequesNoReceipt.map((ch) => (
                     <tr key={ch.id}>
                       <td><span className="chip warn">Cleared in app, no receipt in Tally</span></td>
-                      <td className="code whitespace-nowrap">{buyerLabel(ch.buyer_id)}</td>
+                      <td className="whitespace-nowrap">{buyerLabel(ch.buyer_id)}</td>
                       <td><Link className="link code" href={`/payments/cheques/${ch.id}`}>{ch.cheque_no}</Link></td>
                       <td className="whitespace-nowrap">{day(ch.cleared_on ?? ch.cheque_date)}</td>
                       <td className="r num whitespace-nowrap">{money(Number(ch.amount))}</td>
@@ -255,7 +255,7 @@ export default async function TallyPage({ searchParams }: PageProps<"/tally">) {
                   {c.receiptsNoCheque.map(({ v, buyerId }) => (
                     <tr key={v.guid}>
                       <td><span className="chip info">Receipt in Tally, no cleared cheque in app</span></td>
-                      <td className="code whitespace-nowrap">{buyerId ? buyerLabel(buyerId) : v.party}</td>
+                      <td className="whitespace-nowrap">{buyerId ? buyerLabel(buyerId) : v.party}</td>
                       <td className="code">{v.number}</td>
                       <td className="whitespace-nowrap">{day(v.vdate)}</td>
                       <td className="r num whitespace-nowrap">{money(Number(v.amount ?? 0))}</td>
@@ -296,7 +296,6 @@ export default async function TallyPage({ searchParams }: PageProps<"/tally">) {
         ))}
       </nav>
       {body}
-      {!owner && <p className="text-xs muted">Buyers are shown by code.</p>}
     </>
   );
 }

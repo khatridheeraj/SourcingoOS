@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { getMe } from "@/lib/auth";
 import { fetchAll } from "@/lib/fetch-all";
-import { loadBuyers } from "@/lib/data";
+import { buyerName, loadBuyers } from "@/lib/data";
 import { todayIST } from "@/lib/format";
 import { NO_COMPANY } from "@/lib/names";
 import { type Allocation, type Cheque, type CreditNote, type Invoice, makeBooks } from "@/lib/payments";
@@ -35,11 +35,9 @@ export async function loadBooks() {
     today: todayIST(),
   });
   const owner = me?.role === "owner";
-  // Staff see buyer codes. Only the owner sees real names.
   const buyerLabel = (id: string) => {
     const b = books.buyerById.get(id);
-    return b ? (owner && b.realName ? `${b.code} · ${b.realName}` : b.code) : "";
+    return b ? buyerName(b) : "";
   };
-  const buyerCode = (id: string) => books.buyerById.get(id)?.code ?? "";
-  return { me: me!, owner, books, buyers, buyerLabel, buyerCode, error };
+  return { me: me!, owner, books, buyers, buyerLabel, error };
 }

@@ -179,7 +179,7 @@ export function ImportList({ rows }: { rows: ImportRow[] }) {
                 </td>
                 <td className="whitespace-nowrap">{day(r.date)}</td>
                 <td>{r.party ?? <span className="muted">None</span>}</td>
-                <td className="code whitespace-nowrap">{r.buyer ?? <span className="chip warn">Link the party first</span>}</td>
+                <td className="whitespace-nowrap">{r.buyer ?? <span className="chip warn">Link the party first</span>}</td>
                 <td className="r num whitespace-nowrap">{money(r.amount)}</td>
               </tr>
             ))}

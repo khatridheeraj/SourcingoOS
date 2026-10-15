@@ -12,7 +12,7 @@ export async function saveBuyer(b: BuyerInput): Promise<{ error?: string }> {
   if (me?.role !== "owner") return { error: "Only the owner can add or change buyers." };
   const code = b.code.trim().toUpperCase().replace(/\s+/g, "-");
   if (!/^[A-Z0-9-]{2,20}$/.test(code)) return { error: "Use 2 to 20 capital letters, numbers or dashes for the code, like BYR-OZ." };
-  if (!b.realName.trim()) return { error: "Enter the buyer's real name. Only you will see it." };
+  if (!b.realName.trim()) return { error: "Enter the buyer's real name." };
 
   const supabase = await createClient();
   const { error } = await supabase.rpc("save_buyer", {
@@ -42,7 +42,7 @@ export async function addBuyer(code: string, realName: string): Promise<{ error?
   if (me?.role !== "owner") return { error: "Only the owner can add buyers." };
   const c = code.trim().toUpperCase().replace(/\s+/g, "-");
   if (!/^[A-Z0-9-]{2,20}$/.test(c)) return { error: "Use 2 to 20 capital letters, numbers or dashes for the code, like BYR-OZ." };
-  if (!realName.trim()) return { error: "Enter the buyer's real name. Only you will see it." };
+  if (!realName.trim()) return { error: "Enter the buyer's real name." };
 
   const supabase = await createClient();
   const { data, error } = await supabase.rpc("save_buyer", { p: { code: c, real_name: realName.trim(), city: "", notes: "", active: true } });
