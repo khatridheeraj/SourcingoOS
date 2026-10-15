@@ -25,7 +25,7 @@ export default async function InvoicePage({ params }: PageProps<"/payments/invoi
         <div className="grow">
           <Link href="/payments?tab=invoices" className="link text-xs">← Payments</Link>
           <h1><span className="code">{i.invoice_no}</span> <span className={`chip ${cancelled ? "" : i.overdue ? "bad" : i.state === "paid" ? "ok" : "info"} align-middle`}>{i.overdue ? "Overdue" : INVOICE_LABEL[i.state]}</span></h1>
-          <p><span className="code">{buyerLabel(i.buyer_id)}</span> · dated {day(i.invoice_date)}</p>
+          <p><span>{buyerLabel(i.buyer_id)}</span> · dated {day(i.invoice_date)}</p>
         </div>
         {!cancelled && i.uncovered > 0 && <Link className="btn primary" href={`/payments/cheques/new?invoice=${i.id}`}>Record cheque</Link>}
       </div>

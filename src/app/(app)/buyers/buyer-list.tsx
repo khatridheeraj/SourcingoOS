@@ -33,15 +33,15 @@ export function BuyerList({ buyers, owner, openOrders }: { buyers: Buyer[]; owne
       )}
       {editing && (
         <form onSubmit={submit} className="panel stack">
-          <h2 className="font-bold">{editing.id ? `Edit ${editing.code}` : "Add buyer"}</h2>
+          <h2 className="font-bold">{editing.id ? `Edit ${editing.realName || editing.code}` : "Add buyer"}</h2>
           <div className="fgrid">
             <label className="field"><span>Code <i>*</i></span>
               <input className="inp code" value={editing.code} onChange={set("code")} placeholder="BYR-OZ" required autoFocus />
-              <small>What the team sees.</small>
+              <small>Kept for later. Not shown for now.</small>
             </label>
             <label className="field"><span>Real name <i>*</i></span>
               <input className="inp" value={editing.realName} onChange={set("realName")} required />
-              <small>Only you see this.</small>
+              <small>What the team sees.</small>
             </label>
             <label className="field"><span>City</span><input className="inp" value={editing.city} onChange={set("city")} /></label>
             <label className="field"><span>Notes</span><input className="inp" value={editing.notes} onChange={set("notes")} /></label>
@@ -60,15 +60,15 @@ export function BuyerList({ buyers, owner, openOrders }: { buyers: Buyer[]; owne
       ) : (
         <div className="table-wrap">
           <table className="tbl">
-            <thead><tr><th>Code</th>{owner && <th>Real name</th>}<th>City</th><th className="r">Open orders</th><th>GRN within</th><th>Notes</th><th></th>{owner && <th></th>}</tr></thead>
+            <thead><tr><th>Name</th><th>Code</th><th>City</th><th className="r">Open orders</th><th>GRN within</th><th>Notes</th><th></th>{owner && <th></th>}</tr></thead>
             <tbody>
               {buyers.map((b) => (
                 <tr key={b.id}>
-                  <td className="code font-semibold">{b.code}</td>
-                  {owner && <td>{b.realName}</td>}
+                  <td className="font-semibold">{b.realName ?? <span className="muted">Not set</span>}</td>
+                  <td className="code muted">{b.code}</td>
                   <td>{b.city}</td>
                   <td className="r num">{openOrders[b.id] ?? 0}</td>
-                  <td><GrnDays buyerId={b.id} code={b.code} value={b.grn_days} owner={owner} /></td>
+                  <td><GrnDays buyerId={b.id} code={b.realName ?? b.code} value={b.grn_days} owner={owner} /></td>
                   <td className="muted">{b.notes}</td>
                   <td>{!b.active && <span className="chip">Inactive</span>}</td>
                   {owner && (

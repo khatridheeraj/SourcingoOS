@@ -13,7 +13,10 @@ async function scope() {
   return { companyId: me?.companyId ?? NO_COMPANY, supabase };
 }
 
-// Buyers by code. Real names come back only for the owner; the database hides them from everyone else.
+// The name a buyer is shown by. The team sees real names for now (Dheeraj, 15 Oct 2026); codes may come back later.
+export const buyerName = (b: Pick<Buyer, "code" | "realName">) => b.realName ?? b.code;
+
+// Buyers, A to Z by the name they are shown by. Factory logins can't read real names, so they never reach the factory panel.
 export async function loadBuyers(): Promise<Buyer[]> {
   const { companyId, supabase } = await scope();
   const [{ data: buyers }, { data: names }] = await Promise.all([
@@ -21,7 +24,8 @@ export async function loadBuyers(): Promise<Buyer[]> {
     supabase.from("buyer_names").select("buyer_id, real_name").eq("company_id", companyId),
   ]);
   const byId = new Map((names ?? []).map((n) => [n.buyer_id as string, n.real_name as string]));
-  return (buyers ?? []).map((b) => ({ ...b, realName: byId.get(b.id) ?? null }));
+  return (buyers ?? []).map((b) => ({ ...b, realName: byId.get(b.id) ?? null }))
+    .sort((a, z) => buyerName(a).localeCompare(buyerName(z), "en-IN", { sensitivity: "base" }));
 }
 
 export async function loadFactories(): Promise<Factory[]> {

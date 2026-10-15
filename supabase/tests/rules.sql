@@ -91,8 +91,12 @@ select pg_temp.as_user('00000000-0000-0000-0000-00000000000b');
 
 do $$ begin
   if (select count(*) from public.buyers) <> 1 then raise exception 'staff should see buyer codes'; end if;
-  if (select count(*) from public.buyer_names) <> 0 then raise exception 'staff must not see real buyer names'; end if;
+  if (select real_name from public.buyer_names) is distinct from 'Ozia Fashions Pvt Ltd' then raise exception 'staff should see real buyer names'; end if;
   if exists (select 1 from public.history where table_name = 'buyer_names') then raise exception 'staff can read real names in history'; end if;
+end $$;
+do $$ begin
+  update public.buyer_names set real_name = 'Renamed by staff';
+  if exists (select 1 from public.buyer_names where real_name = 'Renamed by staff') then raise exception 'staff renamed a buyer'; end if;
 end $$;
 
 do $$ begin
@@ -185,7 +189,7 @@ end $$;
 select pg_temp.as_user('00000000-0000-0000-0000-0000000000a9');
 do $$ begin
   if (select count(*) from public.orders) <> 1 then raise exception 'Quality should see orders'; end if;
-  if (select count(*) from public.buyer_names) <> 0 then raise exception 'Quality must not see real buyer names'; end if;
+  if (select count(*) from public.buyer_names) <> 1 then raise exception 'Quality should see real buyer names'; end if;
   if public.can_upload_photo((select id::text from public.companies where name = 'Sourcingo') || '/o/styles/l/a.jpg') then
     raise exception 'Quality may upload style photos';
   end if;
@@ -514,6 +518,7 @@ do $$ begin
 end $$;
 do $$ begin
   if exists (select 1 from public.orders) or exists (select 1 from public.order_lines) or exists (select 1 from public.buyers)
+     or exists (select 1 from public.buyer_names)
      or exists (select 1 from public.line_stages) or exists (select 1 from public.history) or exists (select 1 from public.factory_pos) then
     raise exception 'a factory login can read company data';
   end if;

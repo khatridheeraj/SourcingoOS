@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { canEditOrders, getMe } from "@/lib/auth";
-import { loadBuyers } from "@/lib/data";
+import { buyerName, loadBuyers } from "@/lib/data";
 import { qty } from "@/lib/format";
 import type { PoReading } from "@/lib/po-inbox";
 import { createClient } from "@/lib/supabase/server";
@@ -31,7 +31,7 @@ export default async function IncomingPosPage({ searchParams }: PageProps<"/pos"
     loadBuyers(),
     supabase.rpc("ai_key_status"),
   ]);
-  const code = new Map(buyers.map((b) => [b.id, b.code]));
+  const nameOf = new Map(buyers.map((b) => [b.id, buyerName(b)]));
   const all = data ?? [];
   const inTab = (s: string) => (tab === "to_check" ? ["receiving", "reading", "to_check", "failed"].includes(s) : s === tab);
   const rows = all.filter((r) => inTab(r.status));
@@ -78,7 +78,7 @@ export default async function IncomingPosPage({ searchParams }: PageProps<"/pos"
                 <Link href={`/pos/${r.id}`} className="panel flex flex-col gap-1 !p-3.5" aria-label={`Incoming PO ${r.buyer_po ?? r.email_subject ?? ""}`}>
                   <div className="row justify-between">
                     <b>{r.buyer_po ?? (r.status === "reading" || r.status === "receiving" ? "Reading…" : "PO number not found")}
-                      {" "}<span className="code muted font-normal">{r.buyer_id ? code.get(r.buyer_id) : read.po_number !== undefined ? "Buyer not recognised" : ""}</span></b>
+                      {" "}<span className="muted font-normal">{r.buyer_id ? nameOf.get(r.buyer_id) : read.po_number !== undefined ? "Buyer not recognised" : ""}</span></b>
                     <span className={s?.cls}>{s?.label}</span>
                   </div>
                   <div className="muted text-[13px]">
