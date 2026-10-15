@@ -202,6 +202,13 @@ function csvRows(text: string): Row[] {
 }
 
 const ext = (name: string) => name.split(".").pop()?.toLowerCase() ?? "";
+const DOC_EXT = /\.(pdf|xlsx|xls|csv)$/i;
+
+// A style-like code at the end of a file name, as in "PO CHAVI PRODUCTION - AV142 (1).pdf".
+function styleInName(name: string): string | null {
+  const m = name.replace(/\.[a-z]+$/i, "").replace(/\s*\(\d+\)$/, "").match(/[-_\s]([A-Z]{1,4}[-\s]?\d{2,6}[A-Z]?)$/i);
+  return m ? m[1].toUpperCase() : null;
+}
 
 // Words that say an email is about a buyer's PO, and ones that say it is about goods already sent.
 const PO_WORDS = /(^|[^a-z])(p\.?\s?o|purchase\s*orders?|new\s*orders?)([^a-z]|$)/i;
@@ -224,10 +231,12 @@ export async function readPosFree(
   buyers: { code: string; name: string | null }[],
   excelRows: (bytes: Uint8Array) => Promise<Sheet[]>,
 ): Promise<PoReading[]> {
-  const parts: { name: string; sheets: Sheet[]; doubts: string[] }[] = [];
+  const parts: { name: string; hash: string; sheets: Sheet[]; doubts: string[] }[] = [];
   for (const f of files) {
     const e = ext(f.name);
-    const part = { name: f.name, sheets: [] as Sheet[], doubts: [] as string[] };
+    // Fingerprinted first: reading a PDF hands its bytes over to the PDF library.
+    const hash = Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", f.bytes as BufferSource)), (b) => b.toString(16).padStart(2, "0")).join("");
+    const part = { name: f.name, hash, sheets: [] as Sheet[], doubts: [] as string[] };
     parts.push(part);
     try {
       if (f.type === "application/pdf" || e === "pdf") {
@@ -279,15 +288,21 @@ export async function readPosFree(
     return r;
   };
 
-  // Several files that each carry their own PO number or style table are separate POs: one reading each.
+  // Several PO documents (PDF, Excel, CSV) in one email are separate POs: one reading each, even when a file's
+  // table can't be read, so the team checks each against its own file. A copy sent twice counts once.
   // The file's own text comes first, so its PO number and dates win over the email's.
-  const own = parts.filter((p) => p.sheets.length && (poNumber([textOf(p.sheets)]) || linesOf(p.sheets).length));
-  if (own.length >= 2) {
-    const rest = parts.filter((p) => !own.includes(p));
-    return own.map((p, i) => reading([textOf(p.sheets), ...emailTexts], linesOf(p.sheets), [
-      ...p.doubts,
-      ...(i === 0 ? rest.map((x) => `Also in this email: ${x.name}. Check whether it is another PO.`) : []),
-    ], p.name));
+  const docs = parts.filter((p, i) => DOC_EXT.test(p.name) && parts.findIndex((q) => q.hash === p.hash) === i);
+  if (docs.length >= 2) {
+    const rest = parts.filter((p) => !DOC_EXT.test(p.name));
+    return docs.map((p, i) => {
+      const lines = linesOf(p.sheets);
+      const hint = !lines.length && styleInName(p.name);
+      return reading([textOf(p.sheets), ...emailTexts], lines, [
+        ...p.doubts,
+        ...(hint ? [`The file name says ${hint}: check whether that is the style.`] : []),
+        ...(i === 0 ? rest.map((x) => `Also in this email: ${x.name}. Check whether it is another PO.`) : []),
+      ], p.name);
+    });
   }
   return [reading([...emailTexts, textOf(sheets)], linesOf(sheets), parts.flatMap((p) => p.doubts), null)];
 }
