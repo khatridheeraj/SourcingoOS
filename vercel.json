@@ -2,5 +2,8 @@
   "buildCommand": "npm run build",
   "devCommand": "npm run dev",
   "installCommand": "npm ci",
-  "framework": "nextjs"
+  "framework": "nextjs",
+  "regions": [
+    "bom1"
+  ]
 }
