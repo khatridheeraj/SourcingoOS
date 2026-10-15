@@ -17,7 +17,8 @@ export const STATUS: Record<string, { label: string; cls: string }> = {
 };
 
 // An order's stage is the furthest standard TNA step its slowest style has done (set by the database).
-export const stageLabel = (s: string | null | undefined) => TNA_STEPS.find((x) => x.key === s)?.label ?? "Not started";
+// Target dates alone don't move it, so an order with only targets reads "No step done yet".
+export const stageLabel = (s: string | null | undefined) => TNA_STEPS.find((x) => x.key === s)?.label ?? "No step done yet";
 export const stageReached = (s: string | null | undefined, step: string) =>
   !!s && TNA_STEPS.findIndex((x) => x.key === s) >= TNA_STEPS.findIndex((x) => x.key === step);
 
