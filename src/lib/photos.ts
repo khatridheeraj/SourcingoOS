@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/client";
 
+import { shrinkPdf } from "@/lib/shrink-pdf";
 import { PHOTO_BUCKET } from "@/lib/storage";
 
 // Shrinks a phone photo to at most 1600 px on its longest side as a JPEG, so uploads stay quick on mobile data.
@@ -36,15 +37,17 @@ const REPORT_TYPES: Record<string, string> = {
 export const REPORT_ACCEPT = Object.keys(REPORT_TYPES).map((e) => `.${e}`).join(",");
 export const REPORT_MAX_MB = 50;
 
-// Uploads report files (PDF, Excel, Word, CSV) as they are, and returns their storage paths with the original names.
+// Uploads report files (PDF, Excel, Word, CSV) and returns their storage paths with the original names.
+// Big PDFs are shrunk first; other files go up as they are.
 export async function uploadReports(folder: string, files: File[]): Promise<{ path: string; file_name: string }[]> {
   const supabase = createClient();
   const out: { path: string; file_name: string }[] = [];
-  for (const file of files) {
-    const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
+  for (const original of files) {
+    const ext = original.name.split(".").pop()?.toLowerCase() ?? "";
     const type = REPORT_TYPES[ext];
-    if (!type) throw new Error(`${file.name} isn't a PDF, Excel, Word or CSV file.`);
-    if (file.size > REPORT_MAX_MB * 1024 * 1024) throw new Error(`${file.name} is over ${REPORT_MAX_MB} MB. Save it as a smaller PDF, or split it into two.`);
+    if (!type) throw new Error(`${original.name} isn't a PDF, Excel, Word or CSV file.`);
+    const file = ext === "pdf" ? await shrinkPdf(original) : original;
+    if (file.size > REPORT_MAX_MB * 1024 * 1024) throw new Error(`${file.name} is over ${REPORT_MAX_MB} MB${ext === "pdf" ? " even after shrinking" : ""}. Split it into two.`);
     const path = `${folder}/${crypto.randomUUID()}.${ext}`;
     const { error } = await supabase.storage.from(PHOTO_BUCKET).upload(path, file, { contentType: type });
     if (error) throw new Error(`Couldn't upload ${file.name}: ${error.message}`);

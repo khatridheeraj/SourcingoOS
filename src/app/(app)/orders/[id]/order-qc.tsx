@@ -193,7 +193,7 @@ export function OrderQc({ orderId, companyId, open, canRecord, today, checks, fi
         <label className="field">
           <span>Reports</span>
           <input className="inp" type="file" accept={REPORT_ACCEPT} multiple onChange={(e) => setReports([...(e.target.files ?? [])])} />
-          <small>{reports.length ? `${reports.length} ${reports.length === 1 ? "report" : "reports"} ready` : `Inspection reports: PDF, Excel, Word or CSV, up to ${REPORT_MAX_MB} MB each.`}</small>
+          <small>{reports.length ? `${reports.length} ${reports.length === 1 ? "report" : "reports"} ready` : `Inspection reports: PDF, Excel, Word or CSV. Big PDFs are shrunk automatically; up to ${REPORT_MAX_MB} MB each.`}</small>
         </label>
       </div>
       <div className="row mt-3">
