@@ -2,6 +2,7 @@ import { NO_COMPANY } from "@/lib/names";
 import { redirect } from "next/navigation";
 import { canEditOrders, getMe } from "@/lib/auth";
 import { loadFactories } from "@/lib/data";
+import { fetchAll } from "@/lib/fetch-all";
 import { createClient } from "@/lib/supabase/server";
 import { FactoryList } from "./factory-list";
 
@@ -10,7 +11,9 @@ export default async function FactoriesPage() {
   if (!canEditOrders(me?.role)) redirect("/");
   const [factories, { data: lines }] = await Promise.all([
     loadFactories(),
-    supabase.from("order_lines").select("factory_id, orders!inner(status)").eq("company_id", me?.companyId ?? NO_COMPANY).eq("orders.status", "open").is("removed_at", null).not("factory_id", "is", null),
+    // Read page by page: a busy company has more than 1,000 open styles.
+    fetchAll((a, z) => supabase.from("order_lines").select("factory_id, orders!inner(status)").eq("company_id", me?.companyId ?? NO_COMPANY)
+      .eq("orders.status", "open").is("removed_at", null).not("factory_id", "is", null).order("id").range(a, z)),
   ]);
   const openStyles: Record<string, number> = {};
   for (const l of lines ?? []) if (l.factory_id) openStyles[l.factory_id] = (openStyles[l.factory_id] ?? 0) + 1;

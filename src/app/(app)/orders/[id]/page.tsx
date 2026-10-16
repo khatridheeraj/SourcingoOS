@@ -2,6 +2,7 @@ import type { LinePrice } from "@/lib/margin";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { canEditOrders, canEnterDone, canRecordQc, getMe } from "@/lib/auth";
+import { fetchAll } from "@/lib/fetch-all";
 import { day, dayAt, qty, SHIP_QC, TNA_STEPS, todayIST } from "@/lib/format";
 import { createClient } from "@/lib/supabase/server";
 import { OrderForm } from "../order-form";
@@ -24,7 +25,7 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
   const supabase = await createClient();
   const { data: o } = await supabase
     .from("orders")
-    .select("id, company_id, order_no, buyer_id, buyer_po, po_date, ship_date, status, merchandiser_id, notes, stage, stage_at, revised_ship_date, delay_reason, created_at, updated_at, order_lines(id, style, description, colour, qty, factory_id, position, photo_path)")
+    .select("id, company_id, order_no, edit_no, buyer_id, buyer_po, po_date, ship_date, status, merchandiser_id, notes, stage, stage_at, revised_ship_date, delay_reason, created_at, updated_at, order_lines(id, style, description, colour, qty, factory_id, position, photo_path)")
     .eq("id", id)
     .is("order_lines.removed_at", null)
     .maybeSingle();
@@ -44,7 +45,9 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
       .order("created_at", { ascending: false }),
     loadTeam(),
     getMe(),
-    supabase.from("line_stages").select("line_id, stage, planned_on, done_on, not_needed, factory_on, label, added_at, updated_at").eq("order_id", id).order("added_at"),
+    // Every style has 15 or more steps, so an order with many styles passes the 1,000 rows one read returns.
+    fetchAll((a, z) => supabase.from("line_stages").select("line_id, stage, planned_on, done_on, not_needed, factory_on, label, added_at, updated_at")
+      .eq("order_id", id).order("added_at").order("id").range(a, z)),
     supabase.from("factory_pos").select("factory_id, plan_requested_on, plan_requested_at, buffer_days, factory_sent_at, released_at, plan_entered_by").eq("order_id", id),
   ]);
   const canEdit = canEditOrders(me?.role);
@@ -121,6 +124,8 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
     })),
   }));
   const styleOf = new Map(lines.map((l) => [l.id, l.style]));
+  // Styles whose latest final QC (or re-check) hasn't passed: their goods can't ship (the owner can still ship them).
+  const qcNotPassed = (lineId: string) => checks.find((c) => c.line_id === lineId && SHIP_QC.includes(c.kind) && !c.cancelled_at)?.result !== "pass";
   const url = (p: string | null) => (p && urlByPath.get(p)) || null;
   const dispatches: Dispatch[] = (dRows ?? []).map((d) => ({
     id: d.id, factoryName: factoryLabel(d.factory_id), billNo: d.purchase_bill_no, billDate: d.purchase_bill_date,
@@ -130,6 +135,8 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
     transporter: d.transporter, vehicleNo: d.vehicle_no, lrNo: d.lr_no, lrDate: d.lr_date, lrUrl: url(d.lr_path), cartons: d.cartons,
     shippedAt: d.shipped_at, grnDueOn: d.grn_due_on, grnUrl: url(d.grn_path), grnQty: d.grn_received_qty, grnNotes: d.grn_notes, grnAt: d.grn_at,
     photoUrls: dispatchPhotos.filter((p) => p.dispatch_id === d.id).map((p) => url(p.path)).filter(Boolean) as string[],
+    qcNotPassed: [...new Set((dLines ?? []).filter((l) => l.dispatch_id === d.id && qcNotPassed(l.line_id)).map((l) => styleOf.get(l.line_id) ?? ""))]
+      .filter(Boolean).sort(),
     lines: (dLines ?? []).filter((l) => l.dispatch_id === d.id).map((l) => ({
       style: styleOf.get(l.line_id) ?? "", qty: l.qty, purchaseRate: Number(l.purchase_rate), saleRate: l.sale_rate == null ? null : Number(l.sale_rate),
     })),
@@ -195,7 +202,7 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
         qc={stepQc}
       />
       {canEdit && (
-        <OrderDispatch orderId={o.id} companyId={o.company_id} open={o.status === "open"} factories={dispatchFactories}
+        <OrderDispatch orderId={o.id} companyId={o.company_id} open={o.status === "open"} owner={me?.role === "owner"} factories={dispatchFactories}
           dispatches={dispatches} now={Date.parse(new Date().toISOString())} today={todayIST()} />
       )}
       <OrderQc orderId={o.id} companyId={o.company_id} open={o.status === "open"} canRecord={canRecordQc(me?.role)} today={todayIST()} checks={checks} finalPassed={finalPassed}
@@ -203,7 +210,7 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
       {canEdit ? <OrderForm
         key={o.updated_at}
         initial={{
-          id: o.id, buyer_id: o.buyer_id, buyer_po: o.buyer_po, po_date: str(o.po_date), ship_date: str(o.ship_date),
+          id: o.id, edit_no: o.edit_no, buyer_id: o.buyer_id, buyer_po: o.buyer_po, po_date: str(o.po_date), ship_date: str(o.ship_date),
           status: o.status, merchandiser_id: str(o.merchandiser_id), notes: str(o.notes),
         }}
         initialLines={lines.map((l) => ({

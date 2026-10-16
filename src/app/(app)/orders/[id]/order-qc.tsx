@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { day, QC_KINDS, qcKindLabel, SHIP_QC } from "@/lib/format";
+import { day, QC_KINDS, qcKindLabel, SHIP_QC, todayIST } from "@/lib/format";
 import { REPORT_ACCEPT, REPORT_MAX_MB, uploadPhotos, uploadReports } from "@/lib/photos";
 import { addQcComment, addQcFiles, cancelQc, recordQc, removeQcPhoto, type QcFile, type QcInput } from "../actions";
 
@@ -25,6 +25,36 @@ async function upload(folder: string, photos: File[], reports: File[]): Promise<
     ...paths.map((path) => ({ path, kind: "photo" as const, file_name: "" })),
     ...docs.map((d) => ({ path: d.path, kind: "report" as const, file_name: d.file_name })),
   ];
+}
+
+// The same checks the server makes before saving (recordQc in ../actions.ts and the database), run before any file
+// goes up: a check the server would turn away otherwise leaves its photos and reports behind in storage.
+const whole = (s: string) => Number(s.replace(/[,₹\s]/g, ""));
+function qcProblem(q: QcInput, photos: File[], reports: File[]): string {
+  if (!q.line_id) return "Pick the style this check is for.";
+  if (!QC_KINDS.some((k) => k.key === q.kind)) return "Pick the type of check.";
+  if (q.result !== "pass" && q.result !== "fail") return "Pick Pass or Fail.";
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(q.checked_on)) return "Enter the date of the check.";
+  if (q.checked_on > todayIST()) return "The check date can't be in the future.";
+  const pieces = q.pieces_checked.trim() ? whole(q.pieces_checked) : null;
+  const defects = q.defects.trim() ? whole(q.defects) : 0;
+  // Whole numbers that fit the database's number column.
+  const fits = (n: number) => Number.isInteger(n) && n <= 2_147_483_647;
+  if (pieces != null && (!fits(pieces) || pieces <= 0)) return "Pieces checked must be a whole number above zero.";
+  if (!fits(defects) || defects < 0) return "Defects must be a whole number, 0 or more.";
+  if (pieces != null && defects > pieces) return "Defects can't be more than the pieces checked.";
+  if (q.result === "fail" && !q.notes.trim()) return "Write what failed in the notes, so the factory knows what to fix.";
+  if (!photos.length) return "Add at least one photo as proof of the check.";
+  // File checks the upload would only make after the photos are already up.
+  const notPhoto = photos.find((f) => !f.type.startsWith("image/") && !/\.(jpe?g|png|webp|gif|heic|heif)$/i.test(f.name));
+  if (notPhoto) return `${notPhoto.name} is not a photo.`;
+  const ext = (f: File) => f.name.split(".").pop()?.toLowerCase() ?? "";
+  const notReport = reports.find((f) => !REPORT_ACCEPT.split(",").includes(`.${ext(f)}`));
+  if (notReport) return `${notReport.name} isn't a PDF, Excel, Word or CSV file.`;
+  // PDFs are shrunk before upload, so only other files can be turned away for size here.
+  const tooBig = reports.find((f) => ext(f) !== "pdf" && f.size > REPORT_MAX_MB * 1024 * 1024);
+  if (tooBig) return `${tooBig.name} is over ${REPORT_MAX_MB} MB. Split it into two.`;
+  return "";
 }
 
 export type QcStyle = { id: string; style: string; colour: string; qty: number };
@@ -67,10 +97,8 @@ export function OrderQc({ orderId, companyId, open, canRecord, today, checks, fi
     e.preventDefault();
     setError("");
     setNotice("");
-    if (!q.line_id) return setError("Pick the style this check is for.");
-    if (!q.kind) return setError("Pick the type of check.");
-    if (!q.result) return setError("Pick Pass or Fail.");
-    if (!photos.length) return setError("Add at least one photo as proof of the check.");
+    const problem = qcProblem(q, photos, reports);
+    if (problem) return setError(problem);
     start(async () => {
       const id = crypto.randomUUID();
       try {

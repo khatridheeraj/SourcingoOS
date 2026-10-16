@@ -45,6 +45,8 @@ export type InvoiceRow = Invoice & {
 export type ChequeRow = Cheque & { allocated: number; invoices: { invoice: Invoice; amount: number }[]; expires: string; stale: boolean };
 
 const n = (v: unknown) => Number(v ?? 0) || 0;
+// Money to the paisa, so sums like 74999.9 - 25000.3 don't show (or pre-fill) as 49999.59999999999.
+export const paise = (v: number) => Math.round(v * 100) / 100;
 export const addDays = (d: string, days: number) => {
   const t = new Date(`${d}T00:00:00Z`);
   t.setUTCDate(t.getUTCDate() + days);
@@ -67,8 +69,8 @@ export function makeBooks(raw: { invoices: Invoice[]; creditNotes: CreditNote[];
   };
 
   const invoices: InvoiceRow[] = raw.invoices.map((i) => {
-    const credit = creditNotes.filter((c) => c.invoice_id === i.id).reduce((a, c) => a + n(c.amount), 0);
-    const net = n(i.amount) - credit;
+    const credit = paise(creditNotes.filter((c) => c.invoice_id === i.id).reduce((a, c) => a + n(c.amount), 0));
+    const net = paise(n(i.amount) - credit);
     const cheques = raw.allocations
       .filter((a) => a.invoice_id === i.id)
       .map((a) => ({ cheque: chequeById.get(a.cheque_id)!, amount: n(a.amount) }))
@@ -76,11 +78,11 @@ export function makeBooks(raw: { invoices: Invoice[]; creditNotes: CreditNote[];
       .sort((a, z) => a.cheque.cheque_date.localeCompare(z.cheque.cheque_date));
     // An expired cheque still in hand can't be banked, so it no longer pays the invoice.
     const live = cheques.filter((x) => LIVE.includes(x.cheque.status) && !(x.cheque.status === "in_hand" && addDays(x.cheque.cheque_date, CHEQUE_VALID_DAYS) < t));
-    const covered = live.reduce((a, x) => a + x.amount, 0);
-    const received = live.filter((x) => x.cheque.status === "cleared").reduce((a, x) => a + x.amount, 0);
+    const covered = paise(live.reduce((a, x) => a + x.amount, 0));
+    const received = paise(live.filter((x) => x.cheque.status === "cleared").reduce((a, x) => a + x.amount, 0));
     const cancelled = !!i.cancelled_at;
-    const uncovered = cancelled ? 0 : Math.max(0, net - covered);
-    const outstanding = cancelled ? 0 : Math.max(0, net - received);
+    const uncovered = cancelled ? 0 : Math.max(0, paise(net - covered));
+    const outstanding = cancelled ? 0 : Math.max(0, paise(net - received));
     const state: InvoiceState = cancelled ? "cancelled" : outstanding <= SLACK ? "paid" : uncovered <= SLACK ? "covered" : covered > 0 ? "part" : "open";
     const due = dueOf(i);
     return {
@@ -98,14 +100,15 @@ export function makeBooks(raw: { invoices: Invoice[]; creditNotes: CreditNote[];
       .map((a) => ({ invoice: invoiceById.get(a.invoice_id)!, amount: n(a.amount) }))
       .filter((x) => x.invoice);
     const expires = addDays(c.cheque_date, CHEQUE_VALID_DAYS);
-    return { ...c, allocated: invs.reduce((a, x) => a + x.amount, 0), invoices: invs, expires, stale: c.status === "in_hand" && expires < t };
+    return { ...c, allocated: paise(invs.reduce((a, x) => a + x.amount, 0)), invoices: invs, expires, stale: c.status === "in_hand" && expires < t };
   });
 
   // An in-hand cheque can go to the bank on or after its date.
   const toDeposit = cheques.filter((c) => c.status === "in_hand" && c.cheque_date <= t && !c.stale);
   const awaitingClear = cheques.filter((c) => c.status === "deposited");
 
-  return { ...raw, creditNotes, buyerById, chequeById, invoiceRowById, invoices, cheques, toDeposit, awaitingClear };
+  // allCreditNotes keeps the cancelled ones too, so the Tally check can say "cancelled in Payments".
+  return { ...raw, allCreditNotes: raw.creditNotes, creditNotes, buyerById, chequeById, invoiceRowById, invoices, cheques, toDeposit, awaitingClear };
 }
 
 // Per-buyer totals, largest amount to collect first.

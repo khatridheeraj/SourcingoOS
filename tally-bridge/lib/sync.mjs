@@ -3,7 +3,7 @@
 // This program only reads Tally. It never writes anything into it.
 import { companiesRequest, itemsRequest, ledgersRequest, parseCompanies, parseItems, parseLedgers, parseVouchers, vouchersRequest } from "./xml.mjs";
 
-export const VERSION = "2.1.1";
+export const VERSION = "2.2.0";
 
 // Indian financial year start for a date: 2026-10-04 -> 2026-04-01.
 export function fyStart(iso) {
@@ -25,12 +25,16 @@ export function createSync({ tally, cloud, log = () => {}, now = () => new Date(
   const state = { lastRead: 0, info: {} };
 
   async function read(s) {
-    const { from, to } = readRange(s, now());
-    const ledgers = parseLedgers(await tally(ledgersRequest(s.company)));
-    const items = parseItems(await tally(itemsRequest(s.company)));
-    const vouchers = parseVouchers(await tally(vouchersRequest(s.company, from, to)));
-    const r = await cloud.snapshot({ ledgers, items, vouchers, from, to });
+    // A failed read waits for the next turn too, so Tally isn't asked for the whole year again every minute.
     state.lastRead = now().getTime();
+    const { from, to } = readRange(s, now());
+    const ledgers = parseLedgers(answer(await tally(ledgersRequest(s.company))));
+    const items = parseItems(answer(await tally(itemsRequest(s.company))));
+    const vouchers = parseVouchers(answer(await tally(vouchersRequest(s.company, from, to))));
+    // Every company has ledgers (Cash, Profit & Loss), so none means Tally didn't really answer. Sending an empty
+    // read would make the app think every ledger and voucher was deleted.
+    if (!ledgers.length) throw new Error("Tally sent no ledgers. Nothing was sent to Sourcingo OS; trying again later.");
+    const r = await cloud.snapshot({ ledgers, items, vouchers, from, to });
     log(`Read ${ledgers.length} ledgers, ${items.length} stock items and ${vouchers.length} vouchers (${from} to ${to}) from Tally` +
         (r?.linked ? `; linked ${r.linked} buyers and factories to their ledgers.` : "."));
     return { ledgers: ledgers.length, items: items.length, vouchers: vouchers.length };
@@ -59,6 +63,14 @@ export function createSync({ tally, cloud, log = () => {}, now = () => new Date(
   return { round, state };
 }
 
+// Tally answers a request it couldn't do (the company was closed or switched mid-read) with an error inside a
+// normal reply. That is a failed read, not an empty company.
+export function answer(xml) {
+  const err = String(xml).match(/<LINEERROR>([\s\S]*?)<\/LINEERROR>/i);
+  if (err) throw new Error(`Tally said: ${err[1].trim()}`);
+  return xml;
+}
+
 // Tally is read-only for Sourcingo OS: only export (read) requests may reach it, never an import,
 // alter, delete or any other request that could change the books. Rather than spotting bad requests, only the
 // parts of an XML request the reader itself uses are let through: these tags, a NAME on a collection, and ISMODIFY="No".
@@ -85,6 +97,7 @@ export function tallyClient(url, timeoutMs = 120000) {
     const res = await fetch(url, {
       method: "POST", body: xml, headers: { "Content-Type": "text/xml;charset=utf-8" }, signal: AbortSignal.timeout(timeoutMs),
     });
+    if (!res.ok) throw new Error(`Tally answered ${res.status} ${res.statusText}.`);
     const buf = new Uint8Array(await res.arrayBuffer());
     const utf16 = buf[0] === 0xff && buf[1] === 0xfe;
     return new TextDecoder(utf16 ? "utf-16le" : "utf-8").decode(buf);

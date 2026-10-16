@@ -30,7 +30,8 @@ export function compareWithTally(raw: {
   const sales = vouchers.filter((v) => v.kind === "sales");
   const notes = vouchers.filter((v) => v.kind === "credit_note");
   const invByNo = new Map(b.invoices.map((i) => [key(i.invoice_no), i]));
-  const cnByNo = new Map(b.creditNotes.map((c) => [key(c.credit_note_no), c]));
+  // Cancelled credit notes too, so one cancelled in Payments shows as cancelled, not as missing.
+  const cnByNo = new Map(b.allCreditNotes.map((c) => [key(c.credit_note_no), c]));
   const tallySalesNos = new Set(sales.map((v) => key(v.number)));
   const tallyNoteNos = new Set(notes.map((v) => key(v.number)));
 

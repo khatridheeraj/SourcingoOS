@@ -72,8 +72,9 @@ select pg_temp.expect_error(format($$select public.record_dispatch_invoice('%s',
   'This dispatch already has its invoice.');
 select pg_temp.as_user('00000000-0000-0000-0000-00000000000a');
 do $$ begin
-  if (select amount::text || '|' || due_date::text from public.invoices where invoice_no = 'SPL/101') <> '58275.00|2026-11-10' then
-    raise exception 'invoice not in Payments with its amount and due date';
+  -- No due date of its own: the books work it out from the buyer's credit days.
+  if not exists (select 1 from public.invoices where invoice_no = 'SPL/101' and amount = 58275.00 and due_date is null) then
+    raise exception 'invoice not in Payments with its amount and no due date';
   end if;
 end $$;
 select pg_temp.as_user('00000000-0000-0000-0000-00000000000b');
