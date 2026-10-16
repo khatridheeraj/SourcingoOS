@@ -311,8 +311,7 @@ end $$;
 
 -- 10. The health check also watches file storage (the free plan has 1 GB, and QC reports fill it fast) and when the
 --     Tally reader last actually read the books: it checks in every minute even when Tally can't be read.
-drop function public.system_health();
-create function public.system_health() returns jsonb
+create or replace function public.system_health() returns jsonb
 language plpgsql stable security definer set search_path = '' as $$
 declare
   v_storage numeric;
