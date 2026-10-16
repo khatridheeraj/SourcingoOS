@@ -4,6 +4,6 @@
   "installCommand": "npm ci",
   "framework": "nextjs",
   "regions": [
-    "bom1"
+    "icn1"
   ]
 }
