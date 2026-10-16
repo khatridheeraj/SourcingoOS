@@ -193,7 +193,10 @@ do $$ begin
   if public.can_upload_photo((select id::text from public.companies where name = 'Sourcingo') || '/o/styles/l/a.jpg') then
     raise exception 'Quality may upload style photos';
   end if;
-  update public.orders set stage = 'packed';
+  begin
+    update public.orders set stage = 'packed';
+  exception when insufficient_privilege then null;
+  end;
   if exists (select 1 from public.orders where stage = 'packed') then raise exception 'Quality changed production'; end if;
   begin
     perform public.save_order(jsonb_build_object('buyer_id', '10000000-0000-0000-0000-000000000001', 'buyer_po', 'QC-PO'), '[{"style":"Q","qty":1}]');
@@ -235,7 +238,8 @@ do $$ begin
   begin
     update public.qc_checks set result = 'pass' where kind = 'final';
     raise exception 'a saved QC result was changed';
-  exception when raise_exception then
+  exception when insufficient_privilege then null;
+  when raise_exception then
     if sqlerrm not like '%can''t be changed%' then raise; end if;
   end;
 end $$;
@@ -365,9 +369,17 @@ do $$ begin
   end if;
 end $$;
 
--- Production: the stage is stamped when it changes, and saving the order form leaves the stage and new date alone.
+-- Production: the stage follows the done dates (people can't set it), it is stamped when it changes, and saving the
+-- order form leaves the stage and new date alone.
 do $$ begin
-  update public.orders set stage = 'stitching', revised_ship_date = '2026-12-01', delay_reason = 'Fabric late';
+  update public.orders set stage = 'stitching';
+  raise exception 'a person set the stage by hand';
+exception when insufficient_privilege then null;
+end $$;
+update public.orders set revised_ship_date = '2026-12-01', delay_reason = 'Fabric late';
+reset role;
+do $$ begin
+  update public.orders set stage = 'stitching';
   if (select stage_at from public.orders) is null then raise exception 'stage change not stamped'; end if;
   begin
     update public.orders set stage = 'sewing';
@@ -375,6 +387,7 @@ do $$ begin
   exception when check_violation then null;
   end;
 end $$;
+set role authenticated;
 select public.save_order(
   jsonb_build_object('id', :'save_order', 'buyer_id', '10000000-0000-0000-0000-000000000001', 'buyer_po', 'OZIA PO 001', 'status', 'shipped'),
   jsonb_build_array(jsonb_build_object('id', (select id from public.order_lines where style = 'OZ-103' and removed_at is null), 'style', 'OZ-103', 'qty', 50),
