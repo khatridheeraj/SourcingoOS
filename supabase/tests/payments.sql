@@ -68,7 +68,7 @@ exception when raise_exception then
 end $$;
 do $$ begin
   perform public.save_cheque(jsonb_build_object('buyer_id', (select id from public.buyers where code = 'BYR-AH'), 'cheque_no', 'X3',
-    'cheque_date', '2026-07-01', 'amount', 30000,
+    'cheque_date', current_date - 10, 'amount', 30000,
     'allocations', jsonb_build_array(jsonb_build_object('invoice_id', (select id from public.invoices where invoice_no = 'SPL/003'), 'amount', 25000))));
   raise exception 'invoice overpaid';
 exception when raise_exception then

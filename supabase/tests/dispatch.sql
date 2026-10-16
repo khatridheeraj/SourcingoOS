@@ -89,6 +89,16 @@ select pg_temp.expect_error(format($$select public.record_shipping('%s', '{"tran
   'Add photos of the goods.');
 select pg_temp.expect_error(format($$select public.record_shipping('%s', '{"transporter":"VRL","lr_no":"LR-1","lr_date":"2026-10-12","photos":["p1"]}')$$, :'d1'),
   'Attach the LR copy.');
+-- Goods don't ship before Quality passes the final QC of every style in the dispatch.
+select pg_temp.expect_error(format($$select public.record_shipping('%s', '{"transporter":"VRL","lr_no":"LR-1","lr_date":"2026-10-12","lr_path":"lr.pdf","photos":["p1"]}')$$, :'d1'),
+  'Final QC has not passed for K-1.%');
+reset role;
+select pg_temp.as_user('00000000-0000-0000-0000-0000000000a9');
+insert into public.qc_checks (company_id, order_id, line_id, kind, result, notes) select company_id, order_id, id, 'final', 'fail', 'Loose threads' from public.order_lines where style = 'K-1';
+insert into public.qc_checks (company_id, order_id, line_id, kind, result, checked_on)
+select company_id, order_id, id, 'recheck', 'pass', current_date + 1 from public.order_lines where style = 'K-1';
+set role authenticated;
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000b');
 select public.record_shipping(:'d1', '{"transporter":"VRL","vehicle_no":"rj14 ab 1234","lr_no":"LR-1","lr_date":"2026-10-12","lr_path":"lr.pdf","cartons":10,"photos":["p1.jpg","p2.jpg"]}');
 do $$ begin
   if (select grn_due_on::text || '|' || vehicle_no from public.dispatches) <> '2026-10-17|RJ14 AB 1234' then

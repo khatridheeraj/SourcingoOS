@@ -146,6 +146,20 @@ export async function requestPlan(orderId: string, factoryId: string, bufferDays
   return {};
 }
 
+// The factory agreed to the targets by phone or WhatsApp (it has no login, or doesn't use it): the orders team
+// enters the targets as the factory's dates, so the PO can be released. The plan shows it was entered for the factory.
+export async function acceptTargetsForFactory(orderId: string, factoryId: string): Promise<{ error?: string }> {
+  const me = await getMe();
+  if (!me?.role) return { error: "Your account is not switched on yet." };
+  if (!canEditOrders(me.role)) return { error: "Only the orders team can change orders." };
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("accept_targets_for_factory", { p_order: orderId, p_factory: factoryId });
+  if (error) return { error: friendly(error) };
+  revalidatePath("/today");
+  revalidatePath(`/orders/${orderId}`);
+  return {};
+}
+
 // Releases the factory's PO. The database refuses it until every style has a rate and a plan for every TNA step.
 export async function releaseFactoryPo(orderId: string, factoryId: string): Promise<{ error?: string }> {
   const me = await getMe();

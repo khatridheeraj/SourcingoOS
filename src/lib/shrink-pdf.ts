@@ -1,10 +1,11 @@
 // Shrinks a big PDF (usually a scanned QC report) in the browser before it is uploaded.
-// Each page is redrawn as a JPEG at about 200 dpi, which keeps scans readable at a fraction of the size.
+// Each page is redrawn as a JPEG at about 150 dpi, which keeps scans readable at a fraction of the size.
 // The original is kept when the PDF is already small, can't be read, or doesn't get meaningfully smaller.
 
-const SHRINK_FROM = 1.5 * 1024 * 1024;
-const LONG_SIDE = 2200; // pixels on a page's longer side; A4 at about 190 dpi
-const QUALITY = 0.72;
+// QC reports filled a quarter of the free 1 GB file storage in two days at about 190 dpi, so pages are drawn smaller.
+const SHRINK_FROM = 1024 * 1024;
+const LONG_SIDE = 1750; // pixels on a page's longer side; A4 at about 150 dpi, still clear for printed and handwritten text
+const QUALITY = 0.65;
 
 export async function shrinkPdf(file: File): Promise<File> {
   if (file.size < SHRINK_FROM) return file;

@@ -7,7 +7,11 @@ import { filterQuery, loadNames, queryActivity, readFilters } from "../query";
 
 const BATCH = 1000;
 const MAX = 50_000;
-const cell = (v: string) => (/[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
+// Text from outside (an emailed PO's subject, a note) that starts like a formula is kept as text, so Excel doesn't run it.
+const cell = (raw: string) => {
+  const v = /^[=+\-@\t\r]/.test(raw) ? `'${raw}` : raw;
+  return /[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
+};
 
 // The activity log as a spreadsheet, with the same filters as the screen. Owner only.
 export async function GET(request: NextRequest) {

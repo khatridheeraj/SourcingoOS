@@ -95,7 +95,9 @@ export default async function TodayPage({ searchParams }: PageProps<"/today">) {
         + rows.filter((r) => !r.factory_on || (r.planned_on && r.factory_on > r.planned_on)).length
         + (target ? rows.filter((r) => r.planned_on && r.planned_on > target).length : 0);
       const dueAt = po?.plan_requested_at ? planDueAt(po.plan_requested_at) : null;
-      if (dueAt && !po?.factory_sent_at && dueAt.getTime() < now) {
+      // A plan sent before the latest "ask again" answers the old request, not this one.
+      const sent = po?.factory_sent_at && (!po.plan_requested_at || po.factory_sent_at >= po.plan_requested_at) ? po.factory_sent_at : null;
+      if (dueAt && !sent && dueAt.getTime() < now) {
         const hours = Math.floor((now - dueAt.getTime()) / 3_600_000);
         critical.push({
           key: `crit:${o.id}:${f}`, orderId: o.id, title: `${label(o)} · ${factoryName.get(f) ?? "Factory"}`,
@@ -106,8 +108,8 @@ export default async function TodayPage({ searchParams }: PageProps<"/today">) {
       }
       const chip = !gaps ? { text: "Ready to release", cls: "ok" }
         : !po?.plan_requested_at && !po?.plan_requested_on ? (noTarget ? { text: `Set ${plural(noTarget, "target")}`, cls: "bad" } : { text: "Ask the factory", cls: "bad" })
-        : !po?.factory_sent_at && dueAt ? { text: `Factory TNA due ${at.format(dueAt)}`, cls: "warn" }
-        : po?.factory_sent_at ? { text: "Factory sent TNA, review it", cls: "warn" }
+        : !sent && dueAt ? { text: `Factory TNA due ${at.format(dueAt)}`, cls: "warn" }
+        : sent ? { text: "Factory sent TNA, review it", cls: "warn" }
         : { text: `Plan asked ${day(po?.plan_requested_on)}`, cls: "warn" };
       poItems.push({
         key: `${o.id}:${f}`, orderId: o.id, title: `${label(o)} · ${factoryName.get(f) ?? "Factory"}`,

@@ -5,7 +5,14 @@ import { PHOTO_BUCKET } from "@/lib/storage";
 
 // Shrinks a phone photo to at most 1600 px on its longest side as a JPEG, so uploads stay quick on mobile data.
 async function shrink(file: File): Promise<Blob> {
-  const bitmap = await createImageBitmap(file);
+  let bitmap: ImageBitmap;
+  try {
+    bitmap = await createImageBitmap(file);
+  } catch {
+    throw new Error(/\.(heic|heif)$/i.test(file.name) || /hei[cf]/i.test(file.type)
+      ? `${file.name} is an iPhone/Samsung HEIC photo, which the browser can't open. Set the camera to JPEG ("Most compatible"), or share it as a JPG.`
+      : `Couldn't open ${file.name} as a photo.`);
+  }
   const scale = Math.min(1, 1600 / Math.max(bitmap.width, bitmap.height));
   const canvas = document.createElement("canvas");
   canvas.width = Math.round(bitmap.width * scale);
@@ -19,11 +26,16 @@ async function shrink(file: File): Promise<Blob> {
 export async function uploadPhotos(folder: string, files: File[]): Promise<string[]> {
   const supabase = createClient();
   const paths: string[] = [];
+  // Every photo is opened before any is uploaded, so one bad photo doesn't leave the others half sent.
+  const ready: { name: string; blob: Blob }[] = [];
   for (const file of files) {
-    if (!file.type.startsWith("image/")) throw new Error(`${file.name} is not a photo.`);
+    if (!file.type.startsWith("image/") && !/\.(jpe?g|png|webp|gif|heic|heif)$/i.test(file.name)) throw new Error(`${file.name} is not a photo.`);
+    ready.push({ name: file.name, blob: await shrink(file) });
+  }
+  for (const { name, blob } of ready) {
     const path = `${folder}/${crypto.randomUUID()}.jpg`;
-    const { error } = await supabase.storage.from(PHOTO_BUCKET).upload(path, await shrink(file), { contentType: "image/jpeg" });
-    if (error) throw new Error(`Couldn't upload ${file.name}: ${error.message}`);
+    const { error } = await supabase.storage.from(PHOTO_BUCKET).upload(path, blob, { contentType: "image/jpeg" });
+    if (error) throw new Error(`Couldn't upload ${name}: ${error.message}`);
     paths.push(path);
   }
   return paths;

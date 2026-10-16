@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { day, dayAt, qty, TNA_STEPS } from "@/lib/format";
+import { day, dayAt, PLAN_HOURS, qty, TNA_STEPS } from "@/lib/format";
 import { saveFactoryTna, type FactoryDateInput } from "./actions";
 
 type Stage = { stage: string; label: string | null; factory_on: string | null; planned_on: string | null; done_on: string | null };
@@ -33,6 +33,9 @@ export function FactoryOrder({ order, now }: { order: PanelOrder; now: string })
   const [error, setError] = useState("");
   const [sent, setSent] = useState(false);
   const [pending, start] = useTransition();
+  // A plan sent before Sourcingo asked again answers the old request, so the factory sends it again.
+  const sentAt = order.sent_at && (!order.plan_due_at || Date.parse(order.sent_at) >= Date.parse(order.plan_due_at) - PLAN_HOURS * 3_600_000)
+    ? order.sent_at : null;
 
   const missing = order.lines.reduce((n, l) => n + l.stages.filter((s) => !dates[key(l.id, s.stage)]).length, 0);
   const changed: FactoryDateInput[] = order.lines.flatMap((l) => l.stages.map((s) => ({ line_id: l.id, stage: s.stage, factory_on: dates[key(l.id, s.stage)] ?? "" })))
@@ -61,11 +64,11 @@ export function FactoryOrder({ order, now }: { order: PanelOrder; now: string })
     });
   }
 
-  const late = !released && !order.sent_at && !!order.plan_due_at && order.plan_due_at < now;
+  const late = !released && !sentAt && !!order.plan_due_at && order.plan_due_at < now;
   const beyond = order.target ? Object.values(dates).some((d) => d && d > order.target!) : false;
   const status = released ? { text: `PO released ${dayAt(order.released_at!)}`, cls: "ok" }
     : late ? { text: `Overdue: was due ${at.format(new Date(order.plan_due_at!))}`, cls: "bad" }
-    : order.sent_at && !missing ? { text: `Your TNA sent ${dayAt(order.sent_at)}, waiting for release`, cls: "info" }
+    : sentAt && !missing ? { text: `Your TNA sent ${dayAt(sentAt)}, waiting for release`, cls: "info" }
     : { text: missing ? `${missing} ${missing === 1 ? "date" : "dates"} to fill` : "Ready to send", cls: "warn" };
 
   function fields(lineId: string, style: string, label: string, st: Stage) {
@@ -92,7 +95,7 @@ export function FactoryOrder({ order, now }: { order: PanelOrder; now: string })
       </div>
       <p className="muted mb-3 text-[13px]">
         {order.target && <>Target date <b className="text-foreground">{day(order.target)}</b>: every date must be on or before it. </>}
-        {!released && !order.sent_at && order.plan_due_at && <>Send your TNA by <b className="text-foreground">{at.format(new Date(order.plan_due_at))}</b>. </>}
+        {!released && !sentAt && order.plan_due_at && <>Send your TNA by <b className="text-foreground">{at.format(new Date(order.plan_due_at))}</b>. </>}
         {released ? "Your dates are fixed. Done dates are shown under each step." : "Sourcingo's target for each step is shown above your date. Give your date for each step; a date later than its target holds up the PO."}
       </p>
       <div className="table-wrap">
@@ -127,9 +130,9 @@ export function FactoryOrder({ order, now }: { order: PanelOrder; now: string })
       </div>
       {!released && (
         <div className="row mt-3">
-          <button type="button" className="btn primary" disabled={pending || missing > 0 || beyond || (!changed.length && !!order.sent_at)} onClick={send}
+          <button type="button" className="btn primary" disabled={pending || missing > 0 || beyond || (!changed.length && !!sentAt)} onClick={send}
             title={missing ? "Fill every date first" : beyond ? "Bring every date on or before the target date" : undefined}>
-            {pending ? "Sending…" : order.sent_at ? "Send updated TNA" : "Send my TNA"}
+            {pending ? "Sending…" : sentAt ? "Send updated TNA" : "Send my TNA"}
           </button>
           {order.lines.length > 1 && <button type="button" className="btn" disabled={pending} onClick={copyFirst}>Copy {order.lines[0].style}&apos;s dates to all styles</button>}
           {laterThanTarget.length > 0 && !beyond && <span className="text-[13px] font-semibold text-warn">{laterThanTarget.length} {laterThanTarget.length === 1 ? "date is" : "dates are"} later than Sourcingo&apos;s target. Sourcingo will need to agree before releasing the PO.</span>}
