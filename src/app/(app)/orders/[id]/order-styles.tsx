@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { day, dayAt, daysBetween, DEFAULT_BUFFER_DAYS, planDueAt, PLAN_HOURS, TNA_STEPS } from "@/lib/format";
 import { uploadPhotos } from "@/lib/photos";
-import { releaseFactoryPo, requestPlan, saveLineStages, setStylePhoto, type LineStageInput } from "../actions";
+import { acceptTargetsForFactory, releaseFactoryPo, requestPlan, saveLineStages, setStylePhoto, type LineStageInput } from "../actions";
 
 export type StyleRow = { id: string; style: string; colour: string; qty: number; photoUrl: string | null; hasRate: boolean };
 export type FactoryGroup = {
@@ -15,6 +15,8 @@ export type FactoryGroup = {
   bufferDays: number | null;
   target: string;
   factorySentAt: string;
+  // Who in the team entered the factory's dates for it ("" when the factory sent them itself).
+  planEnteredBy: string;
   releasedAt: string;
   lines: StyleRow[];
 };
@@ -241,14 +243,17 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
       </div>
       <p className="muted mb-3 text-[13px]">
         First set your target date for every step of each style (add extra steps if a style needs them), then ask the factory.
-        The factory gives its own date for each step in its panel. Release the PO once every factory date is in and none is later than its target.
+        The factory gives its own date for each step in its panel; if it agrees to your targets by phone or WhatsApp instead, press
+        &quot;Factory agreed to targets&quot;. Release the PO once every factory date is in and none is later than its target.
         After release the orders team and Quality enter done dates. Quality&apos;s latest result shows under each step it checks.
       </p>
 
       {groups.map((g) => {
         const released = !!g.releasedAt;
         const dueAt = g.planRequestedAt ? planDueAt(g.planRequestedAt) : null;
-        const critical = !released && !g.factorySentAt && !!dueAt && dueAt.getTime() < Date.parse(now);
+        // A plan sent before the latest "ask again" answers the old request, not this one.
+        const sent = g.factorySentAt && (!g.planRequestedAt || g.factorySentAt >= g.planRequestedAt) ? g.factorySentAt : "";
+        const critical = !released && !sent && !!dueAt && dueAt.getTime() < Date.parse(now);
         const buffer = g.factoryId ? buffers[g.factoryId] ?? "" : "";
         const bufferOk = /^\d{1,2}$/.test(buffer) && Number(buffer) <= 90;
         const target = released || !g.factoryId ? g.target : dueDate && bufferOk ? addDays(dueDate, -Number(buffer)) : g.target;
@@ -259,7 +264,7 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
           : released ? { text: `PO released ${dayAt(g.releasedAt)}`, cls: "ok" }
           : !gaps.length ? { text: "Plan complete, ready to release", cls: "info" }
           : critical ? { text: `Critical: no TNA from the factory, due ${at.format(dueAt!)}`, cls: "bad" }
-          : g.factorySentAt ? { text: `Factory sent its TNA ${dayAt(g.factorySentAt)}`, cls: "warn" }
+          : sent ? { text: g.planEnteredBy ? `Factory's TNA entered by ${g.planEnteredBy} ${dayAt(sent)}` : `Factory sent its TNA ${dayAt(sent)}`, cls: "warn" }
           : dueAt ? { text: `Waiting for the factory's TNA, due ${at.format(dueAt)}`, cls: "warn" }
           : toAsk.length ? { text: "Set your targets, then ask the factory", cls: "bad" }
           : { text: "Targets set, ask the factory", cls: "warn" };
@@ -282,6 +287,14 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
                       `Asked ${g.factoryName} for its TNA. It has ${PLAN_HOURS} hours to send it in its factory panel.`)}>
                     {busy === `req:${g.factoryId}` ? "Saving…" : asked ? "Ask again (restart 24 hours)" : "Ask factory for plan"}
                   </button>
+                  {asked && toAsk.length === 0 && gaps.length > 0 && (
+                    <button type="button" className="btn" disabled={pending || unsaved(g)}
+                      title={unsaved(g) ? "Save the dates first" : `Use when ${g.factoryName} agreed to your targets by phone or WhatsApp`}
+                      onClick={() => run(`acc:${g.factoryId}`, () => acceptTargetsForFactory(orderId, g.factoryId!),
+                        `Entered your targets as ${g.factoryName}'s dates. You can release the PO now.`)}>
+                      {busy === `acc:${g.factoryId}` ? "Saving…" : "Factory agreed to targets"}
+                    </button>
+                  )}
                   <button type="button" className="btn primary" disabled={pending || gaps.length > 0 || unsaved(g)}
                     title={unsaved(g) ? "Save the dates first" : gaps.length ? "The plan is not complete yet" : undefined}
                     onClick={() => run(`rel:${g.factoryId}`, () => releaseFactoryPo(orderId, g.factoryId!), `PO released to ${g.factoryName}.`)}>

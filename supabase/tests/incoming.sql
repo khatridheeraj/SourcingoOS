@@ -5,6 +5,10 @@
 create function pg_temp.as_user(p uuid) returns void language sql as $$
   select set_config('request.jwt.claim.sub', p::text, false);
 $$;
+create function pg_temp.expect(p_ok boolean, p_what text) returns void language plpgsql as $$
+begin
+  if not coalesce(p_ok, false) then raise exception '%', p_what; end if;
+end $$;
 
 insert into auth.users (id, email) values
   ('00000000-0000-0000-0000-00000000000a', 'owner@sourcingo.in'),
@@ -76,6 +80,12 @@ do $$ begin
   if (select count(*) from public.incoming_pos where email_id = 'm1') <> 2 then raise exception 'reading again duplicated POs'; end if;
 end $$;
 
+-- Reading the second PO of the email again keeps it as the second PO and doesn't touch the first.
+select id as e1p2 from public.incoming_pos where email_id = 'm1' and part = 2 \gset
+select public.save_po_reading(:'e1p2', '[{"buyer_code":"BYR-AH","po_number":"AFH08"},{"buyer_code":"BYR-AH","po_number":"AFH07"}]', null);
+select pg_temp.expect((select string_agg(part || '=' || buyer_po, ',' order by part) from public.incoming_pos where email_id = 'm1') = '1=AFH08,2=AFH07',
+  'reading the second PO again overwrote it with the first');
+
 -- An email with no PO in it.
 select public.receive_email_po('mailbox-secret', '{"email_id":"m4","subject":"Invoice"}') as e4 \gset
 select public.save_po_reading(:'e4', '[]', null);
@@ -86,8 +96,13 @@ end $$;
 -- ---------------------------------------------------------------- who sees what
 set role authenticated;
 select pg_temp.as_user('00000000-0000-0000-0000-00000000000b');
+select pg_temp.expect(not public.can_read_po_file((select id from public.companies) || '/' || :'e4' || '/x.pdf'),
+  'merchandiser can open files of mail the reader set aside');
+select pg_temp.expect(public.can_read_po_file((select id from public.companies) || '/' || :'e1' || '/x.pdf'),
+  'merchandiser can''t open a PO file');
 do $$ begin
-  if (select count(*) from public.incoming_pos) <> 3 then raise exception 'merchandiser does not see incoming POs'; end if;
+  -- m4 was set aside by the reader itself, so only the owner sees it (it may be the owner's private mail).
+  if (select count(*) from public.incoming_pos) <> 2 then raise exception 'merchandiser does not see incoming POs, or sees set-aside mail'; end if;
   if public.incoming_po_buyer_name((select id from public.incoming_pos where part = 2)) is not null then
     raise exception 'merchandiser saw the buyer''s name';
   end if;
@@ -98,6 +113,8 @@ do $$ begin
 exception when insufficient_privilege then null;
 end $$;
 select pg_temp.as_user('00000000-0000-0000-0000-00000000000a');
+select pg_temp.expect((select count(*) from public.incoming_pos) = 3, 'owner does not see mail the reader set aside');
+select pg_temp.expect(public.can_read_po_file((select id from public.companies) || '/' || :'e4' || '/x.pdf'), 'owner can''t open set-aside files');
 do $$ begin
   if public.incoming_po_buyer_name((select id from public.incoming_pos where part = 2)) <> 'Areeba Fashion House' then
     raise exception 'owner does not see the buyer name';

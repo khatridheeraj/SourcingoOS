@@ -63,11 +63,14 @@ function poNumber(texts: string[]): string | null {
   }
   return null;
 }
+// Every labelled place is tried, so "Delivery Address: ..." before "Delivery Date: ..." doesn't hide the date.
 function labelledDate(texts: string[], label: RegExp): string | null {
+  const all = new RegExp(label.source, label.flags.includes("g") ? label.flags : `${label.flags}g`);
   for (const text of texts) {
-    const m = text.match(label);
-    const d = m && parseDate(m[1]);
-    if (d) return d;
+    for (const m of text.matchAll(all)) {
+      const d = parseDate(m[1]);
+      if (d) return d;
+    }
   }
   return null;
 }
@@ -113,18 +116,25 @@ function linesFrom(rows: Row[]): PoLine[] {
   return [];
 }
 
-// One line per style and colour, as the order form expects.
+// One line per style and colour, as the order form expects. Sizes at different rates take the average rate by
+// pieces, so the order value stays right, and the line says so for the person checking.
 function combine(lines: PoLine[]): PoLine[] {
-  const by = new Map<string, PoLine>();
+  const by = new Map<string, { line: PoLine; rates: Set<number> }>();
   for (const l of lines) {
     const key = `${l.style.toLowerCase()}|${(l.colour ?? "").toLowerCase()}`;
-    const had = by.get(key);
-    if (!had) { by.set(key, { ...l }); continue; }
+    const got = by.get(key);
+    if (!got) { by.set(key, { line: { ...l }, rates: new Set(l.rate == null ? [] : [l.rate]) }); continue; }
+    const had = got.line;
+    if (l.rate != null) got.rates.add(l.rate);
+    if (had.rate != null && l.rate != null && had.rate !== l.rate) {
+      had.rate = Math.round(((had.rate * had.qty + l.rate * l.qty) / (had.qty + l.qty)) * 100) / 100;
+    }
     had.qty += l.qty;
     had.sizes = [had.sizes, l.sizes].filter(Boolean).join(", ") || null;
     if (had.rate == null) had.rate = l.rate;
   }
-  return [...by.values()];
+  return [...by.values()].map(({ line, rates }) => (rates.size > 1
+    ? { ...line, sizes: [line.sizes, `rates ${[...rates].join(" / ")} averaged`].filter(Boolean).join("; ") } : line));
 }
 
 // A one-style PO sheet with no table, laid out as labels and values:
@@ -173,6 +183,8 @@ function formLine(rows: Row[]): PoLine | null {
 // A date standing alone near the top of the first page, the way many POs print their date without a label.
 function topDate(sheets: Sheet[]): string | null {
   for (const r of sheets[0]?.rows.slice(0, 4) ?? []) {
+    // A date in a row about delivery is the ship date, not the PO date.
+    if (r.some((c) => /deliver|ship|dispatch|due|ex[\s-]*factory/i.test(c))) continue;
     for (const c of r) if (/^\s*[\d./-]{8,10}\s*$/.test(c)) { const d = parseDate(c); if (d) return d; }
   }
   return null;
@@ -270,7 +282,7 @@ function styleInName(name: string): string | null {
 }
 
 // Words that say an email is about a buyer's PO, and ones that say it is about goods already sent.
-const PO_WORDS = /(^|[^a-z])(p\.?\s?o|purchase\s*orders?|new\s*orders?)([^a-z]|$)/i;
+const PO_WORDS = /(^|[^a-z])(p\.?\s?o'?s?|purchase\s*orders?|new\s*orders?)([^a-z]|$)/i;
 const NOT_PO_WORDS = /(invoice|packing\s*list|inward|grn|lr\s*copy|debit\s*note|credit\s*note|receipt|e-?way\s*bill)/i;
 
 // An emailed file is taken as a PO only when something says so: the subject or a file name mentions a PO,
@@ -343,6 +355,9 @@ export async function readPosFree(
       notes: null,
       doubts: from ? [`From the file ${from}.`] : [],
     };
+    for (const l of lines) {
+      if (l.sizes?.endsWith("averaged")) r.doubts.push(`${l.style}: sizes have different rates (${l.sizes}). The average rate is used; split the style if the buyer bills sizes separately.`);
+    }
     if (!r.ship_date && r.po_date) {
       const m = texts.map((t) => t.match(DAYS_LABEL)).find(Boolean);
       if (m) {

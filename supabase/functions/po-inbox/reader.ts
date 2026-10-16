@@ -128,9 +128,18 @@ async function contentFor(files: PoFile[]) {
 }
 
 const OUR_DOMAINS = ["sourcingo.in"];
-export function sentByUs(from: string | null, subject: string | null): boolean {
+// A colleague passing on a buyer's PO with their own subject ("Flavia Po") names the buyer; a factory PO going out
+// ("Purchase Order – Sourcingo to Shreeji Arts") names a factory, so it is still left out.
+export function sentByUs(from: string | null, subject: string | null, buyers: { code: string; name: string | null }[] = [],
+                         fileNames: string[] = []): boolean {
   const address = (from ?? "").toLowerCase().match(/[^\s<>"]+@([^\s<>"]+)/)?.[1] ?? "";
-  return OUR_DOMAINS.includes(address) && !/^\s*(fwd?|fw)\s*:/i.test(subject ?? "");
+  if (!OUR_DOMAINS.includes(address) || /^\s*(re:\s*)*(fwd?|fw)\s*:/i.test(subject ?? "")) return false;
+  const text = ` ${[subject ?? "", ...fileNames].join(" ").toLowerCase().replace(/[^a-z0-9]+/g, " ")} `;
+  const namesBuyer = buyers.some((b) => {
+    const word = (b.name ?? "").toLowerCase().replace(/[^a-z0-9 ]+/g, " ").trim().split(/\s+/)[0] ?? "";
+    return (word.length >= 4 && text.includes(` ${word} `)) || (b.code.length >= 3 && text.includes(` ${b.code.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim()} `));
+  });
+  return !namesBuyer;
 }
 
 export async function readPos(
@@ -141,7 +150,7 @@ export async function readPos(
 ): Promise<PoReading[]> {
   // An email the team sent themselves (a factory PO going out, a reply with an attachment) is never a
   // buyer's PO. A forward is: a buyer's PO passed on by a colleague.
-  if (email && sentByUs(email.from, email.subject)) return [];
+  if (email && sentByUs(email.from, email.subject, buyers, files.map((f) => f.name))) return [];
   if (!key) return readPosFree(files, email, buyers, excelRows);
   if (Deno.env.get("PO_READER_MOCK") === "1") return mockReading(files);
 

@@ -1,6 +1,6 @@
 // Checks that the parts running outside the app are still alive, and exits 1 (so GitHub emails
 // the owner) when one has stopped: the Tally reader, the Gmail PO pickup, PO reading, the database
-// size on the free plan, and the newest production deploy.
+// and file storage sizes on the free plan, and the newest production deploy.
 //   node scripts/health.mjs
 const url = process.env.SUPABASE_URL ?? "https://zwqoogevoxpafzbdnptz.supabase.co";
 // The public (publishable) key: the same one every browser gets with the app.
@@ -25,8 +25,14 @@ if (h.tally_enabled && (h.tally_seen_hours == null || h.tally_seen_hours > 60)) 
 if (h.email_hours == null || h.email_hours > 96) {
   problems.push(`No email has been picked up for ${h.email_hours ?? "ever"} hours. Check the Gmail pickup script.`);
 }
+// It checks in every minute even when Tally is closed or the company isn't open, so also watch the last real read.
+if (h.tally_enabled && h.tally_seen_hours != null && h.tally_seen_hours <= 60 && (h.tally_read_hours == null || h.tally_read_hours > 60)) {
+  problems.push(`The Tally reader is running but hasn't read the books for ${h.tally_read_hours ?? "ever"} hours. Is the company open in Tally?`);
+}
 if (h.failed_reads_24h > 0) problems.push(`${h.failed_reads_24h} PO file(s) couldn't be read in the last 24 hours. See New buyer POs.`);
 // The free plan stops at 500 MB.
+// File storage (QC reports, photos, PO files) is 1 GB on the free plan; uploads fail once it is full.
+if (h.storage_mb > 800) problems.push(`File storage is ${h.storage_mb} MB of the free 1 GB. Uploads stop when it is full.`);
 if (h.db_mb > 350) problems.push(`The database is ${h.db_mb} MB of the free 500 MB.`);
 
 for (const p of problems) console.log(`PROBLEM: ${p}`);

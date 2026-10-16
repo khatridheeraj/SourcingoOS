@@ -44,20 +44,22 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
       .order("created_at", { ascending: false }),
     loadTeam(),
     getMe(),
-    supabase.from("line_stages").select("line_id, stage, planned_on, done_on, not_needed, factory_on, label, added_at").eq("order_id", id).order("added_at"),
-    supabase.from("factory_pos").select("factory_id, plan_requested_on, plan_requested_at, buffer_days, factory_sent_at, released_at").eq("order_id", id),
+    supabase.from("line_stages").select("line_id, stage, planned_on, done_on, not_needed, factory_on, label, added_at, updated_at").eq("order_id", id).order("added_at"),
+    supabase.from("factory_pos").select("factory_id, plan_requested_on, plan_requested_at, buffer_days, factory_sent_at, released_at, plan_entered_by").eq("order_id", id),
   ]);
   const canEdit = canEditOrders(me?.role);
   // Dispatches (purchase to GRN) are for the orders team only.
-  const [{ data: dRows }, { data: dLines }, { data: dPhotos }] = canEdit
+  const [{ data: dRows }, { data: dLines }] = canEdit
     ? await Promise.all([
         supabase.from("dispatches").select("*").eq("order_id", id).is("cancelled_at", null).order("purchased_at"),
         supabase.from("dispatch_lines").select("dispatch_id, line_id, qty, purchase_rate, sale_rate").in("line_id", (o.order_lines ?? []).map((l) => l.id)),
-        supabase.from("dispatch_photos").select("dispatch_id, path").order("created_at"),
       ])
-    : [{ data: [] }, { data: [] }, { data: [] }];
-  const dispatchIds = new Set((dRows ?? []).map((d) => d.id));
-  const dispatchPhotos = (dPhotos ?? []).filter((p) => dispatchIds.has(p.dispatch_id));
+    : [{ data: [] }, { data: [] }];
+  // Only this order's photos: reading the whole company's list stopped at 1,000 rows and dropped the newest.
+  const { data: dPhotos } = dRows?.length
+    ? await supabase.from("dispatch_photos").select("dispatch_id, path").in("dispatch_id", dRows.map((d) => d.id)).order("created_at")
+    : { data: [] };
+  const dispatchPhotos = dPhotos ?? [];
   const people = new Map(team.map((m) => [m.user_id, personName(m)]));
   // Photos come from private storage through links that work for an hour.
   const qcIds = (qc ?? []).map((c) => c.id);
@@ -103,6 +105,7 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
         bufferDays: po?.buffer_days ?? null,
         target: po?.buffer_days != null && due ? addDays(due, -po.buffer_days) : "",
         factorySentAt: str(po?.factory_sent_at),
+        planEnteredBy: po?.plan_entered_by ? people.get(po.plan_entered_by) ?? "the orders team" : "",
         releasedAt: str(po?.released_at),
         lines: [],
       };
@@ -170,6 +173,9 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
         />
       )}
       <OrderStyles
+        // Start again from the saved dates whenever anyone's save changes them, so stale dates on this screen can't
+        // be saved over someone else's newer ones.
+        key={`${(lineStages ?? []).length}:${(lineStages ?? []).reduce((a, r) => (r.updated_at > a ? r.updated_at : a), "")}`}
         orderId={o.id}
         orderNo={o.order_no}
         companyId={o.company_id}

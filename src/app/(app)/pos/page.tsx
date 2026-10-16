@@ -24,18 +24,19 @@ export default async function IncomingPosPage({ searchParams }: PageProps<"/pos"
   const sp = await searchParams;
   const tab = TABS.some((t) => t.key === sp.show) ? String(sp.show) : "to_check";
   const supabase = await createClient();
-  const [{ data, error }, buyers, { data: aiKey }] = await Promise.all([
+  // Each tab reads its own rows and count, so an old PO still to check never drops off behind newer set-aside mail.
+  const statuses = (k: string) => (k === "to_check" ? ["receiving", "reading", "to_check", "failed"] : [k]);
+  const [{ data, error }, buyers, { data: aiKey }, ...counts] = await Promise.all([
     supabase.from("incoming_pos")
       .select("id, source, email_from, email_subject, received_at, files, status, read, read_error, buyer_id, buyer_po, matched_order_id, order_id, created_by, orders!incoming_pos_order_fkey(order_no), matched:orders!incoming_pos_matched_fkey(order_no)")
-      .eq("company_id", me.companyId).order("received_at", { ascending: false }).limit(300),
+      .eq("company_id", me.companyId).in("status", statuses(tab)).order("received_at", { ascending: false }).limit(300),
     loadBuyers(),
     supabase.rpc("ai_key_status"),
+    ...TABS.map((t) => supabase.from("incoming_pos").select("id", { count: "exact", head: true }).eq("company_id", me.companyId).in("status", statuses(t.key))),
   ]);
   const nameOf = new Map(buyers.map((b) => [b.id, buyerName(b)]));
-  const all = data ?? [];
-  const inTab = (s: string) => (tab === "to_check" ? ["receiving", "reading", "to_check", "failed"].includes(s) : s === tab);
-  const rows = all.filter((r) => inTab(r.status));
-  const count = (k: string) => all.filter((r) => (k === "to_check" ? ["receiving", "reading", "to_check", "failed"].includes(r.status) : r.status === k)).length;
+  const rows = data ?? [];
+  const count = (k: string) => counts[TABS.findIndex((t) => t.key === k)]?.count ?? 0;
 
   return (
     <>

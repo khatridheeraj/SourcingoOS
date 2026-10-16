@@ -204,8 +204,12 @@ export function OrderDispatch({ orderId, companyId, open, factories, dispatches,
 function InvoiceStep({ d, today, late, pending, onSave }: {
   d: Dispatch; today: string; late: boolean; pending: boolean; onSave: (v: { invoice_no: string; invoice_date: string; taxable: string; gst: string }) => void;
 }) {
-  const sale = d.lines.every((l) => l.saleRate != null) ? d.lines.reduce((s, l) => s + l.qty * (l.saleRate ?? 0), 0) : 0;
-  const [v, setV] = useState({ invoice_no: "", invoice_date: today, taxable: sale ? String(sale) : "", gst: sale ? String(Math.round(sale * 0.05 * 100) / 100) : "" });
+  const known = d.lines.every((l) => l.saleRate != null);
+  const round2 = (x: number) => String(Math.round(x * 100) / 100);
+  const sale = known ? d.lines.reduce((s, l) => s + l.qty * (l.saleRate ?? 0), 0) : 0;
+  // Garments are 5% GST up to ₹2,500 a piece and 18% above that (rates from 22 Sep 2025).
+  const gst = known ? d.lines.reduce((s, l) => s + l.qty * (l.saleRate ?? 0) * ((l.saleRate ?? 0) > 2500 ? 0.18 : 0.05), 0) : 0;
+  const [v, setV] = useState({ invoice_no: "", invoice_date: today, taxable: sale ? round2(sale) : "", gst: sale ? round2(gst) : "" });
   return (
     <form className="mt-3 rounded-[10px] bg-surface-2 p-3" onSubmit={(e) => { e.preventDefault(); onSave(v); }}>
       <p className={`mb-2 text-[13px] font-semibold ${late ? "text-bad" : "text-warn"}`}>
