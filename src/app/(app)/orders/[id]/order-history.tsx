@@ -22,7 +22,8 @@ export async function OrderHistory({ orderId }: { orderId: string }) {
     supabase
       .from("history")
       .select("id, table_name, action, actor, at, before, after")
-      .or(`and(table_name.eq.orders,row_id.eq.${orderId}),after->>order_id.eq.${orderId},before->>order_id.eq.${orderId}`)
+      // order_id is the entry's order, kept in its own indexed column; the order's own entries go by row_id.
+      .or(`and(table_name.eq.orders,row_id.eq.${orderId}),order_id.eq.${orderId}`)
       .order("at", { ascending: false })
       .order("id", { ascending: false })
       .limit(100),

@@ -25,21 +25,36 @@ export default async function OrdersPage({ searchParams }: PageProps<"/">) {
   const me = await getMe();
   const companyId = me?.companyId ?? NO_COMPANY;
   const supabase = await createClient();
-  let query = supabase
-    .from("orders")
-    .select("id, order_no, buyer_id, buyer_po, ship_date, revised_ship_date, delay_reason, stage, status, order_lines(id, style, qty, factory_id)")
-    .eq("company_id", companyId)
-    .is("order_lines.removed_at", null)
-    .order("ship_date", { ascending: true, nullsFirst: false })
-    .order("order_no");
-  if (status !== "all") query = query.eq("status", status === "late" ? "open" : status);
-  const [{ data, error }, buyers, factories, counts, { data: qc }] = await Promise.all([
-    query,
+  const today = todayIST();
+  // Orders are read page by page and counted by the database, so a long list is never cut short at 1,000.
+  const page = (a: number, z: number) => {
+    let query = supabase
+      .from("orders")
+      .select("id, order_no, buyer_id, buyer_po, ship_date, revised_ship_date, delay_reason, stage, status, order_lines(id, style, qty, factory_id)")
+      .eq("company_id", companyId)
+      .is("order_lines.removed_at", null)
+      .order("ship_date", { ascending: true, nullsFirst: false })
+      .order("order_no")
+      .order("id");
+    if (status !== "all") query = query.eq("status", status === "late" ? "open" : status);
+    return query.range(a, z);
+  };
+  const count = (only?: string) => {
+    const query = supabase.from("orders").select("id", { count: "exact", head: true }).eq("company_id", companyId);
+    return only ? query.eq("status", only) : query;
+  };
+  const [{ data, error }, buyers, factories, { data: qc, error: qcError }, ...counts] = await Promise.all([
+    fetchAll(page),
     loadBuyers(),
     loadFactories(),
-    supabase.from("orders").select("status, ship_date, revised_ship_date").eq("company_id", companyId),
     fetchAll((a, z) => supabase.from("qc_checks").select("line_id, result").eq("company_id", companyId).in("kind", SHIP_QC).is("cancelled_at", null)
       .order("checked_on", { ascending: false }).order("created_at", { ascending: false }).order("id").range(a, z)),
+    count(),
+    count("open"),
+    count("shipped"),
+    count("cancelled"),
+    // Late: open and the ship date (the new one if it slipped) is before today.
+    count("open").or(`revised_ship_date.lt.${today},and(revised_ship_date.is.null,ship_date.lt.${today})`),
   ]);
   // Each style's latest final QC result (rows come newest first).
   const finalQc = new Map<string, string>();
@@ -47,19 +62,21 @@ export default async function OrdersPage({ searchParams }: PageProps<"/">) {
 
   const buyerById = new Map(buyers.map((b) => [b.id, b]));
   const factoryById = new Map(factories.map((f) => [f.id, f]));
-  const today = todayIST();
   const isLate = (o: { status: string; ship_date: string | null; revised_ship_date: string | null }) => {
     const due = dueDate(o);
     return o.status === "open" && !!due && due < today;
   };
   const prices = canEditOrders(me?.role);
   // Rates come separately: the database gives them only to the orders team and Accounts.
-  const { data: rates } = prices && data?.length ? await supabase.rpc("line_prices", { p_orders: data.map((o) => o.id) }) : { data: [] };
-  const rateOf = new Map(((rates ?? []) as LinePrice[]).map((r) => [r.id, r]));
+  const ids = data.map((o) => o.id);
+  const { data: rates, error: ratesError } = prices && ids.length
+    ? await fetchAll<LinePrice>((a, z) => supabase.rpc("line_prices", { p_orders: ids }).order("id").range(a, z))
+    : { data: [], error: null };
+  const rateOf = new Map(rates.map((r) => [r.id, r]));
   const withRates = (o: { order_lines: { id: string; style: string; qty: number; factory_id: string | null }[] | null }): Line[] =>
     (o.order_lines ?? []).map((l) => ({ ...l, buyer_rate: rateOf.get(l.id)?.buyer_rate ?? null, factory_rate: rateOf.get(l.id)?.factory_rate ?? null }));
 
-  const built = (data ?? []).map((o) => {
+  const built = data.map((o) => {
     const lines = withRates(o);
     const b = buyerById.get(o.buyer_id);
     const factoryNames = [...new Set(lines.map((l) => (l.factory_id ? factoryById.get(l.factory_id)?.name : null)).filter(Boolean))] as string[];
@@ -85,11 +102,11 @@ export default async function OrdersPage({ searchParams }: PageProps<"/">) {
     .filter((r) => !q || [r.order_no, r.buyer, r.buyer_po, ...r.styles, ...r.factoryNames].join(" ").toLowerCase().includes(q))
     .sort((a, b) => (a.due ?? "9999").localeCompare(b.due ?? "9999") || a.order_no.localeCompare(b.order_no));
 
-  const all = counts.data ?? [];
-  const openCount = all.filter((o) => o.status === "open").length;
+  const [allCount, openCount, shippedCount, cancelledCount, late] = counts.map((c) => c.count ?? 0);
+  const tabCount: Record<string, number> = { all: allCount, open: openCount, shipped: shippedCount, cancelled: cancelledCount, late };
+  const loadError = [error, qcError, ratesError, ...counts.map((c) => c.error)].find(Boolean);
   // Tiles count every open order, whatever is typed in the search box.
   const open = built.filter((r) => r.status === "open");
-  const late = all.filter(isLate).length;
   const noFactory = open.filter((r) => r.missingFactory).length;
   const openMargin = prices ? planMargin(open.flatMap((r) => r.lines)) : null;
 
@@ -119,7 +136,7 @@ export default async function OrdersPage({ searchParams }: PageProps<"/">) {
         <div className="filters">
           {TABS.map((t) => (
             <Link key={t.key} className="pill" href={t.key === "open" ? "/" : `/?status=${t.key}`} aria-current={status === t.key ? "page" : undefined}>
-              {t.label} {t.key === "all" ? all.length : t.key === "late" ? late : all.filter((o) => o.status === t.key).length}
+              {t.label} {tabCount[t.key]}
             </Link>
           ))}
         </div>
@@ -129,12 +146,12 @@ export default async function OrdersPage({ searchParams }: PageProps<"/">) {
         </form>
       </div>
 
-      {error && <div className="errbox">{error.message}</div>}
+      {loadError && <div className="errbox">Couldn&apos;t load everything: {loadError.message}</div>}
 
       {rows.length === 0 ? (
         <div className="empty">
-          <b>{q ? "Nothing matches that search" : all.length === 0 ? "No orders yet" : status === "late" ? "Nothing is late" : "No orders here"}</b>
-          {all.length === 0 && "Add the first one with New order, or send the confirmed sheet and Claude will load it."}
+          <b>{loadError && !rows.length ? "Couldn't load the orders" : q ? "Nothing matches that search" : allCount === 0 && !loadError ? "No orders yet" : status === "late" ? "Nothing is late" : "No orders here"}</b>
+          {allCount === 0 && !loadError && "Add the first one with New order, or send the confirmed sheet and Claude will load it."}
         </div>
       ) : (
         <>

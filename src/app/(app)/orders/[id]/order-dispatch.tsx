@@ -17,12 +17,16 @@ export type Dispatch = {
   transporter: string | null; vehicleNo: string | null; lrNo: string | null; lrDate: string | null; lrUrl: string | null; cartons: number | null;
   shippedAt: string | null; grnDueOn: string | null; grnUrl: string | null; grnQty: number | null; grnNotes: string | null; grnAt: string | null;
   photoUrls: string[]; lines: { style: string; qty: number; purchaseRate: number; saleRate: number | null }[];
+  // Styles in this dispatch whose final QC hasn't passed yet.
+  qcNotPassed?: string[];
 };
 
 const at = new Intl.DateTimeFormat("en-IN", { timeZone: "Asia/Kolkata", day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
 const n = (s: string) => Number(s.replace(/[,₹\s]/g, "")) || 0;
 const STEPS = ["Purchase", "Invoice", "E-way bill", "Shipped", "GRN"];
 const DOC_ACCEPT = "image/*,.pdf";
+const isDate = (s: string) => /^\d{4}-\d{2}-\d{2}$/.test(s);
+const digits = (s: string) => s.replace(/[,\s]/g, "");
 
 // One file (a PDF or a phone photo) into the dispatch's folder; returns its storage path.
 async function uploadDoc(folder: string, file: File): Promise<string> {
@@ -31,8 +35,8 @@ async function uploadDoc(folder: string, file: File): Promise<string> {
   return (await uploadReports(folder, [file]))[0].path;
 }
 
-export function OrderDispatch({ orderId, companyId, open, factories, dispatches, now, today }: {
-  orderId: string; companyId: string; open: boolean; factories: DispatchFactory[]; dispatches: Dispatch[]; now: number; today: string;
+export function OrderDispatch({ orderId, companyId, open, owner, factories, dispatches, now, today }: {
+  orderId: string; companyId: string; open: boolean; owner: boolean; factories: DispatchFactory[]; dispatches: Dispatch[]; now: number; today: string;
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
@@ -158,7 +162,7 @@ export function OrderDispatch({ orderId, companyId, open, factories, dispatches,
               <div className="row">
                 <b>{d.factoryName} · bill {d.billNo}</b>
                 <span className="muted text-[13px]">{day(d.billDate)} · {qty(pcs)} pcs · {money(d.purchaseTaxable + d.purchaseGst)} with GST</span>
-                {open && !d.invoicedAt && <button type="button" className="btn sm ml-auto" disabled={pending} onClick={() => cancel(d.id)}>Cancel</button>}
+                {!d.invoicedAt && <button type="button" className="btn sm ml-auto" disabled={pending} onClick={() => cancel(d.id)}>Cancel</button>}
               </div>
               <ol className="steps mt-2" aria-label="Dispatch steps">
                 {STEPS.map((s, i) => (
@@ -188,9 +192,10 @@ export function OrderDispatch({ orderId, companyId, open, factories, dispatches,
                 <p className="text-[13px]">GRN: buyer received <b className="num">{qty(d.grnQty)}</b> of {qty(pcs)} pcs{d.grnNotes && ` (${d.grnNotes})`}. {d.grnUrl && <a className="link" href={d.grnUrl} target="_blank" rel="noreferrer">GRN report</a>}</p>
               )}
 
-              {open && next === 1 && <InvoiceStep d={d} today={today} late={invoiceLate} pending={pending} onSave={(v) => step(d.id, () => recordDispatchInvoice(orderId, d.id, v))} />}
-              {open && next === 2 && <EwayStep invoiceNo={d.invoiceNo ?? ""} today={today} pending={pending} onSave={(v, file) => step(d.id, async (folder) => recordEwayBill(orderId, d.id, { ...v, path: await uploadDoc(folder, file) }))} />}
-              {open && next === 3 && <ShipStep today={today} pending={pending} onSave={(v, lr, photos) => step(d.id, async (folder) => recordShipping(orderId, d.id, { ...v, lr_path: await uploadDoc(folder, lr), photos: await uploadPhotos(folder, photos) }))} />}
+              {/* Each dispatch goes on to its next step even once the order is shipped or cancelled: the goods are already on their way. */}
+              {next === 1 && <InvoiceStep d={d} today={today} late={invoiceLate} pending={pending} onSave={(v) => step(d.id, () => recordDispatchInvoice(orderId, d.id, v))} />}
+              {next === 2 && <EwayStep invoiceNo={d.invoiceNo ?? ""} today={today} pending={pending} onSave={(v, file) => step(d.id, async (folder) => recordEwayBill(orderId, d.id, { ...v, path: await uploadDoc(folder, file) }))} />}
+              {next === 3 && <ShipStep today={today} pending={pending} qcBlock={owner ? [] : d.qcNotPassed ?? []} onSave={(v, lr, photos) => step(d.id, async (folder) => recordShipping(orderId, d.id, { ...v, lr_path: await uploadDoc(folder, lr), photos: await uploadPhotos(folder, photos) }))} />}
               {next === 4 && <GrnStep d={d} pcs={pcs} late={grnLate} pending={pending} onSave={(v, file) => step(d.id, async (folder) => recordGrn(orderId, d.id, { ...v, path: await uploadDoc(folder, file) }))} />}
               {error[d.id] && <p className="mt-2 text-[13px] font-semibold text-bad" role="alert">{error[d.id]}</p>}
             </article>
@@ -247,7 +252,15 @@ function EwayStep({ invoiceNo, today, pending, onSave }: {
     );
   }
   return (
-    <form className="mt-3 rounded-[10px] bg-surface-2 p-3" onSubmit={(e) => { e.preventDefault(); if (!file) return setErr("Attach the e-way bill."); setErr(""); onSave(v, file); }}>
+    <form className="mt-3 rounded-[10px] bg-surface-2 p-3" onSubmit={(e) => {
+      e.preventDefault();
+      // The same checks as the server, before the copy is uploaded, so a refused form leaves no file behind.
+      if (!/^\d{12}$/.test(v.no.replace(/\s/g, ""))) return setErr("An e-way bill number has 12 digits.");
+      if (!isDate(v.date)) return setErr("Enter the e-way bill date.");
+      if (!file) return setErr("Attach the e-way bill.");
+      setErr("");
+      onSave(v, file);
+    }}>
       <p className="mb-2 text-[13px] font-semibold text-warn">Enter the e-way bill for invoice {invoiceNo} and attach its copy.</p>
       <div className="fgrid">
         <label className="field"><span>E-way bill number <i>*</i></span><input className="inp" inputMode="numeric" value={v.no} onChange={(e) => setV({ ...v, no: e.target.value })} aria-label="E-way bill number" placeholder="12 digits" /></label>
@@ -263,8 +276,8 @@ function EwayStep({ invoiceNo, today, pending, onSave }: {
   );
 }
 
-function ShipStep({ today, pending, onSave }: {
-  today: string; pending: boolean; onSave: (v: Omit<ShippingInput, "lr_path" | "photos">, lr: File, photos: File[]) => void;
+function ShipStep({ today, pending, qcBlock, onSave }: {
+  today: string; pending: boolean; qcBlock: string[]; onSave: (v: Omit<ShippingInput, "lr_path" | "photos">, lr: File, photos: File[]) => void;
 }) {
   const [v, setV] = useState({ transporter: "", vehicle_no: "", lr_no: "", lr_date: today, cartons: "" });
   const [lr, setLr] = useState<File | null>(null);
@@ -272,8 +285,14 @@ function ShipStep({ today, pending, onSave }: {
   const [err, setErr] = useState("");
   function submit(e: React.FormEvent) {
     e.preventDefault();
+    // The same checks as the server, before anything is uploaded, so a refused form leaves no files behind.
+    if (qcBlock.length) return setErr(`Final QC has not passed for ${qcBlock.join(", ")}. Quality must pass it before these goods ship.`);
     if (!photos.length) return setErr("Add photos of the goods.");
     if (!lr) return setErr("Attach the LR copy.");
+    if (!v.transporter.trim()) return setErr("Enter the transporter.");
+    if (!v.lr_no.trim() || !isDate(v.lr_date)) return setErr("Enter the LR number and date.");
+    const cartons = digits(v.cartons);
+    if (cartons !== "" && !(Number.isInteger(Number(cartons)) && Number(cartons) > 0)) return setErr("Cartons must be a whole number.");
     setErr("");
     onSave(v, lr, photos);
   }
@@ -308,7 +327,15 @@ function GrnStep({ d, pcs, late, pending, onSave }: {
   const [file, setFile] = useState<File | null>(null);
   const [err, setErr] = useState("");
   return (
-    <form className="mt-3 rounded-[10px] bg-surface-2 p-3" onSubmit={(e) => { e.preventDefault(); if (!file) return setErr("Attach the GRN report."); setErr(""); onSave(v, file); }}>
+    <form className="mt-3 rounded-[10px] bg-surface-2 p-3" onSubmit={(e) => {
+      e.preventDefault();
+      if (!file) return setErr("Attach the GRN report.");
+      // The same check as the server, before the report is uploaded.
+      const q = digits(v.received_qty);
+      if (q === "" || !Number.isInteger(Number(q)) || Number(q) < 0) return setErr("Enter the pieces the buyer received.");
+      setErr("");
+      onSave(v, file);
+    }}>
       <p className={`mb-2 text-[13px] font-semibold ${late ? "text-bad" : "text-warn"}`}>
         {late ? `GRN overdue: it was due ${day(d.grnDueOn)}.` : `Get the buyer's GRN report by ${day(d.grnDueOn)}.`}
       </p>

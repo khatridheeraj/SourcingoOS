@@ -16,7 +16,8 @@ export default async function InvoicePage({ params }: PageProps<"/payments/invoi
   const days = b.buyerById.get(i.buyer_id)?.credit_days;
   const cancelled = i.state === "cancelled";
   const live = i.cheques.filter((c) => c.cheque.status !== "bounced" && c.cheque.status !== "cancelled");
-  const locked = live.length || credits.length ? "Has cheques or credit notes, so the buyer is fixed" : undefined;
+  // Any cheque still set against it fixes the buyer, even a bounced one, as the database does.
+  const locked = i.cheques.length || credits.length ? "Has cheques or credit notes, so the buyer is fixed" : undefined;
   const input = { id: i.id, invoice_no: i.invoice_no, buyer_id: i.buyer_id, invoice_date: i.invoice_date, amount: String(i.amount), due_date: i.due_date ?? "", notes: i.notes ?? "" };
 
   return (

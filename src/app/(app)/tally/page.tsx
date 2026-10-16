@@ -39,7 +39,7 @@ function status(s: Settings | null) {
 }
 
 export default async function TallyPage({ searchParams }: PageProps<"/tally">) {
-  const { me, owner, books: b, buyerLabel } = await loadBooks();
+  const { me, owner, books: b, buyerLabel, error: booksError } = await loadBooks();
   const sp = await searchParams;
   const tab = TABS.some((t) => t.key === sp.tab) ? String(sp.tab) : "check";
   const companyId = me.companyId ?? NO_COMPANY;
@@ -55,7 +55,7 @@ export default async function TallyPage({ searchParams }: PageProps<"/tally">) {
   const s = set.data as Settings | null;
   const ledgers = (led.data ?? []) as TallyLedger[];
   const vouchers = (vch.data ?? []) as TallyVoucher[];
-  const error = set.error ?? led.error ?? vch.error ?? items.error ?? buyers.error ?? factories.error;
+  const error = booksError ?? set.error ?? led.error ?? vch.error ?? items.error ?? buyers.error ?? factories.error;
   const read = !!s?.snapshot_at;
   const c = compareWithTally({
     books: b, vouchers, ledgers,
@@ -160,6 +160,9 @@ export default async function TallyPage({ searchParams }: PageProps<"/tally">) {
         </section>
       </>
     );
+  } else if (booksError) {
+    // Without Payments every Tally invoice would look missing, so there is nothing to compare yet.
+    body = <div className="empty"><b>Payments couldn&apos;t be loaded</b>So Tally can&apos;t be compared with it right now. Reload the page in a moment.</div>;
   } else if (!read) {
     body = <div className="empty"><b>Tally hasn&apos;t been read yet</b>Once the office computer is connected, this page lists every invoice, credit note and receipt that differs between Tally and Payments.</div>;
   } else {

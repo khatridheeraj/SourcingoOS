@@ -1,5 +1,6 @@
 import { AREAS, ENTRY_COLUMNS, OTHER_AREA, type Names } from "@/lib/activity";
 import { buyerName, loadBuyers, loadFactories, loadTeam, personName } from "@/lib/data";
+import { fetchAll } from "@/lib/fetch-all";
 import { createClient } from "@/lib/supabase/server";
 
 export type Filters = { who: string; area: string; action: string; from: string; to: string };
@@ -36,12 +37,13 @@ export async function loadNames(companyId: string): Promise<Names> {
   const supabase = await createClient();
   const [team, buyers, factories, { data: orders }] = await Promise.all([
     loadTeam(), loadBuyers(), loadFactories(),
-    supabase.from("orders").select("id, order_no").eq("company_id", companyId),
+    // Every order, page by page, so entries of older orders still show the order number.
+    fetchAll((a, z) => supabase.from("orders").select("id, order_no").eq("company_id", companyId).order("id").range(a, z)),
   ]);
   return {
     people: new Map(team.map((m) => [m.user_id, personName(m)])),
     buyers: new Map(buyers.map((b) => [b.id, buyerName(b)])),
     factories: new Map(factories.map((x) => [x.id, x.name])),
-    orders: new Map((orders ?? []).map((o) => [o.id as string, o.order_no as string])),
+    orders: new Map(orders.map((o) => [o.id as string, o.order_no as string])),
   };
 }
