@@ -13,6 +13,10 @@ const HEAD = {
   qty: /^(qty|quantity|total\s*qty|order\s*qty|total\s*quantity|pcs|pieces|no\.?\s*of\s*pcs|units|total\s*pcs)\.?(\s*\(pcs\))?$/i,
   rate: /^(rate|price|unit\s*price|rate\s*\/\s*pc|rate\s*per\s*pc|cost|unit\s*cost|fob|price\s*\/\s*pc|rate\s*\(rs\.?\)|rate\s*\(inr\))\.?$/i,
   description: /^(description|desc|item\s*description|details|fabric)$/i,
+  serial: /^(sr\.?\s*no\.?|s\.?\s*no\.?|sl\.?\s*no\.?|sr\.?)$/i,
+  photo: /^(photo|image|picture|pic)$/i,
+  sizeText: /^(size|sizes|size\s*range)$/i,
+  ship: /^(rec\.?\s*date|receiving\s*date|delivery\s*date|del\.?\s*date|ship(ment)?\s*date|dispatch\s*date|ex[\s-]*factory(\s*date)?)$/i,
 };
 const SIZE_HEAD = /^(xxs|xs|s|m|l|xl|xxl|2xl|3xl|xxxl|4xl|5xl|free\s*size|fs|\d{2})$/i;
 const TOTAL_ROW = /^(total|grand\s*total|sub\s*total|subtotal|net\s*total|amount\s*in\s*words)/i;
@@ -54,12 +58,18 @@ const PO_LABEL = /(?<![a-z0-9\-])(?:buyer\s*)?(?:p\s*\/\s*o|p\.?\s*o\.?|purchase
 const PO_DATE_LABEL = /(?:p\.?\s*o\.?\s*date|order\s*date|purchase\s*order\s*date|date\s*of\s*(?:po|order)|dated)\s*[:\-–|\s]*([^\n|]{6,24})/i;
 const SHIP_LABEL = /(?:expected\s*delivery\s*date|delivery\s*date|delivery\s*by|deliver\s*by|ship(?:ment|ping)?\s*date|dispatch\s*date|due\s*date|ex[\s-]*factory\s*date|delivery|ready\s*by)\s*[:\-–|\s]*([^\n|]{6,24})/i;
 
+// "PO No-01": a short number is taken only when the label clearly says PO number.
+const PO_NO_LABEL = /(?<![a-z0-9\-])(?:p\s*\/\s*o|p\.?\s*o\.?|purchase\s*order)\s*(?:no\.?|number|#)\s*[:#.\-–|\s]*(\d{1,6})(?![\d/\-.]*\d)/gi;
+
 function poNumber(texts: string[]): string | null {
   for (const text of texts) {
     for (const m of text.matchAll(PO_LABEL)) {
       const v = m[1].replace(/[.\-/]+$/, "");
       if ((v.match(/\d/g) ?? []).length >= 3 && !/^SO\/\d+/i.test(v) && !/^(19|20)\d{2}$/.test(v)) return v;
     }
+  }
+  for (const text of texts) {
+    for (const m of text.matchAll(PO_NO_LABEL)) return m[1];
   }
   return null;
 }
@@ -77,13 +87,18 @@ function labelledDate(texts: string[], label: RegExp): string | null {
 
 // --- Style table from rows of cells ---
 
-type Cols = { style: number; colour: number; qty: number; rate: number; description: number; sizes: { col: number; name: string }[] };
+type Cols = { style: number; colour: number; qty: number; rate: number; description: number; sizeText: number; ship: number; photo: boolean; sizes: { col: number; name: string }[] };
 
 function headerOf(row: Row): Cols | null {
   const find = (re: RegExp) => row.findIndex((c) => re.test(c.trim().replace(/\s+/g, " ")));
-  const cols: Cols = { style: find(HEAD.style), colour: find(HEAD.colour), qty: find(HEAD.qty), rate: find(HEAD.rate), description: find(HEAD.description), sizes: [] };
+  const cols: Cols = {
+    style: find(HEAD.style), colour: find(HEAD.colour), qty: find(HEAD.qty), rate: find(HEAD.rate), description: find(HEAD.description),
+    sizeText: find(HEAD.sizeText), ship: find(HEAD.ship), photo: false, sizes: [],
+  };
   row.forEach((c, i) => { if (SIZE_HEAD.test(c.trim()) && i !== cols.qty) cols.sizes.push({ col: i, name: c.trim().toUpperCase() }); });
   if (cols.style < 0 && cols.description >= 0) [cols.style, cols.description] = [cols.description, -1];
+  // Some buyers show a photo for each style instead of a style number: the line is named by its serial number.
+  if (cols.style < 0 && find(HEAD.photo) >= 0 && find(HEAD.serial) >= 0) [cols.style, cols.photo] = [find(HEAD.serial), true];
   const hasQty = cols.qty >= 0 || cols.sizes.length >= 2;
   return cols.style >= 0 && hasQty ? cols : null;
 }
@@ -98,7 +113,7 @@ function linesFrom(rows: Row[]): PoLine[] {
       const cell = (i: number) => (i >= 0 ? (row[i] ?? "").trim() : "");
       if (row.some((c) => TOTAL_ROW.test(c.trim()))) break;
       if (headerOf(row)) break;
-      const style = cell(cols.style);
+      const style = cols.photo ? (/^\d+$/.test(cell(cols.style)) ? `Photo ${cell(cols.style)}` : "") : cell(cols.style);
       const sizes = cols.sizes.map((s) => ({ name: s.name, n: parseNumber(cell(s.col)) ?? 0 })).filter((s) => s.n > 0);
       const qty = parseNumber(cell(cols.qty)) ?? sizes.reduce((t, s) => t + s.n, 0);
       if (!style || !qty) continue;
@@ -106,7 +121,7 @@ function linesFrom(rows: Row[]): PoLine[] {
         style,
         description: cols.description >= 0 ? cell(cols.description) || null : null,
         colour: cell(cols.colour) || null,
-        sizes: sizes.length ? sizes.map((s) => `${s.name} ${s.n}`).join(", ") : null,
+        sizes: sizes.length ? sizes.map((s) => `${s.name} ${s.n}`).join(", ") : cell(cols.sizeText) || null,
         qty: Math.round(qty),
         rate: parseNumber(cell(cols.rate)),
       });
@@ -114,6 +129,17 @@ function linesFrom(rows: Row[]): PoLine[] {
     if (out.length) return combine(out);
   }
   return [];
+}
+
+// A delivery date given per line in the style table ("Rec date"): the latest one is the PO's ship date.
+function tableShipDate(rows: Row[]): string | null {
+  for (let h = 0; h < rows.length; h++) {
+    const cols = headerOf(rows[h]);
+    if (!cols || cols.ship < 0) continue;
+    const dates = rows.slice(h + 1).map((r) => parseDate((r[cols.ship] ?? "").trim())).filter((d): d is string => !!d);
+    if (dates.length) return dates.sort().at(-1)!;
+  }
+  return null;
 }
 
 // One line per style and colour, as the order form expects. Sizes at different rates take the average rate by
@@ -185,7 +211,10 @@ function topDate(sheets: Sheet[]): string | null {
   for (const r of sheets[0]?.rows.slice(0, 4) ?? []) {
     // A date in a row about delivery is the ship date, not the PO date.
     if (r.some((c) => /deliver|ship|dispatch|due|ex[\s-]*factory/i.test(c))) continue;
-    for (const c of r) if (/^\s*[\d./-]{8,10}\s*$/.test(c)) { const d = parseDate(c); if (d) return d; }
+    for (const c of r) {
+      const t = c.replace(/^\s*date\s*[:\-–.]?\s*/i, "");
+      if (/^\s*[\d./-]{8,10}\s*$/.test(t)) { const d = parseDate(t); if (d) return d; }
+    }
   }
   return null;
 }
@@ -344,13 +373,16 @@ export async function readPosFree(
   });
   if (email && !looksLikePo(email.subject ?? "", files.map((f) => f.name), sheets, buyers.some(fromBuyer))) return [];
 
+  // A buyer not in the list yet: the name the email was sent under, so the owner can add them from the PO.
+  const senderName = /@sourcingo\.in/i.test(sender) ? null : (email?.from ?? "").match(/^\s*"?([^"<]*?)"?\s*</)?.[1].trim() || null;
+
   const reading = (texts: string[], lines: PoLine[], doubts: string[], from: string | null, own: Sheet[]): PoReading => {
     const r: PoReading = {
-      buyer_name: buyer?.name ?? null,
+      buyer_name: buyer?.name ?? senderName,
       buyer_code: buyer?.code ?? null,
       po_number: poNumber(texts),
       po_date: labelledDate(texts, PO_DATE_LABEL) ?? topDate(own),
-      ship_date: labelledDate(texts, SHIP_LABEL),
+      ship_date: labelledDate(texts, SHIP_LABEL) ?? own.reduce<string | null>((d, s) => d ?? tableShipDate(s.rows), null),
       lines,
       notes: null,
       doubts: from ? [`From the file ${from}.`] : [],
@@ -369,6 +401,7 @@ export async function readPosFree(
     if (!r.ship_date) r.doubts.push("Delivery date not found: type it in.");
     if (!lines.length && !doubts.length) r.doubts.push("No style table found: type the styles in from the file.");
     if (lines.some((l) => l.rate == null)) r.doubts.push("Some rates not found: fill them in.");
+    if (lines.some((l) => /^Photo \d+$/.test(l.style))) r.doubts.push("This PO shows a photo for each style, not a style number: rename each \"Photo\" line with the style from the file.");
     r.doubts.push(...doubts);
     if (lines.length) r.doubts.push("Filled in automatically without AI: check each line against the file.");
     return r;
