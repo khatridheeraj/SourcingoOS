@@ -11,7 +11,7 @@ export default async function NewOrderPage() {
     <>
       <div className="head">
         <div className="grow">
-          <Link href="/" className="link text-xs">← Orders</Link>
+          <nav className="crumbs" aria-label="Breadcrumb"><Link href="/">Orders</Link></nav>
           <h1>New order</h1>
           <p>Enter one buyer PO with all its styles. If the PO is split across factories, pick the factory on each style.</p>
         </div>

@@ -81,7 +81,7 @@ export default async function IncomingPoPage({ params, searchParams }: PageProps
     <>
       <div className="head">
         <div className="grow">
-          <Link href="/pos" className="link text-xs">← Incoming POs</Link>
+          <nav className="crumbs" aria-label="Breadcrumb"><Link href="/pos">Incoming POs</Link></nav>
           <h1>{po.buyer_po ? <>PO {po.buyer_po}</> : po.email_subject ?? "Incoming PO"}{buyerLabel && <span className="muted font-normal"> · {buyerLabel}</span>}</h1>
           <p className="row">
             <span className={s?.cls}>{s?.label}</span>

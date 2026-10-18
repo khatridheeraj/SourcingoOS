@@ -1,11 +1,13 @@
 const inr = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 2 });
-const date = new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "short", year: "numeric", timeZone: "Asia/Kolkata" });
+const date = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" });
 
 export const qty = (n: number | null | undefined) => (n == null ? "" : inr.format(n));
 export const money = (n: number | null | undefined) => (n == null ? "" : `₹${inr.format(n)}`);
-export const day = (d: string | null | undefined) => (d ? date.format(new Date(`${d}T00:00:00+05:30`)) : "");
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+// "10 Sep 2026" from YYYY-MM-DD (en-IN would write "Sept"), read straight from the string so no time zone can shift it.
+export const day = (d: string | null | undefined) => (d ? `${Number(d.slice(8, 10))} ${MONTHS[Number(d.slice(5, 7)) - 1]} ${d.slice(0, 4)}` : "");
 // The India date of a timestamp (a UTC timestamp's first 10 characters can be the day before).
-export const dayAt = (ts: string | null | undefined) => (ts ? date.format(new Date(ts)) : "");
+export const dayAt = (ts: string | null | undefined) => (ts ? day(date.format(new Date(ts))) : "");
 
 // Today's date in India as YYYY-MM-DD.
 export const todayIST = () => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(new Date());

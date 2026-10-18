@@ -13,7 +13,7 @@ export default async function NewChequePage({ searchParams }: PageProps<"/paymen
     <>
       <div className="head">
         <div className="grow">
-          <Link href="/payments?tab=cheques" className="link text-xs">← Payments</Link>
+          <nav className="crumbs" aria-label="Breadcrumb"><Link href="/payments?tab=cheques">Payments</Link></nav>
           <h1>Record cheque</h1>
           <p>Note each cheque a buyer hands over, post-dated or not, and the invoices it pays.</p>
         </div>
