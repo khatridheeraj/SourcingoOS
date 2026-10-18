@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { canEditOrders, getMe } from "@/lib/auth";
 import { day, money, nowMs, qty } from "@/lib/format";
+import { buyerOverdue, overdueText, poWaitDays } from "@/lib/order-checks";
 import { PO_BUCKET, type StoredFile } from "@/lib/po-files";
 import type { PoReading } from "@/lib/po-inbox";
 import { createClient } from "@/lib/supabase/server";
@@ -9,6 +10,7 @@ import type { LineInput } from "../../orders/actions";
 import { OrderForm } from "../../orders/order-form";
 import { formOptions } from "../../orders/options";
 import { STATE } from "../state";
+import { HeldSender } from "./held-sender";
 import { NewBuyer } from "./new-buyer";
 import { PoActions } from "./po-actions";
 
@@ -64,8 +66,11 @@ export default async function IncomingPoPage({ params, searchParams }: PageProps
   const pcs = lines.reduce((t, l) => t + (l.qty || 0), 0);
   const priced = lines.length > 0 && lines.every((l) => l.rate != null);
   const buyerLabel = buyerId ? o.buyers.find((b) => b.id === buyerId)?.label ?? "" : "";
+  const overdue = checking && buyerId ? await buyerOverdue(supabase, buyerId) : null;
+  const waited = checking || po.status === "reading" || po.status === "receiving" ? poWaitDays(po.received_at, nowMs()) : 0;
   const size = (n: number) => (n >= 1_048_576 ? `${(n / 1_048_576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
   const points = checking ? [
+    ...(overdue ? [{ cls: "warn", body: <>{overdueText(buyerLabel, overdue)}</> }] : []),
     ...(matched ? [{ cls: "bad", body: <>This PO number is already order <Link href={`/orders/${po.matched_order_id}`} className="link code">{matched.order_no}</Link>. If this is a revision, update that order, then set this one aside.</> }] : []),
     ...(!buyerId && po.status === "to_check" ? [{
       cls: "bad", body: <>
@@ -86,10 +91,15 @@ export default async function IncomingPoPage({ params, searchParams }: PageProps
           <p className="row">
             <span className={s?.cls}>{s?.label}</span>
             <span>{po.source === "email" ? `Email from ${po.email_from ?? "unknown"}` : "Added from a file"} · {when.format(new Date(po.received_at))}</span>
+            {waited > 0 && <span className="chip bad">Waiting {waited} days</span>}
           </p>
         </div>
-        <PoActions id={po.id} status={po.status} canReread={canReread} />
+        {po.status !== "held" && <PoActions id={po.id} status={po.status} canReread={canReread} />}
       </div>
+
+      {po.status === "held" && (
+        <HeldSender id={po.id} from={po.email_from ?? ""} buyers={o.buyers.map((b) => ({ id: b.id, label: b.label }))} />
+      )}
 
       {lines.length > 0 && (
         <div className="kpis">
@@ -174,6 +184,7 @@ export default async function IncomingPoPage({ params, searchParams }: PageProps
             buyers={o.buyers}
             factories={o.factories}
             team={o.team}
+            overdueShown={overdue ? buyerId : undefined}
           />
         )
       )}

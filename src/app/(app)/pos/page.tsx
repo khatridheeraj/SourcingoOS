@@ -2,27 +2,31 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { canEditOrders, getMe } from "@/lib/auth";
 import { buyerName, loadBuyers } from "@/lib/data";
-import { qty } from "@/lib/format";
+import { nowMs, qty } from "@/lib/format";
+import { poWaitDays, PO_WAIT_DAYS } from "@/lib/order-checks";
 import type { PoReading } from "@/lib/po-inbox";
 import { createClient } from "@/lib/supabase/server";
 import { AddPo } from "./add-po";
 import { AiKey } from "./ai-key";
 import { STATE } from "./state";
 
-const TABS = [
-  { key: "to_check", label: "To check", hint: "Read into drafts. Check each against its file and add it as an order." },
+const ALL_TABS = [
+  { key: "to_check", label: "To check", hint: `Read into drafts. Check each against its file and add it as an order. A PO not added within ${PO_WAIT_DAYS} days is flagged.` },
+  { key: "held", label: "Unknown sender", hint: "Emails from senders no buyer is known by. Only you see these. Accept or ignore each one." },
   { key: "added", label: "Added", hint: "POs that became orders." },
   { key: "not_po", label: "Set aside", hint: "Emails with no new buyer PO, or set aside by the team. Put one back if it is a PO." },
 ];
 
 const when = new Intl.DateTimeFormat("en-IN", { timeZone: "Asia/Kolkata", day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
 // The colour bar on each row: what needs a person first.
-const SEV: Record<string, string> = { failed: "bad", to_check: "warn", added: "ok" };
+const SEV: Record<string, string> = { failed: "bad", to_check: "warn", held: "warn", added: "ok" };
 
 export default async function IncomingPosPage({ searchParams }: PageProps<"/pos">) {
   const me = await getMe();
   if (!canEditOrders(me?.role) || !me?.companyId) redirect("/");
   const sp = await searchParams;
+  // Mail from unknown senders is private: only the owner has that tab.
+  const TABS = ALL_TABS.filter((t) => t.key !== "held" || me.role === "owner");
   const tab = TABS.some((t) => t.key === sp.show) ? String(sp.show) : "to_check";
   const supabase = await createClient();
   // Each tab reads its own rows and count, so an old PO still to check never drops off behind newer set-aside mail.
@@ -39,6 +43,8 @@ export default async function IncomingPosPage({ searchParams }: PageProps<"/pos"
   const rows = data ?? [];
   const count = (k: string) => counts[TABS.findIndex((t) => t.key === k)]?.count ?? 0;
   const t = TABS.find((x) => x.key === tab)!;
+  const now = nowMs();
+  const late = tab === "to_check" ? rows.filter((r) => poWaitDays(r.received_at, now) > 0).length : 0;
 
   return (
     <>
@@ -48,6 +54,8 @@ export default async function IncomingPosPage({ searchParams }: PageProps<"/pos"
           <p>
             Buyer POs picked up from email or added from a file.{" "}
             {count("to_check") ? <b className="text-warn">{count("to_check")} to check</b> : <b className="text-ok">Nothing to check</b>}
+            {late > 0 && <> · <b className="text-bad">{late} waiting over {PO_WAIT_DAYS} days</b></>}
+            {count("held") > 0 && <> · <Link href="/pos?show=held" className="link font-semibold">{count("held")} from unknown senders</Link></>}
           </p>
         </div>
         <AddPo companyId={me.companyId} />
@@ -83,22 +91,25 @@ export default async function IncomingPosPage({ searchParams }: PageProps<"/pos"
               const matched = (Array.isArray(r.matched) ? r.matched[0] : r.matched) as { order_no: string } | null;
               const s = STATE[r.status];
               const busy = r.status === "reading" || r.status === "receiving";
+              const waited = r.status !== "added" && r.status !== "not_po" && r.status !== "held" ? poWaitDays(r.received_at, now) : 0;
               const doubts = r.status === "to_check" ? read.doubts?.length ?? 0 : 0;
               const buyer = r.buyer_id ? nameOf.get(r.buyer_id) : read.po_number !== undefined ? "Buyer not recognised" : "";
               return (
                 <li key={r.id}>
-                  <span className={`sev ${SEV[r.status] ?? ""}`} aria-hidden />
+                  <span className={`sev ${waited ? "bad" : SEV[r.status] ?? ""}`} aria-hidden />
                   <div className="min-w-0">
                     <Link href={`/pos/${r.id}`} className="todo-title" aria-label={`Incoming PO ${r.buyer_po ?? r.email_subject ?? ""}`}>
-                      {r.buyer_po ? <span className="code">PO {r.buyer_po}</span> : <span className="muted">{busy ? "Reading… " : "PO number not found · "}</span>}
+                      {r.status === "held" ? <span className="muted">Not read yet · </span>
+                        : r.buyer_po ? <span className="code">PO {r.buyer_po}</span> : <span className="muted">{busy ? "Reading… " : "PO number not found · "}</span>}
                       {buyer && <span className={r.buyer_id ? "" : "text-bad"}>{buyer}</span>}
                     </Link>
                     <div className="todo-detail truncate">
                       {r.source === "email" ? `Email from ${r.email_from ?? "unknown"}` : "Added from a file"} · {when.format(new Date(r.received_at))}
                       {r.email_subject && <> · {r.email_subject}</>}
                     </div>
-                    {(lines.length > 0 || order || matched || doubts > 0 || r.status === "failed") && (
+                    {(lines.length > 0 || order || matched || doubts > 0 || r.status === "failed" || waited > 0) && (
                       <div className="todo-links">
+                        {waited > 0 && <span className="chip bad">Waiting {waited} days</span>}
                         {lines.length > 0 && <span className="chip">{lines.length} {lines.length === 1 ? "style" : "styles"} · {qty(lines.reduce((n, l) => n + (l.qty || 0), 0))} pcs</span>}
                         {order && <span className="chip ok code">{order.order_no}</span>}
                         {matched && r.status === "to_check" && <span className="chip bad">Already order {matched.order_no}</span>}
@@ -109,7 +120,7 @@ export default async function IncomingPosPage({ searchParams }: PageProps<"/pos"
                   </div>
                   <div className="todo-chip"><span className={s?.cls}>{s?.label}</span></div>
                   <Link href={`/pos/${r.id}`} className="btn sm todo-act">
-                    {r.status === "to_check" || r.status === "failed" ? "Check and add" : "Open"}
+                    {r.status === "to_check" || r.status === "failed" ? "Check and add" : r.status === "held" ? "Accept or ignore" : "Open"}
                   </Link>
                 </li>
               );

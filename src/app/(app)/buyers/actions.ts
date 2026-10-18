@@ -5,7 +5,10 @@ import { getMe } from "@/lib/auth";
 import { friendly } from "@/lib/errors";
 import { createClient } from "@/lib/supabase/server";
 
-export type BuyerInput = { id?: string; code: string; realName: string; city: string; notes: string; active: boolean };
+// senders: email addresses or @domains that send this buyer's POs, one per line or comma. Only the owner sees them.
+export type BuyerInput = { id?: string; code: string; realName: string; city: string; notes: string; active: boolean; senders: string };
+
+const senderList = (s: string) => s.split(/[\s,;]+/).map((x) => x.trim()).filter(Boolean);
 
 export async function saveBuyer(b: BuyerInput): Promise<{ error?: string }> {
   const me = await getMe();
@@ -15,11 +18,13 @@ export async function saveBuyer(b: BuyerInput): Promise<{ error?: string }> {
   if (!b.realName.trim()) return { error: "Enter the buyer's real name." };
 
   const supabase = await createClient();
-  const { error } = await supabase.rpc("save_buyer", {
+  const { data: id, error } = await supabase.rpc("save_buyer", {
     p: { id: b.id ?? "", code, real_name: b.realName.trim(), city: b.city, notes: b.notes, active: b.active },
   });
   if (error) return { error: friendly(error) };
+  const { error: senders } = await supabase.rpc("set_buyer_po_senders", { p_buyer: id, p_senders: senderList(b.senders) });
   revalidatePath("/", "layout");
+  if (senders) return { error: `The buyer is saved, but not its PO senders: ${friendly(senders)}` };
   return {};
 }
 

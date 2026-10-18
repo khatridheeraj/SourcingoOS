@@ -11,13 +11,14 @@ export default async function BuyersPage() {
   if (!canEditOrders(me?.role)) redirect("/");
   const supabase = await createClient();
   // Open orders are read page by page, so counts past 1,000 orders stay right.
-  const [buyers, { data: open }] = await Promise.all([
+  const owner = me?.role === "owner";
+  const [buyers, { data: open }, { data: senders }] = await Promise.all([
     loadBuyers(),
     fetchAll((a, z) => supabase.from("orders").select("buyer_id").eq("company_id", me?.companyId ?? NO_COMPANY).eq("status", "open").order("id").range(a, z)),
+    owner ? supabase.rpc("buyer_po_senders") : Promise.resolve({ data: null }),
   ]);
   const openOrders: Record<string, number> = {};
   for (const o of open) openOrders[o.buyer_id] = (openOrders[o.buyer_id] ?? 0) + 1;
-  const owner = me?.role === "owner";
   return (
     <>
       <div className="head">
@@ -26,7 +27,7 @@ export default async function BuyersPage() {
           <p>The team sees buyers by name. Factory logins never see buyers.</p>
         </div>
       </div>
-      <BuyerList buyers={buyers} owner={owner} openOrders={openOrders} />
+      <BuyerList buyers={buyers} owner={owner} openOrders={openOrders} senders={(senders ?? {}) as Record<string, string[]>} />
     </>
   );
 }

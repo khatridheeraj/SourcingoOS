@@ -5,6 +5,7 @@ import { fetchAll } from "@/lib/fetch-all";
 import { buyerName, loadBuyers, loadFactories } from "@/lib/data";
 import { day, daysBetween, dueDate, nowMs, planDueAt, PLAN_HOURS, qcKindLabel, qty, SHIP_QC, stageReached, TNA_STEPS, todayIST } from "@/lib/format";
 import { NO_COMPANY } from "@/lib/names";
+import { poWaitDays, PO_WAIT_DAYS } from "@/lib/order-checks";
 import { project, shipRisk } from "@/lib/tna-plan";
 import { createClient } from "@/lib/supabase/server";
 import { Icon, type IconName } from "@/components/nav";
@@ -265,19 +266,44 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
       action: "Check and confirm", sort: mine[0].created_at });
   }
 
-  // Buyer POs picked up from email or added from a file, waiting to be checked and added as orders.
+  // Buyer POs picked up from email or added from a file, latePos to be checked and added as orders.
+  // One not added within PO_WAIT_DAYS gets its own red line. Emails from unknown senders reach only the owner.
   const { data: incoming } = team
-    ? keep(await fetchAll((a, z) => supabase.from("incoming_pos").select("id, buyer_id, buyer_po, email_subject, status, received_at")
-        .eq("company_id", companyId).in("status", ["to_check", "failed"]).order("received_at").order("id").range(a, z)))
+    ? keep(await fetchAll((a, z) => supabase.from("incoming_pos").select("id, buyer_id, buyer_po, email_subject, email_from, status, received_at")
+        .eq("company_id", companyId).in("status", ["to_check", "failed", "held"]).order("received_at").order("id").range(a, z)))
     : { data: [] };
-  if (incoming?.length) {
-    const failed = incoming.filter((p) => p.status === "failed").length;
+  const poLabel = (p: { buyer_id: string | null; buyer_po: string | null; email_subject: string | null }) =>
+    `${p.buyer_id ? `${buyerOf.get(p.buyer_id) ?? ""} ` : ""}PO ${p.buyer_po ?? p.email_subject ?? ""}`.trim();
+  const listed = (ps: { buyer_id: string | null; buyer_po: string | null; email_subject: string | null }[]) =>
+    `${ps.slice(0, 3).map(poLabel).join(", ")}${ps.length > 3 ? ` and ${ps.length - 3} more` : ""}`;
+  const toCheck = (incoming ?? []).filter((p) => p.status !== "held");
+  const latePos = toCheck.filter((p) => poWaitDays(p.received_at, nowMs()) > 0);
+  const fresh = toCheck.filter((p) => !latePos.includes(p));
+  if (latePos.length) {
+    const oldest = poWaitDays(latePos[0].received_at, nowMs());
     now_.push({
-      key: "incoming", href: incoming.length === 1 ? `/pos/${incoming[0].id}` : "/pos", sev: failed ? "bad" : "warn",
-      title: incoming.length === 1 ? "1 new buyer PO to check" : `${incoming.length} new buyer POs to check`,
-      detail: `${incoming.slice(0, 3).map((p) => `${p.buyer_id ? `${buyerOf.get(p.buyer_id) ?? ""} ` : ""}PO ${p.buyer_po ?? p.email_subject ?? ""}`.trim()).join(", ")}${incoming.length > 3 ? ` and ${incoming.length - 3} more` : ""}`
-        + `${failed ? ` · ${failed} couldn't be read` : ""}`,
-      action: "Check POs", sort: incoming[0].received_at,
+      key: "incoming-late", href: latePos.length === 1 ? `/pos/${latePos[0].id}` : "/pos", sev: "bad",
+      title: latePos.length === 1 ? `1 buyer PO not added as an order after ${PO_WAIT_DAYS} days` : `${latePos.length} buyer POs not added as orders after ${PO_WAIT_DAYS} days`,
+      detail: listed(latePos), chip: { text: `Oldest ${plural(oldest, "day")}`, cls: "bad" },
+      action: "Add as orders", sort: latePos[0].received_at,
+    });
+  }
+  if (fresh.length) {
+    const failed = fresh.filter((p) => p.status === "failed").length;
+    now_.push({
+      key: "incoming", href: fresh.length === 1 ? `/pos/${fresh[0].id}` : "/pos", sev: failed ? "bad" : "warn",
+      title: fresh.length === 1 ? "1 new buyer PO to check" : `${fresh.length} new buyer POs to check`,
+      detail: `${listed(fresh)}${failed ? ` · ${failed} couldn't be read` : ""}`,
+      action: "Check POs", sort: fresh[0].received_at,
+    });
+  }
+  const held = (incoming ?? []).filter((p) => p.status === "held");
+  if (held.length) {
+    now_.push({
+      key: "incoming-held", href: held.length === 1 ? `/pos/${held[0].id}` : "/pos?show=held", sev: "warn",
+      title: held.length === 1 ? "1 email from an unknown sender" : `${held.length} emails from unknown senders`,
+      detail: `Not read as POs until you accept them. ${held.slice(0, 3).map((p) => p.email_from ?? p.email_subject ?? "").join(", ")}${held.length > 3 ? ` and ${held.length - 3} more` : ""}`,
+      action: "Accept or ignore", sort: held[0].received_at,
     });
   }
 
@@ -368,7 +394,7 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
   const quick: { href: string; label: string; icon: IconName; count?: number; tone: string }[] = team
     ? [
         { href: "/orders/new", label: "New order", icon: "plus", tone: "accent" },
-        { href: "/pos", label: "Check POs", icon: "inbox", count: incoming?.length ?? 0, tone: "info" },
+        { href: "/pos", label: "Check POs", icon: "inbox", count: toCheck.length, tone: "info" },
         { href: "/?status=late", label: "Late orders", icon: "clock", count: late.length, tone: "bad" },
         { href: "/?find=1", label: "Find order", icon: "search", tone: "ok" },
       ]

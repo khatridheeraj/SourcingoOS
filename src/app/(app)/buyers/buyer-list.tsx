@@ -5,9 +5,12 @@ import type { Buyer } from "@/lib/data";
 import { saveBuyer, type BuyerInput } from "./actions";
 import { GrnDays } from "./grn-days";
 
-const blank: BuyerInput = { code: "", realName: "", city: "", notes: "", active: true };
+const blank: BuyerInput = { code: "", realName: "", city: "", notes: "", active: true, senders: "" };
 
-export function BuyerList({ buyers, owner, openOrders }: { buyers: Buyer[]; owner: boolean; openOrders: Record<string, number> }) {
+// senders: each buyer's known PO senders, given to the owner only.
+export function BuyerList({ buyers, owner, openOrders, senders }: {
+  buyers: Buyer[]; owner: boolean; openOrders: Record<string, number>; senders: Record<string, string[]>;
+}) {
   const [editing, setEditing] = useState<BuyerInput | null>(null);
   const [error, setError] = useState("");
   const [pending, start] = useTransition();
@@ -23,8 +26,8 @@ export function BuyerList({ buyers, owner, openOrders }: { buyers: Buyer[]; owne
     });
   }
 
-  const set = (k: keyof BuyerInput) => (e: React.ChangeEvent<HTMLInputElement>) =>
-    editing && setEditing({ ...editing, [k]: k === "active" ? e.target.checked : e.target.value });
+  const set = (k: keyof BuyerInput) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
+    editing && setEditing({ ...editing, [k]: k === "active" && e.target instanceof HTMLInputElement ? e.target.checked : e.target.value });
 
   return (
     <div className="stack">
@@ -46,6 +49,10 @@ export function BuyerList({ buyers, owner, openOrders }: { buyers: Buyer[]; owne
             <label className="field"><span>City</span><input className="inp" value={editing.city} onChange={set("city")} /></label>
             <label className="field"><span>Notes</span><input className="inp" value={editing.notes} onChange={set("notes")} /></label>
           </div>
+          <label className="field"><span>Who sends their POs</span>
+            <textarea className="inp" rows={2} value={editing.senders} onChange={set("senders")} placeholder="orders@buyer.com, @buyer.com" />
+            <small>Email addresses, or @buyer.com for anyone at that company. Emailed POs from anyone else wait for you under Unknown sender. Only you see this.</small>
+          </label>
           <label className="row text-[13px]"><input type="checkbox" checked={editing.active} onChange={set("active")} /> Active (shows when entering new orders)</label>
           {error && <div className="errbox" role="alert">{error}</div>}
           <div className="row">
@@ -60,7 +67,7 @@ export function BuyerList({ buyers, owner, openOrders }: { buyers: Buyer[]; owne
       ) : (
         <div className="table-wrap">
           <table className="tbl">
-            <thead><tr><th>Name</th><th>Code</th><th>City</th><th className="r">Open orders</th><th>GRN within</th><th>Notes</th><th></th>{owner && <th></th>}</tr></thead>
+            <thead><tr><th>Name</th><th>Code</th><th>City</th><th className="r">Open orders</th><th>GRN within</th><th>Notes</th>{owner && <th>PO senders</th>}<th></th>{owner && <th></th>}</tr></thead>
             <tbody>
               {buyers.map((b) => (
                 <tr key={b.id}>
@@ -70,10 +77,11 @@ export function BuyerList({ buyers, owner, openOrders }: { buyers: Buyer[]; owne
                   <td className="r num">{openOrders[b.id] ?? 0}</td>
                   <td><GrnDays buyerId={b.id} code={b.realName ?? b.code} value={b.grn_days} owner={owner} /></td>
                   <td className="muted">{b.notes}</td>
+                  {owner && <td className="muted text-xs">{(senders[b.id] ?? []).join(", ") || "None yet"}</td>}
                   <td>{!b.active && <span className="chip">Inactive</span>}</td>
                   {owner && (
                     <td className="r">
-                      <button className="btn sm" onClick={() => { setError(""); setEditing({ id: b.id, code: b.code, realName: b.realName ?? "", city: b.city ?? "", notes: b.notes ?? "", active: b.active }); }}>Edit</button>
+                      <button className="btn sm" onClick={() => { setError(""); setEditing({ id: b.id, code: b.code, realName: b.realName ?? "", city: b.city ?? "", notes: b.notes ?? "", active: b.active, senders: (senders[b.id] ?? []).join(", ") }); }}>Edit</button>
                     </td>
                   )}
                 </tr>
