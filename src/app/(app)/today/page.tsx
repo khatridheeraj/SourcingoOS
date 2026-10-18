@@ -6,7 +6,7 @@ import { buyerName, loadBuyers, loadFactories } from "@/lib/data";
 import { day, daysBetween, dueDate, nowMs, planDueAt, PLAN_HOURS, qcKindLabel, qty, SHIP_QC, stageReached, TNA_STEPS, todayIST } from "@/lib/format";
 import { NO_COMPANY } from "@/lib/names";
 import { createClient } from "@/lib/supabase/server";
-import { MarkShipped } from "./mark-shipped";
+import { MarkShipped } from "../orders/mark-shipped";
 
 type Sev = "bad" | "warn" | "ok" | "";
 // One line of the to-do list: what it is, why, and the one button that deals with it.

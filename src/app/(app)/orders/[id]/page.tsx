@@ -2,7 +2,7 @@ import type { LinePrice } from "@/lib/margin";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { canEditOrders, canEnterDone, canRecordQc, getMe } from "@/lib/auth";
-import { day, dayAt, qty, SHIP_QC, TNA_STEPS, todayIST } from "@/lib/format";
+import { day, dayAt, daysBetween, qty, SHIP_QC, STATUS, TNA_STEPS, todayIST } from "@/lib/format";
 import { createClient } from "@/lib/supabase/server";
 import { OrderForm } from "../order-form";
 import { OrderDispatch, type Dispatch, type DispatchFactory } from "./order-dispatch";
@@ -13,6 +13,7 @@ import { OrderQc, type QcCheck } from "./order-qc";
 import { OrderStyles, type ExtraStep, type FactoryGroup, type StepQc } from "./order-styles";
 import { loadTeam, personName } from "@/lib/data";
 import { PHOTO_BUCKET } from "@/lib/storage";
+import { MarkShipped } from "../mark-shipped";
 import { formOptions } from "../options";
 
 const str = (v: unknown) => (v == null ? "" : String(v));
@@ -148,9 +149,16 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
       <div className="head">
         <div className="grow">
           <Link href="/" className="link text-xs">← Orders</Link>
-          <h1><span className="code text-[19px]">{o.order_no}</span> · {o.buyer_po}</h1>
-          <p>Entered {dayAt(o.created_at)}{o.updated_at.slice(0, 16) !== o.created_at.slice(0, 16) && `, last changed ${dayAt(o.updated_at)}`}</p>
+          <h1><span className="code text-[19px]">{o.order_no}</span> · {opts.buyers.find((b) => b.id === o.buyer_id)?.label ?? ""} · PO {o.buyer_po}</h1>
+          <p className="row">
+            <span className={STATUS[o.status]?.cls}>{STATUS[o.status]?.label}</span>
+            <span>{due ? `Ships ${day(due)}` : "No ship date yet"}{o.status === "open" && due && due < todayIST() && <b className="text-bad"> · {daysBetween(due, todayIST())} days late</b>}</span>
+            <span>· {lines.length} {lines.length === 1 ? "style" : "styles"} · {qty(lines.reduce((t, l) => t + l.qty, 0))} pcs</span>
+          </p>
+          <p className="text-xs">Entered {dayAt(o.created_at)}{o.updated_at.slice(0, 16) !== o.created_at.slice(0, 16) && `, last changed ${dayAt(o.updated_at)}`}</p>
         </div>
+        {/* Closing an order: the owner can always; others once every style's final QC has passed. */}
+        {canEdit && o.status === "open" && <MarkShipped orderId={o.id} orderNo={o.order_no} />}
       </div>
       {saved && <div className="okbox">Order saved as {o.order_no}.</div>}
       <OrderProduction
