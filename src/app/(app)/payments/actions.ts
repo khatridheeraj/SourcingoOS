@@ -42,13 +42,28 @@ export async function saveCheque(input: ChequeInput): Promise<Result> {
   return r.error ? { error: r.error } : { id: r.data as string, ok: `Cheque ${input.cheque_no.trim()} saved` };
 }
 
-const DONE: Record<ChequeStatus, string> = { in_hand: "back in hand", deposited: "deposited", cleared: "cleared", bounced: "bounced", cancelled: "cancelled" };
+const DONE: Record<ChequeStatus, string> = { in_hand: "back in hand", deposited: "deposited", cleared: "cleared", bounced: "bounced", cancelled: "cancelled", paid_other: "paid another way" };
 export async function setChequeStatus(ids: string[], status: ChequeStatus, on: string, note: string): Promise<Result> {
   if (!ids.length) return { error: "Choose at least one cheque." };
   const r = await call("set_cheque_status", { p_ids: ids, p_status: status, p_on: on || null, p_note: note || null });
   if (r.error) return { error: r.error };
   const count = r.data as number;
   return { ok: `${count} ${count === 1 ? "cheque" : "cheques"} marked ${DONE[status]}` };
+}
+
+// Marks cheques the way Tally shows them settled, each with its own date and note, all in one go.
+export type Settle = { id: string; status: "cleared" | "paid_other"; on: string; note: string };
+export async function settleCheques(items: Settle[]): Promise<Result> {
+  if (!items.length) return { error: "Choose at least one cheque." };
+  const r = await call("settle_cheques", { p: items });
+  if (r.error) return { error: r.error };
+  const count = r.data as number;
+  return { ok: `${count} ${count === 1 ? "cheque" : "cheques"} marked as Tally shows` };
+}
+
+export async function setChequeNotice(id: string, on: string | null): Promise<Result> {
+  const r = await call("set_cheque_notice", { p_id: id, p_on: on || null });
+  return r.error ? { error: r.error } : { ok: on ? "Notice date saved" : "Notice date taken off" };
 }
 
 export async function setCreditDays(buyerId: string, days: string): Promise<Result> {

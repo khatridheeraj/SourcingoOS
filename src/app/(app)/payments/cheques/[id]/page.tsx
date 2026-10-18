@@ -1,20 +1,23 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { day, money } from "@/lib/format";
-import { daysBetween, INVOICE_LABEL, SLACK } from "@/lib/payments";
-import { ChequeChip, ChequeForm, ChequeSteps } from "../../forms";
+import { daysBetween, INVOICE_LABEL, noticeClock, SLACK } from "@/lib/payments";
+import { ChequeChip, ChequeForm, ChequeSteps, NoticeSent } from "../../forms";
 import { PaymentHistory } from "../../history";
 import { loadBooks } from "../../load";
 import { buyerOptions, openInvoices } from "../../options";
 
 export default async function ChequePage({ params, searchParams }: PageProps<"/payments/cheques/[id]">) {
-  const { books: b, buyerLabel, owner } = await loadBooks();
+  const { books: b, buyerLabel, owner, advice } = await loadBooks();
   const { id } = await params;
   const { saved } = await searchParams;
   const c = b.cheques.find((x) => x.id === id);
   if (!c) notFound();
   const t = b.today;
-  const editable = c.status !== "bounced" && c.status !== "cancelled";
+  const editable = c.status !== "bounced" && c.status !== "cancelled" && c.status !== "paid_other";
+  const a = advice.get(c.id);
+  const clock = noticeClock(c, t);
+  const stillOwed = c.invoices.some((x) => (b.invoiceRowById.get(x.invoice.id)?.outstanding ?? 0) > 0);
   const left = Number(c.amount) - c.allocated;
   const until = c.status === "in_hand" && c.cheque_date > t ? daysBetween(t, c.cheque_date) : 0;
 
@@ -34,11 +37,34 @@ export default async function ChequePage({ params, searchParams }: PageProps<"/p
           <div className="tile"><span>Date on cheque</span><b className="!text-lg">{day(c.cheque_date)}</b>{until > 0 && <small className="muted text-xs">{until === 1 ? "tomorrow" : `in ${until} days`}</small>}</div>
           <div className={`tile ${c.stale ? "alarm" : ""}`}><span>Valid until</span><b className="!text-lg">{day(c.expires)}</b></div>
           <div className="tile"><span>Received</span><b className="!text-lg">{day(c.received_on) || "Not noted"}</b></div>
-          <div className="tile"><span>{c.bounced_on ? "Bounced" : c.cleared_on ? "Cleared" : "Deposited"}</span><b className="!text-lg">{day(c.bounced_on ?? c.cleared_on ?? c.deposited_on) || "Not yet"}</b></div>
+          <div className="tile"><span>{c.bounced_on ? "Bounced" : c.cleared_on ? "Cleared" : c.paid_other_on ? "Paid another way" : "Deposited"}</span><b className="!text-lg">{day(c.bounced_on ?? c.cleared_on ?? c.paid_other_on ?? c.deposited_on) || "Not yet"}</b></div>
         </div>
+        {a?.kind === "cleared" && <div className="okbox">Tally shows this cheque cleared on {day(a.on)} (receipt {a.receipt}). Mark it cleared with that date.</div>}
+        {a?.kind === "paid_other" && <div className="okbox">Tally shows {c.invoices.length === 1 ? "its invoice" : "all its invoices"} paid without this cheque, last on {day(a.on)}. Mark it paid another way and give the cheque back to the buyer.</div>}
+        {a?.kind === "part" && <div className="warnbox">Tally shows {money(a.paid)} of its invoices paid another way and {money(a.left)} still due. Ask the buyer for the rest before banking this cheque.</div>}
+        {c.status === "paid_other" && <div className="okbox">Its invoices were paid another way. Give this cheque back to the buyer.</div>}
         {c.notes && <p className="whitespace-pre-line text-[13px]"><b>Notes:</b> {c.notes}</p>}
         <ChequeSteps id={c.id} status={c.status} chequeDate={c.cheque_date} expires={c.expires} today={t} isOwner={owner} />
       </section>
+
+      {clock && c.bounced_on && (stillOwed || c.notice_sent_on) && (
+        <section className="panel stack">
+          <h2>Bounced cheque deadlines</h2>
+          {clock.stage === "notice" ? (
+            <div className={clock.left < 0 ? "errbox" : clock.left <= 10 ? "errbox" : "warnbox"}>
+              {clock.left < 0
+                ? <>The 30 days to send a legal notice ended on {day(clock.by)}. Talk to your lawyer about what can still be done, and ask the buyer for payment.</>
+                : <>Send the buyer a written legal notice by <b>{day(clock.by)}</b> ({clock.left} {clock.left === 1 ? "day" : "days"} left). This keeps the right to file a cheque-bounce case (section 138). Your lawyer drafts it.</>}
+            </div>
+          ) : (
+            <div className="warnbox">
+              Notice sent {day(c.notice_sent_on!)}. The buyer has until <b>{day(clock.payBy)}</b> to pay. If they don&apos;t, the case must be filed by <b>{day(clock.fileBy)}</b>.
+            </div>
+          )}
+          <p className="text-xs muted">Dates are counted from the bounce and from the day the notice was sent, to be safe. Your lawyer confirms the exact dates.</p>
+          <NoticeSent id={c.id} sent={c.notice_sent_on ?? null} bouncedOn={c.bounced_on} today={t} />
+        </section>
+      )}
 
       <section className="panel stack">
         <h2>Pays</h2>

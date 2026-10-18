@@ -39,7 +39,8 @@ function status(s: Settings | null) {
 }
 
 export default async function TallyPage({ searchParams }: PageProps<"/tally">) {
-  const { me, owner, books: b, buyerLabel, error: booksError } = await loadBooks();
+  const { me, owner, books: b, buyerLabel, advice, error: booksError } = await loadBooks();
+  const settleable = [...advice.values()].filter((a) => a.kind === "cleared" || a.kind === "paid_other").length;
   const sp = await searchParams;
   const tab = TABS.some((t) => t.key === sp.tab) ? String(sp.tab) : "check";
   const companyId = me.companyId ?? NO_COMPANY;
@@ -173,6 +174,12 @@ export default async function TallyPage({ searchParams }: PageProps<"/tally">) {
     }));
     body = (
       <>
+        {settleable > 0 && (
+          <div className="warnbox row">
+            <span className="grow">Tally shows {settleable} {settleable === 1 ? "cheque" : "cheques"} in Payments as settled, cleared or paid another way.</span>
+            <Link className="btn sm primary" href="/payments#tally-settle">Mark them</Link>
+          </div>
+        )}
         {toCheck === 0 && !c.unlinked.length && <div className="okbox">Payments and Tally agree on every invoice, credit note and cleared cheque from {day(s?.snapshot_counts?.from)} to {day(s?.snapshot_counts?.to)}.</div>}
         {c.unlinked.length > 0 && (
           <section className="panel stack">

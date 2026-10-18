@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
 import { day, money } from "@/lib/format";
 import { addDays, autoSplit, CHEQUE_LABEL, CHEQUE_TONE, CHEQUE_VALID_DAYS, type ChequeStatus, NEXT_STEPS, SLACK } from "@/lib/payments";
-import { type InvoiceInput, saveCheque, saveCreditNote, saveInvoice, setChequeStatus, setCreditDays } from "./actions";
+import { type InvoiceInput, saveCheque, saveCreditNote, saveInvoice, setChequeNotice, setChequeStatus, setCreditDays } from "./actions";
 
 export type BuyerOpt = { id: string; label: string; creditDays: number | null };
 const num = (s: string | number | null | undefined) => Number(String(s ?? "").replace(/[,₹\s]/g, "")) || 0;
@@ -273,7 +273,7 @@ export function ChequeChip({ c, today }: { c: { status: ChequeStatus; cheque_dat
   return <span className={`chip ${CHEQUE_TONE[c.status]}`}>{CHEQUE_LABEL[c.status]}</span>;
 }
 
-const VERB: Record<ChequeStatus, string> = { deposited: "Mark deposited", cleared: "Mark cleared", bounced: "Mark bounced", cancelled: "Cancel cheque", in_hand: "Undo deposit" };
+const VERB: Record<ChequeStatus, string> = { deposited: "Mark deposited", cleared: "Mark cleared", bounced: "Mark bounced", cancelled: "Cancel cheque", in_hand: "Undo deposit", paid_other: "Paid another way" };
 
 function useChequeStatus() {
   const router = useRouter();
@@ -286,6 +286,10 @@ function useChequeStatus() {
       const reason = prompt("Why did it bounce? For example: insufficient funds, signature mismatch");
       if (reason === null) return;
       note = reason.trim() ? `Bounced: ${reason.trim()}` : "";
+    } else if (status === "paid_other") {
+      const how = prompt(`${ids.length === 1 ? "The invoice was" : "The invoices were"} paid without this cheque. How? For example: NEFT on 24 Sep. The cheque then goes back to the buyer.`);
+      if (how === null) return;
+      note = how.trim() ? `Paid another way: ${how.trim()}` : "Paid another way";
     } else if (status === "cancelled") {
       if (!confirm(ids.length === 1 ? "Cancel this cheque? It stops paying its invoices and stays on record as cancelled." : `Cancel ${ids.length} cheques? They stop paying their invoices.`)) return;
     }
@@ -301,7 +305,10 @@ function useChequeStatus() {
 
 export type ChequeLine = {
   id: string; cheque_no: string; bank: string | null; buyer: string; cheque_date: string; amount: number; status: ChequeStatus; stale: boolean;
-  deposited_on: string | null; cleared_on: string | null; bounced_on: string | null; invoices: { id: string; no: string }[]; unallocated: number;
+  deposited_on: string | null; cleared_on: string | null; bounced_on: string | null; paid_other_on: string | null;
+  invoices: { id: string; no: string }[]; unallocated: number;
+  // What Tally shows about it, in a few words, when it is still in hand or deposited.
+  tally?: { tone: string; text: string };
 };
 
 // Tick cheques and mark them deposited, cleared or bounced together, with the date it happened.
@@ -310,7 +317,7 @@ export function ChequeTable({ rows, today }: { rows: ChequeLine[]; today: string
   const [on, setOn] = useState(today);
   const { run, pending, error, ok } = useChequeStatus();
   const chosen = rows.filter((r) => sel.has(r.id));
-  const steps = (["deposited", "cleared", "bounced", "cancelled", "in_hand"] as ChequeStatus[]).filter(
+  const steps = (["deposited", "cleared", "paid_other", "bounced", "cancelled", "in_hand"] as ChequeStatus[]).filter(
     (s) => chosen.length > 0 && chosen.every((r) => NEXT_STEPS[r.status].includes(s) && !(r.status === "in_hand" && (s === "deposited" || s === "cleared")
       && (r.cheque_date > on || addDays(r.cheque_date, CHEQUE_VALID_DAYS) < on))),
   );
@@ -357,7 +364,8 @@ export function ChequeTable({ rows, today }: { rows: ChequeLine[]; today: string
                 <td>{r.invoices.length ? r.invoices.map((i, k) => <span key={i.id}>{k > 0 && ", "}<Link className="link code" href={`/payments/invoices/${i.id}`}>{i.no}</Link></span>) : <span className="muted">None</span>}</td>
                 <td className="whitespace-nowrap">
                   <ChequeChip c={r} today={today} />
-                  <div className="text-xs muted">{r.cleared_on ? `cleared ${day(r.cleared_on)}` : r.bounced_on ? `bounced ${day(r.bounced_on)}` : r.deposited_on ? `deposited ${day(r.deposited_on)}` : ""}</div>
+                  <div className="text-xs muted">{r.cleared_on ? `cleared ${day(r.cleared_on)}` : r.paid_other_on ? `paid ${day(r.paid_other_on)}` : r.bounced_on ? `bounced ${day(r.bounced_on)}` : r.deposited_on ? `deposited ${day(r.deposited_on)}` : ""}</div>
+                  {r.tally && <div className={`text-xs ${r.tally.tone}`}>{r.tally.text}</div>}
                 </td>
               </tr>
             ))}
@@ -376,7 +384,7 @@ export function ChequeSteps({ id, status, chequeDate, expires, today, isOwner }:
   const early = (s: ChequeStatus) => banking(s) && on < chequeDate;
   // Banks don't take a cheque past its validity. Only the owner can record it anyway.
   const late = (s: ChequeStatus) => banking(s) && on > expires && !isOwner;
-  const steps = (isOwner ? (["in_hand", "deposited", "cleared", "bounced", "cancelled"] as ChequeStatus[]).filter((s) => s !== status) : NEXT_STEPS[status])
+  const steps = (isOwner ? (["in_hand", "deposited", "cleared", "paid_other", "bounced", "cancelled"] as ChequeStatus[]).filter((s) => s !== status) : NEXT_STEPS[status])
     .filter((s) => !early(s) && !late(s));
   const wait = status === "in_hand" && on < chequeDate ? <span className="text-xs muted">Post-dated: it can go to the bank from {day(chequeDate)}.</span>
     : status === "in_hand" && on > expires ? <span className="text-xs muted">Expired on {day(expires)}. Ask the buyer for a new cheque{isOwner ? "" : ", or set the date it was really deposited"}.</span>
@@ -397,6 +405,29 @@ export function ChequeSteps({ id, status, chequeDate, expires, today, isOwner }:
         <p className="text-xs muted">This cheque is {CHEQUE_LABEL[status].toLowerCase()}. Only the owner can correct it.</p>
       )}
       <Message error={error} ok={ok} />
+    </div>
+  );
+}
+
+// The bounced-cheque notice: when it went, so the app can count the next deadlines.
+export function NoticeSent({ id, sent, bouncedOn, today }: { id: string; sent: string | null; bouncedOn: string; today: string }) {
+  const router = useRouter();
+  const [on, setOn] = useState(sent ?? today);
+  const [error, setError] = useState("");
+  const [pending, start] = useTransition();
+  const save = (v: string | null) => start(async () => {
+    const r = await setChequeNotice(id, v);
+    if (r.error) setError(r.error);
+    else { setError(""); router.refresh(); }
+  });
+  return (
+    <div className="stack">
+      <div className="row">
+        <label className="row text-[12.5px] muted">Notice sent on <input type="date" className="inp w-[150px]" value={on} min={bouncedOn} max={today} onChange={(e) => setOn(e.target.value)} aria-label="Notice sent on" /></label>
+        <button type="button" className="btn primary" disabled={pending || !on || on === sent} onClick={() => save(on)}>{sent ? "Change date" : "Notice sent"}</button>
+        {sent && <button type="button" className="btn ghost sm" disabled={pending} onClick={() => save(null)}>Not sent yet</button>}
+      </div>
+      {error && <div className="errbox" role="alert">{error}</div>}
     </div>
   );
 }
