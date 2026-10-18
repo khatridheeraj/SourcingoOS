@@ -13,7 +13,8 @@ export default async function FactoryPage() {
       <div className="head">
         <div className="grow">
           <h1>{panel.factory || "Your POs"}</h1>
-          <p>
+          <p className="show-phone">Give your finish date for every step, on or before the target, and send it within 24 hours of being asked.</p>
+          <p className="hide-phone">
             For each order, enter the date you will finish every step for each style, on or before the target date, and send it within 24 hours of being asked.
             Sourcingo releases the PO once your dates and their plan are both in. Your dates are fixed after release.
           </p>

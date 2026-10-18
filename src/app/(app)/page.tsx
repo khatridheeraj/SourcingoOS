@@ -127,9 +127,9 @@ export default async function OrdersPage({ searchParams }: PageProps<"/">) {
       <div className="head">
         <div className="grow">
           <h1>Orders</h1>
-          <p>Every buyer PO, earliest ship date first. A new ship date replaces the buyer&apos;s when an order slips.</p>
+          <p className="hide-phone">Every buyer PO, earliest ship date first. A new ship date replaces the buyer&apos;s when an order slips.</p>
         </div>
-        {prices && <Link href="/orders/new" className="btn primary">New order</Link>}
+        {prices && <Link href="/orders/new" className="btn primary fab"><span aria-hidden className="fab-plus">+</span>New order</Link>}
       </div>
 
       {status === "open" && openCount > 0 && (
@@ -154,7 +154,8 @@ export default async function OrdersPage({ searchParams }: PageProps<"/">) {
         </nav>
         <form className="ml-auto w-full sm:w-72">
           {status !== "open" && <input type="hidden" name="status" value={status} />}
-          <input className="inp" type="search" name="q" defaultValue={q} placeholder="Search PO, style, buyer, factory" aria-label="Search orders" />
+          <input className="inp" type="search" name="q" defaultValue={q} placeholder="Search PO, style, buyer, factory" aria-label="Search orders"
+            autoFocus={sp.find === "1"} enterKeyHint="search" />
         </form>
       </div>
 

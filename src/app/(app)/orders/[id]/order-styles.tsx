@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { day, dayAt, daysBetween, DEFAULT_BUFFER_DAYS, planDueAt, PLAN_HOURS, qty, TNA_STEPS } from "@/lib/format";
 import { uploadPhotos } from "@/lib/photos";
+import { toast } from "@/components/toast";
 import { acceptTargetsForFactory, releaseFactoryPo, requestPlan, saveLineStages, setStylePhoto, type LineStageInput } from "../actions";
 
 export type StyleRow = { id: string; style: string; colour: string; qty: number; photoUrl: string | null; hasRate: boolean };
@@ -173,6 +174,24 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
     });
   }
 
+  // One tap: the style's next step is done today.
+  function doneToday(l: StyleRow, s: Step) {
+    const c = get(l.id, s.key);
+    setError("");
+    setBusy(`done:${l.id}`);
+    start(async () => {
+      const res = await saveLineStages(orderId, [{ line_id: l.id, stage: s.key, planned_on: c.planned_on, done_on: today, not_needed: false, ...(s.extra ? { label: s.label } : {}) }]);
+      setBusy("");
+      if (res.error) {
+        setError(res.error);
+        toast(res.error, "bad");
+        return;
+      }
+      toast(`${s.label} done for ${l.style}`);
+      router.refresh();
+    });
+  }
+
   async function copyRequest(g: FactoryGroup) {
     const text = [
       `Please enter your TNA for order ${orderNo} in your Sourcingo factory panel${g.planRequestedAt ? ` by ${at.format(planDueAt(g.planRequestedAt))}` : ` within ${PLAN_HOURS} hours`}. We release the PO only after that.`,
@@ -269,7 +288,7 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
       const v = verdict(c, today);
       return { key: s.key, label: s.label, cls: c.done_on ? "ok" : v?.cls ?? (c.planned_on ? "plan" : ""), text: v?.text ?? (c.planned_on ? `by ${dm(c.planned_on)}` : "no target") };
     });
-    return { done, total: cells.length, at: last ? `At ${last.s.label}` : "Not started", status, segs };
+    return { done, total: cells.length, at: last ? `At ${last.s.label}` : "Not started", status, segs, next: next?.s };
   }
 
   const toggle = (id: string) => setShown((s) => {
@@ -416,6 +435,11 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
                       </div>
                       <div className="style-side">
                         {dirty && <span className="chip warn">Unsaved</span>}
+                        {doneEditable && released && sm.next && !dirty && (
+                          <button type="button" className="btn sm done-btn" disabled={pending} onClick={() => doneToday(l, sm.next!)}>
+                            {busy === `done:${l.id}` ? "Saving…" : <><span aria-hidden className="done-tick">✓</span>{sm.next.label} done today</>}
+                          </button>
+                        )}
                         <a href={`#qc-${l.id}`} className={`chip ${fin ? (fin.result === "pass" ? "ok" : "bad") : ""}`}>
                           {fin ? `Final QC ${fin.result === "pass" ? "passed" : "failed"}` : "Final QC not done"}
                         </a>
