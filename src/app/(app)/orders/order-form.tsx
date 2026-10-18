@@ -58,7 +58,7 @@ export function OrderForm({ initial, initialLines, buyers, factories, team, inco
 
   return (
     <form onSubmit={submit} className="stack">
-      <div className="panel">
+      <div className="panel scroll-mt-20" id="details">
         <h2>Buyer PO</h2>
         <div className="fgrid">
           <label className="field">

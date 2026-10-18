@@ -236,7 +236,7 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
   }
 
   return (
-    <section className="panel">
+    <section className="panel scroll-mt-20" id="tna">
       <div className="row mb-1">
         <h2 className="font-bold text-base">TNA by style</h2>
         {late > 0 && <span className="chip bad">{late} {late === 1 ? "style" : "styles"} behind plan</span>}

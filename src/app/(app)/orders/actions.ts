@@ -108,6 +108,22 @@ export async function saveProgress(id: string, p: ProgressInput): Promise<{ erro
   return {};
 }
 
+// Closes an open order as shipped, from the Home screen's tidy-up list. The database still asks for a passed
+// final QC unless the owner does it.
+export async function markShipped(id: string): Promise<{ error?: string }> {
+  const me = await getMe();
+  if (!me?.role) return { error: "Your account is not switched on yet." };
+  if (!canEditOrders(me.role)) return { error: "Only the orders team can change orders." };
+  const supabase = await createClient();
+  const { data, error } = await supabase.from("orders").update({ status: "shipped" }).eq("id", id).eq("status", "open").select("id");
+  if (error) return { error: friendly(error) };
+  if (!data?.length) return { error: "This order isn't open any more. Reload the page." };
+  revalidatePath("/");
+  revalidatePath("/today");
+  revalidatePath(`/orders/${id}`);
+  return {};
+}
+
 export type LineStageInput = { line_id: string; stage: string; planned_on: string; done_on: string; not_needed: boolean; label?: string };
 
 // Saves the planned (TNA) and actual dates of an open order's styles; Quality saves done dates only.

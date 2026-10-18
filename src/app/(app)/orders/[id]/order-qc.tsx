@@ -205,7 +205,7 @@ export function OrderQc({ orderId, companyId, open, canRecord, today, checks, fi
   );
 
   return (
-    <section className="panel">
+    <section className="panel scroll-mt-20" id="qc">
       <div className="row mb-3">
         <h2 className="font-bold text-base">Quality checks</h2>
         {finalPassed ? <span className="chip ok">Final QC passed for every style</span>

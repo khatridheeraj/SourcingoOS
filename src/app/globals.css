@@ -146,6 +146,47 @@ h1, h2, h3 {
   .tile b { display: block; font-family: var(--font-display); font-size: 26px; line-height: 1.1; margin-top: 6px; font-variant-numeric: tabular-nums; }
   .tile.alarm b { color: var(--bad); }
 
+  /* Home: KPI tiles, the to-do list, and the side column (shipping, style progress). */
+  .kpis { display: grid; gap: 10px; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .kpis .tile { display: flex; flex-direction: column; gap: 2px; }
+  .kpis .tile:hover { border-color: var(--muted); }
+  .kpis .tile small { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .kpis .tile.alarm { border-color: color-mix(in srgb, var(--bad) 40%, var(--line)); }
+  .home { display: grid; gap: 18px; grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr); align-items: start; }
+  .todo { display: flex; flex-direction: column; }
+  .todo li { display: grid; grid-template-columns: 4px minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 11px 0; border-top: 1px solid var(--line); }
+  .todo li:first-child { border-top: 0; }
+  .todo .sev { align-self: stretch; border-radius: 4px; background: var(--line); }
+  .todo .sev.bad { background: var(--bad); }
+  .todo .sev.warn { background: var(--warn); }
+  .todo .sev.ok { background: var(--ok); }
+  .todo-end { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+  .ship-row { display: grid; grid-template-columns: 48px minmax(0, 1fr); gap: 12px; align-items: start; }
+  .ship-row .date { text-align: center; border: 1px solid var(--line); border-radius: 10px; padding: 4px 0; }
+  .ship-row .date b { display: block; font-family: var(--font-display); font-size: 18px; line-height: 1.1; }
+  .ship-row .date span { display: block; font-size: 10.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+  .ship-row .date.late, .ship-row .date.late span { border-color: var(--bad); color: var(--bad); }
+  .ship-row:hover .truncate { text-decoration: underline; }
+  .bar { display: block; height: 6px; border-radius: 6px; background: var(--surface-2); overflow: hidden; margin-top: 6px; }
+  .bar i { display: block; height: 100%; background: var(--accent); border-radius: 6px; }
+  .bar i.bad { background: var(--bad); }
+  .bar i.ok { background: var(--ok); }
+  .pipe-row { display: grid; grid-template-columns: 150px minmax(0, 1fr) 28px; gap: 10px; align-items: center; font-size: 13px; }
+  .pipe-row .track { display: block; height: 12px; background: var(--surface-2); border-radius: 4px; overflow: hidden; }
+  .pipe-row .track i { display: block; height: 100%; background: var(--accent); border-radius: 4px; }
+  .pipe-row .track i.dim { background: var(--muted); opacity: 0.45; }
+  .pipe-row .track i.ok { background: var(--ok); }
+  .pipe-row b { text-align: right; }
+  @media (max-width: 900px) {
+    .home { grid-template-columns: minmax(0, 1fr); }
+    .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  }
+  @media (max-width: 520px) {
+    .todo li { grid-template-columns: 4px minmax(0, 1fr); }
+    .todo-end { grid-column: 2; flex-direction: row; align-items: center; flex-wrap: wrap; }
+    .pipe-row { grid-template-columns: 120px minmax(0, 1fr) 26px; }
+  }
+
   .steps { display: flex; gap: 4px; flex-wrap: wrap; }
   .steps button {
     border: 1px solid var(--line); background: var(--surface); border-radius: 8px; padding: 7px 12px;
