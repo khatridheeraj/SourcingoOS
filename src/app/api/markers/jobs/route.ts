@@ -9,6 +9,8 @@ import { askMarkerReader, json, markersClient } from "@/lib/markers";
 const MAX_CHARS = 4 * 1024 * 1024;
 const TYPES = ["image/jpeg", "image/png", "image/webp", "image/gif", "application/pdf"];
 const ID = /^[0-9a-f-]{36}$/;
+// A reading still "reading" this long after it was made has stopped; the marker reader marks it as failed.
+const STALE_MS = 4 * 60_000;
 
 type File = { type: string; data: string };
 const cleanFiles = (files: unknown): File[] | null => {
@@ -39,16 +41,23 @@ export async function POST(request: Request) {
     const part = Number(q.get("part"));
     if (!Number.isInteger(part) || part < 1 || part > 40 || !files) return json({ error: "bad_part" }, 400);
     const { error: err } = await supabase.from("marker_job_parts").insert({ job_id: id, part, files });
+    if (err) console.error("markers: photos not added", err);
     return err ? json({ error: "failed", message: "These photos could not be added. Tap Read again." }, 400) : json({ ok: true });
   }
 
   if (typeof body.prompt !== "string" || !body.prompt.trim()) return json({ error: "no_prompt" }, 400);
   if (body.files !== undefined && Array.isArray(body.files) && body.files.length && !files) return json({ error: "bad_files" }, 400);
   const { data: job, error: err } = await supabase.from("marker_jobs").insert({ prompt: body.prompt }).select("id").single();
-  if (err || !job) return json({ error: "failed", message: err?.message ?? "The reading could not be started." }, 500);
+  if (err || !job) {
+    if (err) console.error("markers: reading not created", err);
+    return json({ error: "failed", message: "The reading could not be started. Tap Read again." }, 500);
+  }
   if (files) {
     const { error: partErr } = await supabase.from("marker_job_parts").insert({ job_id: job.id, part: 0, files });
-    if (partErr) return json({ error: "failed", message: "The photos could not be added. Tap Read again." }, 500);
+    if (partErr) {
+      console.error("markers: first photos not added", partErr);
+      return json({ error: "failed", message: "The photos could not be added. Tap Read again." }, 500);
+    }
   }
   return json({ id: job.id });
 }
@@ -61,8 +70,8 @@ export async function GET(request: Request) {
   const read = () => supabase.from("marker_jobs").select("status, result, error_code, error, created_at").eq("id", id).maybeSingle();
   let { data: job } = await read();
   if (!job) return json({ status: "missing" }, 404);
-  // A reading in the batch queue is collected by the reader when it is ready.
-  if (job.status === "batch") {
+  // A reading in the batch queue is collected by the reader when it is ready; one stuck mid-way is closed by it.
+  if (job.status === "batch" || (job.status === "reading" && Date.now() - Date.parse(job.created_at) > STALE_MS)) {
     await askMarkerReader(supabase, "check", id);
     ({ data: job } = await read());
     if (!job) return json({ status: "missing" }, 404);

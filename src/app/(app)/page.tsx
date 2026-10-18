@@ -80,7 +80,7 @@ export default async function OrdersPage({ searchParams }: PageProps<"/">) {
     const slowest = Math.min(...at);
     const n = at.filter((i) => i === slowest).length;
     const m = lineIds.length;
-    const step = slowest < 0 ? "" : TNA_STEPS[slowest].label;
+    const step = slowest < 0 || !Number.isFinite(slowest) ? "" : TNA_STEPS[slowest].label;
     return {
       text: !m ? "" : m === 1 ? (step ? `At ${step}` : "No step done yet")
         : n === m ? (step ? `All ${m} styles at ${step}` : `No step done yet on any of ${m} styles`)

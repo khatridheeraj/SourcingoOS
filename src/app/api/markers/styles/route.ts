@@ -9,7 +9,10 @@ export async function GET() {
   if (error) return error;
   const { data, error: err } = await fetchAll<{ doc_id: string; data: unknown }>((from, to) =>
     supabase.from("marker_styles").select("doc_id, data").order("doc_id").range(from, to));
-  if (err) return json({ error: "failed", message: err.message }, 500);
+  if (err) {
+    console.error("markers: styles not loaded", err);
+    return json({ error: "failed", message: "The saved styles could not be loaded. Reload the page." }, 500);
+  }
   return json({ docs: data.map((d) => ({ id: d.doc_id, data: d.data })) });
 }
 
@@ -25,6 +28,9 @@ export async function PUT(request: Request) {
   if (!data || typeof data !== "object" || Array.isArray(data)) return json({ error: "bad_json", message: "The style could not be read." }, 400);
   const { error: err } = await supabase.from("marker_styles")
     .upsert({ company_id: me.companyId, doc_id: id, data }, { onConflict: "company_id,doc_id" });
-  if (err) return json({ error: "failed", message: err.message }, 500);
+  if (err) {
+    console.error("markers: style not saved", err);
+    return json({ error: "failed", message: "This style could not be saved. Try again." }, 500);
+  }
   return json({ ok: true });
 }

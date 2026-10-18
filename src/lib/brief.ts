@@ -21,6 +21,8 @@ export type BriefSection = { key: string; title: string; tone: "bad" | "warn" | 
 export type Brief = { title: string; headline: string; sections: BriefSection[] };
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+// Timestamps come in UTC; the day they fall on is India's.
+const istDay = (t: string) => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(new Date(t));
 const dm = (d: string) => `${Number(d.slice(8, 10))} ${MONTHS[Number(d.slice(5, 7)) - 1]}`;
 const days = (n: number) => `${n} ${n === 1 ? "day" : "days"}`;
 const diff = (a: string, b: string) => Math.round((Date.parse(b) - Date.parse(a)) / 86_400_000);
@@ -82,7 +84,7 @@ export function buildBrief(d: BriefData): Brief {
   if (overdue.length) sections.push({ key: "overdue", title: "Steps overdue", tone: "bad", items: overdue.sort((a, b) => b.n - a.n) });
   if (soon.length) sections.push({ key: "soon", title: "Due in the next 2 days", tone: "warn", items: soon.sort((a, b) => a.n.localeCompare(b.n)) });
   const waiting: BriefItem[] = [];
-  for (const p of d.plans_overdue) waiting.push({ text: `${p.factory} hasn't sent its TNA for ${p.order_no}`, sub: `Asked ${dm(p.asked_at.slice(0, 10))}, more than 24 hours ago`, href: "/today" });
+  for (const p of d.plans_overdue) waiting.push({ text: `${p.factory} hasn't sent its TNA for ${p.order_no}`, sub: `Asked ${dm(istDay(p.asked_at))}, more than 24 hours ago`, href: "/today" });
   if (d.updates_waiting) waiting.push({ text: `${d.updates_waiting} factory ${d.updates_waiting === 1 ? "update" : "updates"} with photos to confirm`, href: "/today" });
   if (d.pos_to_check) waiting.push({ text: `${d.pos_to_check} new buyer ${d.pos_to_check === 1 ? "PO" : "POs"} to check`, href: "/pos" });
   if (noTarget) waiting.push({ text: `${noTarget} ${noTarget === 1 ? "step has" : "steps have"} no target date`, sub: `${noTargetOrders.slice(0, 4).join(", ")}${noTargetOrders.length > 4 ? ` and ${noTargetOrders.length - 4} more` : ""}. Lateness can't show without one.`, href: "/today" });

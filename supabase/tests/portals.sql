@@ -66,7 +66,8 @@ select pg_temp.expect(jsonb_array_length(:'bo'::jsonb -> 'orders' -> 0 -> 'lines
 select pg_temp.expect(jsonb_array_length(:'bo'::jsonb -> 'orders' -> 0 -> 'lines' -> 0 -> 'steps') = 15, 'buyer misses the steps');
 select pg_temp.expect(position('450' in :'bo') = 0 and position('555' in :'bo') = 0 and position('Kkora' in :'bo') = 0,
   'buyer page shows a price or a factory');
-select pg_temp.expect(public.buyer_can_read_photo(:'co' || '/' || :'ord' || '/qc/x/p.jpg'), 'buyer can''t open its QC photos');
+-- Only photos on the latest final QC open for a buyer (0039); a path with no QC photo behind it does not.
+select pg_temp.expect(not public.buyer_can_read_photo(:'co' || '/' || :'ord' || '/qc/x/p.jpg'), 'buyer opens a QC file that isn''t a final QC photo');
 select pg_temp.expect(not public.buyer_can_read_photo(:'co' || '/' || :'ord2' || '/qc/x/p.jpg'), 'buyer opens another buyer''s photos');
 select pg_temp.expect(not public.buyer_can_read_photo(:'co' || '/' || :'ord' || '/dispatch/x/p.jpg'), 'buyer opens dispatch papers');
 select pg_temp.as_user('00000000-0000-0000-0000-0000000000fa');

@@ -32,8 +32,11 @@ async function mailboxKey(body: Record<string, unknown>): Promise<string | null>
   if (typeof body.google_token === "string" && body.google_token) {
     const res = await fetch(`https://oauth2.googleapis.com/tokeninfo?access_token=${encodeURIComponent(body.google_token)}`);
     if (!res.ok) return null;
-    const info = await res.json() as { email?: string; email_verified?: string | boolean };
+    const info = await res.json() as { email?: string; email_verified?: string | boolean; scope?: string };
     if (!info.email || String(info.email_verified) !== "true") return null;
+    // Only a token from an Apps Script that fetches URLs counts: any other app the person signed in to with Google
+    // also gets a token naming their address, and must not be able to replay it here.
+    if (!(info.scope ?? "").split(" ").includes("https://www.googleapis.com/auth/script.external_request")) return null;
     return `google:${info.email.toLowerCase()}`;
   }
   return typeof body.key === "string" && !body.key.startsWith("google:") ? body.key : null;

@@ -161,8 +161,10 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
         + rows.filter((r) => !r.factory_on || (r.planned_on && r.factory_on > r.planned_on)).length
         + (target ? rows.filter((r) => r.planned_on && r.planned_on > target).length : 0);
       const dueAt = po?.plan_requested_at ? planDueAt(po.plan_requested_at) : null;
+      // A plan sent before the team asked again doesn't answer the new request.
+      const sent = !!po?.factory_sent_at && (!po.plan_requested_at || po.factory_sent_at >= po.plan_requested_at);
       const item = { key: `po:${o.id}:${f}`, href, ...base(o), sort: o.order_no };
-      if (dueAt && !po?.factory_sent_at && dueAt.getTime() < now) {
+      if (dueAt && !sent && dueAt.getTime() < now) {
         const hours = Math.floor((now - dueAt.getTime()) / 3_600_000);
         now_.push({ ...item, sev: "bad", detail: `${fname} hasn't sent its TNA within ${PLAN_HOURS} hours. Chase them, or move the styles to another factory.`,
           chip: { text: hours ? `${plural(hours, "hour")} past deadline` : "Just past deadline", cls: "bad" }, action: "Chase factory", sort: dueAt.toISOString() });
@@ -170,7 +172,7 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
         soon.push({ ...item, sev: "ok", detail: `${fname} · plan is complete`, action: "Release PO" });
       } else if (!po?.plan_requested_at && !po?.plan_requested_on) {
         now_.push({ ...item, sev: "bad", detail: `${fname} · ${plural(gaps, "item")} missing before the PO can be released`, action: noTarget ? `Set ${plural(noTarget, "target")}` : "Ask the factory" });
-      } else if (po?.factory_sent_at) {
+      } else if (sent) {
         soon.push({ ...item, sev: "warn", detail: `${fname} sent its TNA · ${plural(gaps, "item")} to sort before release`, action: "Review TNA" });
       } else {
         waiting.push({ ...item, sev: "", detail: `${fname} asked for its TNA${po?.plan_requested_at ? ` ${at.format(new Date(po.plan_requested_at))}` : ` on ${day(po?.plan_requested_on)}`}`,

@@ -216,7 +216,7 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
       g.target ? `\nEverything must be ready by ${day(g.target)}.` : "",
     ].filter((x, i, a) => x !== "" || (a[i - 1] ?? "") !== "").join("\n"),
   })) : [])];
-  const behind = lines.filter((l) => styleSteps(l.id).some((x) => !x.row?.done_on && x.row?.planned_on && x.row.planned_on < today)).length;
+  const behind = o.status !== "open" ? 0 : lines.filter((l) => styleSteps(l.id).some((x) => !x.row?.done_on && x.row?.planned_on && x.row.planned_on < today)).length;
   // Where the order is heading: its latest style, with every late step pushing the steps after it back.
   const outlook = o.status === "open" ? lines.map((l) => shipRisk(project(styleSteps(l.id).map((x) => ({ planned_on: x.row?.planned_on, done_on: x.row?.done_on })), today), due))
     .reduce((w, r) => (r.daysLate > w.daysLate || (w.level === "ok" && r.level === "behind") ? r : w), { level: "ok" as "ok" | "behind" | "risk", daysLate: 0 }) : null;
@@ -245,7 +245,8 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
         </div>
         {/* Closing an order: the owner can always; others once every style's final QC has passed. */}
         <div className="head-acts">
-          <ShareUpdate options={share} />
+          {/* Keyed like the styles below, so the message is worded afresh after every save. */}
+          <ShareUpdate key={`${(lineStages ?? []).length}:${(lineStages ?? []).reduce((a, r) => (r.updated_at > a ? r.updated_at : a), "")}`} options={share} />
           {canEdit && o.status === "open" && <MarkShipped orderId={o.id} orderNo={o.order_no} />}
         </div>
       </div>
