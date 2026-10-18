@@ -44,18 +44,14 @@ export function AddPo({ companyId }: { companyId: string }) {
   }
 
   return (
-    <div className="panel">
-      <h2>Add a PO from a file</h2>
-      <p className="muted text-[13px]">For POs that came on WhatsApp or by hand. Pick the PO file, or photos of all its pages together. It is read into a draft for you to check.</p>
-      <div className="row mt-3">
-        <label className={`btn primary ${pending ? "opacity-60" : ""}`}>
-          {pending ? "Uploading…" : "Choose PO file"}
-          <input ref={input} type="file" multiple accept={ACCEPT} className="sr-only" disabled={pending}
-            onChange={(e) => upload(e.target.files)} aria-label="PO file" />
-        </label>
-        {done && !error && <span className="text-[13px] font-semibold text-ok">Added. It is being read and shows below in a minute.</span>}
-        {error && <span className="text-[13px] font-semibold text-bad" role="alert">{error}</span>}
-      </div>
+    <div className="flex flex-col items-end gap-1">
+      <label className={`btn primary ${pending ? "opacity-60" : ""}`} title="For POs that came on WhatsApp or by hand: the PO file, or photos of all its pages together">
+        {pending ? "Uploading…" : "Add PO from a file"}
+        <input ref={input} type="file" multiple accept={ACCEPT} className="sr-only" disabled={pending}
+          onChange={(e) => upload(e.target.files)} aria-label="PO file" />
+      </label>
+      {done && !error && <span className="text-[12.5px] font-semibold text-ok">Added. It is being read and shows below in a minute.</span>}
+      {error && <span className="text-[12.5px] font-semibold text-bad" role="alert">{error}</span>}
     </div>
   );
 }
