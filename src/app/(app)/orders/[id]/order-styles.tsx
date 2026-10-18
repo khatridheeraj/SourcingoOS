@@ -398,7 +398,7 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
               </table>
             </div>
             {editable && g.lines.length > 1 && (
-              <button type="button" className="btn mt-2" disabled={pending} onClick={() => copyPlan(g)}>
+              <button type="button" className="btn mt-2 max-w-full !whitespace-normal text-left" disabled={pending} onClick={() => copyPlan(g)}>
                 Copy {g.lines[0].style}&apos;s targets to {g.factoryName}&apos;s other styles
               </button>
             )}

@@ -2,7 +2,7 @@ import { NO_COMPANY } from "@/lib/names";
 import Link from "next/link";
 import { canEditOrders, getMe } from "@/lib/auth";
 import { buyerName, loadBuyers, loadFactories } from "@/lib/data";
-import { day, daysBetween, dueDate, money, qty, SHIP_QC, stageLabel, stageReached, STATUS, todayIST } from "@/lib/format";
+import { day, daysBetween, dueDate, money, qty, SHIP_QC, stageReached, STATUS, TNA_STEPS, todayIST } from "@/lib/format";
 import { type LinePrice, marginCls, pct, planMargin } from "@/lib/margin";
 import { fetchAll } from "@/lib/fetch-all";
 import { createClient } from "@/lib/supabase/server";
@@ -41,6 +41,11 @@ export default async function OrdersPage({ searchParams }: PageProps<"/">) {
     fetchAll((a, z) => supabase.from("qc_checks").select("line_id, result").eq("company_id", companyId).in("kind", SHIP_QC).is("cancelled_at", null)
       .order("checked_on", { ascending: false }).order("created_at", { ascending: false }).order("id").range(a, z)),
   ]);
+  // TNA steps of the open orders listed, for each style's progress and whether the order is on plan.
+  const openIds = (data ?? []).filter((o) => o.status === "open").map((o) => o.id);
+  const { data: steps } = openIds.length
+    ? await fetchAll((a, z) => supabase.from("line_stages").select("order_id, line_id, stage, planned_on, done_on, not_needed").in("order_id", openIds).eq("not_needed", false).order("id").range(a, z))
+    : { data: [] };
   // Each style's latest final QC result (rows come newest first).
   const finalQc = new Map<string, string>();
   for (const c of qc ?? []) if (!finalQc.has(c.line_id)) finalQc.set(c.line_id, c.result);
@@ -59,6 +64,25 @@ export default async function OrdersPage({ searchParams }: PageProps<"/">) {
   const withRates = (o: { order_lines: { id: string; style: string; qty: number; factory_id: string | null }[] | null }): Line[] =>
     (o.order_lines ?? []).map((l) => ({ ...l, buyer_rate: rateOf.get(l.id)?.buyer_rate ?? null, factory_rate: rateOf.get(l.id)?.factory_rate ?? null }));
 
+  // Progress of an open order: where its slowest styles are, and whether any step is past its target.
+  const progressOf = (o: { id: string; order_lines: { id: string }[] | null }) => {
+    const rows = (steps ?? []).filter((s) => s.order_id === o.id);
+    const lineIds = (o.order_lines ?? []).map((l) => l.id);
+    const at = lineIds.map((id) => Math.max(-1, ...rows.filter((s) => s.line_id === id && s.done_on).map((s) => TNA_STEPS.findIndex((t) => t.key === s.stage))));
+    const slowest = Math.min(...at);
+    const n = at.filter((i) => i === slowest).length;
+    const m = lineIds.length;
+    const step = slowest < 0 ? "" : TNA_STEPS[slowest].label;
+    return {
+      text: !m ? "" : m === 1 ? (step ? `At ${step}` : "No step done yet")
+        : n === m ? (step ? `All ${m} styles at ${step}` : `No step done yet on any of ${m} styles`)
+        : step ? `${n} of ${m} styles still at ${step}` : `${n} of ${m} styles have no step done yet`,
+      planned: rows.filter((s) => s.planned_on && lineIds.includes(s.line_id)).length,
+      done: rows.filter((s) => s.done_on && lineIds.includes(s.line_id)).length,
+      total: rows.filter((s) => (s.planned_on || s.done_on) && lineIds.includes(s.line_id)).length,
+      behind: rows.some((s) => lineIds.includes(s.line_id) && !s.done_on && s.planned_on && s.planned_on < today),
+    };
+  };
   const built = (data ?? []).map((o) => {
     const lines = withRates(o);
     const b = buyerById.get(o.buyer_id);
@@ -78,6 +102,9 @@ export default async function OrdersPage({ searchParams }: PageProps<"/">) {
       needsQc: o.status === "open" && stageReached(o.stage, "packed") && lines.some((l) => finalQc.get(l.id) !== "pass"),
       late: isLate(o),
       lateBy: isLate(o) ? daysBetween(dueDate(o)!, today) : 0,
+      progress: o.status === "open" ? progressOf(o) : null,
+      // Shipped long ago but never closed: 30+ days past the ship date and packed or further.
+      looksShipped: o.status === "open" && !!dueDate(o) && daysBetween(dueDate(o)!, today) > 30 && stageReached(o.stage, "packed"),
     };
   });
   const rows = built
@@ -85,6 +112,8 @@ export default async function OrdersPage({ searchParams }: PageProps<"/">) {
     .filter((r) => !q || [r.order_no, r.buyer, r.buyer_po, ...r.styles, ...r.factoryNames].join(" ").toLowerCase().includes(q))
     .sort((a, b) => (a.due ?? "9999").localeCompare(b.due ?? "9999") || a.order_no.localeCompare(b.order_no));
 
+  const planChip = (p: NonNullable<(typeof built)[number]["progress"]>, looksShipped: boolean) =>
+    looksShipped ? <span className="chip warn">Shipped? Close it</span> : p.behind ? <span className="chip bad">Behind plan</span> : !p.planned ? <span className="chip warn">No targets</span> : <span className="chip ok">On plan</span>;
   const all = counts.data ?? [];
   const openCount = all.filter((o) => o.status === "open").length;
   // Tiles count every open order, whatever is typed in the search box.
@@ -151,11 +180,12 @@ export default async function OrdersPage({ searchParams }: PageProps<"/">) {
                   {r.margin && r.margin.sale > 0 && <> · margin <span className={marginCls(r.margin.pct)}>{pct(r.margin.pct)}</span></>}</div>
                 <div className="row text-[13px]">
                   {r.due ? <span>Ships {day(r.due)}</span> : <span className="muted">No ship date</span>}
-                  {r.status === "open" && <span className="chip">{stageLabel(r.stage)}</span>}
+                  {r.progress && planChip(r.progress, r.looksShipped)}
                   {r.late && <span className="chip bad">Late {r.lateBy}d</span>}
                   {r.needsQc && <span className="chip warn">Needs final QC</span>}
                   {r.missingFactory && <span className="chip warn">Needs factory</span>}
                 </div>
+                {r.progress && <div className="muted text-[13px]">{r.progress.text}{r.progress.total > 0 && ` · ${r.progress.done} of ${r.progress.total} steps done`}</div>}
               </Link>
             </li>
           ))}
@@ -164,16 +194,15 @@ export default async function OrdersPage({ searchParams }: PageProps<"/">) {
           <table className="tbl">
             <thead>
               <tr>
-                <th>Order</th><th>Buyer</th><th>Buyer PO</th><th>Styles</th><th className="r">Pieces</th>
-                {prices && <><th className="r">Value</th><th className="r">Margin</th></>}<th>Factory</th><th>Ship date</th><th>Stage</th>
+                <th>Order</th><th>Buyer and PO</th><th>Styles</th><th className="r">Pieces</th>
+                {prices && <><th className="r">Value</th><th className="r">Margin</th></>}<th>Factory</th><th>Ship date</th><th>Progress</th>
               </tr>
             </thead>
             <tbody>
               {rows.map((r) => (
                 <tr key={r.id} className="click">
-                  <td><Link href={`/orders/${r.id}`} className="link code">{r.order_no}</Link></td>
-                  <td className="whitespace-nowrap">{r.buyer}</td>
-                  <td className="whitespace-nowrap">{r.buyer_po}</td>
+                  <td className="whitespace-nowrap"><Link href={`/orders/${r.id}`} className="link code">{r.order_no}</Link></td>
+                  <td>{r.buyer}<div className="muted text-xs">PO {r.buyer_po}</div></td>
                   <td>{r.styles.length <= 2 ? r.styles.join(", ") : `${r.styles.slice(0, 2).join(", ")} +${r.styles.length - 2}`}</td>
                   <td className="r num">{qty(r.pieces)}</td>
                   {prices && <td className="r num">{money(r.value)}</td>}
@@ -194,11 +223,12 @@ export default async function OrdersPage({ searchParams }: PageProps<"/">) {
                     )}
                   </td>
                   <td>
-                    {r.status === "open"
-                      ? <>
-                          <span className={stageReached(r.stage, "packed") ? "chip ok" : r.stage ? "chip info" : "chip"}>{stageLabel(r.stage)}</span>
-                          {r.needsQc && <span className="chip warn ml-1">Needs final QC</span>}
-                        </>
+                    {r.progress
+                      ? <div className="w-[170px]">
+                          <div className="row gap-1">{planChip(r.progress, r.looksShipped)}{r.needsQc && <span className="chip warn">Needs final QC</span>}</div>
+                          <span className="bar"><i className={r.progress.behind ? "bad" : ""} style={{ width: `${r.progress.total ? Math.max(3, (100 * r.progress.done) / r.progress.total) : 0}%` }} /></span>
+                          <div className="muted mt-1 text-xs">{r.progress.text}</div>
+                        </div>
                       : <span className={STATUS[r.status]?.cls}>{STATUS[r.status]?.label}</span>}
                   </td>
                 </tr>

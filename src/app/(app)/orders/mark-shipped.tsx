@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { markShipped } from "../orders/actions";
+import { markShipped } from "./actions";
 
 // Closes an order that left the factory long ago, after a second tap so it isn't done by accident.
 export function MarkShipped({ orderId, orderNo }: { orderId: string; orderNo: string }) {
