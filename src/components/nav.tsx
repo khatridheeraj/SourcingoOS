@@ -4,7 +4,8 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
 
-export type NavItem = { href: string; label: string; icon: keyof typeof ICONS; count?: number };
+export type IconName = keyof typeof ICONS;
+export type NavItem = { href: string; label: string; icon: IconName; count?: number };
 export type NavGroup = { label?: string; items: NavItem[] };
 
 // Line icons drawn on a 20px grid, so every menu row has the same weight.
@@ -18,38 +19,58 @@ const ICONS = {
   tally: "M4 16.5V10m4 6.5V6m4 10.5V8.5m4 8V3.5",
   team: "M10 9.5a3 3 0 1 0 0-6 3 3 0 0 0 0 6Zm-5.5 7a5.5 5.5 0 0 1 11 0",
   activity: "M2.5 10h3l2-5 3 10 2-5h5",
+  plus: "M10 4v12M4 10h12",
+  search: "M9 15a6 6 0 1 0 0-12 6 6 0 0 0 0 12Zm4.5-1.5L17 17",
+  clock: "M10 17.5a7.5 7.5 0 1 0 0-15 7.5 7.5 0 0 0 0 15ZM10 6v4l2.5 2.5",
+  check: "M10 17.5a7.5 7.5 0 1 0 0-15 7.5 7.5 0 0 0 0 15Zm-3.2-7.4 2.3 2.3 4.2-4.6",
+  share: "M10 3v10m0-10L6.5 6.5M10 3l3.5 3.5M5 10H4.5a1 1 0 0 0-1 1v5a1 1 0 0 0 1 1h11a1 1 0 0 0 1-1v-5a1 1 0 0 0-1-1H15",
+  more: "M4 4.5h4.5V9H4zM11.5 4.5H16V9h-4.5zM4 11.5h4.5V16H4zM11.5 11.5H16V16h-4.5z",
 };
 
-function Icon({ name }: { name: keyof typeof ICONS }) {
+export function Icon({ name, size = 18 }: { name: IconName; size?: number }) {
   return (
-    <svg viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+    <svg viewBox="0 0 20 20" width={size} height={size} fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
       <path d={ICONS[name]} />
     </svg>
   );
 }
 
-// The app's side menu. On a phone it folds into a top bar with a menu button.
+// The app's side menu. On a phone it becomes a tab bar along the bottom, like a native app,
+// with everything else in a sheet under More.
 export function Sidebar({ groups, user, role, company }: { groups: NavGroup[]; user: string; role: string; company: string }) {
   const path = usePathname();
   const [open, setOpen] = useState(false);
   const on = (href: string) => (href === "/" ? path === "/" || path.startsWith("/orders") : path.startsWith(href));
   const initials = user.split(/[\s@.]+/).filter(Boolean).slice(0, 2).map((w) => w[0]?.toUpperCase()).join("");
+  // The bottom bar holds the main screens; the rest sit in More.
+  const tabs = groups[0]?.items.slice(0, 4) ?? [];
+  const inMore = groups.flatMap((g) => g.items).some((it) => !tabs.includes(it) && on(it.href));
 
   return (
     <>
       <header className="topbar">
         <Link href="/today" className="brand"><span className="brand-mark" aria-hidden>S</span>Sourcingo</Link>
-        <button type="button" className="menu-btn" aria-expanded={open} aria-controls="sidebar" onClick={() => setOpen(!open)}>
-          <svg viewBox="0 0 20 20" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" aria-hidden>
-            <path d={open ? "M5 5l10 10M15 5 5 15" : "M3.5 6h13M3.5 10h13M3.5 14h13"} />
-          </svg>
-          <span className="sr-only">Menu</span>
+        <button type="button" className="avatar-btn" aria-label="Account and menu" aria-expanded={open} aria-controls="sidebar" onClick={() => setOpen(true)}>
+          <span className="avatar" aria-hidden>{initials}</span>
         </button>
       </header>
+      <nav className="tabbar" aria-label="Main">
+        {tabs.map((it) => (
+          <Link key={it.href} href={it.href} onClick={() => setOpen(false)} aria-current={on(it.href) && !open ? "page" : undefined}>
+            <span className="tab-ic"><Icon name={it.icon} size={22} />{!!it.count && <span className="tab-badge">{it.count}</span>}</span>
+            {it.label === "Incoming POs" ? "POs" : it.label}
+          </Link>
+        ))}
+        <button type="button" aria-expanded={open} aria-controls="sidebar" aria-current={open || inMore ? "page" : undefined} onClick={() => setOpen(!open)}>
+          <span className="tab-ic"><Icon name="more" size={22} /></span>
+          More
+        </button>
+      </nav>
       {open && <div className="scrim" onClick={() => setOpen(false)} aria-hidden />}
       <aside id="sidebar" className="sidebar" data-open={open || undefined}>
+        <span className="grabber" aria-hidden />
         <Link href="/today" className="brand"><span className="brand-mark" aria-hidden>S</span>Sourcingo<small>OS</small></Link>
-        <nav aria-label="Main" className="side-nav">
+        <nav aria-label="All screens" className="side-nav">
           {groups.map((g, i) => (
             <div key={g.label ?? i} className="side-group">
               {g.label && <div className="side-label">{g.label}</div>}

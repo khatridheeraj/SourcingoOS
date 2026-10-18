@@ -14,6 +14,8 @@ import { OrderStyles, type ExtraStep, type FactoryGroup, type StepQc } from "./o
 import { loadTeam, personName } from "@/lib/data";
 import { PHOTO_BUCKET } from "@/lib/storage";
 import { MarkShipped } from "../mark-shipped";
+import { OrderSections, type SectionTab } from "./order-sections";
+import { ShareUpdate, type ShareOption } from "./share-update";
 import { formOptions } from "../options";
 
 const str = (v: unknown) => (v == null ? "" : String(v));
@@ -144,6 +146,64 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
     }
   }
 
+  // Ready-to-send updates: one for the buyer (no factories, no prices) and one per factory to chase its styles.
+  const today = todayIST();
+  const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const dm = (d: string) => `${Number(d.slice(8, 10))} ${MONTHS[Number(d.slice(5, 7)) - 1]}`;
+  const stageRows = lineStages ?? [];
+  const styleSteps = (lineId: string) => [
+    ...TNA_STEPS.map((t) => ({ key: t.key, label: t.label, row: stageRows.find((r) => r.line_id === lineId && r.stage === t.key) })),
+    ...stageRows.filter((r) => r.line_id === lineId && r.stage.startsWith("extra_")).map((r) => ({ key: r.stage, label: str(r.label), row: r })),
+  ].filter((x) => !x.row?.not_needed);
+  const finalOk = (lineId: string) => checks.find((c) => c.line_id === lineId && SHIP_QC.includes(c.kind) && !c.cancelled_at)?.result === "pass";
+  const buyerLabel = opts.buyers.find((b) => b.id === o.buyer_id)?.label ?? "";
+  const share: ShareOption[] = [{
+    key: "buyer", label: "Buyer",
+    text: [
+      `*${buyerLabel} · PO ${o.buyer_po}*`,
+      `Order update, ${day(today)}`,
+      due ? `Ship date: ${day(due)}` : "",
+      "",
+      ...lines.map((l) => {
+        // Where the style has got to: its furthest step done, and the step after it.
+        const st = styleSteps(l.id);
+        const at = st.reduce((m, x, i) => (x.row?.done_on ? i : m), -1);
+        const next = st.slice(at + 1).find((x) => !x.row?.done_on);
+        const by = next?.row?.planned_on ? ` by ${dm(next.row.planned_on)}` : "";
+        return `• ${l.style}${l.colour ? ` (${l.colour})` : ""}, ${qty(l.qty)} pcs: `
+          + (at < 0 ? `not started${next ? `, first step ${next.label}${by}` : ""}` : `at ${st[at].label}${next ? `, next ${next.label}${by}` : ""}`)
+          + `${finalOk(l.id) ? " ✅ Final QC passed" : ""}`;
+      }),
+      "",
+      "Sourcingo",
+    ].filter((x, i, a) => x !== "" || (a[i - 1] ?? "") !== "").join("\n"),
+  }, ...(canEdit ? groups.filter((g) => g.factoryId).map((g) => ({
+    key: g.factoryId!, label: g.factoryName,
+    text: [
+      `*${o.order_no} · ${g.factoryName}*`,
+      `Please share today's status and photos for these styles:`,
+      "",
+      ...g.lines.map((l) => {
+        const st = styleSteps(l.id);
+        const over = st.filter((x) => !x.row?.done_on && x.row?.planned_on && x.row.planned_on < today);
+        const next = st.find((x) => !x.row?.done_on);
+        return `• ${l.style}${l.colour ? ` (${l.colour})` : ""}, ${qty(l.qty)} pcs: `
+          + (over.length ? `${over[0].label} was due ${dm(over[0].row!.planned_on!)}${over.length > 1 ? ` (+${over.length - 1} more late)` : ""}`
+            : next ? `next ${next.label}${next.row?.planned_on ? ` by ${dm(next.row.planned_on)}` : ""}` : "all steps done");
+      }),
+      g.target ? `\nEverything must be ready by ${day(g.target)}.` : "",
+    ].filter((x, i, a) => x !== "" || (a[i - 1] ?? "") !== "").join("\n"),
+  })) : [])];
+  const behind = lines.filter((l) => styleSteps(l.id).some((x) => !x.row?.done_on && x.row?.planned_on && x.row.planned_on < today)).length;
+  const tabs: SectionTab[] = [
+    { id: "tna", label: "Styles", count: behind || undefined, tone: "bad" },
+    { id: "qc", label: "QC" },
+    ...(canEdit ? [{ id: "dispatch", label: "Dispatch" }, { id: "money", label: "Margin" }] : []),
+    { id: "ship", label: "Ship date" },
+    { id: "details", label: "Details" },
+    { id: "history", label: "History" },
+  ];
+
   return (
     <>
       <div className="head">
@@ -153,23 +213,19 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
           <p className="row">
             <span className={STATUS[o.status]?.cls}>{STATUS[o.status]?.label}</span>
             <span>{due ? `Ships ${day(due)}` : "No ship date yet"}{o.status === "open" && due && due < todayIST() && <b className="text-bad"> · {daysBetween(due, todayIST())} days late</b>}</span>
-            <span>· {lines.length} {lines.length === 1 ? "style" : "styles"} · {qty(lines.reduce((t, l) => t + l.qty, 0))} pcs</span>
+            <span>{lines.length} {lines.length === 1 ? "style" : "styles"} · {qty(lines.reduce((t, l) => t + l.qty, 0))} pcs</span>
           </p>
-          <p className="text-xs">Entered {dayAt(o.created_at)}{o.updated_at.slice(0, 16) !== o.created_at.slice(0, 16) && `, last changed ${dayAt(o.updated_at)}`}</p>
+          <p className="hide-phone text-xs">Entered {dayAt(o.created_at)}{o.updated_at.slice(0, 16) !== o.created_at.slice(0, 16) && `, last changed ${dayAt(o.updated_at)}`}</p>
         </div>
         {/* Closing an order: the owner can always; others once every style's final QC has passed. */}
-        {canEdit && o.status === "open" && <MarkShipped orderId={o.id} orderNo={o.order_no} />}
+        <div className="head-acts">
+          <ShareUpdate options={share} />
+          {canEdit && o.status === "open" && <MarkShipped orderId={o.id} orderNo={o.order_no} />}
+        </div>
       </div>
       {saved && <div className="okbox">Order saved as {o.order_no}.</div>}
-      <nav className="jump" aria-label="Sections of this order">
-        <a href="#tna">Styles and TNA</a>
-        <a href="#qc">Quality checks</a>
-        {canEdit && <a href="#dispatch">Dispatch</a>}
-        {canEdit && <a href="#money">Margin</a>}
-        <a href="#ship">Ship date</a>
-        <a href="#details">Order details</a>
-        <a href="#history">History</a>
-      </nav>
+      <OrderSections tabs={tabs}>
+      <div data-sec="tna">
       <OrderStyles
         // Start again from the saved dates whenever anyone's save changes them, so stale dates on this screen can't
         // be saved over someone else's newer ones.
@@ -192,22 +248,25 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
         initial={Object.fromEntries((lineStages ?? []).map((r) => [`${r.line_id}:${r.stage}`, { planned_on: str(r.planned_on), done_on: str(r.done_on), not_needed: !!r.not_needed }]))}
         qc={stepQc}
       />
+      </div>
+      <div data-sec="qc">
       <OrderQc orderId={o.id} companyId={o.company_id} open={o.status === "open"} canRecord={canRecordQc(me?.role)} today={todayIST()} checks={checks} finalPassed={finalPassed}
         styles={lines.map((l) => ({ id: l.id, style: l.style, colour: str(l.colour), qty: l.qty }))} />
+      </div>
       {canEdit && (
-        <OrderDispatch orderId={o.id} companyId={o.company_id} open={o.status === "open"} factories={dispatchFactories}
-          dispatches={dispatches} now={Date.parse(new Date().toISOString())} today={todayIST()} />
+        <div data-sec="dispatch"><OrderDispatch orderId={o.id} companyId={o.company_id} open={o.status === "open"} factories={dispatchFactories}
+          dispatches={dispatches} now={Date.parse(new Date().toISOString())} today={todayIST()} /></div>
       )}
       {canEdit && (
-        <OrderMargin
+        <div data-sec="money"><OrderMargin
           styles={lines.map((l) => ({
             id: l.id, style: l.style, colour: str(l.colour), qty: l.qty,
             buyerRate: l.buyer_rate == null ? null : Number(l.buyer_rate), factoryRate: l.factory_rate == null ? null : Number(l.factory_rate),
           }))}
           dispatches={dispatches}
-        />
+        /></div>
       )}
-      <OrderProduction
+      <div data-sec="ship"><OrderProduction
         id={o.id}
         open={o.status === "open"}
         canEdit={canEdit}
@@ -216,8 +275,8 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
         stage={o.stage}
         stageAt={o.stage_at}
         initial={{ revised_ship_date: str(o.revised_ship_date), delay_reason: str(o.delay_reason) }}
-      />
-      {canEdit ? <OrderForm
+      /></div>
+      <div data-sec="details">{canEdit ? <OrderForm
         key={o.updated_at}
         initial={{
           id: o.id, buyer_id: o.buyer_id, buyer_po: o.buyer_po, po_date: str(o.po_date), ship_date: str(o.ship_date),
@@ -249,8 +308,9 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
           </div>
           {o.ship_date && <p className="muted mt-3 text-[13px]">Buyer&apos;s ship date {day(o.ship_date)}{o.revised_ship_date && `, now ${day(o.revised_ship_date)}`}.</p>}
         </section>
-      )}
-      <OrderHistory orderId={o.id} />
+      )}</div>
+      <div data-sec="history"><OrderHistory orderId={o.id} /></div>
+      </OrderSections>
     </>
   );
 }

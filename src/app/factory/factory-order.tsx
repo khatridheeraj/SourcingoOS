@@ -98,7 +98,35 @@ export function FactoryOrder({ order, now }: { order: PanelOrder; now: string })
         {!released && !sentAt && order.plan_due_at && <>Send your TNA by <b className="text-foreground">{at.format(new Date(order.plan_due_at))}</b>. </>}
         {released ? "Your dates are fixed. Done dates are shown under each step." : "Sourcingo's target for each step is shown above your date. Give your date for each step; a date later than its target holds up the PO."}
       </p>
-      <div className="table-wrap">
+      {/* On a phone: one card per style, one row per step, big date boxes. */}
+      <div className="show-phone fstyles">
+        {order.lines.map((l) => (
+          <article key={l.id} className="fstyle">
+            <header>
+              <b className="code">{l.style}</b>
+              <span className="muted text-[13px]">{[l.colour, `${qty(l.qty)} pcs`, l.rate != null ? `₹${qty(l.rate)}` : ""].filter(Boolean).join(" · ")}</span>
+            </header>
+            <ul>
+              {[...TNA_STEPS.map((s) => ({ label: s.label, st: stageOf(l.id, s.key) })), ...extrasOf(l).map((st) => ({ label: st.label ?? "", st }))].map(({ label, st }) => (
+                <li key={label} className="fstep">
+                  <div>
+                    <b>{label}</b>
+                    {st?.planned_on ? <small>Target {day(st.planned_on)}</small> : <small className="muted">{st ? "No target" : "Not set yet"}</small>}
+                    {st && !released && st.planned_on && (dates[key(l.id, st.stage)] ?? "") > st.planned_on && <small className="text-bad">Later than target</small>}
+                    {released && st?.done_on && <small className="text-ok">Done {day(st.done_on)}</small>}
+                  </div>
+                  {st && (
+                    <input className="inp" type="date" value={dates[key(l.id, st.stage)] ?? ""} max={order.target ?? undefined} disabled={released || pending}
+                      aria-label={`${l.style} ${label} your date`}
+                      onChange={(e) => { setDates((d) => ({ ...d, [key(l.id, st.stage)]: e.target.value })); setSent(false); }} />
+                  )}
+                </li>
+              ))}
+            </ul>
+          </article>
+        ))}
+      </div>
+      <div className="table-wrap hide-phone">
         <table className="tbl tna">
           <thead><tr><th>Style</th>{TNA_STEPS.map((s) => <th key={s.key}>{s.label}</th>)}<th>Extra steps</th></tr></thead>
           <tbody>
@@ -129,7 +157,7 @@ export function FactoryOrder({ order, now }: { order: PanelOrder; now: string })
         </table>
       </div>
       {!released && (
-        <div className="row mt-3">
+        <div className="row mt-3 fsend">
           <button type="button" className="btn primary" disabled={pending || missing > 0 || beyond || (!changed.length && !!sentAt)} onClick={send}
             title={missing ? "Fill every date first" : beyond ? "Bring every date on or before the target date" : undefined}>
             {pending ? "Sending…" : sentAt ? "Send updated TNA" : "Send my TNA"}

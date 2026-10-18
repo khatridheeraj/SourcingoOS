@@ -1,7 +1,8 @@
 import { redirect } from "next/navigation";
 import { getMe } from "@/lib/auth";
+import { Toaster } from "@/components/toast";
 
-// A factory's own panel: only for factory logins.
+// A factory's own panel: only for factory logins. Built to be used on a phone on the factory floor.
 export default async function FactoryLayout({ children }: LayoutProps<"/factory">) {
   const me = await getMe();
   if (!me) redirect("/login");
@@ -9,21 +10,15 @@ export default async function FactoryLayout({ children }: LayoutProps<"/factory"
 
   return (
     <div className="flex min-h-full flex-col">
-      <header className="sticky top-0 z-30 border-b border-line bg-surface">
-        <div className="mx-auto flex w-full max-w-[1180px] flex-wrap items-center gap-x-5 gap-y-2 px-4 py-2.5">
-          <div className="flex items-baseline gap-2">
-            <b className="text-[15px] font-semibold tracking-tight">Sourcingo</b>
-            <span className="text-[10.5px] uppercase tracking-widest text-muted">Factory panel</span>
-          </div>
-          <div className="ml-auto flex items-center gap-3 text-xs text-muted">
-            <span className="hidden sm:inline">{me.fullName || me.email}</span>
-            <form action="/auth/signout" method="post">
-              <button className="font-semibold text-accent">Sign out</button>
-            </form>
-          </div>
-        </div>
+      <header className="fbar">
+        <div className="brand"><span className="brand-mark" aria-hidden>S</span>Sourcingo<small>Factory</small></div>
+        <span className="hide-phone ml-auto text-[13px] text-muted">{me.fullName || me.email}</span>
+        <form action="/auth/signout" method="post" className="ml-auto sm:ml-0">
+          <button className="btn ghost sm">Sign out</button>
+        </form>
       </header>
       <main className="mx-auto flex w-full max-w-[1180px] flex-1 flex-col gap-[18px] px-4 pb-16 pt-5">{children}</main>
+      <Toaster />
     </div>
   );
 }

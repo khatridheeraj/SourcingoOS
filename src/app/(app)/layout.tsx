@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { Sidebar, type NavGroup } from "@/components/nav";
+import { Toaster } from "@/components/toast";
 import { canEditOrders, getMe, roleLabel } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 
@@ -42,6 +43,7 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
           </div>
         )}
       </main>
+      <Toaster />
     </div>
   );
 }

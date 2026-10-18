@@ -6,6 +6,7 @@ import { buyerName, loadBuyers, loadFactories } from "@/lib/data";
 import { day, daysBetween, dueDate, nowMs, planDueAt, PLAN_HOURS, qcKindLabel, qty, SHIP_QC, stageReached, TNA_STEPS, todayIST } from "@/lib/format";
 import { NO_COMPANY } from "@/lib/names";
 import { createClient } from "@/lib/supabase/server";
+import { Icon, type IconName } from "@/components/nav";
 import { MarkShipped } from "../orders/mark-shipped";
 
 type Sev = "bad" | "warn" | "ok" | "";
@@ -329,6 +330,20 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
       : { key: "book", href: "/", label: "Open orders", value: String(open.length), sev: "", sub: `${plural(allLines.length, "style")} · ${qty(pcs(open))} pcs` },
   ];
 
+  // Shortcuts to the jobs done most often, within thumb reach on a phone.
+  const quick: { href: string; label: string; icon: IconName; count?: number; tone: string }[] = team
+    ? [
+        { href: "/orders/new", label: "New order", icon: "plus", tone: "accent" },
+        { href: "/pos", label: "Check POs", icon: "inbox", count: incoming?.length ?? 0, tone: "info" },
+        { href: "/?status=late", label: "Late orders", icon: "clock", count: late.length, tone: "bad" },
+        { href: "/?find=1", label: "Find order", icon: "search", tone: "ok" },
+      ]
+    : [
+        { href: qs("soon"), label: "QC due", icon: "check", tone: "accent" },
+        { href: qs("now"), label: "Overdue", icon: "clock", count: nowCount, tone: "bad" },
+        { href: "/?find=1", label: "Find order", icon: "search", tone: "ok" },
+      ];
+
   return (
     <>
       <div className="head">
@@ -347,6 +362,15 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
           </nav>
         )}
       </div>
+
+      <nav className="quick" aria-label="Shortcuts">
+        {quick.map((q) => (
+          <Link key={q.label} href={q.href} className={q.tone}>
+            <span className="quick-ic"><Icon name={q.icon} size={22} />{!!q.count && <span className="tab-badge">{q.count}</span>}</span>
+            {q.label}
+          </Link>
+        ))}
+      </nav>
 
       <div className="kpis">
         {kpis.map((k) => (
