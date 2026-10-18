@@ -2,10 +2,11 @@ import { NO_COMPANY } from "@/lib/names";
 import Link from "next/link";
 import { canEditOrders, getMe } from "@/lib/auth";
 import { buyerName, loadBuyers, loadFactories } from "@/lib/data";
-import { day, daysBetween, dueDate, money, qty, SHIP_QC, stageReached, STATUS, TNA_STEPS, todayIST } from "@/lib/format";
+import { day, daysBetween, dueDate, money, qty, SHIP_QC, stageReached, STATUS, todayIST } from "@/lib/format";
 import { type LinePrice, marginCls, pct, planMargin } from "@/lib/margin";
 import { fetchAll } from "@/lib/fetch-all";
-import { project, shipRisk } from "@/lib/tna-plan";
+import { styleProgress } from "@/lib/progress";
+import { ProgressCell } from "@/components/progress";
 import { createClient } from "@/lib/supabase/server";
 
 const TABS = [
@@ -73,31 +74,8 @@ export default async function OrdersPage({ searchParams }: PageProps<"/">) {
     (o.order_lines ?? []).map((l) => ({ ...l, buyer_rate: rateOf.get(l.id)?.buyer_rate ?? null, factory_rate: rateOf.get(l.id)?.factory_rate ?? null }));
 
   // Progress of an open order: where its slowest styles are, and whether any step is past its target.
-  const progressOf = (o: { id: string; order_lines: { id: string }[] | null; ship_date: string | null; revised_ship_date: string | null }) => {
-    const rows = (steps ?? []).filter((s) => s.order_id === o.id);
-    const lineIds = (o.order_lines ?? []).map((l) => l.id);
-    const at = lineIds.map((id) => Math.max(-1, ...rows.filter((s) => s.line_id === id && s.done_on).map((s) => TNA_STEPS.findIndex((t) => t.key === s.stage))));
-    const slowest = Math.min(...at);
-    const n = at.filter((i) => i === slowest).length;
-    const m = lineIds.length;
-    const step = slowest < 0 || !Number.isFinite(slowest) ? "" : TNA_STEPS[slowest].label;
-    return {
-      text: !m ? "" : m === 1 ? (step ? `At ${step}` : "No step done yet")
-        : n === m ? (step ? `All ${m} styles at ${step}` : `No step done yet on any of ${m} styles`)
-        : step ? `${n} of ${m} styles still at ${step}` : `${n} of ${m} styles have no step done yet`,
-      planned: rows.filter((s) => s.planned_on && lineIds.includes(s.line_id)).length,
-      done: rows.filter((s) => s.done_on && lineIds.includes(s.line_id)).length,
-      total: rows.filter((s) => (s.planned_on || s.done_on) && lineIds.includes(s.line_id)).length,
-      behind: rows.some((s) => lineIds.includes(s.line_id) && !s.done_on && s.planned_on && s.planned_on < today),
-      // Days the latest style will likely miss the ship date by, with late steps pushing the later ones back.
-      riskDays: Math.max(0, ...lineIds.map((id) => {
-        const mine = rows.filter((s) => s.line_id === id);
-        const ordered = [...TNA_STEPS.map((t) => mine.find((s) => s.stage === t.key)), ...mine.filter((s) => s.stage.startsWith("extra_"))]
-          .map((s) => ({ planned_on: s?.planned_on, done_on: s?.done_on }));
-        return shipRisk(project(ordered, today), dueDate(o)).daysLate;
-      })),
-    };
-  };
+  const progressOf = (o: { order_lines: { id: string }[] | null; ship_date: string | null; revised_ship_date: string | null }) =>
+    styleProgress((o.order_lines ?? []).map((l) => l.id), steps ?? [], dueDate(o), today);
   const built = (data ?? []).map((o) => {
     const lines = withRates(o);
     const b = buyerById.get(o.buyer_id);
@@ -127,8 +105,6 @@ export default async function OrdersPage({ searchParams }: PageProps<"/">) {
     .filter((r) => !q || [r.order_no, r.buyer, r.buyer_po, ...r.styles, ...r.factoryNames].join(" ").toLowerCase().includes(q))
     .sort((a, b) => (a.due ?? "9999").localeCompare(b.due ?? "9999") || a.order_no.localeCompare(b.order_no));
 
-  const planChip = (p: NonNullable<(typeof built)[number]["progress"]>, looksShipped: boolean) =>
-    looksShipped ? <span className="chip warn">Shipped? Close it</span> : p.riskDays > 0 ? <span className="chip bad" title="A late step pushes back every step after it">At risk · {p.riskDays}d late</span> : p.behind ? <span className="chip bad">Behind plan</span> : !p.planned ? <span className="chip warn">No targets</span> : <span className="chip ok">On plan</span>;
   const all = counts.data ?? [];
   // A list that failed to load must not look like "no orders" or "on plan".
   const loadError = [error, counts.error, qcError, stepsError, ratesError].find(Boolean);
@@ -219,11 +195,7 @@ export default async function OrdersPage({ searchParams }: PageProps<"/">) {
               )}
               <span className="o-prog" role="cell">
                 {r.progress ? (
-                  <>
-                    <span className="flex items-center justify-between gap-2">{planChip(r.progress, r.looksShipped)}<small className="num">{r.progress.total > 0 && `${r.progress.done}/${r.progress.total}`}</small></span>
-                    <span className="bar"><i className={r.progress.behind ? "bad" : ""} style={{ width: `${r.progress.total ? Math.max(3, (100 * r.progress.done) / r.progress.total) : 0}%` }} /></span>
-                    <small>{r.progress.text}</small>
-                  </>
+                  <ProgressCell p={r.progress} looksShipped={r.looksShipped} />
                 ) : <span className={STATUS[r.status]?.cls}>{STATUS[r.status]?.label}</span>}
               </span>
             </Link>
