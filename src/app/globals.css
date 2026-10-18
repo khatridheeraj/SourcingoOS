@@ -192,7 +192,7 @@ h1, h2, h3 { font-family: var(--font-display); text-wrap: balance; font-weight: 
     .tab-ic { position: relative; display: grid; place-items: center; width: 52px; height: 28px; border-radius: 14px; transition: background 0.15s; }
     .tab-badge {
       position: absolute; top: -4px; right: 6px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; border: 2px solid var(--surface);
-      font-size: 10px; font-weight: 700; line-height: 14px; text-align: center; color: #fff; background: var(--bad);
+      font-size: 10px; font-weight: 700; line-height: 14px; text-align: center; color: var(--surface); background: var(--bad);
     }
     .sidebar {
       position: fixed; z-index: 50; left: 0; right: 0; bottom: 0; top: auto; width: auto; height: auto; max-height: 86vh;
@@ -709,6 +709,16 @@ h1, h2, h3 { font-family: var(--font-display); text-wrap: balance; font-weight: 
     .inp, select.inp, textarea.inp { min-height: 44px; font-size: 16px; }
     /* The compact inputs in tables, TNA steps and QC comments too: below 16px any of them zooms the page. */
     .tbl td .inp, .tna-cell .inp, .step-f .inp, .step-add .inp, .qc-comment .inp { font-size: 16px; }
+    /* Tables marked "stack" become one card per row, so nothing hides off to the right. */
+    .tbl.stack thead { display: none; }
+    .tbl.stack, .tbl.stack tbody, .tbl.stack tr, .tbl.stack td { display: block; width: 100%; }
+    .tbl.stack tr { padding: 12px 14px; border-bottom: 1px solid var(--line); }
+    .tbl.stack tr:last-child { border-bottom: 0; }
+    .tbl.stack td { padding: 3px 0; border: 0; }
+    .tbl.stack input[type="checkbox"] { width: 22px; height: 22px; }
+    /* Tap targets of at least 40px for the small links and switches. */
+    .pill { height: 40px; }
+    summary:not(.bstyle summary) { min-height: 40px; padding-block: 10px; }
     .btn { min-height: 40px; padding: 0 16px; font-size: 14px; border-radius: 10px; }
     .btn.sm { min-height: 34px; padding: 0 12px; font-size: 13px; }
     .btn:active { transform: scale(0.97); }

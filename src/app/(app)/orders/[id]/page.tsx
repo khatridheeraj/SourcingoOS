@@ -97,7 +97,7 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
   }));
   // Each style passes or fails its own final QC; the order is ready to ship when all of them have passed.
   const finalPassed = lines.length > 0 && lines.every((l) => checks.find((c) => c.line_id === l.id && SHIP_QC.includes(c.kind) && !c.cancelled_at)?.result === "pass");
-  const opts = await formOptions({ buyerId: o.buyer_id, factoryIds: lines.map((l) => l.factory_id).filter(Boolean) as string[] });
+  const opts = await formOptions({ buyerId: o.buyer_id, merchandiserId: o.merchandiser_id ?? undefined, factoryIds: lines.map((l) => l.factory_id).filter(Boolean) as string[] });
 
   const due = o.revised_ship_date || o.ship_date;
   const addDays = (d: string, n: number) => new Date(Date.parse(d) + n * 86_400_000).toISOString().slice(0, 10);
@@ -191,7 +191,8 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
         const st = styleSteps(l.id);
         const at = st.reduce((m, x, i) => (x.row?.done_on ? i : m), -1);
         const next = st.slice(at + 1).find((x) => !x.row?.done_on);
-        const by = next?.row?.planned_on ? ` by ${dm(next.row.planned_on)}` : "";
+        // A target already passed isn't a promise to the buyer: say the step is under way instead.
+        const by = next?.row?.planned_on && next.row.planned_on >= today ? ` by ${dm(next.row.planned_on)}` : next?.row?.planned_on ? " (in progress)" : "";
         return `• ${l.style}${l.colour ? ` (${l.colour})` : ""}, ${qty(l.qty)} pcs: `
           + (at < 0 ? `not started${next ? `, first step ${next.label}${by}` : ""}` : `at ${st[at].label}${next ? `, next ${next.label}${by}` : ""}`)
           + `${finalOk(l.id) ? " ✅ Final QC passed" : ""}`;
@@ -304,6 +305,7 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
         today={todayIST()}
         stage={o.stage}
         stageAt={o.stage_at}
+        riskDays={outlook?.level === "risk" ? outlook.daysLate : 0}
         initial={{ revised_ship_date: str(o.revised_ship_date), delay_reason: str(o.delay_reason) }}
       /></div>
       <div data-sec="details">{canEdit ? <OrderForm
