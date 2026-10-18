@@ -52,3 +52,4 @@ jobs:
         with:
           deno-version: v2.1.4
       - run: deno check --node-modules-dir=none supabase/functions/po-inbox/index.ts
+      - run: deno check --node-modules-dir=none supabase/functions/marker-reader/index.ts
