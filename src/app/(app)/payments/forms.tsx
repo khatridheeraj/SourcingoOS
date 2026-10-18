@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
 import { day, money } from "@/lib/format";
-import { addDays, autoSplit, CHEQUE_LABEL, CHEQUE_TONE, type ChequeStatus, NEXT_STEPS, SLACK } from "@/lib/payments";
+import { addDays, autoSplit, CHEQUE_LABEL, CHEQUE_TONE, CHEQUE_VALID_DAYS, type ChequeStatus, NEXT_STEPS, SLACK } from "@/lib/payments";
 import { type InvoiceInput, saveCheque, saveCreditNote, saveInvoice, setChequeStatus, setCreditDays } from "./actions";
 
 export type BuyerOpt = { id: string; label: string; creditDays: number | null };
@@ -311,7 +311,8 @@ export function ChequeTable({ rows, today }: { rows: ChequeLine[]; today: string
   const { run, pending, error, ok } = useChequeStatus();
   const chosen = rows.filter((r) => sel.has(r.id));
   const steps = (["deposited", "cleared", "bounced", "cancelled", "in_hand"] as ChequeStatus[]).filter(
-    (s) => chosen.length > 0 && chosen.every((r) => NEXT_STEPS[r.status].includes(s) && !(r.status === "in_hand" && (s === "deposited" || s === "cleared") && r.cheque_date > on)),
+    (s) => chosen.length > 0 && chosen.every((r) => NEXT_STEPS[r.status].includes(s) && !(r.status === "in_hand" && (s === "deposited" || s === "cleared")
+      && (r.cheque_date > on || addDays(r.cheque_date, CHEQUE_VALID_DAYS) < on))),
   );
   const toggle = (id: string) => setSel((p) => { const s = new Set(p); if (s.has(id)) s.delete(id); else s.add(id); return s; });
   const all = rows.length > 0 && rows.every((r) => sel.has(r.id));
@@ -326,7 +327,7 @@ export function ChequeTable({ rows, today }: { rows: ChequeLine[]; today: string
             <button key={s} type="button" disabled={pending} className={`btn sm ${s === "cleared" || s === "deposited" ? "primary" : s === "bounced" || s === "cancelled" ? "danger" : ""}`}
               onClick={() => run(chosen.map((r) => r.id), s, on, () => setSel(new Set()))}>{VERB[s]}</button>
           ))}
-          {!steps.length && <span className="text-xs muted">No step fits all of these. Pick cheques at the same stage, and only post-dated ones whose date has come.</span>}
+          {!steps.length && <span className="text-xs muted">No step fits all of these. Pick cheques at the same stage, only post-dated ones whose date has come, and no expired ones.</span>}
           <button type="button" className="btn sm" onClick={() => setSel(new Set())}>Clear</button>
         </div>
       )}
@@ -368,12 +369,18 @@ export function ChequeTable({ rows, today }: { rows: ChequeLine[]; today: string
 }
 
 // Status buttons on a cheque's own page.
-export function ChequeSteps({ id, status, chequeDate, today, isOwner }: { id: string; status: ChequeStatus; chequeDate: string; today: string; isOwner: boolean }) {
+export function ChequeSteps({ id, status, chequeDate, expires, today, isOwner }: { id: string; status: ChequeStatus; chequeDate: string; expires: string; today: string; isOwner: boolean }) {
   const [on, setOn] = useState(today);
   const { run, pending, error, ok } = useChequeStatus();
-  const early = (s: ChequeStatus) => status === "in_hand" && (s === "deposited" || s === "cleared") && on < chequeDate;
-  const steps = (isOwner ? (["in_hand", "deposited", "cleared", "bounced", "cancelled"] as ChequeStatus[]).filter((s) => s !== status) : NEXT_STEPS[status]).filter((s) => !early(s));
-  const wait = status === "in_hand" && on < chequeDate ? <span className="text-xs muted">Post-dated: it can go to the bank from {day(chequeDate)}.</span> : null;
+  const banking = (s: ChequeStatus) => status === "in_hand" && (s === "deposited" || s === "cleared");
+  const early = (s: ChequeStatus) => banking(s) && on < chequeDate;
+  // Banks don't take a cheque past its validity. Only the owner can record it anyway.
+  const late = (s: ChequeStatus) => banking(s) && on > expires && !isOwner;
+  const steps = (isOwner ? (["in_hand", "deposited", "cleared", "bounced", "cancelled"] as ChequeStatus[]).filter((s) => s !== status) : NEXT_STEPS[status])
+    .filter((s) => !early(s) && !late(s));
+  const wait = status === "in_hand" && on < chequeDate ? <span className="text-xs muted">Post-dated: it can go to the bank from {day(chequeDate)}.</span>
+    : status === "in_hand" && on > expires ? <span className="text-xs muted">Expired on {day(expires)}. Ask the buyer for a new cheque{isOwner ? "" : ", or set the date it was really deposited"}.</span>
+    : null;
   return (
     <div className="stack">
       {steps.length ? (

@@ -32,10 +32,15 @@ try {
   Write-Warning "Tally didn't answer at $($cfg.tallyUrl). In TallyPrime: F1 Help > Settings > Connectivity, set 'TallyPrime acts as' to Both and port 9000, then keep Tally open."
 }
 
-# 4. One test round, so any problem shows now.
+# 4. Stop a reader that is already running (setting up again, a new key, an update), so only one reads Tally.
+Get-CimInstance Win32_Process -Filter "Name = 'node.exe'" |
+  Where-Object { $_.CommandLine -like "*sync.mjs*" -and $_.CommandLine -like "*$PSScriptRoot*" } |
+  ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+
+# 5. One test round, so any problem shows now.
 & node sync.mjs --once
 
-# 5. Start at sign-in, hidden.
+# 6. Start at sign-in, hidden.
 $vbs = Join-Path $PSScriptRoot "run-hidden.vbs"
 @"
 Set sh = CreateObject("WScript.Shell")

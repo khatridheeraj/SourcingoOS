@@ -21,7 +21,14 @@ export async function GET(request: NextRequest) {
   const [names, supabase] = await Promise.all([loadNames(me.companyId), createClient()]);
 
   const entries: Entry[] = [];
-  for (let before = 0; entries.length < MAX;) {
+  let capped = false;
+  for (let before = 0; ;) {
+    if (entries.length >= MAX) {
+      // At the cap: check whether older entries remain, so the file can say it is cut short.
+      const { data, error } = await queryActivity(supabase, me.companyId, f).lt("id", before).limit(1);
+      capped = !!error || !!data?.length;
+      break;
+    }
     let q = queryActivity(supabase, me.companyId, f);
     if (before) q = q.lt("id", before);
     const { data, error } = await q.limit(BATCH);
@@ -31,7 +38,10 @@ export async function GET(request: NextRequest) {
     before = data[data.length - 1].id;
   }
 
-  const lines = [["When (India time)", "Who", "Came from", "Area", "Record", "What", "Changes", "Entry no."].join(",")];
+  const lines = capped
+    ? [cell(`Only the newest ${MAX.toLocaleString("en-IN")} entries are in this file. Narrow the dates or filters to download older ones.`)]
+    : [];
+  lines.push(["When (India time)", "Who", "Came from", "Area", "Record", "What", "Changes", "Entry no."].join(","));
   for (const e of entries) {
     const d = describe(e, names);
     const detail = d.changes.length ? d.changes.map((c) => `${c.label}: ${c.from} → ${c.to}`) : d.fields.map((x) => `${x.label}: ${x.value}`);

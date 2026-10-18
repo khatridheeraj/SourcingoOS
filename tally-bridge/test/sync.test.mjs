@@ -120,3 +120,22 @@ test("the reader never sends Tally anything that could change its books", async 
   await assert.rejects(client("<ENVELOPE><HEADER><TALLYREQUEST>Import Data</TALLYREQUEST></HEADER></ENVELOPE>").finally(() => { sent = true; }), /only reads/);
   assert.ok(sent);
 });
+
+test("an error from Tally is a failed read: nothing is sent, and it waits for the next turn", async () => {
+  const tally = books();
+  const cloud = memoryCloud(ON);
+  let t = new Date("2026-10-10T08:00:00Z");
+  // Tally answers the company list, then says the company can't be opened (closed or switched mid-read).
+  const answers = (xml) => (/SgoCompanies/.test(xml) ? tally.handle(xml)
+    : "<ENVELOPE><BODY><DATA><LINEERROR>Could not set 'SVCurrentCompany' to 'Sourcingo Test'</LINEERROR></DATA></BODY></ENVELOPE>");
+  const sync = createSync({ tally: answers, cloud, now: () => t });
+  await assert.rejects(sync.round(), /Tally said: Could not set/);
+  assert.equal(cloud.snapshots.length, 0);
+  t = new Date(t.getTime() + 60e3);
+  assert.equal((await sync.round()).read, false);
+  // An answer with no ledgers at all is not sent either.
+  t = new Date(t.getTime() + 15 * 60e3);
+  const empty = createSync({ tally: (xml) => (/SgoCompanies/.test(xml) ? tally.handle(xml) : "<ENVELOPE><BODY><DATA><COLLECTION></COLLECTION></DATA></BODY></ENVELOPE>"), cloud, now: () => t });
+  await assert.rejects(empty.round(), /no ledgers/);
+  assert.equal(cloud.snapshots.length, 0);
+});

@@ -193,7 +193,10 @@ do $$ begin
   if public.can_upload_photo((select id::text from public.companies where name = 'Sourcingo') || '/o/styles/l/a.jpg') then
     raise exception 'Quality may upload style photos';
   end if;
-  update public.orders set stage = 'packed';
+  begin
+    update public.orders set stage = 'packed';
+  exception when insufficient_privilege then null;
+  end;
   if exists (select 1 from public.orders where stage = 'packed') then raise exception 'Quality changed production'; end if;
   begin
     perform public.save_order(jsonb_build_object('buyer_id', '10000000-0000-0000-0000-000000000001', 'buyer_po', 'QC-PO'), '[{"style":"Q","qty":1}]');
@@ -206,48 +209,55 @@ do $$ begin
   exception when insufficient_privilege then null;
   end;
 end $$;
--- Every check is for one style of the order.
+-- Every check is for one style of the order, and is recorded with a photo through record_qc (never written straight in).
 select id as l101 from public.order_lines where style = 'OZ-101' \gset
 select id as l102 from public.order_lines where style = 'OZ-102' \gset
+create function pg_temp.qc(p_order uuid, p_line uuid, p_kind text, p_result text, p_pieces integer default null,
+  p_defects integer default 0, p_notes text default null, p_on date default current_date) returns uuid language plpgsql as $$
+declare v_id uuid := gen_random_uuid();
+begin
+  return public.record_qc(p_order, jsonb_build_object('id', v_id, 'line_id', p_line, 'kind', p_kind, 'result', p_result,
+      'pieces_checked', p_pieces, 'defects', p_defects, 'notes', p_notes, 'checked_on', p_on),
+    jsonb_build_array(jsonb_build_object('path', public.current_company() || '/' || p_order || '/qc/' || v_id || '/1.jpg', 'kind', 'photo')));
+end $$;
 do $$ begin
   begin
-    insert into public.qc_checks (order_id, kind, result) select id, 'inline', 'pass' from public.orders;
-    raise exception 'a check without a style was accepted';
-  exception when raise_exception then
-    if sqlerrm not like 'Pick the style%' then raise; end if;
+    insert into public.qc_checks (order_id, line_id, kind, result) select order_id, id, 'inline', 'pass' from public.order_lines limit 1;
+    raise exception 'Quality wrote a check straight in, without a photo';
+  exception when insufficient_privilege then null;
   end;
 end $$;
-insert into public.qc_checks (order_id, line_id, kind, result, pieces_checked, defects) values (:'save_order', :'l101', 'inline', 'pass', 50, 2);
-insert into public.qc_checks (order_id, line_id, kind, result, pieces_checked, defects, notes, checked_on)
-  values (:'save_order', :'l101', 'final', 'fail', 80, 9, 'Loose threads, wrong wash care label', current_date - 1);
+select pg_temp.qc(:'save_order', :'l101', 'inline', 'pass', 50, 2);
+select pg_temp.qc(:'save_order', :'l101', 'final', 'fail', 80, 9, 'Loose threads, wrong wash care label', current_date - 1);
 do $$ begin
   if public.final_qc_passed((select id from public.orders)) then raise exception 'a failed final QC counted as passed'; end if;
   begin
-    insert into public.qc_checks (order_id, line_id, kind, result) select order_id, id, 'final', 'fail' from public.order_lines where style = 'OZ-101';
+    perform pg_temp.qc((select id from public.orders), (select id from public.order_lines where style = 'OZ-101'), 'final', 'fail');
     raise exception 'a failed check without notes was accepted';
   exception when check_violation then null;
   end;
   begin
-    insert into public.qc_checks (order_id, line_id, kind, result, pieces_checked, defects) select order_id, id, 'final', 'pass', 10, 11 from public.order_lines where style = 'OZ-101';
+    perform pg_temp.qc((select id from public.orders), (select id from public.order_lines where style = 'OZ-101'), 'final', 'pass', 10, 11);
     raise exception 'more defects than pieces checked was accepted';
   exception when check_violation then null;
   end;
   begin
     update public.qc_checks set result = 'pass' where kind = 'final';
     raise exception 'a saved QC result was changed';
-  exception when raise_exception then
+  exception when insufficient_privilege then null;
+  when raise_exception then
     if sqlerrm not like '%can''t be changed%' then raise; end if;
   end;
 end $$;
-insert into public.qc_checks (order_id, line_id, kind, result, pieces_checked, defects) values (:'save_order', :'l101', 'midline', 'pass', 40, 0);
+select pg_temp.qc(:'save_order', :'l101', 'midline', 'pass', 40, 0);
 do $$ begin
   if public.final_qc_passed((select id from public.orders)) then raise exception 'a mid-line pass counted as the final'; end if;
 end $$;
-insert into public.qc_checks (order_id, line_id, kind, result, pieces_checked, defects) values (:'save_order', :'l101', 'recheck', 'pass', 80, 1);
+select pg_temp.qc(:'save_order', :'l101', 'recheck', 'pass', 80, 1);
 do $$ begin
   if public.final_qc_passed((select id from public.orders)) then raise exception 'one style passing passed the whole order'; end if;
 end $$;
-insert into public.qc_checks (order_id, line_id, kind, result, pieces_checked, defects) values (:'save_order', :'l102', 'final', 'pass', 60, 0);
+select pg_temp.qc(:'save_order', :'l102', 'final', 'pass', 60, 0);
 do $$ begin
   if not public.final_qc_passed((select id from public.orders)) then raise exception 'the passing re-check did not count'; end if;
   -- Cancelling the passing check puts the order back to needing a final QC.
@@ -261,7 +271,7 @@ do $$ begin
   end;
   if (select count(*) from public.history where table_name = 'qc_checks') <> 6 then raise exception 'QC history not kept'; end if;
 end $$;
-insert into public.qc_checks (order_id, line_id, kind, result, pieces_checked, defects) values (:'save_order', :'l101', 'final', 'pass', 80, 0);
+select pg_temp.qc(:'save_order', :'l101', 'final', 'pass', 80, 0);
 
 -- QC photos sit under the company's own folder and are taken off a check, never deleted.
 insert into public.qc_photos (qc_id, path)
@@ -273,7 +283,7 @@ do $$ begin
     raise exception 'a photo path outside the company folder was accepted';
   exception when check_violation then null;
   end;
-  update public.qc_photos set removed_at = now();
+  update public.qc_photos set removed_at = now() where path like '%/a.jpg';
   if (select count(*) from public.qc_photos where removed_at is not null) <> 1 then raise exception 'photo not taken off'; end if;
   begin
     update public.qc_photos set path = 'other';
@@ -365,9 +375,17 @@ do $$ begin
   end if;
 end $$;
 
--- Production: the stage is stamped when it changes, and saving the order form leaves the stage and new date alone.
+-- Production: the stage follows the done dates (people can't set it), it is stamped when it changes, and saving the
+-- order form leaves the stage and new date alone.
 do $$ begin
-  update public.orders set stage = 'stitching', revised_ship_date = '2026-12-01', delay_reason = 'Fabric late';
+  update public.orders set stage = 'stitching';
+  raise exception 'a person set the stage by hand';
+exception when insufficient_privilege then null;
+end $$;
+update public.orders set revised_ship_date = '2026-12-01', delay_reason = 'Fabric late';
+reset role;
+do $$ begin
+  update public.orders set stage = 'stitching';
   if (select stage_at from public.orders) is null then raise exception 'stage change not stamped'; end if;
   begin
     update public.orders set stage = 'sewing';
@@ -375,6 +393,7 @@ do $$ begin
   exception when check_violation then null;
   end;
 end $$;
+set role authenticated;
 select public.save_order(
   jsonb_build_object('id', :'save_order', 'buyer_id', '10000000-0000-0000-0000-000000000001', 'buyer_po', 'OZIA PO 001', 'status', 'shipped'),
   jsonb_build_array(jsonb_build_object('id', (select id from public.order_lines where style = 'OZ-103' and removed_at is null), 'style', 'OZ-103', 'qty', 50),
@@ -656,16 +675,24 @@ exception when raise_exception then
 end $$;
 select pg_temp.as_user('00000000-0000-0000-0000-00000000000b');
 
--- A removed style can be added back.
+-- A removed style can be added back: typed in again, it is the same style, with its TNA and QC.
 select public.save_order(
   jsonb_build_object('id', :'save_order', 'buyer_id', '10000000-0000-0000-0000-000000000001', 'buyer_po', 'OZIA PO 001', 'status', 'open'),
   jsonb_build_array(
-    jsonb_build_object('id', (select id from public.order_lines where style = 'OZ-103'), 'style', 'OZ-103', 'qty', 50),
-    jsonb_build_object('id', (select id from public.order_lines where style = 'OZ-101'), 'style', 'OZ-101', 'colour', 'Navy', 'qty', 520),
-    jsonb_build_object('style', 'OZ-102', 'qty', 300)));
+    jsonb_build_object('id', (select id from public.order_lines where style = 'OZ-103'), 'style', 'OZ-103', 'qty', 50,
+      'factory_id', '20000000-0000-0000-0000-000000000001'),
+    jsonb_build_object('id', (select id from public.order_lines where style = 'OZ-101'), 'style', 'OZ-101', 'colour', 'Navy', 'qty', 520,
+      'factory_id', '20000000-0000-0000-0000-000000000001'),
+    jsonb_build_object('style', 'oz-102 ', 'qty', 300)));
 do $$ begin
   if (select count(*) from public.order_lines where removed_at is null) <> 3 then raise exception 'removed style could not be added back'; end if;
 end $$;
+select (removed_at is null and style = 'oz-102') as l102_back from public.order_lines where id = :'l102' \gset
+\if :l102_back
+\else
+  \echo 'the removed style was not brought back'
+  select 1/0;
+\endif
 
 do $$ begin
   delete from public.orders;

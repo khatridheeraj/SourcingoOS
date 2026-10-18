@@ -61,13 +61,21 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
   const week = addDays(today, 7);
   const team = canEditOrders(me?.role);
 
+  // Every read's error is kept: a list that failed to load must not show as "nothing to do".
+  const errors: string[] = [];
+  const keep = <R extends { error: { message: string } | null }>(r: R) => {
+    if (r.error) errors.push(r.error.message);
+    return r;
+  };
   const [{ data: orders }, buyers, factories] = await Promise.all([
-    supabase
+    fetchAll((a, z) => supabase
       .from("orders")
       .select("id, order_no, buyer_id, buyer_po, ship_date, revised_ship_date, merchandiser_id, stage, order_lines(id, style, qty, factory_id)")
       .eq("company_id", companyId)
       .eq("status", "open")
-      .is("order_lines.removed_at", null),
+      .is("order_lines.removed_at", null)
+      .order("id")
+      .range(a, z)).then(keep),
     loadBuyers(),
     loadFactories(),
   ]);
@@ -79,10 +87,11 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
 
   const [{ data: pos }, { data: stages }, { data: checks }] = ids.length
     ? await Promise.all([
-        supabase.from("factory_pos").select("order_id, factory_id, plan_requested_on, plan_requested_at, factory_sent_at, released_at, buffer_days").in("order_id", ids),
-        fetchAll((a, z) => supabase.from("line_stages").select("order_id, line_id, stage, label, planned_on, done_on, not_needed, factory_on").in("order_id", ids).order("id").range(a, z)),
+        fetchAll((a, z) => supabase.from("factory_pos").select("order_id, factory_id, plan_requested_on, plan_requested_at, factory_sent_at, released_at, buffer_days")
+          .in("order_id", ids).order("id").range(a, z)).then(keep),
+        fetchAll((a, z) => supabase.from("line_stages").select("order_id, line_id, stage, label, planned_on, done_on, not_needed, factory_on").in("order_id", ids).order("id").range(a, z)).then(keep),
         fetchAll((a, z) => supabase.from("qc_checks").select("line_id, kind, result, checked_on").in("order_id", ids).is("cancelled_at", null)
-          .order("checked_on", { ascending: false }).order("created_at", { ascending: false }).order("id").range(a, z)),
+          .order("checked_on", { ascending: false }).order("created_at", { ascending: false }).order("id").range(a, z)).then(keep),
       ])
     : [{ data: [] }, { data: [] }, { data: [] }];
 
@@ -112,7 +121,9 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
   // Factory POs: ask for the plan, chase it, release it. A factory that hasn't sent its TNA within 24 hours is critical.
   const now = nowMs();
   // Factory rates come separately: the database gives them only to the orders team and Accounts.
-  const { data: rates } = team && ids.length ? await supabase.rpc("line_prices", { p_orders: ids }) : { data: [] };
+  const { data: rates } = team && ids.length
+    ? keep(await fetchAll<LinePrice>((a, z) => supabase.rpc("line_prices", { p_orders: ids }).order("id").range(a, z)))
+    : { data: [] };
   const priceOf = new Map(((rates ?? []) as LinePrice[]).map((r) => [r.id, r]));
   const now_: Item[] = [];
   const soon: Item[] = [];
@@ -240,7 +251,8 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
 
   // Steps factories marked done with photos in their panel, waiting for the orders team or Quality to confirm.
   const { data: ups } = ids.length
-    ? await supabase.from("step_updates").select("order_id, line_id, stage, created_at").in("order_id", ids).eq("status", "pending").order("created_at")
+    ? keep(await fetchAll((a, z) => supabase.from("step_updates").select("order_id, line_id, stage, created_at").in("order_id", ids).eq("status", "pending")
+        .order("created_at").order("id").range(a, z)))
     : { data: [] };
   for (const o of open) {
     const mine = (ups ?? []).filter((u) => u.order_id === o.id);
@@ -253,8 +265,8 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
 
   // Buyer POs picked up from email or added from a file, waiting to be checked and added as orders.
   const { data: incoming } = team
-    ? await supabase.from("incoming_pos").select("id, buyer_id, buyer_po, email_subject, status, received_at")
-        .eq("company_id", companyId).in("status", ["to_check", "failed"]).order("received_at")
+    ? keep(await fetchAll((a, z) => supabase.from("incoming_pos").select("id, buyer_id, buyer_po, email_subject, status, received_at")
+        .eq("company_id", companyId).in("status", ["to_check", "failed"]).order("received_at").order("id").range(a, z)))
     : { data: [] };
   if (incoming?.length) {
     const failed = incoming.filter((p) => p.status === "failed").length;
@@ -270,12 +282,12 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
   // Dispatch: invoice within 4 hours of the purchase (an emergency after that), then e-way bill and shipping, then the GRN.
   // Dispatches of every order, shipped ones too: an order marked shipped still waits for the buyer's GRN.
   const { data: disp } = team
-    ? await supabase.from("dispatches").select("id, order_id, purchase_bill_no, invoice_due_at, invoiced_at, eway_at, shipped_at, grn_due_on, grn_at")
-        .eq("company_id", companyId).is("cancelled_at", null).is("grn_at", null)
+    ? keep(await fetchAll((a, z) => supabase.from("dispatches").select("id, order_id, purchase_bill_no, invoice_due_at, invoiced_at, eway_at, shipped_at, grn_due_on, grn_at")
+        .eq("company_id", companyId).is("cancelled_at", null).is("grn_at", null).order("id").range(a, z)))
     : { data: [] };
   const shippedIds = [...new Set((disp ?? []).map((d) => d.order_id))].filter((id) => !(orders ?? []).some((o) => o.id === id));
   const { data: shipped } = shippedIds.length
-    ? await supabase.from("orders").select("id, order_no, buyer_id, buyer_po, merchandiser_id").in("id", shippedIds)
+    ? keep(await fetchAll((a, z) => supabase.from("orders").select("id, order_no, buyer_id, buyer_po, merchandiser_id").in("id", shippedIds).order("id").range(a, z)))
     : { data: [] };
   const orderOf = new Map<string, { id: string; order_no: string; buyer_id: string; buyer_po: string }>(
     [...open, ...(shipped ?? []).filter((o) => who === "all" || o.merchandiser_id === me?.id)].map((o) => [o.id, o]));
@@ -383,6 +395,10 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
         )}
       </div>
 
+      {errors.length > 0 && (
+        <div className="errbox">Some lists couldn&apos;t load, so this page may be missing work. Reload to try again. ({[...new Set(errors)].join("; ")})</div>
+      )}
+
       <nav className="quick" aria-label="Shortcuts">
         {quick.map((q) => (
           <Link key={q.label} href={q.href} className={q.tone}>
@@ -416,7 +432,7 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
         </header>
         {lists[tab].length === 0 ? (
           <p className="card-empty">
-            {tab === "now" ? "Nothing is late or blocked." : tab === "soon" ? "Nothing due in the next 7 days." : "Not waiting on any factory."}
+            {errors.length ? "Couldn't load this list. Reload to try again." : tab === "now" ? "Nothing is late or blocked." : tab === "soon" ? "Nothing due in the next 7 days." : "Not waiting on any factory."}
           </p>
         ) : (
           <ul className="todo">

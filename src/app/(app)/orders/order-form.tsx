@@ -24,6 +24,9 @@ export function OrderForm({ initial, initialLines, buyers, factories, team, inco
   const [lines, setLines] = useState<LineInput[]>(initialLines.length ? initialLines : [blankLine()]);
   const [error, setError] = useState("");
   const [existing, setExisting] = useState<{ id: string; orderNo: string } | null>(null);
+  // The order was saved but something after it (linking the incoming PO) failed: say so, and don't move on as if all went fine.
+  const [warning, setWarning] = useState("");
+  const [created, setCreated] = useState("");
   const [saved, setSaved] = useState(false);
   const [pending, start] = useTransition();
 
@@ -43,6 +46,7 @@ export function OrderForm({ initial, initialLines, buyers, factories, team, inco
   function submit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
+    setWarning("");
     setExisting(null);
     start(async () => {
       const res = await saveOrder(order, lines, incomingId);
@@ -51,6 +55,11 @@ export function OrderForm({ initial, initialLines, buyers, factories, team, inco
         return setError(res.error);
       }
       setSaved(true);
+      if (res.error) {
+        setWarning(res.error);
+        if (!order.id && res.id) return setCreated(res.id);
+        return router.refresh();
+      }
       if (!order.id && res.id) router.replace(`/orders/${res.id}?saved=1`);
       else router.refresh();
     });
@@ -149,8 +158,10 @@ export function OrderForm({ initial, initialLines, buyers, factories, team, inco
         </div>
         {error && <span className="text-[13px] font-semibold text-bad" role="alert">{error}</span>}
         {existing && <Link href={`/orders/${existing.id}`} className="link text-[13px] font-semibold">Open {existing.orderNo}</Link>}
-        {saved && !error && <span className="text-[13px] font-semibold text-ok">Saved</span>}
-        <button className="btn primary" disabled={pending}>{pending ? "Saving…" : order.id ? "Save changes" : "Save order"}</button>
+        {warning && <span className="text-[13px] font-semibold text-warn" role="status">{warning}</span>}
+        {created && <Link href={`/orders/${created}`} className="link text-[13px] font-semibold">Open the order</Link>}
+        {saved && !error && !warning && <span className="text-[13px] font-semibold text-ok">Saved</span>}
+        <button className="btn primary" disabled={pending || !!created}>{pending ? "Saving…" : order.id ? "Save changes" : "Save order"}</button>
       </div>
     </form>
   );

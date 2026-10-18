@@ -111,9 +111,11 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
   const allSteps = (lineId: string): Step[] => [...TNA_STEPS, ...(extras[lineId] ?? []).map((x) => ({ key: x.stage, label: x.label, extra: true }))];
   const steps = (lineId: string) => allSteps(lineId).filter((s) => !get(lineId, s.key).not_needed);
   const isNew = (lineId: string, stage: string) => !(initialExtras[lineId] ?? []).some((x) => x.stage === stage);
+  // Each changed step goes with the values it had when the page loaded, so the database saves only what was changed here
+  // and keeps a date someone else entered meanwhile.
   const changed: LineStageInput[] = lines.flatMap((l) => allSteps(l.id).map((s) => ({
-    line_id: l.id, stage: s.key, ...get(l.id, s.key), ...(s.extra ? { label: s.label } : {}),
-  }))).filter((r) => !same(initial[key(r.line_id, r.stage)] ?? blank, r) || (r.label !== undefined && isNew(r.line_id, r.stage)));
+    line_id: l.id, stage: s.key, ...get(l.id, s.key), ...(s.extra ? { label: s.label } : {}), was: initial[key(l.id, s.key)] ?? blank,
+  }))).filter((r) => !same(r.was, r) || (r.label !== undefined && isNew(r.line_id, r.stage)));
 
   // Released styles whose set targets this save moves: the owner must give a reason.
   const releasedLine = (lineId: string) => groups.some((g) => !!g.releasedAt && g.lines.some((l) => l.id === lineId));

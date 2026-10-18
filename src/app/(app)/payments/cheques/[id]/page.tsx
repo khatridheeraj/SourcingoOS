@@ -37,7 +37,7 @@ export default async function ChequePage({ params, searchParams }: PageProps<"/p
           <div className="tile"><span>{c.bounced_on ? "Bounced" : c.cleared_on ? "Cleared" : "Deposited"}</span><b className="!text-lg">{day(c.bounced_on ?? c.cleared_on ?? c.deposited_on) || "Not yet"}</b></div>
         </div>
         {c.notes && <p className="whitespace-pre-line text-[13px]"><b>Notes:</b> {c.notes}</p>}
-        <ChequeSteps id={c.id} status={c.status} chequeDate={c.cheque_date} today={t} isOwner={owner} />
+        <ChequeSteps id={c.id} status={c.status} chequeDate={c.cheque_date} expires={c.expires} today={t} isOwner={owner} />
       </section>
 
       <section className="panel stack">

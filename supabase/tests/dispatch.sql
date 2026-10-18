@@ -72,8 +72,9 @@ select pg_temp.expect_error(format($$select public.record_dispatch_invoice('%s',
   'This dispatch already has its invoice.');
 select pg_temp.as_user('00000000-0000-0000-0000-00000000000a');
 do $$ begin
-  if (select amount::text || '|' || due_date::text from public.invoices where invoice_no = 'SPL/101') <> '58275.00|2026-11-10' then
-    raise exception 'invoice not in Payments with its amount and due date';
+  -- No due date of its own: the books work it out from the buyer's credit days.
+  if not exists (select 1 from public.invoices where invoice_no = 'SPL/101' and amount = 58275.00 and due_date is null) then
+    raise exception 'invoice not in Payments with its amount and no due date';
   end if;
 end $$;
 select pg_temp.as_user('00000000-0000-0000-0000-00000000000b');
@@ -96,7 +97,7 @@ reset role;
 select pg_temp.as_user('00000000-0000-0000-0000-0000000000a9');
 insert into public.qc_checks (company_id, order_id, line_id, kind, result, notes) select company_id, order_id, id, 'final', 'fail', 'Loose threads' from public.order_lines where style = 'K-1';
 insert into public.qc_checks (company_id, order_id, line_id, kind, result, checked_on)
-select company_id, order_id, id, 'recheck', 'pass', current_date + 1 from public.order_lines where style = 'K-1';
+select company_id, order_id, id, 'recheck', 'pass', current_date from public.order_lines where style = 'K-1';
 set role authenticated;
 select pg_temp.as_user('00000000-0000-0000-0000-00000000000b');
 select public.record_shipping(:'d1', '{"transporter":"VRL","vehicle_no":"rj14 ab 1234","lr_no":"LR-1","lr_date":"2026-10-12","lr_path":"lr.pdf","cartons":10,"photos":["p1.jpg","p2.jpg"]}');
