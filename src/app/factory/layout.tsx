@@ -6,7 +6,7 @@ import { Toaster } from "@/components/toast";
 export default async function FactoryLayout({ children }: LayoutProps<"/factory">) {
   const me = await getMe();
   if (!me) redirect("/login");
-  if (me.role !== "factory") redirect("/");
+  if (me.role !== "factory") redirect(me.role === "buyer" ? "/buyer" : "/today");
 
   return (
     <div className="flex min-h-full flex-col">

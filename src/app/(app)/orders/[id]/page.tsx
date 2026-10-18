@@ -5,6 +5,7 @@ import { canEditOrders, canEnterDone, canRecordQc, getMe } from "@/lib/auth";
 import { day, dayAt, daysBetween, qty, SHIP_QC, STATUS, TNA_STEPS, todayIST } from "@/lib/format";
 import { createClient } from "@/lib/supabase/server";
 import { OrderForm } from "../order-form";
+import { FactoryUpdates, type PendingUpdate } from "./factory-updates";
 import { OrderDispatch, type Dispatch, type DispatchFactory } from "./order-dispatch";
 import { OrderHistory } from "./order-history";
 import { OrderMargin } from "./order-margin";
@@ -38,7 +39,7 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
   const priceOf = new Map(((prices ?? []) as LinePrice[]).map((p) => [p.id, p]));
   const lines = [...(o.order_lines ?? [])].sort((a, b) => a.position - b.position)
     .map((l) => ({ ...l, buyer_rate: priceOf.get(l.id)?.buyer_rate ?? null, factory_rate: priceOf.get(l.id)?.factory_rate ?? null }));
-  const [{ data: qc }, team, me, { data: lineStages }, { data: factoryPos }] = await Promise.all([
+  const [{ data: qc }, team, me, { data: lineStages }, { data: factoryPos }, { data: stepUps }] = await Promise.all([
     supabase
       .from("qc_checks")
       .select("id, line_id, kind, checked_on, result, pieces_checked, defects, notes, checked_by, cancelled_at, cancel_reason")
@@ -49,6 +50,8 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
     getMe(),
     supabase.from("line_stages").select("line_id, stage, planned_on, done_on, not_needed, factory_on, label, added_at, updated_at").eq("order_id", id).order("added_at"),
     supabase.from("factory_pos").select("factory_id, plan_requested_on, plan_requested_at, buffer_days, factory_sent_at, released_at, plan_entered_by").eq("order_id", id),
+    // Steps factories marked done in their panel, waiting for the team to confirm.
+    supabase.from("step_updates").select("id, line_id, factory_id, stage, done_on, note, photos, created_at").eq("order_id", id).eq("status", "pending").order("created_at"),
   ]);
   const canEdit = canEditOrders(me?.role);
   // Dispatches (purchase to GRN) are for the orders team only.
@@ -74,7 +77,7 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
     : [{ data: [] }, { data: [] }];
   const stylePaths = lines.map((l) => l.photo_path).filter(Boolean) as string[];
   const dispatchPaths = [...(dRows ?? []).flatMap((d) => [d.eway_path, d.lr_path, d.grn_path]), ...dispatchPhotos.map((p) => p.path)].filter(Boolean) as string[];
-  const allPaths = [...(photoRows ?? []).map((p) => p.path), ...stylePaths, ...dispatchPaths];
+  const allPaths = [...(photoRows ?? []).map((p) => p.path), ...stylePaths, ...dispatchPaths, ...(stepUps ?? []).flatMap((u) => u.photos as string[])];
   const { data: signed } = allPaths.length
     ? await supabase.storage.from(PHOTO_BUCKET).createSignedUrls(allPaths, 3600)
     : { data: [] };
@@ -117,6 +120,15 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
     g.lines.push({ id: l.id, style: l.style, colour: str(l.colour), qty: l.qty, photoUrl: (l.photo_path && urlByPath.get(l.photo_path)) || null, hasRate: l.factory_rate != null });
   }
   const factoryLabel = (fid: string) => opts.factories.find((f) => f.id === fid)?.label ?? "Factory";
+  const pendingUpdates: PendingUpdate[] = (stepUps ?? []).map((u) => {
+    const row = (lineStages ?? []).find((r) => r.line_id === u.line_id && r.stage === u.stage);
+    return {
+      id: u.id, style: lines.find((l) => l.id === u.line_id)?.style ?? "Style", factory: factoryLabel(u.factory_id),
+      step: str(row?.label) || TNA_STEPS.find((t) => t.key === u.stage)?.label || u.stage,
+      doneOn: u.done_on, target: str(row?.planned_on), note: str(u.note), sentAt: u.created_at,
+      photos: (u.photos as string[]).map((p) => urlByPath.get(p)).filter((x): x is string => !!x),
+    };
+  });
   const dispatchFactories: DispatchFactory[] = groups.filter((g) => g.factoryId).map((g) => ({
     id: g.factoryId!, name: g.factoryName,
     lines: lines.filter((l) => l.factory_id === g.factoryId).map((l) => ({
@@ -196,7 +208,7 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
   })) : [])];
   const behind = lines.filter((l) => styleSteps(l.id).some((x) => !x.row?.done_on && x.row?.planned_on && x.row.planned_on < today)).length;
   const tabs: SectionTab[] = [
-    { id: "tna", label: "Styles", count: behind || undefined, tone: "bad" },
+    { id: "tna", label: "Styles", count: pendingUpdates.length || behind || undefined, tone: pendingUpdates.length ? "info" : "bad" },
     { id: "qc", label: "QC" },
     ...(canEdit ? [{ id: "dispatch", label: "Dispatch" }, { id: "money", label: "Margin" }] : []),
     { id: "ship", label: "Ship date" },
@@ -226,6 +238,7 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
       {saved && <div className="okbox">Order saved as {o.order_no}.</div>}
       <OrderSections tabs={tabs}>
       <div data-sec="tna">
+      <FactoryUpdates orderId={o.id} updates={pendingUpdates} canReview={canEnterDone(me?.role) && o.status === "open"} />
       <OrderStyles
         // Start again from the saved dates whenever anyone's save changes them, so stale dates on this screen can't
         // be saved over someone else's newer ones.

@@ -1,9 +1,12 @@
+import { getMe } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { FactoryOrder, type PanelOrder } from "./factory-order";
+import type { FactoryUpdate } from "./step-update";
 
 export default async function FactoryPage() {
   const supabase = await createClient();
-  const { data, error } = await supabase.rpc("factory_tna");
+  const [me, { data, error }, { data: ups }] = await Promise.all([getMe(), supabase.rpc("factory_tna"), supabase.rpc("factory_step_updates")]);
+  const updates = (ups ?? []) as FactoryUpdate[];
   const panel = (data ?? { factory: "", orders: [] }) as { factory: string; orders: PanelOrder[] };
   const waiting = panel.orders.filter((o) => !o.released_at);
   const now = new Date().toISOString();
@@ -30,7 +33,7 @@ export default async function FactoryPage() {
               {waiting.length} {waiting.length === 1 ? "order needs" : "orders need"} your TNA dates before the PO can be released.
             </p>
           )}
-          {panel.orders.map((o) => <FactoryOrder key={o.order_id} order={o} now={now} />)}
+          {panel.orders.map((o) => <FactoryOrder key={o.order_id} order={o} now={now} companyId={me?.companyId ?? ""} updates={updates} />)}
         </>
       )}
     </>

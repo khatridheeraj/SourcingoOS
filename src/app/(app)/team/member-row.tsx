@@ -6,7 +6,7 @@ import type { Member } from "@/lib/data";
 import { personName } from "@/lib/names";
 import { cancelInvite, updateMember } from "./actions";
 
-export function MemberRow({ member, isMe, factoryName }: { member: Member; isMe: boolean; factoryName?: string }) {
+export function MemberRow({ member, isMe, factoryName, buyerName }: { member: Member; isMe: boolean; factoryName?: string; buyerName?: string }) {
   const [role, setRole] = useState(member.role);
   const [active, setActive] = useState(member.active);
   const [msg, setMsg] = useState<{ ok?: boolean; text: string } | null>(null);
@@ -26,7 +26,7 @@ export function MemberRow({ member, isMe, factoryName }: { member: Member; isMe:
       <td className="font-semibold">{personName(member)}{isMe && <span className="muted font-normal"> (you)</span>}</td>
       <td className="muted">{member.email}</td>
       <td>
-        {member.role === "factory" ? <span>Factory · {factoryName ?? "a factory"}</span> : (
+        {member.role === "factory" ? <span>Factory · {factoryName ?? "a factory"}</span> : member.role === "buyer" ? <span>Buyer · {buyerName ?? "a buyer"}</span> : (
           <select className="inp min-w-[140px]" value={role} onChange={(e) => setRole(e.target.value)} aria-label={`Role for ${member.email}`}>
             {STAFF_ROLES.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
           </select>

@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { day, dayAt, PLAN_HOURS, qty, TNA_STEPS } from "@/lib/format";
 import { saveFactoryTna, type FactoryDateInput } from "./actions";
+import { FactoryProgress, type FactoryUpdate } from "./step-update";
 
 type Stage = { stage: string; label: string | null; factory_on: string | null; planned_on: string | null; done_on: string | null };
 export type PanelOrder = {
@@ -22,7 +23,7 @@ const key = (lineId: string, stage: string) => `${lineId}:${stage}`;
 const at = new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit", timeZone: "Asia/Kolkata" });
 
 // One order in the factory's panel: its styles, and the factory's date for every TNA step.
-export function FactoryOrder({ order, now }: { order: PanelOrder; now: string }) {
+export function FactoryOrder({ order, now, companyId, updates }: { order: PanelOrder; now: string; companyId: string; updates: FactoryUpdate[] }) {
   const router = useRouter();
   const released = !!order.released_at;
   // Each style's steps as Sourcingo set them: standard steps it goes through, then its extra steps.
@@ -96,8 +97,9 @@ export function FactoryOrder({ order, now }: { order: PanelOrder; now: string })
       <p className="muted mb-3 text-[13px]">
         {order.target && <>Target date <b className="text-foreground">{day(order.target)}</b>: every date must be on or before it. </>}
         {!released && !sentAt && order.plan_due_at && <>Send your TNA by <b className="text-foreground">{at.format(new Date(order.plan_due_at))}</b>. </>}
-        {released ? "Your dates are fixed. Done dates are shown under each step." : "Sourcingo's target for each step is shown above your date. Give your date for each step; a date later than its target holds up the PO."}
+        {released ? "Your dates are fixed. Mark each step done as you finish it; done dates show once Sourcingo confirms." : "Sourcingo's target for each step is shown above your date. Give your date for each step; a date later than its target holds up the PO."}
       </p>
+      {released && <FactoryProgress companyId={companyId} order={order} updates={updates.filter((u) => u.order_id === order.order_id)} />}
       {/* On a phone: one card per style, one row per step, big date boxes. */}
       <div className="show-phone fstyles">
         {order.lines.map((l) => (

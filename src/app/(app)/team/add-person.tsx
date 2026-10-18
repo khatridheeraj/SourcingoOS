@@ -5,10 +5,11 @@ import { ROLES } from "@/lib/auth-roles";
 import type { Factory } from "@/lib/data";
 import { addPerson } from "./actions";
 
-export function AddPerson({ factories }: { factories: Pick<Factory, "id" | "name">[] }) {
+export function AddPerson({ factories, buyers }: { factories: Pick<Factory, "id" | "name">[]; buyers: { id: string; name: string }[] }) {
   const [email, setEmail] = useState("");
   const [role, setRole] = useState("merchandiser");
   const [factoryId, setFactoryId] = useState("");
+  const [buyerId, setBuyerId] = useState("");
   const [msg, setMsg] = useState<{ ok?: boolean; text: string } | null>(null);
   const [pending, start] = useTransition();
 
@@ -16,7 +17,7 @@ export function AddPerson({ factories }: { factories: Pick<Factory, "id" | "name
     e.preventDefault();
     setMsg(null);
     start(async () => {
-      const res = await addPerson(email, role, factoryId);
+      const res = await addPerson(email, role, factoryId, buyerId);
       if (res.error) setMsg({ text: res.error });
       else {
         setMsg({ ok: true, text: res.ok ?? "Added." });
@@ -42,6 +43,14 @@ export function AddPerson({ factories }: { factories: Pick<Factory, "id" | "name
             <select className="inp" required value={factoryId} onChange={(e) => setFactoryId(e.target.value)}>
               <option value="">Pick the factory</option>
               {factories.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
+            </select>
+          </label>
+        )}
+        {role === "buyer" && (
+          <label className="field"><span>Buyer</span>
+            <select className="inp" required value={buyerId} onChange={(e) => setBuyerId(e.target.value)}>
+              <option value="">Pick the buyer</option>
+              {buyers.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
             </select>
           </label>
         )}
