@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { getMe } from "@/lib/auth";
-import { briefText, buildBrief, type BriefData } from "@/lib/brief";
+import { briefText, buildBrief, teamCopy, type BriefData } from "@/lib/brief";
 import { createClient } from "@/lib/supabase/server";
 import { BriefShare } from "./brief-share";
 
@@ -24,7 +24,7 @@ export default async function BriefPage() {
           <p className="text-[12.5px] font-semibold uppercase tracking-wide text-muted">Morning brief · {b.title}</p>
           <h1>{first ? `${first}, ` : ""}{b.headline.charAt(0).toLowerCase() + b.headline.slice(1)}</h1>
         </div>
-        <div className="head-acts"><BriefShare text={briefText(b, d.company)} /></div>
+        <div className="head-acts"><BriefShare text={briefText(teamCopy(b), d.company)} /></div>
       </div>
       {b.sections.length === 0 ? (
         <section className="card"><p className="card-empty">Nothing is late, at risk or waiting on you.</p></section>
