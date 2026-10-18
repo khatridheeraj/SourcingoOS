@@ -26,25 +26,30 @@ export default async function OrdersPage({ searchParams }: PageProps<"/">) {
   const me = await getMe();
   const companyId = me?.companyId ?? NO_COMPANY;
   const supabase = await createClient();
-  let query = supabase
-    .from("orders")
-    .select("id, order_no, buyer_id, buyer_po, ship_date, revised_ship_date, delay_reason, stage, status, order_lines(id, style, qty, factory_id)")
-    .eq("company_id", companyId)
-    .is("order_lines.removed_at", null)
-    .order("ship_date", { ascending: true, nullsFirst: false })
-    .order("order_no");
-  if (status !== "all") query = query.eq("status", status === "late" ? "open" : status);
-  const [{ data, error }, buyers, factories, counts, { data: qc }] = await Promise.all([
-    query,
+  // Orders are read page by page, so a long list is never cut short at the 1,000 rows one read returns.
+  const page = (a: number, z: number) => {
+    let query = supabase
+      .from("orders")
+      .select("id, order_no, buyer_id, buyer_po, ship_date, revised_ship_date, delay_reason, stage, status, order_lines(id, style, qty, factory_id)")
+      .eq("company_id", companyId)
+      .is("order_lines.removed_at", null)
+      .order("ship_date", { ascending: true, nullsFirst: false })
+      .order("order_no")
+      .order("id");
+    if (status !== "all") query = query.eq("status", status === "late" ? "open" : status);
+    return query.range(a, z);
+  };
+  const [{ data, error }, buyers, factories, counts, { data: qc, error: qcError }] = await Promise.all([
+    fetchAll(page),
     loadBuyers(),
     loadFactories(),
-    supabase.from("orders").select("status, ship_date, revised_ship_date").eq("company_id", companyId),
+    fetchAll((a, z) => supabase.from("orders").select("status, ship_date, revised_ship_date").eq("company_id", companyId).order("id").range(a, z)),
     fetchAll((a, z) => supabase.from("qc_checks").select("line_id, result").eq("company_id", companyId).in("kind", SHIP_QC).is("cancelled_at", null)
       .order("checked_on", { ascending: false }).order("created_at", { ascending: false }).order("id").range(a, z)),
   ]);
   // TNA steps of the open orders listed, for each style's progress and whether the order is on plan.
   const openIds = (data ?? []).filter((o) => o.status === "open").map((o) => o.id);
-  const { data: steps } = openIds.length
+  const { data: steps, error: stepsError } = openIds.length
     ? await fetchAll((a, z) => supabase.from("line_stages").select("order_id, line_id, stage, planned_on, done_on, not_needed").in("order_id", openIds).eq("not_needed", false).order("id").range(a, z))
     : { data: [] };
   // Each style's latest final QC result (rows come newest first).
@@ -60,8 +65,10 @@ export default async function OrdersPage({ searchParams }: PageProps<"/">) {
   };
   const prices = canEditOrders(me?.role);
   // Rates come separately: the database gives them only to the orders team and Accounts.
-  const { data: rates } = prices && data?.length ? await supabase.rpc("line_prices", { p_orders: data.map((o) => o.id) }) : { data: [] };
-  const rateOf = new Map(((rates ?? []) as LinePrice[]).map((r) => [r.id, r]));
+  const { data: rates, error: ratesError } = prices && data.length
+    ? await fetchAll<LinePrice>((a, z) => supabase.rpc("line_prices", { p_orders: data.map((o) => o.id) }).order("id").range(a, z))
+    : { data: [], error: null };
+  const rateOf = new Map(rates.map((r) => [r.id, r]));
   const withRates = (o: { order_lines: { id: string; style: string; qty: number; factory_id: string | null }[] | null }): Line[] =>
     (o.order_lines ?? []).map((l) => ({ ...l, buyer_rate: rateOf.get(l.id)?.buyer_rate ?? null, factory_rate: rateOf.get(l.id)?.factory_rate ?? null }));
 
@@ -73,7 +80,7 @@ export default async function OrdersPage({ searchParams }: PageProps<"/">) {
     const slowest = Math.min(...at);
     const n = at.filter((i) => i === slowest).length;
     const m = lineIds.length;
-    const step = slowest < 0 ? "" : TNA_STEPS[slowest].label;
+    const step = slowest < 0 || !Number.isFinite(slowest) ? "" : TNA_STEPS[slowest].label;
     return {
       text: !m ? "" : m === 1 ? (step ? `At ${step}` : "No step done yet")
         : n === m ? (step ? `All ${m} styles at ${step}` : `No step done yet on any of ${m} styles`)
@@ -123,6 +130,8 @@ export default async function OrdersPage({ searchParams }: PageProps<"/">) {
   const planChip = (p: NonNullable<(typeof built)[number]["progress"]>, looksShipped: boolean) =>
     looksShipped ? <span className="chip warn">Shipped? Close it</span> : p.riskDays > 0 ? <span className="chip bad" title="A late step pushes back every step after it">At risk · {p.riskDays}d late</span> : p.behind ? <span className="chip bad">Behind plan</span> : !p.planned ? <span className="chip warn">No targets</span> : <span className="chip ok">On plan</span>;
   const all = counts.data ?? [];
+  // A list that failed to load must not look like "no orders" or "on plan".
+  const loadError = [error, counts.error, qcError, stepsError, ratesError].find(Boolean);
   const openCount = all.filter((o) => o.status === "open").length;
   // Tiles count every open order, whatever is typed in the search box.
   const open = built.filter((r) => r.status === "open");
@@ -167,12 +176,12 @@ export default async function OrdersPage({ searchParams }: PageProps<"/">) {
         </form>
       </div>
 
-      {error && <div className="errbox">{error.message}</div>}
+      {loadError && <div className="errbox">Couldn&apos;t load everything, so this list may be incomplete. Reload to try again. ({loadError.message})</div>}
 
       {rows.length === 0 ? (
         <div className="empty">
-          <b>{q ? "Nothing matches that search" : all.length === 0 ? "No orders yet" : status === "late" ? "Nothing is late" : "No orders here"}</b>
-          {all.length === 0 && "Add the first one with New order, or send the confirmed sheet and Claude will load it."}
+          <b>{loadError ? "Couldn't load the orders" : q ? "Nothing matches that search" : all.length === 0 ? "No orders yet" : status === "late" ? "Nothing is late" : "No orders here"}</b>
+          {all.length === 0 && !loadError && "Add the first one with New order, or send the confirmed sheet and Claude will load it."}
         </div>
       ) : (
         <div className={`olist ${prices ? "" : "noprice"}`} role="table" aria-label="Orders">

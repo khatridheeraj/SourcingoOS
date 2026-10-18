@@ -21,22 +21,40 @@ export function AddPo({ companyId }: { companyId: string }) {
     if (!files.length) return;
     setError("");
     setDone(false);
+    // The same file can be picked again after a problem.
+    const fail = (message: string) => {
+      if (input.current) input.current.value = "";
+      setError(message);
+    };
+    // Every file is checked before any is uploaded, so one wrong file doesn't leave the others half sent.
+    const picked: { f: File; ext: string; type: string }[] = [];
+    for (const f of files) {
+      const ext = f.name.split(".").pop()?.toLowerCase() ?? "";
+      const type = PO_FILE_TYPES[ext];
+      if (!type) {
+        return fail(ext === "heic" || ext === "heif"
+          ? `${f.name} is an iPhone HEIC photo, which can't be read. Share it as a JPG, or set the camera to "Most compatible".`
+          : `${f.name} isn't a PDF, Excel, CSV or photo.`);
+      }
+      if (f.size > PO_MAX_BYTES) return fail(`${f.name} is over 25 MB.`);
+      picked.push({ f, ext, type });
+    }
     start(async () => {
       const id = crypto.randomUUID();
       const supabase = createClient();
       const stored: StoredFile[] = [];
-      for (const f of files) {
-        const ext = f.name.split(".").pop()?.toLowerCase() ?? "";
-        const type = PO_FILE_TYPES[ext];
-        if (!type) return setError(`${f.name} isn't a PDF, Excel, CSV or photo.`);
-        if (f.size > PO_MAX_BYTES) return setError(`${f.name} is over 25 MB.`);
+      for (const { f, ext, type } of picked) {
         const path = `${companyId}/${id}/${crypto.randomUUID()}.${ext}`;
         const { error: up } = await supabase.storage.from(PO_BUCKET).upload(path, f, { contentType: type });
-        if (up) return setError(`Couldn't upload ${f.name}: ${up.message}`);
+        if (up) {
+          // The files already sent are taken back, so nothing is left half added.
+          if (stored.length) await supabase.storage.from(PO_BUCKET).remove(stored.map((s) => s.path));
+          return fail(`Couldn't upload ${f.name}: ${up.message}`);
+        }
         stored.push({ path, name: f.name, type, size: f.size });
       }
       const res = await addPoFiles(id, stored);
-      if (res.error) return setError(res.error);
+      if (res.error) return fail(res.error);
       if (input.current) input.current.value = "";
       setDone(true);
       router.refresh();

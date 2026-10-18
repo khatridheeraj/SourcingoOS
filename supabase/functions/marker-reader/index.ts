@@ -4,6 +4,7 @@ import { createClient, type SupabaseClient } from "npm:@supabase/supabase-js@2.4
 // MarkerPilot's photo reading, running on Supabase so it can use the company's AI key without the app ever holding it.
 //   {action: "start", id}  the photos of a reading are uploaded (marker_job_parts); reading starts.
 //   {action: "check", id}  a reading that went to the batch queue: fetch its result if it is ready.
+//                          A reading stuck mid-way (the reader stopped without an answer) is marked as failed.
 // The person must be signed in and on the orders team; their own access decides which readings they can see.
 // A reading runs after the answer is sent. Supabase stops a function after 150 seconds, so a reading that
 // isn't finished by then is handed to Claude's batch queue and picked up by "check".
@@ -12,9 +13,13 @@ const MODEL = "claude-opus-5-5";
 const MAX_TOKENS = 32000;
 const DIRECT_MS = 125_000;
 const MAX_FILES = 100;
+// A reading runs for at most 150 seconds after it starts; one still "reading" this long after it was made has stopped.
+// (Readings keep only their creation time, so this leaves room for the photos to upload first.)
+const STALE_MS = 4 * 60_000;
+const NO_KEY = "The AI key isn't set yet. The owner pastes it once on the Incoming POs page.";
 
 type File = { type: string; data: string };
-type Job = { id: string; company_id: string; prompt: string; status: string; batch_id: string | null };
+type Job = { id: string; company_id: string; created_by: string; prompt: string; status: string; batch_id: string | null; created_at: string };
 
 const CORS = {
   "access-control-allow-origin": "*",
@@ -58,7 +63,7 @@ async function run(db: SupabaseClient, job: Job): Promise<void> {
   try {
     const { data: key } = await db.rpc("get_ai_key", { p_company: job.company_id });
     if (!key) {
-      await done(db, job.id, { error_code: "failed", error: "The AI key isn't set yet. The owner pastes it once on the Incoming POs page." });
+      await done(db, job.id, { error_code: "failed", error: NO_KEY });
       return;
     }
     // The photos in the order they were sent.
@@ -82,7 +87,7 @@ async function run(db: SupabaseClient, job: Job): Promise<void> {
       if (!(e instanceof Anthropic.APIUserAbortError) && !(e instanceof DOMException && e.name === "TimeoutError")) throw e;
       // Out of time here: the same reading goes to the batch queue, and "check" collects it.
       const batch = await client.messages.batches.create({ requests: [{ custom_id: job.id, params }] });
-      await db.from("marker_jobs").update({ status: "batch", batch_id: batch.id }).eq("id", job.id);
+      await db.from("marker_jobs").update({ status: "batch", batch_id: batch.id }).eq("id", job.id).eq("status", "reading");
     }
   } catch (e) {
     await done(db, job.id, failure(e));
@@ -93,9 +98,20 @@ async function run(db: SupabaseClient, job: Job): Promise<void> {
 }
 
 async function check(db: SupabaseClient, job: Job): Promise<void> {
+  if (job.status === "reading" && Date.now() - Date.parse(job.created_at) > STALE_MS) {
+    await db.from("marker_jobs").update({ status: "error", error_code: "failed", error: "Reading stopped part-way. Start a new reading.",
+      finished_at: new Date().toISOString() }).eq("id", job.id).eq("status", "reading");
+    await db.from("marker_job_parts").delete().eq("job_id", job.id);
+    return;
+  }
   if (job.status !== "batch" || !job.batch_id) return;
   try {
     const { data: key } = await db.rpc("get_ai_key", { p_company: job.company_id });
+    // The key was removed after the reading went to the queue: say so now instead of waiting on it.
+    if (!key) {
+      await done(db, job.id, { error_code: "failed", error: NO_KEY });
+      return;
+    }
     const client = new Anthropic({ apiKey: key as string });
     const batch = await client.messages.batches.retrieve(job.batch_id);
     if (batch.processing_status !== "ended") return;
@@ -134,10 +150,13 @@ Deno.serve(async (req) => {
   const { data: seen } = await asUser.from("marker_jobs").select("id").eq("id", String(body.id ?? "")).maybeSingle();
   if (!seen) return json({ error: "This reading is no longer here. Tap Read again." }, 404);
   const db = admin();
-  const { data: job } = await db.from("marker_jobs").select("id, company_id, prompt, status, batch_id").eq("id", seen.id).single();
+  const { data: job } = await db.from("marker_jobs").select("id, company_id, created_by, prompt, status, batch_id, created_at").eq("id", seen.id).single();
   if (!job) return json({ error: "This reading is no longer here. Tap Read again." }, 404);
 
   if (body.action === "start") {
+    // Only the person adding the photos starts the reading, once they are all in.
+    const { data: { user } } = await asUser.auth.getUser(auth.replace(/^Bearer\s+/i, ""));
+    if (!user || user.id !== job.created_by) return json({ error: "Only the person who added these photos can start this reading." }, 403);
     // Only the first start reads; a repeated tap does nothing.
     const { data: claimed } = await db.from("marker_jobs").update({ status: "reading" }).eq("id", job.id).eq("status", "uploading").select("id");
     if (claimed?.length) inBackground(run(db, job as Job));

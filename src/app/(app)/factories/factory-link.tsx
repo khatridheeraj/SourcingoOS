@@ -41,7 +41,7 @@ export function FactoryLink({ factoryId, name, phone, size = "sm" }: { factoryId
       else {
         setUrl(res.url!);
         setConfirmNew(false);
-        if (renew) toast(`New link made. ${name}'s old link has stopped working.`);
+        if (renew) toast(`New link made. The old link for ${name} has stopped working.`);
       }
     });
   }
@@ -71,7 +71,7 @@ export function FactoryLink({ factoryId, name, phone, size = "sm" }: { factoryId
             <button type="button" className="btn ghost sm" onClick={() => box.current?.close()}>Close</button>
           </div>
           <p className="mt-1 text-[12.5px] text-muted">
-            The link opens {name}&apos;s own panel on their phone, with no email or password. They see only their own orders, fill their TNA and mark steps done with photos.
+            The link opens the panel for {name} on their phone, with no email or password. They see only their own orders, fill their TNA and mark steps done with photos.
           </p>
           <div className="seg mt-3" role="group" aria-label="Language">
             <button type="button" aria-pressed={lang === "hi"} onClick={() => setLang("hi")}>हिंदी</button>

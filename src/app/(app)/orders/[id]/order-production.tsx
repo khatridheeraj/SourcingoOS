@@ -6,7 +6,7 @@ import { day, dayAt, daysBetween, stageLabel } from "@/lib/format";
 import { saveProgress, type ProgressInput } from "../actions";
 
 // Where the order stands against its ship date, and its new ship date if it slipped.
-export function OrderProduction({ id, open, canEdit, shipDate, today, stage, stageAt, initial }: {
+export function OrderProduction({ id, open, canEdit, shipDate, today, stage, stageAt, riskDays = 0, initial }: {
   id: string;
   open: boolean;
   canEdit: boolean;
@@ -14,6 +14,8 @@ export function OrderProduction({ id, open, canEdit, shipDate, today, stage, sta
   today: string;
   stage: string | null;
   stageAt: string | null;
+  // Days the TNA says the slowest style will miss the ship date by (0 when it should make it).
+  riskDays?: number;
   initial: ProgressInput;
 }) {
   const router = useRouter();
@@ -49,13 +51,14 @@ export function OrderProduction({ id, open, canEdit, shipDate, today, stage, sta
         <h2 className="font-bold text-base">Ship date</h2>
         {lateBy > 0 && <span className="chip bad">Late by {lateBy} {lateBy === 1 ? "day" : "days"}</span>}
         {!lateBy && movedBy > 0 && <span className="chip warn">Moved {movedBy} {movedBy === 1 ? "day" : "days"} later</span>}
-        {open && !lateBy && !movedBy && due && <span className="chip ok">On time</span>}
+        {open && !lateBy && riskDays > 0 && <span className="chip bad" title="A late step pushes back every step after it">At risk · about {riskDays} {riskDays === 1 ? "day" : "days"} late</span>}
+        {open && !lateBy && !movedBy && !riskDays && due && <span className="chip ok">On time</span>}
       </div>
       {!open && <p className="muted text-[13px] mb-3">This order is closed. Production details are kept as they were.</p>}
 
       <p className="text-[13px]">
         Order stage: <b>{stageLabel(stage)}</b>{stageAt && <span className="muted"> · since {dayAt(stageAt)}</span>}
-        <span className="muted"> · set by the slowest style below</span>
+        <span className="muted"> · set by the slowest style</span>
       </p>
 
       <div className="fgrid mt-3">

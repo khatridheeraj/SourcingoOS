@@ -19,9 +19,12 @@ export default async function FactoryLayout({ children }: LayoutProps<"/factory"
         <div className="brand"><span className="brand-mark" aria-hidden>S</span>Sourcingo<small>{w.panel}</small></div>
         <span className="hide-phone ml-auto text-[13px] text-muted">{me.fullName || me.email}</span>
         <div className="ml-auto sm:ml-0"><LangSwitch lang={lang} /></div>
-        <form action="/auth/signout" method="post">
-          <button className="btn ghost sm">{w.signOut}</button>
-        </form>
+        {/* A WhatsApp-link login has no email to sign back in with, so it has no Sign out: the link is the way in. */}
+        {!me.email?.endsWith("@links.sourcingo.in") && (
+          <form action="/auth/signout" method="post">
+            <button className="btn ghost sm">{w.signOut}</button>
+          </form>
+        )}
       </header>
       <main className="mx-auto flex w-full max-w-[1180px] flex-1 flex-col gap-[18px] px-4 pb-16 pt-5">{children}</main>
       <Toaster />

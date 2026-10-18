@@ -44,3 +44,7 @@ deno.lock
 
 # copied from tally-bridge at build time
 /public/tally-reader/
+
+# Tally reader: the sync key and its log stay on the office PC
+tally-bridge/config.json
+tally-bridge/sync.log*

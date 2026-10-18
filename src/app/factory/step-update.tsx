@@ -7,19 +7,23 @@ import { day, todayIST, TNA_STEPS } from "@/lib/format";
 import { uploadPhotos } from "@/lib/photos";
 import { postStepUpdate } from "./actions";
 import type { PanelOrder } from "./factory-order";
-import { stepName, words, type Lang } from "./i18n";
+import { errorText, stepName, words, type Lang } from "./i18n";
 
 export type FactoryUpdate = { id: string; order_id: string; line_id: string; stage: string; done_on: string; status: "pending" | "confirmed" | "declined"; review_note: string | null; photos: number; created_at: string };
 
 type Line = PanelOrder["lines"][number];
 const MAX_PHOTOS = 10;
+// Sourcingo enters these itself; the factory never marks them done.
+const SOURCINGO_STEPS = ["final_qc", "ex_factory"];
+const openSteps = (l: Line) => l.stages.filter((s) => !s.done_on && !SOURCINGO_STEPS.includes(s.stage));
 const addDays = (d: string, n: number) => new Date(Date.parse(d) + n * 86_400_000).toISOString().slice(0, 10);
 
 // The step after the furthest one done: what the factory most likely finished next.
 function nextStep(l: Line) {
   let last = -1;
   l.stages.forEach((s, i) => { if (s.done_on) last = i; });
-  return l.stages.slice(last + 1).find((s) => !s.done_on) ?? l.stages.find((s) => !s.done_on);
+  const open = openSteps(l);
+  return open.find((s) => l.stages.indexOf(s) > last) ?? open[0];
 }
 
 // On a released PO the factory reports progress itself: pick the style, the step and the day, add photos, send.
@@ -38,7 +42,7 @@ export function FactoryProgress({ companyId, order, updates, lang }: { companyId
   const [pending, start] = useTransition();
   const today = todayIST();
   const line = order.lines.find((l) => l.id === lineId);
-  const open = line?.stages.filter((s) => !s.done_on) ?? [];
+  const open = line ? openSteps(line) : [];
 
   function openFor(l: Line) {
     setLineId(l.id);
@@ -70,12 +74,12 @@ export function FactoryProgress({ companyId, order, updates, lang }: { companyId
       try {
         const paths = await uploadPhotos(`${companyId}/${order.order_id}/factory/${line.id}`, files.map((f) => f.file));
         const res = await postStepUpdate(line.id, stage, doneOn, note, paths);
-        if (res.error) return setError(res.error);
+        if (res.error) return setError(errorText(lang, res.error));
         box.current?.close();
         toast(w.sentToast(line.style, name(line.stages.find((s) => s.stage === stage)!)));
         router.refresh();
       } catch (e) {
-        setError(e instanceof Error ? e.message : w.photoFail);
+        setError(e instanceof Error ? errorText(lang, e.message) : w.photoFail);
       }
     });
   }

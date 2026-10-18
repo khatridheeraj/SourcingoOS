@@ -163,3 +163,50 @@ export const words = (lang: Lang): Words => (lang === "hi" ? HI : EN);
 // A step's name in the panel's language; extra steps keep the name Sourcingo gave them.
 export const stepName = (lang: Lang, stage: string, label: string | null | undefined, english: string) =>
   lang === "hi" && STEPS_HI[stage] ? STEPS_HI[stage] : label || english;
+
+// Messages from the database, the server and the photo upload arrive in English. In Hindi they are shown in Hindi;
+// one not listed here stays as it came.
+const ERRORS_HI: Record<string, string> = {
+  "This login is not set up for a factory.": "यह लॉगिन फैक्ट्री के लिए नहीं बना है।",
+  "Pick the date the step was done.": "स्टेप जिस दिन पूरा हुआ, वह तारीख चुनें।",
+  "Add at least one photo of the work.": "काम की कम से कम एक फोटो लगाएँ।",
+  "You can update only your own styles on a released PO.": "आप सिर्फ़ अपने स्टाइल की खबर भेज सकते हैं, और वह भी PO रिलीज़ होने के बाद।",
+  "That step is not on this style.": "यह स्टेप इस स्टाइल में नहीं है।",
+  "That step is not on this style. Reload the page.": "यह स्टेप इस स्टाइल में नहीं है। पेज फिर से खोलें।",
+  "That step is already marked done.": "यह स्टेप पहले से पूरा लिखा हुआ है।",
+  "Give the date the step was done: today or in the last 30 days.": "स्टेप जिस दिन पूरा हुआ वह तारीख डालें: आज की या पिछले 30 दिन में की।",
+  "Send at most 10 photos.": "ज़्यादा से ज़्यादा 10 फोटो भेजें।",
+  "Those photos are not from this style.": "ये फोटो इस स्टाइल की नहीं हैं।",
+  "Final QC and ex-factory are entered by Sourcingo, not the factory.": "फाइनल QC और फैक्ट्री से रवाना Sourcingo भरता है, फैक्ट्री नहीं।",
+  "This link was switched off in Team. Make a new link to switch it back on.": "यह लिंक बंद कर दिया गया है। Sourcingo से नया लिंक माँगें।",
+  "This order is no longer open. Reload the page.": "यह ऑर्डर अब खुला नहीं है। पेज फिर से खोलें।",
+  "That style is not one of yours on this order.": "इस ऑर्डर में यह स्टाइल आपका नहीं है।",
+  "Sourcingo has not asked you for this plan yet.": "Sourcingo ने अभी यह प्लान नहीं माँगा है।",
+  "Enter the PO's ship date first.": "पहले PO की शिप तारीख डालें।",
+  "Enter the dates as dates.": "तारीखें सही तरह से भरें।",
+  "Couldn't read that photo.": "यह फोटो खुल नहीं पाई।",
+  "You don't have permission to do that.": "आपको यह करने की इजाज़त नहीं है।",
+  "Something went wrong. Try again.": "कुछ गड़बड़ हो गई। फिर से कोशिश करें।",
+};
+
+// Messages that carry a file name or a date.
+const ERROR_PATTERNS_HI: [RegExp, (m: RegExpMatchArray) => string][] = [
+  [/^Every date must be on or before the target date (.+)\.$/, (m) => `हर तारीख टारगेट तारीख ${m[1]} से पहले या उसी दिन की हो।`],
+  [/^(.+) is an iPhone\/Samsung HEIC photo, which the browser can't open\./,
+    (m) => `${m[1]} iPhone/Samsung की HEIC फोटो है, जो यहाँ नहीं खुलती। कैमरा सेटिंग में JPEG ("Most compatible") चुनें, या फोटो JPG में भेजें।`],
+  [/^Couldn't open (.+) as a photo\.$/, (m) => `${m[1]} फोटो की तरह नहीं खुली।`],
+  [/^(.+) is not a photo\.$/, (m) => `${m[1]} फोटो नहीं है।`],
+  [/^Couldn't upload (.+?): .*(exceed|too large|size|payload)/i, (m) => `${m[1]} बहुत बड़ी है, इसलिए नहीं गई। छोटी फोटो भेजें।`],
+  [/^Couldn't upload (.+?): /, (m) => `${m[1]} नहीं गई। इंटरनेट देखकर फिर से भेजें।`],
+];
+
+// An error message in the panel's language.
+export function errorText(lang: Lang, message: string): string {
+  if (lang !== "hi") return message;
+  if (ERRORS_HI[message]) return ERRORS_HI[message];
+  for (const [re, hi] of ERROR_PATTERNS_HI) {
+    const m = message.match(re);
+    if (m) return hi(m);
+  }
+  return message;
+}

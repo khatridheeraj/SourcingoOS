@@ -5,7 +5,7 @@ import { useState, useTransition } from "react";
 import { day, dayAt, daysBetween, DEFAULT_BUFFER_DAYS, planDueAt, PLAN_HOURS, qty, TNA_STEPS } from "@/lib/format";
 import { uploadPhotos } from "@/lib/photos";
 import { toast } from "@/components/toast";
-import { project, shipRisk, standardTargets } from "@/lib/tna-plan";
+import { project, shipRisk, fillEmptyTargets } from "@/lib/tna-plan";
 import { FactoryLink } from "../../factories/factory-link";
 import { acceptTargetsForFactory, releaseFactoryPo, requestPlan, saveLineStages, setStylePhoto, type LineStageInput } from "../actions";
 
@@ -111,9 +111,11 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
   const allSteps = (lineId: string): Step[] => [...TNA_STEPS, ...(extras[lineId] ?? []).map((x) => ({ key: x.stage, label: x.label, extra: true }))];
   const steps = (lineId: string) => allSteps(lineId).filter((s) => !get(lineId, s.key).not_needed);
   const isNew = (lineId: string, stage: string) => !(initialExtras[lineId] ?? []).some((x) => x.stage === stage);
+  // Each changed step goes with the values it had when the page loaded, so the database saves only what was changed here
+  // and keeps a date someone else entered meanwhile.
   const changed: LineStageInput[] = lines.flatMap((l) => allSteps(l.id).map((s) => ({
-    line_id: l.id, stage: s.key, ...get(l.id, s.key), ...(s.extra ? { label: s.label } : {}),
-  }))).filter((r) => !same(initial[key(r.line_id, r.stage)] ?? blank, r) || (r.label !== undefined && isNew(r.line_id, r.stage)));
+    line_id: l.id, stage: s.key, ...get(l.id, s.key), ...(s.extra ? { label: s.label } : {}), was: initial[key(l.id, s.key)] ?? blank,
+  }))).filter((r) => !same(r.was, r) || (r.label !== undefined && isNew(r.line_id, r.stage)));
 
   // Released styles whose set targets this save moves: the owner must give a reason.
   const releasedLine = (lineId: string) => groups.some((g) => !!g.releasedAt && g.lines.some((l) => l.id === lineId));
@@ -122,11 +124,19 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
 
   // Fills every empty target of a factory's styles with the standard days worked back from its target date.
   function fillTargets(g: FactoryGroup, target: string) {
+    if (target < today) {
+      setNotice("");
+      setError("The target date has already passed, so standard targets would all be overdue. Move the ship date, or set the targets by hand.");
+      return;
+    }
     setDates((d) => {
       const next = { ...d };
       for (const l of g.lines) {
-        const empty = TNA_STEPS.map((s) => s.key).filter((st) => { const c = d[key(l.id, st)] ?? blank; return !c.not_needed && !c.planned_on && !c.done_on; });
-        const plan = standardTargets(empty, target, today);
+        const steps = TNA_STEPS.filter((s) => !(d[key(l.id, s.key)] ?? blank).not_needed).map((s) => {
+          const c = d[key(l.id, s.key)] ?? blank;
+          return { stage: s.key, on: c.planned_on || c.done_on || null };
+        });
+        const plan = fillEmptyTargets(steps, target, today);
         for (const [st, on] of Object.entries(plan)) next[key(l.id, st)] = { ...(d[key(l.id, st)] ?? blank), planned_on: on };
       }
       return next;
@@ -489,7 +499,8 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
                       </div>
                       <div className="style-side">
                         {dirty && <span className="chip warn">Unsaved</span>}
-                        {doneEditable && released && sm.next && !dirty && (
+                        {/* Hidden while any style has unsaved changes: the save reloads the dates and would drop them. */}
+                        {doneEditable && released && sm.next && !changed.length && (
                           <button type="button" className="btn sm done-btn" disabled={pending} onClick={() => doneToday(l, sm.next!)}>
                             {busy === `done:${l.id}` ? "Saving…" : <><span aria-hidden className="done-tick">✓</span>{sm.next.label} done today</>}
                           </button>

@@ -21,7 +21,7 @@ export default async function TeamPage() {
       <AddPerson factories={factories.filter((f) => f.active).map((f) => ({ id: f.id, name: f.name }))}
         buyers={buyers.filter((b) => b.active).map((b) => ({ id: b.id, name: buyerName(b) }))} />
       <div className="table-wrap">
-        <table className="tbl">
+        <table className="tbl stack">
           <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Access</th><th></th></tr></thead>
           <tbody>
             {team.map((m) => <MemberRow key={m.user_id} member={m} isMe={m.user_id === me.id} factoryName={m.factory_id ? factoryName.get(m.factory_id) : undefined}

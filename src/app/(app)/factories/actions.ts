@@ -11,6 +11,7 @@ export type FactoryInput = { id?: string; name: string; city: string; contact_na
 export async function saveFactory(f: FactoryInput): Promise<{ error?: string }> {
   const me = await getMe();
   if (!me?.role) return { error: "Your account is not switched on yet." };
+  if (!canEditOrders(me.role)) return { error: "Only the orders team can change factories." };
   if (!f.name.trim()) return { error: "Enter the factory's name." };
   const row = {
     name: f.name.trim().replace(/\s+/g, " "),

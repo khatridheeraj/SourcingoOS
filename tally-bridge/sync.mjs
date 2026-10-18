@@ -3,6 +3,7 @@
 //   node sync.mjs           keep syncing (what the startup task runs)
 //   node sync.mjs --once    one round, then exit (for testing)
 import { appendFileSync, existsSync, readFileSync, renameSync, statSync } from "node:fs";
+import { createServer } from "node:net";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { cloudClient, createSync, tallyClient, VERSION } from "./lib/sync.mjs";
@@ -40,6 +41,15 @@ const sync = createSync({
   readMinutes: config.readMinutes ?? config.snapshotMinutes ?? 15,
 });
 const pollSeconds = Math.max(15, Number(config.pollSeconds ?? 60));
+
+// Only one reader at a time: setting it up again (a new key, an update) must not leave the old one reading too.
+// The second reader can't take this local port, so it stops; the old one is stopped by the setup before it starts.
+const lock = createServer();
+await new Promise((resolve) => {
+  lock.once("error", () => { log("Another Sourcingo Tally reader is already running on this PC, so this one stops."); process.exit(0); });
+  lock.listen(47321, "127.0.0.1", resolve);
+});
+lock.unref();
 
 log(`Sourcingo Tally reader ${VERSION} started.`);
 let lastError = "";
