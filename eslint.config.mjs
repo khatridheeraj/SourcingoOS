@@ -14,6 +14,9 @@ const eslintConfig = defineConfig([
     "next-env.d.ts",
     // Runs on Supabase (Deno), checked with deno check.
     "supabase/functions/**",
+    // MarkerPilot: a built page and its plain-browser shim (see markerpilot/build-page.cjs).
+    "markerpilot/**",
+    "public/markerpilot/**",
   ]),
 ]);
 

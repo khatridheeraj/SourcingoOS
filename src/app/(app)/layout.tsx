@@ -29,6 +29,7 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
       ...(edit ? [{ href: "/pos", label: "Incoming POs", icon: "inbox" as const, count: toCheck }] : []),
     ] },
     ...(edit ? [{ label: "Partners", items: [{ href: "/buyers", label: "Buyers", icon: "buyers" as const }, { href: "/factories", label: "Factories", icon: "factories" as const }] }] : []),
+    ...(edit ? [{ label: "Tools", items: [{ href: "/markers", label: "Markers", icon: "markers" as const }] }] : []),
     ...(money ? [{ label: "Finance", items: [{ href: "/payments", label: "Payments", icon: "payments" as const }, { href: "/tally", label: "Tally", icon: "tally" as const }] }] : []),
     ...(me.role === "owner" ? [{ label: "Admin", items: [{ href: "/team", label: "Team", icon: "team" as const }, { href: "/activity", label: "Activity log", icon: "activity" as const }] }] : []),
   ];

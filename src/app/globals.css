@@ -128,6 +128,8 @@ h1, h2, h3 { font-family: var(--font-display); text-wrap: balance; font-weight: 
     background: linear-gradient(to right, var(--sidebar) 231px, var(--line) 231px 232px, transparent 232px);
   }
   .page { display: flex; flex-direction: column; gap: 20px; width: 100%; max-width: 1240px; margin: 0 auto; padding: 28px 32px 72px; min-width: 0; }
+  /* Markers: the MarkerPilot tool fills the rest of the screen. */
+  .marker-frame { width: 100%; height: calc(100dvh - 190px); min-height: 520px; border: 1px solid var(--line); border-radius: 12px; background: #fff; }
   .sidebar {
     position: sticky; top: 0; height: 100vh; display: flex; flex-direction: column; gap: 6px; padding: 14px 10px 12px;
     background: var(--sidebar); border-right: 1px solid var(--line); overflow-y: auto;
@@ -207,6 +209,7 @@ h1, h2, h3 { font-family: var(--font-display); text-wrap: balance; font-weight: 
     .side-out { width: 44px; height: 44px; }
     .scrim { display: block; position: fixed; inset: 0; z-index: 49; background: rgba(10, 10, 14, 0.4); animation: fade-in 0.2s ease; }
     .page { padding: 16px 16px calc(96px + env(safe-area-inset-bottom)); gap: 16px; }
+    .marker-frame { height: calc(100dvh - 52px - 180px - env(safe-area-inset-top) - env(safe-area-inset-bottom)); min-height: 460px; }
   }
   @keyframes fade-in { from { opacity: 0; } }
 
