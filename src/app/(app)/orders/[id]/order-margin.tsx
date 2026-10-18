@@ -17,7 +17,7 @@ export function OrderMargin({ styles, dispatches }: { styles: MarginStyle[]; dis
   });
 
   return (
-    <section className="panel">
+    <section className="panel scroll-mt-20" id="money">
       <h2>Margin</h2>
       <div className="tiles">
         <div className="tile"><span>Buyer pays</span><b>{money(plan.sale)}</b></div>

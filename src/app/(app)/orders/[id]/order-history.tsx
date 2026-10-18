@@ -91,7 +91,7 @@ export async function OrderHistory({ orderId }: { orderId: string }) {
   if (!rows.length) return null;
 
   return (
-    <details className="panel">
+    <details className="panel scroll-mt-20" id="history">
       <summary className="cursor-pointer font-bold">Change history ({rows.length})</summary>
       <ul className="mt-3 flex flex-col gap-2 text-[13px]">
         {rows.map((r) => (

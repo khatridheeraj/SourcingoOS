@@ -44,9 +44,9 @@ export function OrderProduction({ id, open, canEdit, shipDate, today, stage, sta
   }
 
   return (
-    <form onSubmit={submit} className="panel">
+    <form onSubmit={submit} className="panel scroll-mt-20" id="ship">
       <div className="row mb-3">
-        <h2 className="font-bold text-base">Production</h2>
+        <h2 className="font-bold text-base">Ship date</h2>
         {lateBy > 0 && <span className="chip bad">Late by {lateBy} {lateBy === 1 ? "day" : "days"}</span>}
         {!lateBy && movedBy > 0 && <span className="chip warn">Moved {movedBy} {movedBy === 1 ? "day" : "days"} later</span>}
         {open && !lateBy && !movedBy && due && <span className="chip ok">On time</span>}
@@ -74,7 +74,7 @@ export function OrderProduction({ id, open, canEdit, shipDate, today, stage, sta
 
       {!locked && (
         <div className="row mt-3">
-          <button className="btn primary" disabled={pending || !dirty}>{pending ? "Saving…" : "Save production"}</button>
+          <button className="btn primary" disabled={pending || !dirty}>{pending ? "Saving…" : "Save ship date"}</button>
           {error && <span className="text-[13px] font-semibold text-bad" role="alert">{error}</span>}
           {saved && !error && !dirty && <span className="text-[13px] font-semibold text-ok">Saved</span>}
         </div>

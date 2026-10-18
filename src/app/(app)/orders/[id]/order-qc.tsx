@@ -221,7 +221,7 @@ export function OrderQc({ orderId, companyId, open, canRecord, today, checks, fi
           const mine = st.id ? checks.filter((c) => c.line_id === st.id) : gone;
           const fin = st.id ? finalOf(st.id) : undefined;
           return (
-            <div key={st.id || "gone"}>
+            <div key={st.id || "gone"} id={st.id ? `qc-${st.id}` : undefined} className="scroll-mt-20">
               <div className="row mb-2">
                 <b className={st.id ? "code" : ""}>{st.style}</b>
                 {st.id && <span className="muted text-xs">{[st.colour, `${st.qty} pcs`].filter(Boolean).join(" · ")}</span>}

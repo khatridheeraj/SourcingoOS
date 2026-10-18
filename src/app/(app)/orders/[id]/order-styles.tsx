@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { day, dayAt, daysBetween, DEFAULT_BUFFER_DAYS, planDueAt, PLAN_HOURS, TNA_STEPS } from "@/lib/format";
+import { day, dayAt, daysBetween, DEFAULT_BUFFER_DAYS, planDueAt, PLAN_HOURS, qty, TNA_STEPS } from "@/lib/format";
 import { uploadPhotos } from "@/lib/photos";
 import { acceptTargetsForFactory, releaseFactoryPo, requestPlan, saveLineStages, setStylePhoto, type LineStageInput } from "../actions";
 
@@ -32,6 +32,9 @@ const key = (lineId: string, stage: string) => `${lineId}:${stage}`;
 const plural = (n: number) => `${n} ${n === 1 ? "day" : "days"}`;
 const at = new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit", timeZone: "Asia/Kolkata" });
 const addDays = (d: string, n: number) => new Date(Date.parse(d) + n * 86_400_000).toISOString().slice(0, 10);
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+// "10 Sep" from YYYY-MM-DD, without the year (the order's dates sit within a few months).
+const dm = (d: string) => `${Number(d.slice(8, 10))} ${MONTHS[Number(d.slice(5, 7)) - 1]}`;
 const same = (a: Cell, b: Cell) => a.planned_on === b.planned_on && a.done_on === b.done_on && a.not_needed === b.not_needed;
 
 // Where a step stands against its TNA date.
@@ -47,7 +50,7 @@ function verdict(c: Cell, today: string): { text: string; cls: string } | null {
   return left <= 3 ? { text: left === 0 ? "Due today" : `Due in ${plural(left)}`, cls: "warn" } : null;
 }
 
-// The full TNA of every style, grouped by factory. A factory's plan is asked for and entered first;
+// Every style as its own card with its full TNA, grouped by factory. A factory's plan is asked for and entered first;
 // its PO is released only once nothing is missing, and actual dates are entered after that.
 export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDone, today, now, dueDate, groups, initial, initialExtras, factoryDates, qc }: {
   orderId: string;
@@ -79,6 +82,9 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
   const editable = open && canEdit;
   const doneEditable = open && canDone;
   const lines = groups.flatMap((g) => g.lines);
+  // Styles whose steps are open: a single style, or while planning the first style of each factory (its targets get copied).
+  const [shown, setShown] = useState<Set<string>>(() => new Set(lines.length === 1 ? [lines[0].id]
+    : open && canEdit ? groups.filter((g) => g.factoryId && !g.releasedAt).map((g) => g.lines[0].id) : []));
 
   const get = (lineId: string, stage: string) => dates[key(lineId, stage)] ?? blank;
   const set = (lineId: string, stage: string, patch: Partial<Cell>) => {
@@ -200,53 +206,100 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
     });
   }
 
-  // The factory's date, the target, the done date and the not-needed switch for one step of one style.
-  function stepFields(l: StyleRow, s: Step, released: boolean, target: string) {
+  // One step of one style: its name and Quality's latest result, the factory's date, the target, the done date and where it stands.
+  function stepRow(l: StyleRow, s: Step, released: boolean, target: string) {
     const c = get(l.id, s.key);
     const v = verdict(c, today);
     const f = factoryDates[key(l.id, s.key)];
+    const q = qc[key(l.id, s.key)];
     return (
-      <>
-        {!c.not_needed && (
+      <li key={s.key} className={`step-row ${c.not_needed ? "off" : v?.cls ?? (c.planned_on ? "plan" : "")}`}>
+        <div className="step-name">
+          <i className="step-dot" aria-hidden />
+          <b>{s.label}</b>
+          {q && <span className={`chip ${q.result === "pass" ? "ok" : "bad"}`}>QC {q.result} {dm(q.checkedOn)}</span>}
+          {s.extra && editable && !c.done_on && (
+            <button type="button" className="link text-xs" aria-label={`Remove ${s.label} from ${l.style}`}
+              onClick={() => set(l.id, s.key, { not_needed: true })}>Remove</button>
+          )}
+        </div>
+        {c.not_needed ? <span className="step-off muted">Not needed</span> : (
           <>
-            <div className="text-[11.5px]"><span className="muted">Factory </span>
-              <b data-testid={`${l.style} ${s.label} factory`} className={f && c.planned_on && f > c.planned_on ? "text-bad" : ""}>{f ? day(f) : "not given"}</b>
+            <div className="step-f"><span>Factory</span>
+              <b data-testid={`${l.style} ${s.label} factory`} className={f && c.planned_on && f > c.planned_on ? "text-bad" : f ? "" : "muted font-normal"}>{f ? dm(f) : "Not given"}</b>
             </div>
-            <label><span>Target</span>
+            <label className="step-f"><span>Target</span>
               <input className="inp" type="date" value={c.planned_on} max={target || undefined} disabled={!editable} aria-label={`${l.style} ${s.label} target`}
                 onChange={(e) => set(l.id, s.key, { planned_on: e.target.value })} />
             </label>
-            <label><span>Done</span>
+            <label className="step-f"><span>Done</span>
               <input className="inp" type="date" value={c.done_on} max={today} disabled={!doneEditable || !released}
                 title={!released ? "Release the factory PO first" : undefined} aria-label={`${l.style} ${s.label} done`}
                 onChange={(e) => set(l.id, s.key, { done_on: e.target.value })} />
             </label>
           </>
         )}
-        {!s.extra && (s.required ? <span className="block text-[11px] text-muted">Required</span> : (
-          <label className="nn">
-            <input type="checkbox" checked={c.not_needed} disabled={!editable || !!c.done_on || released} aria-label={`${l.style} ${s.label} not needed`}
-              onChange={(e) => set(l.id, s.key, { not_needed: e.target.checked })} />
-            Not needed
-          </label>
-        ))}
-        {v && <small>{v.text}</small>}
-      </>
+        <div className="step-state">
+          {c.not_needed ? "" : v?.text ?? (c.planned_on ? `By ${dm(c.planned_on)}` : "No target")}
+          {!s.extra && !s.required && (
+            <label className="nn">
+              <input type="checkbox" checked={c.not_needed} disabled={!editable || !!c.done_on || released} aria-label={`${l.style} ${s.label} not needed`}
+                onChange={(e) => set(l.id, s.key, { not_needed: e.target.checked })} />
+              Not needed
+            </label>
+          )}
+        </div>
+      </li>
     );
   }
+
+  // A style at a glance: how far it has got, what is next or late, and its final QC.
+  function summary(l: StyleRow) {
+    const cells = steps(l.id).map((s) => ({ s, c: get(l.id, s.key) }));
+    const done = cells.filter((x) => x.c.done_on).length;
+    const over = cells.filter((x) => !x.c.done_on && x.c.planned_on && x.c.planned_on < today);
+    const next = cells.find((x) => !x.c.done_on);
+    const last = [...cells].reverse().find((x) => x.c.done_on);
+    const status = over.length
+      ? { text: `${over[0].s.label} overdue ${plural(daysBetween(over[0].c.planned_on, today))}${over.length > 1 ? `, ${over.length - 1} more late` : ""}`, cls: "bad" }
+      : !next ? { text: "Every step done", cls: "ok" }
+      : !next.c.planned_on ? { text: `Next: ${next.s.label}, no target yet`, cls: "warn" }
+      : { text: `Next: ${next.s.label} by ${dm(next.c.planned_on)}`, cls: verdict(next.c, today)?.cls ?? "" };
+    const segs = cells.map(({ s, c }) => {
+      const v = verdict(c, today);
+      return { key: s.key, label: s.label, cls: c.done_on ? "ok" : v?.cls ?? (c.planned_on ? "plan" : ""), text: v?.text ?? (c.planned_on ? `by ${dm(c.planned_on)}` : "no target") };
+    });
+    return { done, total: cells.length, at: last ? `At ${last.s.label}` : "Not started", status, segs };
+  }
+
+  const toggle = (id: string) => setShown((s) => {
+    const next = new Set(s);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
+  const allShown = lines.length > 0 && lines.every((l) => shown.has(l.id));
+  const unsavedStyles = new Set(changed.map((r) => r.line_id)).size;
 
   return (
     <section className="panel scroll-mt-20" id="tna">
       <div className="row mb-1">
-        <h2 className="font-bold text-base">TNA by style</h2>
+        <h2 className="font-bold text-base">Styles and TNA</h2>
         {late > 0 && <span className="chip bad">{late} {late === 1 ? "style" : "styles"} behind plan</span>}
+        {lines.length > 1 && (
+          <button type="button" className="btn sm ml-auto" onClick={() => setShown(new Set(allShown ? [] : lines.map((l) => l.id)))}>
+            {allShown ? "Hide all steps" : "Show all steps"}
+          </button>
+        )}
       </div>
-      <p className="muted mb-3 text-[13px]">
-        First set your target date for every step of each style (add extra steps if a style needs them), then ask the factory.
-        The factory gives its own date for each step in its panel; if it agrees to your targets by phone or WhatsApp instead, press
-        &quot;Factory agreed to targets&quot;. Release the PO once every factory date is in and none is later than its target.
-        After release the orders team and Quality enter done dates. Quality&apos;s latest result shows under each step it checks.
-      </p>
+      <details className="howto mb-4">
+        <summary>How planning works</summary>
+        <p>
+          First set your target date for every step of each style (add extra steps if a style needs them), then ask the factory.
+          The factory gives its own date for each step in its panel; if it agrees to your targets by phone or WhatsApp instead, press
+          &quot;Factory agreed to targets&quot;. Release the PO once every factory date is in and none is later than its target.
+          After release the orders team and Quality enter done dates. Quality&apos;s latest result shows next to each step it checks.
+        </p>
+      </details>
 
       {groups.map((g) => {
         const released = !!g.releasedAt;
@@ -269,50 +322,53 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
           : toAsk.length ? { text: "Set your targets, then ask the factory", cls: "bad" }
           : { text: "Targets set, ask the factory", cls: "warn" };
         return (
-          <div key={g.factoryId ?? "none"} className="mb-5" data-factory={g.factoryName}>
-            <div className="row mb-2">
-              <h3 className="font-bold text-[14px]">{g.factoryName}</h3>
-              <span className={`chip ${status.cls}`}>{status.text}</span>
+          <div key={g.factoryId ?? "none"} className="fac-group" data-factory={g.factoryName}>
+            <div className="fac-head">
+              <div className="row">
+                <h3 className="font-bold text-[14px]">{g.factoryName}</h3>
+                <span className={`chip ${status.cls}`}>{status.text}</span>
+                <span className="muted text-xs">{g.lines.length} {g.lines.length === 1 ? "style" : "styles"}{target && g.factoryId ? ` · target date ${dm(target)}` : ""}</span>
+              </div>
               {editable && g.factoryId && !released && (
-                <>
-                  <button type="button" className="btn" disabled={pending} onClick={() => copyRequest(g)}>Copy plan request</button>
+                <div className="row">
+                  <button type="button" className="btn sm" disabled={pending} onClick={() => copyRequest(g)}>Copy plan request</button>
                   <label className="row gap-1.5 text-[13px]">Buffer
-                    <input className="inp w-16" inputMode="numeric" value={buffer} aria-label={`Buffer days for ${g.factoryName}`}
+                    <input className="inp w-14 !py-1" inputMode="numeric" value={buffer} aria-label={`Buffer days for ${g.factoryName}`}
                       onChange={(e) => setBuffers((b) => ({ ...b, [g.factoryId!]: e.target.value.replace(/\D/g, "") }))} />
                     days
                   </label>
-                  <button type="button" className="btn" disabled={pending || !bufferOk || toAsk.length > 0 || unsaved(g)}
+                  <button type="button" className="btn sm" disabled={pending || !bufferOk || toAsk.length > 0 || unsaved(g)}
                     title={unsaved(g) ? "Save the dates first" : toAsk.length ? "Set every target first" : undefined}
                     onClick={() => run(`req:${g.factoryId}`, () => requestPlan(orderId, g.factoryId!, Number(buffer)),
                       `Asked ${g.factoryName} for its TNA. It has ${PLAN_HOURS} hours to send it in its factory panel.`)}>
                     {busy === `req:${g.factoryId}` ? "Saving…" : asked ? "Ask again (restart 24 hours)" : "Ask factory for plan"}
                   </button>
                   {asked && toAsk.length === 0 && gaps.length > 0 && (
-                    <button type="button" className="btn" disabled={pending || unsaved(g)}
+                    <button type="button" className="btn sm" disabled={pending || unsaved(g)}
                       title={unsaved(g) ? "Save the dates first" : `Use when ${g.factoryName} agreed to your targets by phone or WhatsApp`}
                       onClick={() => run(`acc:${g.factoryId}`, () => acceptTargetsForFactory(orderId, g.factoryId!),
                         `Entered your targets as ${g.factoryName}'s dates. You can release the PO now.`)}>
                       {busy === `acc:${g.factoryId}` ? "Saving…" : "Factory agreed to targets"}
                     </button>
                   )}
-                  <button type="button" className="btn primary" disabled={pending || gaps.length > 0 || unsaved(g)}
+                  <button type="button" className="btn sm primary" disabled={pending || gaps.length > 0 || unsaved(g)}
                     title={unsaved(g) ? "Save the dates first" : gaps.length ? "The plan is not complete yet" : undefined}
                     onClick={() => run(`rel:${g.factoryId}`, () => releaseFactoryPo(orderId, g.factoryId!), `PO released to ${g.factoryName}.`)}>
                     {busy === `rel:${g.factoryId}` ? "Releasing…" : "Release PO"}
                   </button>
-                </>
+                </div>
               )}
             </div>
-            {!g.factoryId && <p className="muted mb-2 text-[13px]">Choose a factory for these styles in the order below before planning them.</p>}
-            {g.factoryId && target && (
+            {!g.factoryId && <p className="muted mb-2 text-[13px]">Choose a factory for these styles in Order details below before planning them.</p>}
+            {g.factoryId && target && !released && (
               <p className="muted mb-2 text-[13px]">
-                Target date <b className="text-foreground">{day(target)}</b>: every target and factory date must be on or before it
-                {dueDate && ` (PO delivery ${day(dueDate)} less ${released || !bufferOk ? g.bufferDays ?? 0 : buffer} days buffer)`}.
+                Every target and factory date must be on or before <b className="text-foreground">{day(target)}</b>
+                {dueDate && ` (PO delivery ${day(dueDate)} less ${!bufferOk ? g.bufferDays ?? 0 : buffer} days buffer)`}.
               </p>
             )}
             {critical && (
               <p className="errbox mb-2" role="status">
-                {g.factoryName} hasn&apos;t sent its TNA within {PLAN_HOURS} hours. Chase them now, or move these styles to another factory in the order below.
+                {g.factoryName} hasn&apos;t sent its TNA within {PLAN_HOURS} hours. Chase them now, or move these styles to another factory in Order details.
               </p>
             )}
             {g.factoryId && !released && !asked && toAsk.length > 0 && (
@@ -321,84 +377,75 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
             {g.factoryId && !released && asked && gaps.length > 0 && (
               <p className="mb-2 text-[13px] text-warn"><b>Missing before release:</b> {gaps.join("; ")}</p>
             )}
-            <div className="table-wrap">
-              <table className="tbl tna">
-                <thead>
-                  <tr>
-                    <th>Style</th>
-                    {TNA_STEPS.map((s) => <th key={s.key}>{s.label}</th>)}
-                    <th>Extra steps</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {g.lines.map((l) => (
-                    <tr key={l.id}>
-                      <td className="tna-style">
-                        <div className="flex items-start gap-2.5">
-                          <div className="shrink-0">
-                            {l.photoUrl ? (
-                              <a href={l.photoUrl} target="_blank" rel="noreferrer" aria-label={`Photo of ${l.style}`}>
-                                {/* eslint-disable-next-line @next/next/no-img-element -- short-lived signed links, not for the image optimiser */}
-                                <img src={l.photoUrl} alt="" className="h-16 w-16 rounded-lg border border-line object-cover" />
-                              </a>
-                            ) : (
-                              <div className="grid h-16 w-16 place-items-center rounded-lg border border-dashed border-line text-[11px] text-muted">No photo</div>
-                            )}
-                            {editable && (
-                              <label className={`link mt-1 block text-center text-xs ${pending ? "pointer-events-none opacity-50" : ""}`}>
-                                {busy === `photo:${l.id}` ? "Uploading…" : l.photoUrl ? "Change" : "Add photo"}
-                                <input type="file" accept="image/*" className="sr-only" aria-label={`Photo for ${l.style}`}
-                                  onChange={(e) => { photo(l.id, e.target.files); e.target.value = ""; }} />
-                              </label>
-                            )}
-                          </div>
-                          <div className="min-w-0">
-                            <b className="code">{l.style}</b>
-                            <div className="muted text-xs">{[l.colour, `${l.qty} pcs`].filter(Boolean).join(" · ")}</div>
-                          </div>
-                        </div>
-                      </td>
-                      {TNA_STEPS.map((s) => {
-                        const q = qc[`${l.id}:${s.key}`];
-                        return (
-                          <td key={s.key} className={`tna-cell ${verdict(get(l.id, s.key), today)?.cls ?? ""} ${get(l.id, s.key).not_needed ? "opacity-60" : ""}`}>
-                            {q && <div className="mb-1"><span className={`chip ${q.result === "pass" ? "ok" : "bad"}`}>QC {q.result} {day(q.checkedOn)}</span></div>}
-                            {stepFields(l, s, released, target)}
-                          </td>
-                        );
-                      })}
-                      <td className="tna-cell min-w-[190px]">
-                        {(extras[l.id] ?? []).filter((x) => !get(l.id, x.stage).not_needed).map((x) => {
-                          const v = verdict(get(l.id, x.stage), today);
-                          return (
-                            <div key={x.stage} className={`mb-2 rounded-md border border-line p-1.5 ${v?.cls === "bad" ? "bg-bad-soft" : v?.cls === "ok" ? "bg-ok-soft" : ""}`}>
-                              <div className="row justify-between text-[12.5px] font-semibold">{x.label}
-                                {editable && !get(l.id, x.stage).done_on && (
-                                  <button type="button" className="link text-xs" aria-label={`Remove ${x.label} from ${l.style}`}
-                                    onClick={() => set(l.id, x.stage, { not_needed: true })}>Remove</button>
-                                )}
-                              </div>
-                              {stepFields(l, { key: x.stage, label: x.label, extra: true }, released, target)}
-                            </div>
-                          );
-                        })}
+            <div className="style-list">
+              {g.lines.map((l) => {
+                const sm = summary(l);
+                const fin = qc[key(l.id, "final_qc")];
+                const isOpen = shown.has(l.id);
+                const dirty = changed.some((r) => r.line_id === l.id);
+                return (
+                  <article key={l.id} id={`style-${l.id}`} className={`style-card ${sm.status.cls === "bad" ? "late" : ""}`}>
+                    <div className="style-head">
+                      <div className="style-photo">
+                        {l.photoUrl ? (
+                          <a href={l.photoUrl} target="_blank" rel="noreferrer" aria-label={`Photo of ${l.style}`}>
+                            {/* eslint-disable-next-line @next/next/no-img-element -- short-lived signed links, not for the image optimiser */}
+                            <img src={l.photoUrl} alt="" />
+                          </a>
+                        ) : <div className="ph">No photo</div>}
+                      </div>
+                      <div className="style-id">
+                        <b className="code text-[13.5px]">{l.style}</b>
+                        <span>{[l.colour, `${qty(l.qty)} pcs`].filter(Boolean).join(" · ")}</span>
                         {editable && (
-                          <div className="flex gap-1">
-                            <input className="inp min-w-0 grow" value={newStep[l.id] ?? ""} placeholder="e.g. Embroidery" maxLength={60}
+                          <label className={`link w-fit cursor-pointer text-xs ${pending ? "pointer-events-none opacity-50" : ""}`}>
+                            {busy === `photo:${l.id}` ? "Uploading…" : l.photoUrl ? "Change photo" : "Add photo"}
+                            <input type="file" accept="image/*" className="sr-only" aria-label={`Photo for ${l.style}`}
+                              onChange={(e) => { photo(l.id, e.target.files); e.target.value = ""; }} />
+                          </label>
+                        )}
+                      </div>
+                      <div className="style-prog">
+                        <div className="stepper" aria-label={`${l.style}: ${sm.done} of ${sm.total} steps done`}>
+                          {sm.segs.map((x) => <i key={x.key} className={x.cls} title={`${x.label}: ${x.text}`} />)}
+                        </div>
+                        <div className="style-line">
+                          <span>{sm.at} · {sm.done} of {sm.total} steps done</span>
+                          <b className={sm.status.cls}>{sm.status.text}</b>
+                        </div>
+                      </div>
+                      <div className="style-side">
+                        {dirty && <span className="chip warn">Unsaved</span>}
+                        <a href={`#qc-${l.id}`} className={`chip ${fin ? (fin.result === "pass" ? "ok" : "bad") : ""}`}>
+                          {fin ? `Final QC ${fin.result === "pass" ? "passed" : "failed"}` : "Final QC not done"}
+                        </a>
+                        <button type="button" className="btn sm" aria-expanded={isOpen} aria-controls={`steps-${l.id}`} onClick={() => toggle(l.id)}>
+                          {isOpen ? "Hide steps" : editable || doneEditable ? "Show and edit steps" : "Show steps"}
+                        </button>
+                      </div>
+                    </div>
+                    {isOpen && (
+                      <div id={`steps-${l.id}`}>
+                        <div className="step-head" aria-hidden><span>Step</span><span>Factory</span><span>Target</span><span>Done</span><span>Status</span></div>
+                        <ul className="step-list">
+                          {allSteps(l.id).filter((s) => !s.extra || !get(l.id, s.key).not_needed).map((s) => stepRow(l, s, released, target))}
+                        </ul>
+                        {editable && (
+                          <div className="step-add">
+                            <input className="inp" value={newStep[l.id] ?? ""} placeholder="Extra step, e.g. Embroidery" maxLength={60}
                               aria-label={`New step for ${l.style}`} onChange={(e) => setNewStep((n) => ({ ...n, [l.id]: e.target.value }))}
                               onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addExtra(l.id); } }} />
                             <button type="button" className="btn sm" onClick={() => addExtra(l.id)}>Add step</button>
                           </div>
                         )}
-                        {!(extras[l.id] ?? []).some((x) => !get(l.id, x.stage).not_needed) && !editable && <span className="muted text-xs">None</span>}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+                      </div>
+                    )}
+                  </article>
+                );
+              })}
             </div>
             {editable && g.lines.length > 1 && (
-              <button type="button" className="btn mt-2 max-w-full !whitespace-normal text-left" disabled={pending} onClick={() => copyPlan(g)}>
+              <button type="button" className="btn sm mt-2 max-w-full !whitespace-normal text-left" disabled={pending} onClick={() => copyPlan(g)}>
                 Copy {g.lines[0].style}&apos;s targets to {g.factoryName}&apos;s other styles
               </button>
             )}
@@ -407,16 +454,18 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
       })}
 
       {doneEditable && (
-        <div className="row mt-1">
+        <div className={`savebar ${changed.length ? "dirty" : ""}`}>
           <button type="button" className="btn primary" disabled={pending || !changed.length}
             onClick={() => run("save", () => saveLineStages(orderId, changed), "Saved")}>
             {busy === "save" ? "Saving…" : "Save TNA dates"}
           </button>
-          {changed.length > 0 && <span className="muted text-[13px]">Unsaved changes</span>}
+          {changed.length > 0 && <span className="text-[13px] font-semibold text-warn">Unsaved changes on {unsavedStyles} {unsavedStyles === 1 ? "style" : "styles"}</span>}
+          {error && <span className="text-[13px] font-semibold text-bad" role="alert">{error}</span>}
+          {notice && !error && <span className="text-[13px] font-semibold text-ok">{notice}</span>}
         </div>
       )}
-      {error && <p className="mt-3 text-[13px] font-semibold text-bad" role="alert">{error}</p>}
-      {notice && !error && <p className="mt-3 text-[13px] font-semibold text-ok">{notice}</p>}
+      {!doneEditable && error && <p className="mt-3 text-[13px] font-semibold text-bad" role="alert">{error}</p>}
+      {!doneEditable && notice && !error && <p className="mt-3 text-[13px] font-semibold text-ok">{notice}</p>}
     </section>
   );
 }
