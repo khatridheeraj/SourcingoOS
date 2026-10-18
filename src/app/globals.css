@@ -843,3 +843,36 @@ h1, h2, h3 { font-family: var(--font-display); text-wrap: balance; font-weight: 
   }
 }
 @keyframes sheet-up { from { transform: translateY(100%); } }
+
+@layer components {
+  /* Factories board: one card per factory with its buyers and POs. */
+  .fac-card { scroll-margin-top: 96px; }
+  .fac-buyers { display: flex; gap: 6px; flex-wrap: wrap; padding: 12px 20px; border-bottom: 1px solid var(--line); background: var(--surface-2); }
+  .fac-buyer { display: inline-flex; align-items: baseline; gap: 6px; padding: 4px 10px; border-radius: 8px; background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); font-size: 12.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .fac-buyer b { font-weight: 600; color: var(--foreground); }
+  .fac-sub { display: flex; align-items: center; gap: 6px; padding: 10px 20px 6px; font-size: 11.5px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); }
+  .fac-sub span { font-weight: 500; color: var(--faint); }
+  .fac-group-rows + .fac-group-rows { border-top: 1px solid var(--line); }
+  .frow {
+    display: grid; grid-template-columns: minmax(0, 1fr) 128px 220px; grid-template-areas: "t d g" "s d g"; gap: 2px 16px; align-items: center;
+    padding: 11px 20px; border-top: 1px solid var(--line); transition: background 0.12s;
+  }
+  .fac-sub + .frow { border-top: 0; }
+  .frow:hover { background: var(--surface-2); }
+  .frow-t { grid-area: t; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .frow-t .code { color: var(--muted); margin-right: 8px; }
+  .frow-s { grid-area: s; font-size: 12.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .frow-s b { white-space: nowrap; font-weight: 500; color: var(--foreground); font-variant-numeric: tabular-nums; }
+  .frow-d { grid-area: d; font-variant-numeric: tabular-nums; white-space: nowrap; font-size: 13.5px; }
+  .frow-d small { display: block; font-size: 12px; }
+  .frow-g { grid-area: g; min-width: 0; }
+  .frow-g small { display: block; margin-top: 2px; font-size: 12px; color: var(--muted); }
+  @media (max-width: 1100px) {
+    .fac-buyers { padding: 10px 16px; }
+    .fac-sub { padding: 10px 16px 4px; }
+    .frow { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "t d" "s d" "g g"; gap: 3px 12px; padding: 11px 16px; }
+    .frow-d { text-align: right; font-size: 13px; align-self: start; }
+    .frow-s { white-space: normal; }
+    .frow-g { margin-top: 6px; }
+  }
+}

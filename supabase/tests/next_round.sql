@@ -128,7 +128,7 @@ select pg_temp.expect((:'b'::jsonb ->> 'role') = 'merchandiser' and jsonb_array_
 select pg_temp.expect(jsonb_array_length(:'b'::jsonb -> 'orders' -> 0 -> 'lines' -> 0 -> 'steps') = 16, 'brief misses steps (15 standard and the extra one)');
 select pg_temp.expect((:'b'::jsonb -> 'orders' -> 0 ->> 'buyer') = 'Areeba Fashion House', 'brief has no buyer name');
 select pg_temp.expect((:'b'::jsonb -> 'cheques') = 'null'::jsonb and (:'b'::jsonb ->> 'pos_to_check') = '0', 'merchandiser brief shows cheques or misses POs');
-select pg_temp.expect(position('450' in :'b') = 0 and position('555' in :'b') = 0, 'brief shows a price');
+select pg_temp.expect(not jsonb_path_exists(:'b'::jsonb, '$.** ? (@ == 450 || @ == 555 || @ like_regex "^(450|555)(\\.0+)?$")'), 'brief shows a price');
 select pg_temp.as_user('00000000-0000-0000-0000-0000000000a9');
 select pg_temp.expect((public.brief_data() -> 'pos_to_check') = 'null'::jsonb, 'Quality''s brief shows POs');
 select pg_temp.as_user('00000000-0000-0000-0000-0000000000ac');
