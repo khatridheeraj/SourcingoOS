@@ -191,7 +191,7 @@ export function paymentTodos(b: Books, buyer: (id: string) => string, money: (v:
   if (unconfirmed.length) {
     out.push({
       sev: "warn", title: `Check ${unconfirmed.length} deposited ${unconfirmed.length === 1 ? "cheque" : "cheques"} against the bank statement`,
-      detail: `${money(unconfirmed.reduce((a, c) => a + n(c.amount), 0))} deposited 3 or more days ago.${advice ? " Tally doesn't show them paid yet." : ""} Mark each cleared or bounced.`,
+      detail: `${money(unconfirmed.reduce((a, c) => a + n(c.amount), 0))} deposited 3 or more days ago.${advice ? " Tally doesn't show them fully paid yet." : ""} Mark each cleared or bounced.`,
       href: "/payments?tab=cheques&status=deposited", key: "0",
     });
   }
