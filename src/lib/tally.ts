@@ -72,7 +72,8 @@ export function compareWithTally(raw: {
       .filter((c) => !used.has(c.id) && c.buyer_id === buyerOf(v) && Math.abs(n(c.amount) - n(v.amount)) <= SLACK)
       .sort((a, z) => dist(a.cleared_on ?? a.cheque_date, v.vdate) - dist(z.cleared_on ?? z.cheque_date, v.vdate))[0];
     if (match) used.add(match.id);
-    else receiptsNoCheque.push({ v, buyerId: buyerOf(v) });
+    // A receipt Tally sets against invoices that are in Payments already counts there (a NEFT or RTGS payment).
+    else if (!(v.bills?.length && v.bills.every((x) => invByNo.get(key(x.name))?.buyer_id === buyerOf(v)))) receiptsNoCheque.push({ v, buyerId: buyerOf(v) });
   }
   const chequesNoReceipt = cleared.filter((c) => !used.has(c.id) && inRange(c.cleared_on ?? c.cheque_date));
 

@@ -60,3 +60,29 @@ export async function setAiKey(key: string): Promise<{ error?: string }> {
   revalidatePath("/pos");
   return {};
 }
+
+// The owner accepts an email from an unknown sender: it is read as a PO. With a buyer, the sender is remembered for it.
+export async function acceptSender(id: string, buyerId: string): Promise<{ error?: string }> {
+  const me = await getMe();
+  if (me?.role !== "owner") return { error: "Only the owner can accept emails from unknown senders." };
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("accept_po_sender", { p_id: id, p_buyer: buyerId || null });
+  if (error) return { error: friendly(error) };
+  const read = await askToRead(supabase, id);
+  revalidatePath("/pos");
+  revalidatePath(`/pos/${id}`);
+  revalidatePath("/buyers");
+  return read;
+}
+
+// The owner ignores an email from an unknown sender. It stays private under Set aside.
+export async function ignoreSender(id: string): Promise<{ error?: string }> {
+  const me = await getMe();
+  if (me?.role !== "owner") return { error: "Only the owner can ignore emails from unknown senders." };
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("ignore_po_sender", { p_id: id });
+  if (error) return { error: friendly(error) };
+  revalidatePath("/pos");
+  revalidatePath(`/pos/${id}`);
+  return {};
+}

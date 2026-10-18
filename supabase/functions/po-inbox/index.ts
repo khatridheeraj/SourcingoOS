@@ -138,6 +138,8 @@ async function read(db: SupabaseClient, body: Record<string, unknown>, auth: str
   const { data: row } = await asUser.from("incoming_pos").select("id, status").eq("id", String(body.id ?? "")).maybeSingle();
   if (!row) return json({ error: "This PO is no longer here. Reload the page." }, 404);
   if (row.status === "added") return json({ error: "This PO is already added as an order." }, 400);
+  // An email from an unknown sender is read only once the owner accepts it.
+  if (row.status === "held") return json({ error: "Accept or ignore this sender first." }, 400);
   const { data: canRead } = await asUser.rpc("ai_key_status");
   if (!canRead) return json({ error: "Only the orders team can do this." }, 403);
   await db.from("incoming_pos").update({ status: "reading", read_error: null }).eq("id", row.id);

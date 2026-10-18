@@ -15,7 +15,7 @@ export default async function InvoicePage({ params }: PageProps<"/payments/invoi
   const credits = b.creditNotes.filter((c) => c.invoice_id === i.id);
   const days = b.buyerById.get(i.buyer_id)?.credit_days;
   const cancelled = i.state === "cancelled";
-  const live = i.cheques.filter((c) => c.cheque.status !== "bounced" && c.cheque.status !== "cancelled");
+  const live = i.cheques.filter((c) => c.cheque.status !== "bounced" && c.cheque.status !== "cancelled" && c.cheque.status !== "paid_other");
   // Any cheque still set against it fixes the buyer, even a bounced one, as the database does.
   const locked = i.cheques.length || credits.length ? "Has cheques or credit notes, so the buyer is fixed" : undefined;
   const input = { id: i.id, invoice_no: i.invoice_no, buyer_id: i.buyer_id, invoice_date: i.invoice_date, amount: String(i.amount), due_date: i.due_date ?? "", notes: i.notes ?? "" };
@@ -36,12 +36,27 @@ export default async function InvoicePage({ params }: PageProps<"/payments/invoi
       <section className="panel">
         <div className="tiles">
           <div className="tile"><span>Amount with tax</span><b>{money(i.amount)}</b>{i.credit > 0 && <small className="muted text-xs">less {money(i.credit)} credit notes = {money(i.net)}</small>}</div>
-          <div className="tile"><span>Paid by cheques</span><b>{money(i.covered)}</b><small className="muted text-xs">{money(i.received)} cleared</small></div>
+          <div className="tile"><span>{i.tallyPaid > 0 ? "Received" : "Paid by cheques"}</span><b>{money(i.tallyPaid > 0 ? i.received : i.covered)}</b><small className="muted text-xs">{i.tallyPaid > 0 ? "as Tally shows" : `${money(i.received)} cleared`}</small></div>
           <div className={`tile ${i.overdue ? "alarm" : ""}`}><span>Left to collect</span><b>{money(i.outstanding)}</b></div>
           <div className="tile"><span>Due</span><b className="!text-lg">{i.due ? day(i.due) : "Not set"}</b><small className="muted text-xs">{i.due_date ? "Own due date" : days != null ? `${days} credit days` : "Set credit days in Payments › Buyers"}</small></div>
         </div>
         {i.notes && <p className="mt-3 whitespace-pre-line text-[13px]"><b>Notes:</b> {i.notes}</p>}
       </section>
+
+      {i.tallyReceipts.length > 0 && (
+        <section className="panel stack">
+          <h2>Received, as Tally shows</h2>
+          <ul className="flex flex-col divide-y divide-line">
+            {i.tallyReceipts.map((r, k) => (
+              <li key={k} className="row justify-between py-2">
+                <span><b className="code">{r.number ?? "Receipt"}</b> <span className="text-xs muted">{day(r.date)}</span></span>
+                <b className="num">{money(r.amount)}</b>
+              </li>
+            ))}
+          </ul>
+          <p className="text-xs muted">Read from Tally. Nothing here changes Tally.</p>
+        </section>
+      )}
 
       <section className="panel stack">
         <h2>Cheques</h2>

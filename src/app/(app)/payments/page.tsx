@@ -1,8 +1,21 @@
 import Link from "next/link";
 import { day, money } from "@/lib/format";
-import { addDays, buyerTotals, INVOICE_LABEL, type InvoiceRow, paymentTodos } from "@/lib/payments";
+import { addDays, AGE_BUCKETS, ageing, type Advice, buyerTotals, INVOICE_LABEL, type InvoiceRow, paymentTodos, type ReceiptLine } from "@/lib/payments";
 import { type ChequeLine, ChequeTable, CreditDays } from "./forms";
 import { loadBooks } from "./load";
+import { type SettleRow, TallySettle } from "./tally-settle";
+
+// "NEFT ₹2,00,000 on 30 Sep, RTGS ₹31,000 on 1 Oct", shortened past three.
+const paidBy = (rs: ReceiptLine[]) => {
+  const one = (r: ReceiptLine) => `${r.number && !/^\d+$/.test(r.number) ? r.number : "Receipt"} ${money(r.amount)} on ${day(r.date)}`;
+  return rs.length > 3 ? `${rs.slice(0, 2).map(one).join(", ")} and ${rs.length - 2} more` : rs.map(one).join(", ");
+};
+const tallyText = (a: Advice | undefined) =>
+  !a ? undefined
+  : a.kind === "cleared" ? { tone: "text-ok", text: `Tally: cleared ${day(a.on)}` }
+  : a.kind === "paid_other" ? { tone: "text-ok", text: `Tally: invoice paid another way, ${day(a.on)}` }
+  : a.kind === "part" ? { tone: "text-warn", text: `Tally: ${money(a.paid)} paid, ${money(a.left)} still due` }
+  : { tone: "muted", text: "Tally: nothing paid yet" };
 
 const TABS = [{ key: "today", label: "To do" }, { key: "invoices", label: "Invoices" }, { key: "cheques", label: "Cheques" }, { key: "buyers", label: "Buyers" }];
 const INV_FILTERS = [
@@ -11,7 +24,8 @@ const INV_FILTERS = [
 ];
 const CHQ_FILTERS = [
   { key: "pending", label: "Not cleared" }, { key: "deposit", label: "To deposit" }, { key: "in_hand", label: "In hand" },
-  { key: "deposited", label: "Deposited" }, { key: "cleared", label: "Cleared" }, { key: "bounced", label: "Bounced" }, { key: "cancelled", label: "Cancelled" }, { key: "all", label: "All" },
+  { key: "deposited", label: "Deposited" }, { key: "cleared", label: "Cleared" }, { key: "paid_other", label: "Paid another way" }, { key: "bounced", label: "Bounced" },
+  { key: "cancelled", label: "Cancelled" }, { key: "all", label: "All" },
 ];
 const TONE: Record<string, string> = { cancelled: "", paid: "ok", covered: "info", part: "warn", open: "" };
 
@@ -22,7 +36,7 @@ function InvoiceChip({ i }: { i: InvoiceRow }) {
 }
 
 export default async function PaymentsPage({ searchParams }: PageProps<"/payments">) {
-  const { books: b, buyerLabel, error } = await loadBooks();
+  const { books: b, buyerLabel, advice, error } = await loadBooks();
   const sp = await searchParams;
   const p = (k: string) => String(sp[k] ?? "").trim();
   const tab = TABS.some((t) => t.key === p("tab")) ? p("tab") : "today";
@@ -34,7 +48,16 @@ export default async function PaymentsPage({ searchParams }: PageProps<"/payment
   const uncovered = unpaid.filter((i) => i.uncovered > 0);
   const overdue = unpaid.filter((i) => i.overdue);
   const held = b.cheques.filter((c) => (c.status === "in_hand" && !c.stale) || c.status === "deposited");
-  const todos = paymentTodos(b, buyerLabel, money, day);
+  const todos = paymentTodos(b, buyerLabel, money, day, advice);
+  const settle: SettleRow[] = b.cheques.flatMap((c) => {
+    const a = advice.get(c.id);
+    if (a?.kind !== "cleared" && a?.kind !== "paid_other") return [];
+    return [{
+      id: c.id, cheque_no: c.cheque_no, buyer: buyerLabel(c.buyer_id), amount: Number(c.amount), cheque_date: c.cheque_date, kind: a.kind, on: a.on,
+      why: a.kind === "cleared" ? `Receipt ${a.receipt || "in Tally"} on ${day(a.on)}` : paidBy(a.receipts),
+      invoices: c.invoices.map((x) => ({ id: x.invoice.id, no: x.invoice.invoice_no })),
+    }];
+  }).sort((a, z) => a.buyer.localeCompare(z.buyer) || a.cheque_date.localeCompare(z.cheque_date));
   const rs = (v: number) => money(Math.round(v));
   const link = (extra: Record<string, string>) => `/payments?${new URLSearchParams(Object.entries({ tab, q, buyer, ...extra }).filter(([, v]) => v))}`;
 
@@ -115,7 +138,8 @@ export default async function PaymentsPage({ searchParams }: PageProps<"/payment
       .sort((a, z) => (status === "cleared" || status === "all" ? z.cheque_date.localeCompare(a.cheque_date) : a.cheque_date.localeCompare(z.cheque_date)))
       .map((c) => ({
         id: c.id, cheque_no: c.cheque_no, bank: c.bank, buyer: buyerLabel(c.buyer_id), cheque_date: c.cheque_date, amount: Number(c.amount), status: c.status,
-        stale: c.stale, deposited_on: c.deposited_on, cleared_on: c.cleared_on, bounced_on: c.bounced_on,
+        stale: c.stale, deposited_on: c.deposited_on, cleared_on: c.cleared_on, bounced_on: c.bounced_on, paid_other_on: c.paid_other_on ?? null,
+        tally: tallyText(advice.get(c.id)),
         invoices: c.invoices.map((x) => ({ id: x.invoice.id, no: x.invoice.invoice_no })), unallocated: Math.max(0, Number(c.amount) - c.allocated),
       }));
     body = (
@@ -134,8 +158,39 @@ export default async function PaymentsPage({ searchParams }: PageProps<"/payment
   } else if (tab === "buyers") {
     const totals = new Map(buyerTotals(b).map((r) => [r.buyer_id, r]));
     const list = [...b.buyerById.values()].sort((a, z) => (totals.get(z.id)?.outstanding ?? 0) - (totals.get(a.id)?.outstanding ?? 0) || buyerLabel(a.id).localeCompare(buyerLabel(z.id)));
+    const aged = ageing(b);
+    const sum = (k: (typeof AGE_BUCKETS)[number]["key"] | "total") => aged.reduce((a, r) => a + r[k], 0);
     body = (
       <>
+        <section className="panel stack">
+          <h2>What buyers owe, by how late</h2>
+          <p className="text-xs muted">Days past each invoice&apos;s due date. Paid means a cleared cheque or a receipt in Tally against the invoice.</p>
+          {!aged.length ? <p className="muted">Nothing left to collect.</p> : (
+            <div className="table-wrap">
+              <table className="tbl">
+                <thead><tr><th>Buyer</th>{AGE_BUCKETS.map((x) => <th key={x.key} className="r">{x.label}</th>)}<th className="r">Total</th></tr></thead>
+                <tbody>
+                  {aged.map((r) => (
+                    <tr key={r.buyer_id}>
+                      <td className="whitespace-nowrap"><Link className="link" href={`/payments?tab=invoices&buyer=${r.buyer_id}`}>{buyerLabel(r.buyer_id)}</Link></td>
+                      {AGE_BUCKETS.map((x) => (
+                        <td key={x.key} className={`r num whitespace-nowrap ${r[x.key] && (x.key === "d90" || x.key === "d90plus") ? "font-semibold text-bad" : r[x.key] && x.key !== "notDue" ? "text-warn" : ""}`}>
+                          {r[x.key] ? money(Math.round(r[x.key])) : ""}
+                        </td>
+                      ))}
+                      <td className="r num whitespace-nowrap font-semibold">{money(Math.round(r.total))}</td>
+                    </tr>
+                  ))}
+                  <tr>
+                    <td className="font-semibold">All buyers</td>
+                    {AGE_BUCKETS.map((x) => <td key={x.key} className="r num whitespace-nowrap font-semibold">{sum(x.key) ? money(Math.round(sum(x.key))) : ""}</td>)}
+                    <td className="r num whitespace-nowrap font-semibold">{money(Math.round(sum("total")))}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
         <p className="text-xs muted">Credit days decide when an invoice falls due, counted from the invoice date. An invoice with its own due date keeps it.</p>
         <div className="table-wrap">
           <table className="tbl">
@@ -163,6 +218,8 @@ export default async function PaymentsPage({ searchParams }: PageProps<"/payment
   } else {
     const next = b.cheques.filter((c) => c.status === "in_hand" && c.cheque_date > t).sort((a, z) => a.cheque_date.localeCompare(z.cheque_date))[0];
     body = (
+      <>
+      {settle.length > 0 && <TallySettle key={settle.map((r) => r.id).join()} rows={settle} />}
       <section className="panel stack">
         <h2>To do</h2>
         {todos.length ? (
@@ -181,6 +238,7 @@ export default async function PaymentsPage({ searchParams }: PageProps<"/payment
         )}
         {next && <p className="text-xs muted">Next post-dated cheque: {next.cheque_no} ({buyerLabel(next.buyer_id)}, {money(next.amount)}) can go to the bank on {day(next.cheque_date)}.</p>}
       </section>
+      </>
     );
   }
 

@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { canEditOrders, canEnterDone, canRecordQc, getMe } from "@/lib/auth";
 import { friendly } from "@/lib/errors";
 import { QC_KINDS, TNA_STEPS, todayIST } from "@/lib/format";
+import { buyerOverdue, NO_WARNINGS, orderWarnings, type OrderWarnings, type Overdue } from "@/lib/order-checks";
 import { createClient } from "@/lib/supabase/server";
 
 export type OrderInput = {
@@ -31,9 +32,25 @@ export type LineInput = {
 
 const num = (s: string) => s.replace(/[,₹\s]/g, "");
 
+// What the form shows while an order is typed in: other orders it may repeat, and the buyer's overdue invoices.
+export async function checkOrder(order: Pick<OrderInput, "id" | "buyer_id" | "buyer_po">, styles: string[]): Promise<{ warnings: OrderWarnings; overdue: Overdue | null }> {
+  const me = await getMe();
+  if (!canEditOrders(me?.role) || !order.buyer_id) return { warnings: NO_WARNINGS, overdue: null };
+  const supabase = await createClient();
+  const [warnings, overdue] = await Promise.all([
+    orderWarnings(supabase, order.buyer_id, order.buyer_po, styles, order.id),
+    buyerOverdue(supabase, order.buyer_id),
+  ]);
+  return { warnings: warnings ?? NO_WARNINGS, overdue };
+}
+
 // incomingId: the incoming PO this order was made from, marked added once the order is saved.
 // existing: the order that already holds this buyer PO, so the form can link to it.
-export async function saveOrder(order: OrderInput, lines: LineInput[], incomingId?: string): Promise<{ error?: string; id?: string; existing?: { id: string; orderNo: string } }> {
+// confirmed: the person saw that a very similar PO number is already an order and chose Save anyway.
+// confirm: returned instead of saving when that choice is still needed.
+export async function saveOrder(order: OrderInput, lines: LineInput[], incomingId?: string, confirmed = false): Promise<{
+  error?: string; id?: string; existing?: { id: string; orderNo: string }; confirm?: OrderWarnings;
+}> {
   const me = await getMe();
   if (!me?.role) return { error: "Your account is not switched on yet." };
   if (!canEditOrders(me.role)) return { error: "Only the orders team can change orders." };
@@ -53,6 +70,15 @@ export async function saveOrder(order: OrderInput, lines: LineInput[], incomingI
   }
 
   const supabase = await createClient();
+  // The same check the form shows, made again here so a save can't skip it. A check that can't run doesn't stop the save.
+  const warnings = await orderWarnings(supabase, order.buyer_id, order.buyer_po, filled.map((l) => l.style), order.id);
+  const same = warnings?.same_po[0];
+  if (same) return {
+    error: `PO ${order.buyer_po.trim()} from this buyer is already order ${same.order_no}. To add these styles, open ${same.order_no} and add them there.`,
+    existing: { id: same.id, orderNo: same.order_no },
+  };
+  if (warnings?.similar_po.length && !confirmed) return { confirm: warnings };
+
   const { data, error } = await supabase.rpc("save_order", {
     p_order: { ...order, buyer_po: order.buyer_po.trim() },
     p_lines: filled.map((l) => ({

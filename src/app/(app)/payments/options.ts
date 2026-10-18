@@ -9,7 +9,7 @@ export function openInvoices(b: Books, chequeId: string | null): OpenInvoice[] {
   return b.invoices
     .filter((i) => i.state !== "cancelled")
     .map((i) => {
-      const mine = i.cheques.filter((c) => c.cheque.id === chequeId && c.cheque.status !== "bounced" && c.cheque.status !== "cancelled").reduce((a, c) => a + c.amount, 0);
-      return { id: i.id, buyer_id: i.buyer_id, invoice_no: i.invoice_no, invoice_date: i.invoice_date, due: i.due, net: i.net, left: Math.max(0, paise(i.net - i.covered + mine)) };
+      const mine = i.cheques.filter((c) => c.cheque.id === chequeId && !["bounced", "cancelled", "paid_other"].includes(c.cheque.status)).reduce((a, c) => a + c.amount, 0);
+      return { id: i.id, buyer_id: i.buyer_id, invoice_no: i.invoice_no, invoice_date: i.invoice_date, due: i.due, net: i.net, left: Math.max(0, paise(i.net - Math.max(i.covered, i.received) + mine)) };
     });
 }
