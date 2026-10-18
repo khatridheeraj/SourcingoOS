@@ -103,6 +103,9 @@ export function buildBrief(d: BriefData): Brief {
   return { title: `${WEEKDAYS[date.getUTCDay()]} ${dm(today)}`, headline, sections };
 }
 
+// The brief to share with a group: everything but money, which stays with the owner and Accounts.
+export const teamCopy = (b: Brief): Brief => ({ ...b, sections: b.sections.filter((s) => s.key !== "money") });
+
 // Plain text for WhatsApp: bold titles with asterisks, one line per item.
 export function briefText(b: Brief, company: string): string {
   const out = [`*${company} · morning brief, ${b.title}*`, b.headline];
@@ -128,6 +131,9 @@ export function briefHtml(b: Brief, company: string, appUrl: string): string {
   <tr><td style="font:600 12px/1.4 -apple-system,Segoe UI,Roboto,sans-serif;color:#6b6b6b">${esc(company)} · ${esc(b.title)}</td></tr>
   <tr><td style="padding-top:4px;font:700 20px/1.3 -apple-system,Segoe UI,Roboto,sans-serif;color:#1a1a1a">${esc(b.headline)}</td></tr>
   ${sec}
-  <tr><td style="padding-top:20px"><a href="${esc(appUrl)}/brief" style="display:inline-block;background:#4f46e5;color:#fff;border-radius:8px;padding:10px 16px;font:600 14px -apple-system,Segoe UI,Roboto,sans-serif;text-decoration:none">Open Sourcingo</a></td></tr>
+  <tr><td style="padding-top:20px">
+    <a href="${esc(appUrl)}/brief" style="display:inline-block;background:#4f46e5;color:#fff;border-radius:8px;padding:10px 16px;font:600 14px -apple-system,Segoe UI,Roboto,sans-serif;text-decoration:none">Open Sourcingo</a>
+    <a href="https://wa.me/?text=${encodeURIComponent(briefText(teamCopy(b), company))}" style="display:inline-block;margin-left:8px;background:#1da851;color:#fff;border-radius:8px;padding:10px 16px;font:600 14px -apple-system,Segoe UI,Roboto,sans-serif;text-decoration:none">Send to a WhatsApp group</a>
+  </td></tr>
 </table></body></html>`;
 }
