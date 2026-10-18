@@ -10,7 +10,7 @@ export async function formOptions(keep: { buyerId?: string; factoryIds?: string[
       .map((b) => ({ id: b.id, label: buyerName(b), code: b.code })),
     factories: factories
       .filter((f) => f.active || keep.factoryIds?.includes(f.id))
-      .map((f) => ({ id: f.id, label: f.city ? `${f.name} (${f.city})` : f.name })),
+      .map((f) => ({ id: f.id, label: f.city ? `${f.name} (${f.city})` : f.name, name: f.name, phone: f.phone })),
     team: team.filter((p) => p.active).map((p) => ({ id: p.user_id, label: personName(p) })),
     meId: me?.id ?? "",
   };

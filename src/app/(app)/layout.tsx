@@ -27,6 +27,7 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
       { href: "/today", label: "Home", icon: "home" },
       { href: "/", label: "Orders", icon: "orders" },
       ...(edit ? [{ href: "/pos", label: "Incoming POs", icon: "inbox" as const, count: toCheck }] : []),
+      { href: "/brief", label: "Brief", icon: "sun" as const },
     ] },
     ...(edit ? [{ label: "Partners", items: [{ href: "/buyers", label: "Buyers", icon: "buyers" as const }, { href: "/factories", label: "Factories", icon: "factories" as const }] }] : []),
     ...(edit ? [{ label: "Tools", items: [{ href: "/markers", label: "Markers", icon: "markers" as const }] }] : []),

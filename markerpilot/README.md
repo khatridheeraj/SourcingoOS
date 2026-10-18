@@ -10,7 +10,7 @@ The orders team (owner, manager, merchandiser, accounts) sees it in the menu und
 | How the page talks to the OS | `markerpilot/shim.js` |
 | Saved styles (shared by the team) | table `marker_styles`, through `/api/markers/styles` |
 | Photo reading | `/api/markers/jobs` stores the photos in `marker_job_parts`; `supabase/functions/marker-reader` reads them with the company's AI key (the one pasted on Incoming POs) |
-| Rules and tests | `supabase/migrations/0033_markers.sql`, `supabase/tests/markers.sql` |
+| Rules and tests | `supabase/migrations/0034_markers.sql`, `supabase/tests/markers.sql` |
 
 Supabase stops a function after 150 seconds on the free plan. A reading that takes longer is handed to Claude's
 batch queue and collected when it is ready (usually minutes, at most an hour); the page keeps waiting.
@@ -26,6 +26,6 @@ node markerpilot/build-page.cjs <MarkerPilot>/web/public/index.html
 
 ## Putting it live
 
-1. Apply `supabase/migrations/0033_markers.sql`.
+1. Apply `supabase/migrations/0034_markers.sql`.
 2. Deploy the function: `supabase functions deploy marker-reader --no-verify-jwt` (it checks the person itself, like `po-inbox`).
 3. Merge to main; Vercel deploys the app.

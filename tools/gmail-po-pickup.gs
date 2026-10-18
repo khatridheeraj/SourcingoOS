@@ -1,15 +1,19 @@
 /**
- * Sourcingo OS: picks up buyer POs from this Gmail mailbox.
+ * Sourcingo OS: picks up buyer POs from this Gmail mailbox, and sends this mailbox its morning brief.
  *
  * Every 10 minutes it looks at emails from the last 3 days that have a PDF, Excel, CSV or photo attached,
  * and hands each new one to the app (Incoming POs), which reads it into a draft for the team to check.
  * Nothing is ever sent, changed or deleted in the mailbox, except a "Sourcingo OS/Picked up" label on emails
  * it handed over. It holds no password: the app checks the mailbox's own Google sign-in.
  *
+ * At 9 am, Monday to Saturday, it emails this mailbox (only itself) the Sourcingo morning brief: ship dates at risk,
+ * overdue steps and what waits on whom.
+ *
  * Set up once: open this project while signed in to the mailbox, pick setUp at the top, press Run,
  * and allow access when Google asks.
  */
 const APP = "https://zwqoogevoxpafzbdnptz.supabase.co/functions/v1/po-inbox";
+const BRIEF = "https://sourcingo-os.vercel.app/api/brief";
 const TYPES = {
   pdf: "application/pdf", jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp", csv: "text/csv",
   xls: "application/vnd.ms-excel", xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -20,6 +24,7 @@ function setUp() {
   Session.getActiveUser().getEmail(); // asks Google for the address too, so the app can check who is sending
   ScriptApp.getProjectTriggers().forEach((t) => ScriptApp.deleteTrigger(t));
   ScriptApp.newTrigger("pickUpPos").timeBased().everyMinutes(10).create();
+  ScriptApp.newTrigger("sendBrief").timeBased().atHour(9).nearMinute(0).everyDays(1).inTimezone("Asia/Kolkata").create();
   pickUpPos();
 }
 
@@ -75,4 +80,17 @@ function post(body) {
   const data = JSON.parse(res.getContentText() || "{}");
   if (res.getResponseCode() >= 300) throw new Error(data.error || res.getContentText());
   return data;
+}
+
+// The morning brief, mailed to this mailbox only. Sundays are skipped.
+function sendBrief() {
+  const day = Utilities.formatDate(new Date(), "Asia/Kolkata", "u");
+  if (day === "7") return;
+  const res = UrlFetchApp.fetch(BRIEF, {
+    method: "post", contentType: "application/json", muteHttpExceptions: true,
+    payload: JSON.stringify({ google_token: ScriptApp.getOAuthToken() }),
+  });
+  const data = JSON.parse(res.getContentText() || "{}");
+  if (res.getResponseCode() >= 300 || !data.html) throw new Error(data.error || res.getContentText());
+  GmailApp.sendEmail(Session.getActiveUser().getEmail(), data.subject, data.text, { htmlBody: data.html, name: "Sourcingo" });
 }
