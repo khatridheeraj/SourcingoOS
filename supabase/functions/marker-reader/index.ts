@@ -47,6 +47,7 @@ function outcome(msg: Anthropic.Message): { result?: unknown; error_code?: strin
 function failure(e: unknown): { error_code: string; error: string } {
   const status = e instanceof Anthropic.APIError ? e.status : undefined;
   const detail = String((e as { message?: string })?.message ?? e).slice(0, 200);
+  if (/credit balance/i.test(detail)) return { error_code: "failed", error: "The Anthropic account behind the AI key has no credit left. The owner adds credit at console.anthropic.com under Billing, then taps Read again." };
   if (status === 401) return { error_code: "failed", error: "The AI key isn't valid. The owner can paste a new one on the Incoming POs page." };
   if (status === 429) return { error_code: "rate_limited", error: "Too many requests just now. Try again in a minute." };
   if (status === 529 || status === 503) return { error_code: "failed", error: "Claude is busy right now. Try again in a minute." };
