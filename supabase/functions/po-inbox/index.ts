@@ -6,6 +6,7 @@ import { readPos, type PoFile } from "./reader.ts";
 //   {action: "receive", key, email, files}  the Gmail script hands over one email; answers with upload links.
 //   {action: "ready", key, id}              the script has uploaded the files; reading starts.
 //   {action: "read", id}                    the orders team (signed in) added a file or asked to read again.
+//   {action: "brief", google_token}         the Gmail script's 9 am brief: that person's brief data, for the app to word.
 // The Gmail script proves itself with a mailbox key, or with google_token: the mailbox's own Google sign-in,
 // so the script holds no secret. A Google mailbox is registered as the key "google:<address>".
 // Reading runs after the answer is sent and saves its result, or its error, on the incoming PO.
@@ -141,6 +142,16 @@ async function read(db: SupabaseClient, body: Record<string, unknown>, auth: str
   return json({ ok: true });
 }
 
+// The morning brief for the person whose mailbox asks. Only a registered Google mailbox gets one, and only its own.
+async function brief(db: SupabaseClient, body: Record<string, unknown>) {
+  if (typeof body.google_token !== "string") return json({ error: "Send the mailbox's Google sign-in." }, 401);
+  const key = await mailboxKey(body);
+  if (!key?.startsWith("google:") || !(await companyForKey(db, key))) return json({ error: "Unknown mailbox." }, 401);
+  const { data, error } = await db.rpc("brief_data_for_email", { p_email: key.slice("google:".length) });
+  if (error) return json({ error: error.message }, 400);
+  return json(data);
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
   if (req.method !== "POST") return json({ error: "Use POST." }, 405);
@@ -150,5 +161,6 @@ Deno.serve(async (req) => {
   if (body.action === "receive") return receive(db, body);
   if (body.action === "ready") return ready(db, body);
   if (body.action === "read") return read(db, body, req.headers.get("authorization"));
+  if (body.action === "brief") return brief(db, body);
   return json({ error: "Unknown action." }, 400);
 });

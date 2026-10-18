@@ -1,7 +1,8 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { getMe } from "@/lib/auth";
+import { headers } from "next/headers";
+import { canEditOrders, getMe } from "@/lib/auth";
 import { friendly } from "@/lib/errors";
 import { createClient } from "@/lib/supabase/server";
 
@@ -24,4 +25,19 @@ export async function saveFactory(f: FactoryInput): Promise<{ error?: string }> 
   if (error) return { error: friendly(error) };
   revalidatePath("/", "layout");
   return {};
+}
+
+// The factory's WhatsApp link: opening it signs the phone in to that factory's panel. The same link is given each
+// time until a new one is made, which stops the old one and signs out every phone that used it.
+export async function factoryLink(factoryId: string, renew = false): Promise<{ url?: string; error?: string }> {
+  const me = await getMe();
+  if (!canEditOrders(me?.role)) return { error: "Only the orders team can send a factory its link." };
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("factory_link", { p_factory: factoryId, p_renew: renew });
+  if (error || typeof data !== "string") return { error: error ? friendly(error) : "Couldn't make the link. Try again." };
+  const h = await headers();
+  const host = h.get("x-forwarded-host") ?? h.get("host") ?? "sourcingo-os.vercel.app";
+  const proto = h.get("x-forwarded-proto") ?? (host.startsWith("localhost") ? "http" : "https");
+  if (renew) revalidatePath("/factories");
+  return { url: `${proto}://${host}/f/${data}` };
 }

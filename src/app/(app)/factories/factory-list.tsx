@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import type { Factory } from "@/lib/data";
 import { saveFactory, type FactoryInput } from "./actions";
+import { FactoryLink } from "./factory-link";
 
 const blank: FactoryInput = { name: "", city: "", contact_name: "", phone: "", notes: "", active: true };
 
@@ -63,7 +64,10 @@ export function FactoryList({ factories, openStyles }: { factories: Factory[]; o
                   <td className="r num">{openStyles[f.id] ?? 0}</td>
                   <td>{!f.active && <span className="chip">Inactive</span>}</td>
                   <td className="r">
+                    <div className="row justify-end flex-nowrap">
+                    {f.active && <FactoryLink factoryId={f.id} name={f.name} phone={f.phone} />}
                     <button className="btn sm" onClick={() => { setError(""); setEditing({ id: f.id, name: f.name, city: f.city ?? "", contact_name: f.contact_name ?? "", phone: f.phone ?? "", notes: f.notes ?? "", active: f.active }); }}>Edit</button>
+                    </div>
                   </td>
                 </tr>
               ))}

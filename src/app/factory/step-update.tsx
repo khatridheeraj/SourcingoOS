@@ -7,12 +7,12 @@ import { day, todayIST, TNA_STEPS } from "@/lib/format";
 import { uploadPhotos } from "@/lib/photos";
 import { postStepUpdate } from "./actions";
 import type { PanelOrder } from "./factory-order";
+import { stepName, words, type Lang } from "./i18n";
 
 export type FactoryUpdate = { id: string; order_id: string; line_id: string; stage: string; done_on: string; status: "pending" | "confirmed" | "declined"; review_note: string | null; photos: number; created_at: string };
 
 type Line = PanelOrder["lines"][number];
 const MAX_PHOTOS = 10;
-const name = (s: { stage: string; label: string | null }) => s.label ?? TNA_STEPS.find((t) => t.key === s.stage)?.label ?? s.stage;
 const addDays = (d: string, n: number) => new Date(Date.parse(d) + n * 86_400_000).toISOString().slice(0, 10);
 
 // The step after the furthest one done: what the factory most likely finished next.
@@ -24,8 +24,10 @@ function nextStep(l: Line) {
 
 // On a released PO the factory reports progress itself: pick the style, the step and the day, add photos, send.
 // Sourcingo's team confirms each update before it counts.
-export function FactoryProgress({ companyId, order, updates }: { companyId: string; order: PanelOrder; updates: FactoryUpdate[] }) {
+export function FactoryProgress({ companyId, order, updates, lang }: { companyId: string; order: PanelOrder; updates: FactoryUpdate[]; lang: Lang }) {
   const router = useRouter();
+  const w = words(lang);
+  const name = (s: { stage: string; label: string | null }) => stepName(lang, s.stage, s.label, TNA_STEPS.find((t) => t.key === s.stage)?.label ?? s.stage);
   const box = useRef<HTMLDialogElement>(null);
   const [lineId, setLineId] = useState("");
   const [stage, setStage] = useState("");
@@ -52,7 +54,7 @@ export function FactoryProgress({ companyId, order, updates }: { companyId: stri
   function add(list: FileList | null) {
     const picked = Array.from(list ?? []);
     setFiles((f) => [...f, ...picked.map((file) => ({ file, url: URL.createObjectURL(file) }))].slice(0, MAX_PHOTOS));
-    if (files.length + picked.length > MAX_PHOTOS) setError(`Up to ${MAX_PHOTOS} photos. The first ${MAX_PHOTOS} are kept.`);
+    if (files.length + picked.length > MAX_PHOTOS) setError(w.upTo(MAX_PHOTOS));
   }
 
   function drop(i: number) {
@@ -62,7 +64,7 @@ export function FactoryProgress({ companyId, order, updates }: { companyId: stri
 
   function send() {
     if (!line || !stage) return;
-    if (!files.length) return setError("Add at least one photo of the work.");
+    if (!files.length) return setError(w.addPhoto);
     setError("");
     start(async () => {
       try {
@@ -70,10 +72,10 @@ export function FactoryProgress({ companyId, order, updates }: { companyId: stri
         const res = await postStepUpdate(line.id, stage, doneOn, note, paths);
         if (res.error) return setError(res.error);
         box.current?.close();
-        toast(`Sent: ${line.style} ${name(line.stages.find((s) => s.stage === stage)!)} done. Sourcingo will confirm it.`);
+        toast(w.sentToast(line.style, name(line.stages.find((s) => s.stage === stage)!)));
         router.refresh();
       } catch (e) {
-        setError(e instanceof Error ? e.message : "Couldn't send the photos. Try again.");
+        setError(e instanceof Error ? e.message : w.photoFail);
       }
     });
   }
@@ -81,8 +83,8 @@ export function FactoryProgress({ companyId, order, updates }: { companyId: stri
   return (
     <div className="fprog">
       <div className="row">
-        <h3 className="text-[14px] font-semibold">Send progress</h3>
-        <span className="muted text-[13px]">Finished a step? Mark it done with photos. Sourcingo confirms it.</span>
+        <h3 className="text-[14px] font-semibold">{w.sendProgress}</h3>
+        <span className="muted text-[13px]">{w.sendProgressHelp}</span>
       </div>
       <ul>
         {order.lines.map((l) => {
@@ -97,22 +99,22 @@ export function FactoryProgress({ companyId, order, updates }: { companyId: stri
             <li key={l.id} className="fprog-row">
               <div className="fprog-id">
                 <b className="code">{l.style}</b>
-                <small>{done} of {l.stages.length} steps done{next ? ` · next ${name(next)}` : ""}</small>
+                <small>{w.stepsDone(done, l.stages.length)}{next ? ` · ${w.next(name(next))}` : ""}</small>
               </div>
               <div className="fprog-st">
                 {waiting.map((u) => (
-                  <span key={u.id} className="chip info">{name(l.stages.find((s) => s.stage === u.stage) ?? { stage: u.stage, label: null })} sent, waiting for Sourcingo</span>
+                  <span key={u.id} className="chip info">{w.waitingFor(name(l.stages.find((s) => s.stage === u.stage) ?? { stage: u.stage, label: null }))}</span>
                 ))}
                 {back.map((u) => (
                   <span key={u.id} className="chip bad" title={u.review_note ?? undefined}>
-                    {name(l.stages.find((s) => s.stage === u.stage) ?? { stage: u.stage, label: null })} sent back: {u.review_note}
+                    {w.sentBack(name(l.stages.find((s) => s.stage === u.stage) ?? { stage: u.stage, label: null }), u.review_note ?? "")}
                   </span>
                 ))}
-                {!next && <span className="chip ok">Every step done</span>}
+                {!next && <span className="chip ok">{w.allDone}</span>}
               </div>
               {next && (
                 <button type="button" className="btn done-btn" onClick={() => openFor(l)}>
-                  <span aria-hidden className="done-tick">✓</span>Mark step done
+                  <span aria-hidden className="done-tick">✓</span>{w.markDone}
                 </button>
               )}
             </li>
@@ -125,51 +127,51 @@ export function FactoryProgress({ companyId, order, updates }: { companyId: stri
           <div className="sheet-body">
             <span className="grabber" aria-hidden />
             <div className="row justify-between">
-              <h2 id={`upd-${order.order_id}`} className="text-[17px] font-semibold">{line.style}: step done</h2>
-              <button type="button" className="btn ghost sm" disabled={pending} onClick={() => box.current?.close()}>Close</button>
+              <h2 id={`upd-${order.order_id}`} className="text-[17px] font-semibold">{w.stepDone(line.style)}</h2>
+              <button type="button" className="btn ghost sm" disabled={pending} onClick={() => box.current?.close()}>{w.close}</button>
             </div>
             <div className="mt-3 grid gap-3">
-              <label className="field"><span>Step</span>
+              <label className="field"><span>{w.step}</span>
                 <select className="inp" value={stage} disabled={pending} onChange={(e) => setStage(e.target.value)}>
-                  {open.map((s) => <option key={s.stage} value={s.stage}>{name(s)}{s.planned_on ? ` (target ${day(s.planned_on)})` : ""}</option>)}
+                  {open.map((s) => <option key={s.stage} value={s.stage}>{name(s)}{s.planned_on ? ` (${w.targetOn(day(s.planned_on))})` : ""}</option>)}
                 </select>
               </label>
-              <label className="field"><span>Done on</span>
+              <label className="field"><span>{w.doneOn}</span>
                 <input className="inp" type="date" value={doneOn} min={addDays(today, -30)} max={today} disabled={pending} onChange={(e) => setDoneOn(e.target.value)} />
               </label>
               <div className="field">
-                <span>Photos of the work ({files.length}/{MAX_PHOTOS})</span>
+                <span>{w.photos(files.length, MAX_PHOTOS)}</span>
                 <div className="fphotos">
                   {files.map((f, i) => (
                     <div key={f.url} className="fphoto">
                       {/* eslint-disable-next-line @next/next/no-img-element -- local preview of a photo not yet sent */}
                       <img src={f.url} alt="" />
-                      <button type="button" aria-label={`Remove photo ${i + 1}`} disabled={pending} onClick={() => drop(i)}>×</button>
+                      <button type="button" aria-label={w.removePhoto(i + 1)} disabled={pending} onClick={() => drop(i)}>×</button>
                     </div>
                   ))}
                   {files.length < MAX_PHOTOS && (
                     <>
                       <label className={`fphoto-add ${pending ? "pointer-events-none opacity-50" : ""}`}>
-                        <span aria-hidden>+</span>Camera
+                        <span aria-hidden>+</span>{w.camera}
                         <input type="file" accept="image/*" capture="environment" className="sr-only" onChange={(e) => { add(e.target.files); e.target.value = ""; }} />
                       </label>
                       <label className={`fphoto-add ${pending ? "pointer-events-none opacity-50" : ""}`}>
-                        <span aria-hidden>+</span>Gallery
+                        <span aria-hidden>+</span>{w.gallery}
                         <input type="file" accept="image/*" multiple className="sr-only" onChange={(e) => { add(e.target.files); e.target.value = ""; }} />
                       </label>
                     </>
                   )}
                 </div>
               </div>
-              <label className="field"><span>Note (optional)</span>
-                <textarea className="inp h-20 resize-none font-[inherit]" maxLength={500} value={note} disabled={pending} placeholder="e.g. 480 of 500 pcs cut, rest tomorrow"
+              <label className="field"><span>{w.note}</span>
+                <textarea className="inp h-20 resize-none font-[inherit]" maxLength={500} value={note} disabled={pending} placeholder={w.notePlaceholder}
                   onChange={(e) => setNote(e.target.value)} />
               </label>
             </div>
             {error && <p className="mt-3 text-[13px] font-semibold text-bad" role="alert">{error}</p>}
             <div className="sheet-acts">
               <button type="button" className="btn primary" disabled={pending || !stage || !files.length} onClick={send}>
-                {pending ? "Sending photos…" : "Send to Sourcingo"}
+                {pending ? w.sendingPhotos : w.sendToSourcingo}
               </button>
             </div>
           </div>

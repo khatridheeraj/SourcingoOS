@@ -1,8 +1,9 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
-// /api/cron checks its own key. /tally-reader is the Tally reader download (no secrets).
-const PUBLIC_PATHS = ["/login", "/auth", "/api/cron", "/tally-reader", "/manifest.webmanifest"];
+// /api/cron checks its own key; /api/brief is answered only for a mailbox Google vouches for. /f/<secret> is a factory link.
+// /tally-reader is the Tally reader download (no secrets).
+const PUBLIC_PATHS = ["/login", "/auth", "/api/cron", "/api/brief", "/f", "/tally-reader", "/manifest.webmanifest"];
 
 // Refreshes the Supabase session cookie on every request and sends
 // signed-out visitors to /login.

@@ -5,12 +5,17 @@ import { useState, useTransition } from "react";
 import { day, dayAt, daysBetween, DEFAULT_BUFFER_DAYS, planDueAt, PLAN_HOURS, qty, TNA_STEPS } from "@/lib/format";
 import { uploadPhotos } from "@/lib/photos";
 import { toast } from "@/components/toast";
+import { project, shipRisk, standardTargets } from "@/lib/tna-plan";
+import { FactoryLink } from "../../factories/factory-link";
 import { acceptTargetsForFactory, releaseFactoryPo, requestPlan, saveLineStages, setStylePhoto, type LineStageInput } from "../actions";
 
 export type StyleRow = { id: string; style: string; colour: string; qty: number; photoUrl: string | null; hasRate: boolean };
 export type FactoryGroup = {
   factoryId: string | null;
   factoryName: string;
+  // The factory's own name and phone, for its WhatsApp link.
+  factoryShort: string;
+  factoryPhone: string | null;
   planRequestedOn: string;
   planRequestedAt: string;
   bufferDays: number | null;
@@ -26,6 +31,8 @@ export type ExtraStep = { stage: string; label: string };
 type Step = { key: string; label: string; required?: boolean; extra?: boolean };
 type Cell = { planned_on: string; done_on: string; not_needed: boolean };
 type FactoryDates = Record<string, string>;
+// The target at release and why the owner moved it since, keyed "line:step".
+export type Baseline = { on: string; note: string };
 type Dates = Record<string, Cell>;
 
 const blank: Cell = { planned_on: "", done_on: "", not_needed: false };
@@ -53,13 +60,15 @@ function verdict(c: Cell, today: string): { text: string; cls: string } | null {
 
 // Every style as its own card with its full TNA, grouped by factory. A factory's plan is asked for and entered first;
 // its PO is released only once nothing is missing, and actual dates are entered after that.
-export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDone, today, now, dueDate, groups, initial, initialExtras, factoryDates, qc }: {
+export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDone, isOwner, today, now, dueDate, groups, initial, initialExtras, factoryDates, baselines, qc }: {
   orderId: string;
   orderNo: string;
   companyId: string;
   open: boolean;
   canEdit: boolean;
   canDone: boolean;
+  // Only the owner moves a target once the factory PO is released, and says why.
+  isOwner: boolean;
   today: string;
   now: string;
   dueDate: string;
@@ -67,6 +76,7 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
   initial: Dates;
   initialExtras: Record<string, ExtraStep[]>;
   factoryDates: FactoryDates;
+  baselines: Record<string, Baseline>;
   // Quality's latest result for each style's step, keyed "line:step".
   qc: Record<string, StepQc>;
 }) {
@@ -77,6 +87,7 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState("");
+  const [reason, setReason] = useState("");
   const [buffers, setBuffers] = useState<Record<string, string>>(
     Object.fromEntries(groups.filter((g) => g.factoryId).map((g) => [g.factoryId!, String(g.bufferDays ?? DEFAULT_BUFFER_DAYS)])));
   const [pending, start] = useTransition();
@@ -103,6 +114,26 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
   const changed: LineStageInput[] = lines.flatMap((l) => allSteps(l.id).map((s) => ({
     line_id: l.id, stage: s.key, ...get(l.id, s.key), ...(s.extra ? { label: s.label } : {}),
   }))).filter((r) => !same(initial[key(r.line_id, r.stage)] ?? blank, r) || (r.label !== undefined && isNew(r.line_id, r.stage)));
+
+  // Released styles whose set targets this save moves: the owner must give a reason.
+  const releasedLine = (lineId: string) => groups.some((g) => !!g.releasedAt && g.lines.some((l) => l.id === lineId));
+  const moved = changed.filter((r) => releasedLine(r.line_id) && !!initial[key(r.line_id, r.stage)]?.planned_on
+    && (r.planned_on !== initial[key(r.line_id, r.stage)].planned_on || (r.not_needed && !initial[key(r.line_id, r.stage)].not_needed)));
+
+  // Fills every empty target of a factory's styles with the standard days worked back from its target date.
+  function fillTargets(g: FactoryGroup, target: string) {
+    setDates((d) => {
+      const next = { ...d };
+      for (const l of g.lines) {
+        const empty = TNA_STEPS.map((s) => s.key).filter((st) => { const c = d[key(l.id, st)] ?? blank; return !c.not_needed && !c.planned_on && !c.done_on; });
+        const plan = standardTargets(empty, target, today);
+        for (const [st, on] of Object.entries(plan)) next[key(l.id, st)] = { ...(d[key(l.id, st)] ?? blank), planned_on: on };
+      }
+      return next;
+    });
+    setError("");
+    setNotice("Targets filled from the standard days. Check them, then save.");
+  }
 
   function addExtra(lineId: string) {
     const label = (newStep[lineId] ?? "").trim().slice(0, 60);
@@ -231,13 +262,15 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
     const v = verdict(c, today);
     const f = factoryDates[key(l.id, s.key)];
     const q = qc[key(l.id, s.key)];
+    const base = baselines[key(l.id, s.key)];
+    const locked = released && !!initial[key(l.id, s.key)]?.planned_on && !isOwner;
     return (
       <li key={s.key} className={`step-row ${c.not_needed ? "off" : v?.cls ?? (c.planned_on ? "plan" : "")}`}>
         <div className="step-name">
           <i className="step-dot" aria-hidden />
           <b>{s.label}</b>
           {q && <span className={`chip ${q.result === "pass" ? "ok" : "bad"}`}>QC {q.result} {dm(q.checkedOn)}</span>}
-          {s.extra && editable && !c.done_on && (
+          {s.extra && editable && !c.done_on && !locked && (
             <button type="button" className="link text-xs" aria-label={`Remove ${s.label} from ${l.style}`}
               onClick={() => set(l.id, s.key, { not_needed: true })}>Remove</button>
           )}
@@ -248,8 +281,13 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
               <b data-testid={`${l.style} ${s.label} factory`} className={f && c.planned_on && f > c.planned_on ? "text-bad" : f ? "" : "muted font-normal"}>{f ? dm(f) : "Not given"}</b>
             </div>
             <label className="step-f"><span>Target</span>
-              <input className="inp" type="date" value={c.planned_on} max={target || undefined} disabled={!editable} aria-label={`${l.style} ${s.label} target`}
+              <input className="inp" type="date" value={c.planned_on} max={released ? undefined : target || undefined} disabled={!editable || locked}
+                title={locked ? "Locked since the PO was released. Only the owner can move it, with a reason." : undefined}
+                aria-label={`${l.style} ${s.label} target`}
                 onChange={(e) => set(l.id, s.key, { planned_on: e.target.value })} />
+              {base && base.on !== c.planned_on && (
+                <small className="step-moved" title={base.note || undefined}>Was {dm(base.on)}{base.note ? `: ${base.note}` : ""}</small>
+              )}
             </label>
             <label className="step-f"><span>Done</span>
               <input className="inp" type="date" value={c.done_on} max={today} disabled={!doneEditable || !released}
@@ -288,7 +326,12 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
       const v = verdict(c, today);
       return { key: s.key, label: s.label, cls: c.done_on ? "ok" : v?.cls ?? (c.planned_on ? "plan" : ""), text: v?.text ?? (c.planned_on ? `by ${dm(c.planned_on)}` : "no target") };
     });
-    return { done, total: cells.length, at: last ? `At ${last.s.label}` : "Not started", status, segs, next: next?.s };
+    const p = project(cells.map((x) => x.c), today);
+    const risk = shipRisk(p, dueDate);
+    const outlook = risk.level === "risk" && p ? { text: `Likely ready ${dm(p.finish)}, ${plural(risk.daysLate)} after the ship date`, cls: "bad" }
+      : risk.level === "behind" && p ? { text: `Running ${plural(p.slip)} behind plan, ready ${dm(p.finish)}`, cls: "warn" }
+      : null;
+    return { done, total: cells.length, at: last ? `At ${last.s.label}` : "Not started", status, segs, next: next?.s, outlook };
   }
 
   const toggle = (id: string) => setShown((s) => {
@@ -316,7 +359,10 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
           First set your target date for every step of each style (add extra steps if a style needs them), then ask the factory.
           The factory gives its own date for each step in its panel; if it agrees to your targets by phone or WhatsApp instead, press
           &quot;Factory agreed to targets&quot;. Release the PO once every factory date is in and none is later than its target.
-          After release the orders team and Quality enter done dates. Quality&apos;s latest result shows next to each step it checks.
+          After release the targets are locked: only the owner can move one, with a reason, and the step shows where it started. The orders team
+          and Quality enter done dates. A late step pushes back the steps after it, so a style shows when it will likely be ready and whether
+          that misses the ship date. Quality&apos;s latest result shows next to each step it checks. &quot;Fill empty targets&quot; works every
+          empty target back from the target date with the usual days per step.
         </p>
       </details>
 
@@ -348,8 +394,15 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
                 <span className={`chip ${status.cls}`}>{status.text}</span>
                 <span className="muted text-xs">{g.lines.length} {g.lines.length === 1 ? "style" : "styles"}{target && g.factoryId ? ` · target date ${dm(target)}` : ""}</span>
               </div>
+              {editable && g.factoryId && released && (
+                <div className="row"><FactoryLink factoryId={g.factoryId} name={g.factoryShort || g.factoryName} phone={g.factoryPhone} /></div>
+              )}
               {editable && g.factoryId && !released && (
                 <div className="row">
+                  <FactoryLink factoryId={g.factoryId} name={g.factoryShort || g.factoryName} phone={g.factoryPhone} />
+                  <button type="button" className="btn sm" disabled={pending || !target}
+                    title={!target ? "Enter the PO's ship date first" : "Fills every empty target with the standard days before the target date"}
+                    onClick={() => fillTargets(g, target)}>Fill empty targets</button>
                   <button type="button" className="btn sm" disabled={pending} onClick={() => copyRequest(g)}>Copy plan request</button>
                   <label className="row gap-1.5 text-[13px]">Buffer
                     <input className="inp w-14 !py-1" inputMode="numeric" value={buffer} aria-label={`Buffer days for ${g.factoryName}`}
@@ -432,6 +485,7 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
                           <span>{sm.at} · {sm.done} of {sm.total} steps done</span>
                           <b className={sm.status.cls}>{sm.status.text}</b>
                         </div>
+                        {sm.outlook && <p className={`style-outlook ${sm.outlook.cls}`}>{sm.outlook.text}</p>}
                       </div>
                       <div className="style-side">
                         {dirty && <span className="chip warn">Unsaved</span>}
@@ -479,8 +533,14 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
 
       {doneEditable && (
         <div className={`savebar ${changed.length ? "dirty" : ""}`}>
-          <button type="button" className="btn primary" disabled={pending || !changed.length}
-            onClick={() => run("save", () => saveLineStages(orderId, changed), "Saved")}>
+          {moved.length > 0 && (
+            <input className="inp min-w-[220px] flex-1" value={reason} maxLength={300} aria-label="Why the targets move"
+              placeholder={`Why ${moved.length === 1 ? "this target moves" : `these ${moved.length} targets move`} (required)`}
+              onChange={(e) => setReason(e.target.value)} />
+          )}
+          <button type="button" className="btn primary" disabled={pending || !changed.length || (moved.length > 0 && !reason.trim())}
+            title={moved.length > 0 && !reason.trim() ? "Say why the released targets move" : undefined}
+            onClick={() => run("save", () => saveLineStages(orderId, moved.length ? changed.map((r) => ({ ...r, target_note: reason.trim() })) : changed), "Saved")}>
             {busy === "save" ? "Saving…" : "Save TNA dates"}
           </button>
           {changed.length > 0 && <span className="text-[13px] font-semibold text-warn">Unsaved changes on {unsavedStyles} {unsavedStyles === 1 ? "style" : "styles"}</span>}
