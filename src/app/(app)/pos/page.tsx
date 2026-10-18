@@ -10,13 +10,14 @@ import { AiKey } from "./ai-key";
 import { STATE } from "./state";
 
 const TABS = [
-  { key: "to_check", label: "To check" },
-  { key: "added", label: "Added" },
-  { key: "not_po", label: "Set aside" },
+  { key: "to_check", label: "To check", hint: "Read into drafts. Check each against its file and add it as an order." },
+  { key: "added", label: "Added", hint: "POs that became orders." },
+  { key: "not_po", label: "Set aside", hint: "Emails with no new buyer PO, or set aside by the team. Put one back if it is a PO." },
 ];
 
-
 const when = new Intl.DateTimeFormat("en-IN", { timeZone: "Asia/Kolkata", day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
+// The colour bar on each row: what needs a person first.
+const SEV: Record<string, string> = { failed: "bad", to_check: "warn", added: "ok" };
 
 export default async function IncomingPosPage({ searchParams }: PageProps<"/pos">) {
   const me = await getMe();
@@ -37,70 +38,87 @@ export default async function IncomingPosPage({ searchParams }: PageProps<"/pos"
   const nameOf = new Map(buyers.map((b) => [b.id, buyerName(b)]));
   const rows = data ?? [];
   const count = (k: string) => counts[TABS.findIndex((t) => t.key === k)]?.count ?? 0;
+  const t = TABS.find((x) => x.key === tab)!;
 
   return (
     <>
       <div className="head">
         <div className="grow">
           <h1>Incoming POs</h1>
-          <p>Buyer POs picked up from email, or added from a file. Each one is read into a draft; check it against the file and add it as an order.</p>
+          <p>
+            Buyer POs picked up from email or added from a file.{" "}
+            {count("to_check") ? <b className="text-warn">{count("to_check")} to check</b> : <b className="text-ok">Nothing to check</b>}
+          </p>
         </div>
+        <AddPo companyId={me.companyId} />
       </div>
+
+      <section className="card" aria-labelledby="po-h">
+        <header className="card-h">
+          <div className="min-w-0">
+            <h2 id="po-h">{t.label}</h2>
+            <p>{t.hint}</p>
+          </div>
+          <nav className="seg" aria-label="Show">
+            {TABS.map((x) => (
+              <Link key={x.key} href={x.key === "to_check" ? "/pos" : `/pos?show=${x.key}`} aria-current={tab === x.key ? "page" : undefined} scroll={false}>
+                {x.label} <span>{count(x.key)}</span>
+              </Link>
+            ))}
+          </nav>
+        </header>
+
+        {error && <div className="errbox m-4">{error.message}</div>}
+
+        {rows.length === 0 ? (
+          <p className="card-empty">
+            {tab === "to_check" ? "Nothing to check. New buyer POs from email show up here on their own; add one from WhatsApp with Add PO from a file." : "Nothing here yet."}
+          </p>
+        ) : (
+          <ul className="todo">
+            {rows.map((r) => {
+              const read = (r.read ?? {}) as Partial<PoReading>;
+              const lines = read.lines ?? [];
+              const order = (Array.isArray(r.orders) ? r.orders[0] : r.orders) as { order_no: string } | null;
+              const matched = (Array.isArray(r.matched) ? r.matched[0] : r.matched) as { order_no: string } | null;
+              const s = STATE[r.status];
+              const busy = r.status === "reading" || r.status === "receiving";
+              const doubts = r.status === "to_check" ? read.doubts?.length ?? 0 : 0;
+              const buyer = r.buyer_id ? nameOf.get(r.buyer_id) : read.po_number !== undefined ? "Buyer not recognised" : "";
+              return (
+                <li key={r.id}>
+                  <span className={`sev ${SEV[r.status] ?? ""}`} aria-hidden />
+                  <div className="min-w-0">
+                    <Link href={`/pos/${r.id}`} className="todo-title" aria-label={`Incoming PO ${r.buyer_po ?? r.email_subject ?? ""}`}>
+                      {r.buyer_po ? <span className="code">PO {r.buyer_po}</span> : <span className="muted">{busy ? "Reading… " : "PO number not found · "}</span>}
+                      {buyer && <span className={r.buyer_id ? "" : "text-bad"}>{buyer}</span>}
+                    </Link>
+                    <div className="todo-detail truncate">
+                      {r.source === "email" ? `Email from ${r.email_from ?? "unknown"}` : "Added from a file"} · {when.format(new Date(r.received_at))}
+                      {r.email_subject && <> · {r.email_subject}</>}
+                    </div>
+                    {(lines.length > 0 || order || matched || doubts > 0 || r.status === "failed") && (
+                      <div className="todo-links">
+                        {lines.length > 0 && <span className="chip">{lines.length} {lines.length === 1 ? "style" : "styles"} · {qty(lines.reduce((n, l) => n + (l.qty || 0), 0))} pcs</span>}
+                        {order && <span className="chip ok code">{order.order_no}</span>}
+                        {matched && r.status === "to_check" && <span className="chip bad">Already order {matched.order_no}</span>}
+                        {doubts > 0 && <span className="chip warn">{doubts} {doubts === 1 ? "point" : "points"} to check</span>}
+                        {r.status === "failed" && <span className="text-[12.5px] text-bad">{r.read_error}</span>}
+                      </div>
+                    )}
+                  </div>
+                  <div className="todo-chip"><span className={s?.cls}>{s?.label}</span></div>
+                  <Link href={`/pos/${r.id}`} className={`btn sm todo-act ${r.status === "to_check" || r.status === "failed" ? "primary" : ""}`}>
+                    {r.status === "to_check" || r.status === "failed" ? "Check and add" : "Open"}
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </section>
 
       <AiKey owner={me.role === "owner"} status={(aiKey ?? { set: false }) as { set: boolean; last4?: string; set_at?: string }} />
-
-      <AddPo companyId={me.companyId} />
-
-      <div className="filters">
-        {TABS.map((t) => (
-          <Link key={t.key} className="pill" href={t.key === "to_check" ? "/pos" : `/pos?show=${t.key}`} aria-current={tab === t.key ? "page" : undefined}>
-            {t.label} {count(t.key)}
-          </Link>
-        ))}
-      </div>
-
-      {error && <div className="errbox">{error.message}</div>}
-
-      {rows.length === 0 ? (
-        <div className="empty">
-          <b>{tab === "to_check" ? "Nothing to check" : "Nothing here yet"}</b>
-          {tab === "to_check" && "New buyer POs from email show up here on their own. Add one from WhatsApp with Choose PO file."}
-        </div>
-      ) : (
-        <ul className="flex flex-col gap-2">
-          {rows.map((r) => {
-            const read = (r.read ?? {}) as Partial<PoReading>;
-            const lines = read.lines ?? [];
-            const order = (Array.isArray(r.orders) ? r.orders[0] : r.orders) as { order_no: string } | null;
-            const matched = (Array.isArray(r.matched) ? r.matched[0] : r.matched) as { order_no: string } | null;
-            const s = STATE[r.status];
-            return (
-              <li key={r.id}>
-                <Link href={`/pos/${r.id}`} className="panel flex flex-col gap-1 !p-3.5" aria-label={`Incoming PO ${r.buyer_po ?? r.email_subject ?? ""}`}>
-                  <div className="row justify-between">
-                    <b>{r.buyer_po ?? (r.status === "reading" || r.status === "receiving" ? "Reading…" : "PO number not found")}
-                      {" "}<span className="muted font-normal">{r.buyer_id ? nameOf.get(r.buyer_id) : read.po_number !== undefined ? "Buyer not recognised" : ""}</span></b>
-                    <span className={s?.cls}>{s?.label}</span>
-                  </div>
-                  <div className="muted text-[13px]">
-                    {r.source === "email" ? `Email from ${r.email_from ?? "unknown"}` : "Added from a file"} · {when.format(new Date(r.received_at))}
-                    {r.email_subject && <> · {r.email_subject}</>}
-                  </div>
-                  {lines.length > 0 && (
-                    <div className="text-[13px]">{lines.length} {lines.length === 1 ? "style" : "styles"} · {qty(lines.reduce((t, l) => t + (l.qty || 0), 0))} pcs</div>
-                  )}
-                  <div className="row text-[13px]">
-                    {order && <span className="chip ok">Order {order.order_no}</span>}
-                    {matched && r.status === "to_check" && <span className="chip warn">Already in the system as {matched.order_no}</span>}
-                    {(read.doubts?.length ?? 0) > 0 && r.status === "to_check" && <span className="chip warn">{read.doubts!.length} to check</span>}
-                    {r.status === "failed" && <span className="text-bad">{r.read_error}</span>}
-                  </div>
-                </Link>
-              </li>
-            );
-          })}
-        </ul>
-      )}
     </>
   );
 }
