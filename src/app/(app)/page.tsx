@@ -5,6 +5,7 @@ import { buyerName, loadBuyers, loadFactories } from "@/lib/data";
 import { day, daysBetween, dueDate, money, qty, SHIP_QC, stageReached, STATUS, TNA_STEPS, todayIST } from "@/lib/format";
 import { type LinePrice, marginCls, pct, planMargin } from "@/lib/margin";
 import { fetchAll } from "@/lib/fetch-all";
+import { project, shipRisk } from "@/lib/tna-plan";
 import { createClient } from "@/lib/supabase/server";
 
 const TABS = [
@@ -65,7 +66,7 @@ export default async function OrdersPage({ searchParams }: PageProps<"/">) {
     (o.order_lines ?? []).map((l) => ({ ...l, buyer_rate: rateOf.get(l.id)?.buyer_rate ?? null, factory_rate: rateOf.get(l.id)?.factory_rate ?? null }));
 
   // Progress of an open order: where its slowest styles are, and whether any step is past its target.
-  const progressOf = (o: { id: string; order_lines: { id: string }[] | null }) => {
+  const progressOf = (o: { id: string; order_lines: { id: string }[] | null; ship_date: string | null; revised_ship_date: string | null }) => {
     const rows = (steps ?? []).filter((s) => s.order_id === o.id);
     const lineIds = (o.order_lines ?? []).map((l) => l.id);
     const at = lineIds.map((id) => Math.max(-1, ...rows.filter((s) => s.line_id === id && s.done_on).map((s) => TNA_STEPS.findIndex((t) => t.key === s.stage))));
@@ -81,6 +82,13 @@ export default async function OrdersPage({ searchParams }: PageProps<"/">) {
       done: rows.filter((s) => s.done_on && lineIds.includes(s.line_id)).length,
       total: rows.filter((s) => (s.planned_on || s.done_on) && lineIds.includes(s.line_id)).length,
       behind: rows.some((s) => lineIds.includes(s.line_id) && !s.done_on && s.planned_on && s.planned_on < today),
+      // Days the latest style will likely miss the ship date by, with late steps pushing the later ones back.
+      riskDays: Math.max(0, ...lineIds.map((id) => {
+        const mine = rows.filter((s) => s.line_id === id);
+        const ordered = [...TNA_STEPS.map((t) => mine.find((s) => s.stage === t.key)), ...mine.filter((s) => s.stage.startsWith("extra_"))]
+          .map((s) => ({ planned_on: s?.planned_on, done_on: s?.done_on }));
+        return shipRisk(project(ordered, today), dueDate(o)).daysLate;
+      })),
     };
   };
   const built = (data ?? []).map((o) => {
@@ -113,7 +121,7 @@ export default async function OrdersPage({ searchParams }: PageProps<"/">) {
     .sort((a, b) => (a.due ?? "9999").localeCompare(b.due ?? "9999") || a.order_no.localeCompare(b.order_no));
 
   const planChip = (p: NonNullable<(typeof built)[number]["progress"]>, looksShipped: boolean) =>
-    looksShipped ? <span className="chip warn">Shipped? Close it</span> : p.behind ? <span className="chip bad">Behind plan</span> : !p.planned ? <span className="chip warn">No targets</span> : <span className="chip ok">On plan</span>;
+    looksShipped ? <span className="chip warn">Shipped? Close it</span> : p.riskDays > 0 ? <span className="chip bad" title="A late step pushes back every step after it">At risk · {p.riskDays}d late</span> : p.behind ? <span className="chip bad">Behind plan</span> : !p.planned ? <span className="chip warn">No targets</span> : <span className="chip ok">On plan</span>;
   const all = counts.data ?? [];
   const openCount = all.filter((o) => o.status === "open").length;
   // Tiles count every open order, whatever is typed in the search box.

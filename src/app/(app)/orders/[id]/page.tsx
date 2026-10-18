@@ -11,7 +11,8 @@ import { OrderHistory } from "./order-history";
 import { OrderMargin } from "./order-margin";
 import { OrderProduction } from "./order-production";
 import { OrderQc, type QcCheck } from "./order-qc";
-import { OrderStyles, type ExtraStep, type FactoryGroup, type StepQc } from "./order-styles";
+import { OrderStyles, type Baseline, type ExtraStep, type FactoryGroup, type StepQc } from "./order-styles";
+import { project, shipRisk } from "@/lib/tna-plan";
 import { loadTeam, personName } from "@/lib/data";
 import { PHOTO_BUCKET } from "@/lib/storage";
 import { MarkShipped } from "../mark-shipped";
@@ -48,7 +49,7 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
       .order("created_at", { ascending: false }),
     loadTeam(),
     getMe(),
-    supabase.from("line_stages").select("line_id, stage, planned_on, done_on, not_needed, factory_on, label, added_at, updated_at").eq("order_id", id).order("added_at"),
+    supabase.from("line_stages").select("line_id, stage, planned_on, done_on, not_needed, factory_on, label, added_at, updated_at, baseline_on, target_note").eq("order_id", id).order("added_at"),
     supabase.from("factory_pos").select("factory_id, plan_requested_on, plan_requested_at, buffer_days, factory_sent_at, released_at, plan_entered_by").eq("order_id", id),
     // Steps factories marked done in their panel, waiting for the team to confirm.
     supabase.from("step_updates").select("id, line_id, factory_id, stage, done_on, note, photos, created_at").eq("order_id", id).eq("status", "pending").order("created_at"),
@@ -106,6 +107,8 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
       g = {
         factoryId: l.factory_id ?? null,
         factoryName: l.factory_id ? opts.factories.find((f) => f.id === l.factory_id)?.label ?? "Factory" : "No factory yet",
+        factoryShort: opts.factories.find((f) => f.id === l.factory_id)?.name ?? "",
+        factoryPhone: opts.factories.find((f) => f.id === l.factory_id)?.phone ?? null,
         planRequestedOn: str(po?.plan_requested_on),
         planRequestedAt: str(po?.plan_requested_at),
         bufferDays: po?.buffer_days ?? null,
@@ -207,6 +210,9 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
     ].filter((x, i, a) => x !== "" || (a[i - 1] ?? "") !== "").join("\n"),
   })) : [])];
   const behind = lines.filter((l) => styleSteps(l.id).some((x) => !x.row?.done_on && x.row?.planned_on && x.row.planned_on < today)).length;
+  // Where the order is heading: its latest style, with every late step pushing the steps after it back.
+  const outlook = o.status === "open" ? lines.map((l) => shipRisk(project(styleSteps(l.id).map((x) => ({ planned_on: x.row?.planned_on, done_on: x.row?.done_on })), today), due))
+    .reduce((w, r) => (r.daysLate > w.daysLate || (w.level === "ok" && r.level === "behind") ? r : w), { level: "ok" as "ok" | "behind" | "risk", daysLate: 0 }) : null;
   const tabs: SectionTab[] = [
     { id: "tna", label: "Styles", count: pendingUpdates.length || behind || undefined, tone: pendingUpdates.length ? "info" : "bad" },
     { id: "qc", label: "QC" },
@@ -226,6 +232,7 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
             <span className={STATUS[o.status]?.cls}>{STATUS[o.status]?.label}</span>
             <span>{due ? `Ships ${day(due)}` : "No ship date yet"}{o.status === "open" && due && due < todayIST() && <b className="text-bad"> · {daysBetween(due, todayIST())} days late</b>}</span>
             <span>{lines.length} {lines.length === 1 ? "style" : "styles"} · {qty(lines.reduce((t, l) => t + l.qty, 0))} pcs</span>
+            {outlook?.level === "risk" && <span className="chip bad" title="A late step pushes back every step after it">Ship date at risk · about {outlook.daysLate} {outlook.daysLate === 1 ? "day" : "days"} late</span>}
           </p>
           <p className="hide-phone text-xs">Entered {dayAt(o.created_at)}{o.updated_at.slice(0, 16) !== o.created_at.slice(0, 16) && `, last changed ${dayAt(o.updated_at)}`}</p>
         </div>
@@ -249,6 +256,7 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
         open={o.status === "open"}
         canEdit={canEdit}
         canDone={canEnterDone(me?.role)}
+        isOwner={me?.role === "owner"}
         today={todayIST()}
         now={new Date().toISOString()}
         dueDate={due ?? ""}
@@ -259,6 +267,7 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
         }, {})}
         factoryDates={Object.fromEntries((lineStages ?? []).filter((r) => r.factory_on).map((r) => [`${r.line_id}:${r.stage}`, String(r.factory_on)]))}
         initial={Object.fromEntries((lineStages ?? []).map((r) => [`${r.line_id}:${r.stage}`, { planned_on: str(r.planned_on), done_on: str(r.done_on), not_needed: !!r.not_needed }]))}
+        baselines={Object.fromEntries((lineStages ?? []).filter((r) => r.baseline_on).map((r): [string, Baseline] => [`${r.line_id}:${r.stage}`, { on: String(r.baseline_on), note: str(r.target_note) }]))}
         qc={stepQc}
       />
       </div>

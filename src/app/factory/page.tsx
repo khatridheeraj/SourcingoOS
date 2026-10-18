@@ -1,7 +1,9 @@
+import { cookies } from "next/headers";
 import { getMe } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { FactoryOrder, type PanelOrder } from "./factory-order";
 import type { FactoryUpdate } from "./step-update";
+import { LANG_COOKIE, langOf, words } from "./i18n";
 
 export default async function FactoryPage() {
   const supabase = await createClient();
@@ -10,30 +12,29 @@ export default async function FactoryPage() {
   const panel = (data ?? { factory: "", orders: [] }) as { factory: string; orders: PanelOrder[] };
   const waiting = panel.orders.filter((o) => !o.released_at);
   const now = new Date().toISOString();
+  const lang = langOf((await cookies()).get(LANG_COOKIE)?.value);
+  const w = words(lang);
 
   return (
     <>
       <div className="head">
         <div className="grow">
-          <h1>{panel.factory || "Your POs"}</h1>
-          <p className="show-phone">Give your finish date for every step, on or before the target, and send it within 24 hours of being asked.</p>
-          <p className="hide-phone">
-            For each order, enter the date you will finish every step for each style, on or before the target date, and send it within 24 hours of being asked.
-            Sourcingo releases the PO once your dates and their plan are both in. Your dates are fixed after release.
-          </p>
+          <h1>{panel.factory || w.yourPos}</h1>
+          <p className="show-phone">{w.introPhone}</p>
+          <p className="hide-phone">{w.intro}</p>
         </div>
       </div>
       {error && <div className="errbox">{error.message}</div>}
       {panel.orders.length === 0 ? (
-        <div className="empty"><b>No open orders for you right now</b>New POs appear here when Sourcingo asks for your plan.</div>
+        <div className="empty"><b>{w.noOrders}</b>{w.noOrdersSub}</div>
       ) : (
         <>
           {waiting.length > 0 && (
             <p className="text-[13px] font-semibold text-warn">
-              {waiting.length} {waiting.length === 1 ? "order needs" : "orders need"} your TNA dates before the PO can be released.
+              {w.needDates(waiting.length)}
             </p>
           )}
-          {panel.orders.map((o) => <FactoryOrder key={o.order_id} order={o} now={now} companyId={me?.companyId ?? ""} updates={updates} />)}
+          {panel.orders.map((o) => <FactoryOrder key={o.order_id} order={o} now={now} companyId={me?.companyId ?? ""} updates={updates} lang={lang} />)}
         </>
       )}
     </>

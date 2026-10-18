@@ -5,6 +5,7 @@ import { fetchAll } from "@/lib/fetch-all";
 import { buyerName, loadBuyers, loadFactories } from "@/lib/data";
 import { day, daysBetween, dueDate, nowMs, planDueAt, PLAN_HOURS, qcKindLabel, qty, SHIP_QC, stageReached, TNA_STEPS, todayIST } from "@/lib/format";
 import { NO_COMPANY } from "@/lib/names";
+import { project, shipRisk } from "@/lib/tna-plan";
 import { createClient } from "@/lib/supabase/server";
 import { Icon, type IconName } from "@/components/nav";
 import { MarkShipped } from "../orders/mark-shipped";
@@ -95,6 +96,11 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
   // Steps that count: on a style still on the order and not marked not needed.
   const live = (stages ?? []).filter((s) => liveLine.has(s.line_id) && !s.not_needed);
   const latest = (lineId: string, kinds: string[]) => (checks ?? []).find((c) => c.line_id === lineId && kinds.includes(c.kind));
+  // Days the order's latest style will likely miss the ship date by: each late step pushes the later ones back.
+  const riskDays = (o: (typeof open)[number]) => Math.max(0, ...(o.order_lines ?? []).map((l) => shipRisk(project([
+    ...TNA_STEPS.map((t) => stageOf.get(`${l.id}:${t.key}`)),
+    ...(stages ?? []).filter((s) => s.line_id === l.id && s.stage.startsWith("extra_")),
+  ].filter((s) => !s?.not_needed).map((s) => ({ planned_on: s?.planned_on, done_on: s?.done_on })), today), dueDate(o)).daysLate));
   const finalPassed = (o: (typeof open)[number]) => (o.order_lines ?? []).length > 0 && (o.order_lines ?? []).every((l) => latest(l.id, SHIP_QC)?.result === "pass");
 
   // Orders that shipped long ago but were never closed: 30+ days past the ship date and packed or further.
@@ -192,7 +198,8 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
       key: `late:${o.id}`, href: due || !team ? `/orders/${o.id}#tna` : `/orders/${o.id}#details`, sev: "bad", ...base(o),
       detail: `${plural(late.length, "step")} overdue: ${labels.slice(0, 3).join(", ")}${labels.length > 3 ? ` and ${labels.length - 3} more` : ""}`
         + `${lines > 1 ? ` · ${styles === lines ? `all ${lines} styles` : `${styles} of ${lines} styles`}` : ""}${due ? ` · ships ${dm(due)}` : ""}`,
-      chip: !due ? { text: "No ship date", cls: "bad" } : due < today ? { text: `${plural(daysBetween(due, today), "day")} late`, cls: "bad" } : { text: "Behind plan", cls: "bad" },
+      chip: !due ? { text: "No ship date", cls: "bad" } : due < today ? { text: `${plural(daysBetween(due, today), "day")} late`, cls: "bad" }
+        : riskDays(o) ? { text: `At risk · ${riskDays(o)}d late`, cls: "bad" } : { text: "Behind plan", cls: "bad" },
       action: !team ? "Enter done dates" : due ? "Update TNA" : "Set ship date", sort: due ?? "",
     });
   }
@@ -329,7 +336,7 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
     const lateBy = d && d < today ? daysBetween(d, today) : 0;
     return !d ? { text: "No ship date", cls: "bad" } : lateBy ? { text: `${plural(lateBy, "day")} late`, cls: "bad" }
       : finalPassed(o) ? { text: "Final QC passed", cls: "ok" } : !p.total ? { text: "No targets", cls: "warn" }
-      : p.behind ? { text: "Behind plan", cls: "bad" } : { text: "On plan", cls: "ok" };
+      : riskDays(o) ? { text: `At risk · ${riskDays(o)}d late`, cls: "bad" } : p.behind ? { text: "Behind plan", cls: "bad" } : { text: "On plan", cls: "ok" };
   };
   const kpis = [
     { key: "now", href: qs("now"), label: "Needs you now", value: String(nowCount), sev: nowCount ? "bad" : "ok", sub: nowCount ? "Late, overdue or blocking" : "All clear" },

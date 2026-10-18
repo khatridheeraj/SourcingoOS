@@ -558,6 +558,11 @@ do $$ begin
 exception when raise_exception then
   if sqlerrm not like '%OZ-103 (factory later than target: Greige%Embroidery)%' then raise; end if;
 end $$;
+-- A style's current target for a step, so later saves keep the targets that release locked.
+create function pg_temp.plan(p_style text, p_stage text) returns text language sql as $$
+  select s.planned_on::text from public.line_stages s join public.order_lines l on l.id = s.line_id
+  where l.style = p_style and l.removed_at is null and s.stage = p_stage
+$$;
 -- The merchandiser accepts the factory's dates as the targets, then releases.
 update public.line_stages set planned_on = factory_on where planned_on < factory_on;
 select public.release_factory_po(:'save_order', '20000000-0000-0000-0000-000000000001');
@@ -585,13 +590,13 @@ do $$ begin
   end;
 end $$;
 select public.save_line_stages(:'save_order', jsonb_build_array(
-  jsonb_build_object('line_id', (select id from public.order_lines where style = 'OZ-103' and removed_at is null), 'stage', 'fabric', 'planned_on', '2026-11-01', 'done_on', '2026-11-03'),
-  jsonb_build_object('line_id', (select id from public.order_lines where style = 'OZ-103' and removed_at is null), 'stage', 'cutting', 'planned_on', '2026-11-10', 'done_on', '2026-11-09')));
+  jsonb_build_object('line_id', (select id from public.order_lines where style = 'OZ-103' and removed_at is null), 'stage', 'fabric', 'planned_on', pg_temp.plan('OZ-103', 'fabric'), 'done_on', '2026-11-03'),
+  jsonb_build_object('line_id', (select id from public.order_lines where style = 'OZ-103' and removed_at is null), 'stage', 'cutting', 'planned_on', pg_temp.plan('OZ-103', 'cutting'), 'done_on', '2026-11-09')));
 do $$ begin
   if (select stage from public.orders) is not null then raise exception 'order stage should follow its slowest style (OZ-101 not started)'; end if;
 end $$;
 select public.save_line_stages(:'save_order', jsonb_build_array(
-  jsonb_build_object('line_id', (select id from public.order_lines where style = 'OZ-101'), 'stage', 'fabric', 'planned_on', '2026-11-01', 'done_on', '2026-11-02')));
+  jsonb_build_object('line_id', (select id from public.order_lines where style = 'OZ-101'), 'stage', 'fabric', 'planned_on', pg_temp.plan('OZ-101', 'fabric'), 'done_on', '2026-11-02')));
 do $$ begin
   if (select stage from public.orders) <> 'fabric' then raise exception 'order stage not moved to fabric: %', (select stage from public.orders); end if;
   if (select count(*) from public.line_stages) <> 31 then raise exception 'saving again added a duplicate row'; end if;
@@ -608,7 +613,7 @@ do $$ begin
   end;
 end $$;
 -- The stage follows all 15 standard steps: Mid-line done on every style reads as Mid-line, not Not started.
-select public.save_line_stages(:'save_order', (select jsonb_agg(jsonb_build_object('line_id', id, 'stage', 'midline', 'planned_on', '2026-11-05', 'done_on', '2026-11-04'))
+select public.save_line_stages(:'save_order', (select jsonb_agg(jsonb_build_object('line_id', id, 'stage', 'midline', 'planned_on', pg_temp.plan(style, 'midline'), 'done_on', '2026-11-04'))
   from public.order_lines where removed_at is null));
 do $$ begin
   if (select stage from public.orders) is distinct from 'midline' then raise exception 'order stage not moved to Mid-line: %', (select stage from public.orders); end if;
