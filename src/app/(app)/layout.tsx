@@ -1,6 +1,5 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Nav } from "@/components/nav";
+import { Sidebar, type NavGroup } from "@/components/nav";
 import { canEditOrders, getMe, roleLabel } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 
@@ -19,33 +18,23 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
     toCheck = count ?? 0;
   }
 
-  const items = [
-    { href: "/today", label: "Home" },
-    { href: "/", label: "Orders" },
-    ...(canEditOrders(me.role) ? [{ href: "/pos", label: toCheck ? `Incoming POs (${toCheck})` : "Incoming POs" }] : []),
-    ...(canEditOrders(me.role) ? [{ href: "/buyers", label: "Buyers" }, { href: "/factories", label: "Factories" }] : []),
-    ...(me.role === "owner" || me.role === "accounts" ? [{ href: "/payments", label: "Payments" }, { href: "/tally", label: "Tally" }] : []),
-    ...(me.role === "owner" ? [{ href: "/team", label: "Team" }, { href: "/activity", label: "Activity log" }] : []),
+  const edit = canEditOrders(me.role);
+  const money = me.role === "owner" || me.role === "accounts";
+  const groups: NavGroup[] = [
+    { items: [
+      { href: "/today", label: "Home", icon: "home" },
+      { href: "/", label: "Orders", icon: "orders" },
+      ...(edit ? [{ href: "/pos", label: "Incoming POs", icon: "inbox" as const, count: toCheck }] : []),
+    ] },
+    ...(edit ? [{ label: "Partners", items: [{ href: "/buyers", label: "Buyers", icon: "buyers" as const }, { href: "/factories", label: "Factories", icon: "factories" as const }] }] : []),
+    ...(money ? [{ label: "Finance", items: [{ href: "/payments", label: "Payments", icon: "payments" as const }, { href: "/tally", label: "Tally", icon: "tally" as const }] }] : []),
+    ...(me.role === "owner" ? [{ label: "Admin", items: [{ href: "/team", label: "Team", icon: "team" as const }, { href: "/activity", label: "Activity log", icon: "activity" as const }] }] : []),
   ];
 
   return (
-    <div className="flex min-h-full flex-col">
-      <header className="sticky top-0 z-30 border-b border-line bg-surface">
-        <div className="mx-auto flex w-full max-w-[1180px] flex-wrap items-center gap-x-5 gap-y-2 px-4 py-2.5">
-          <Link href="/today" className="flex items-baseline gap-2">
-            <b className="font-display text-lg tracking-tight">Sourcingo</b>
-            <span className="text-[10.5px] uppercase tracking-widest text-muted">OS</span>
-          </Link>
-          {me.role && <Nav items={items} />}
-          <div className="ml-auto flex items-center gap-3 text-xs text-muted">
-            <span className="hidden sm:inline">{me.fullName || me.email} · {roleLabel(me.role)}{me.companyName && ` · ${me.companyName}`}</span>
-            <form action="/auth/signout" method="post">
-              <button className="font-semibold text-accent">Sign out</button>
-            </form>
-          </div>
-        </div>
-      </header>
-      <main className="mx-auto flex w-full max-w-[1180px] flex-1 flex-col gap-[18px] px-4 pb-16 pt-5">
+    <div className="shell">
+      {me.role && <Sidebar groups={groups} user={me.fullName || me.email} role={roleLabel(me.role)} company={me.companyName ?? ""} />}
+      <main className="page">
         {me.role ? children : (
           <div className="empty mt-10">
             <b>You haven&apos;t been added to a company yet</b>

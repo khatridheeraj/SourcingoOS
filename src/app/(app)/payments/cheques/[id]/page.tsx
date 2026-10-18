@@ -22,7 +22,7 @@ export default async function ChequePage({ params, searchParams }: PageProps<"/p
     <div className="stack">
       <div className="head">
         <div className="grow">
-          <Link href="/payments?tab=cheques" className="link text-xs">← Payments</Link>
+          <nav className="crumbs" aria-label="Breadcrumb"><Link href="/payments?tab=cheques">Payments</Link></nav>
           <h1>Cheque <span className="code">{c.cheque_no}</span> <span className="align-middle"><ChequeChip c={c} today={t} /></span></h1>
           <p><span>{buyerLabel(c.buyer_id)}</span> · {money(c.amount)}{c.bank ? ` · ${c.bank}` : ""}</p>
         </div>

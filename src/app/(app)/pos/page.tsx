@@ -108,7 +108,7 @@ export default async function IncomingPosPage({ searchParams }: PageProps<"/pos"
                     )}
                   </div>
                   <div className="todo-chip"><span className={s?.cls}>{s?.label}</span></div>
-                  <Link href={`/pos/${r.id}`} className={`btn sm todo-act ${r.status === "to_check" || r.status === "failed" ? "primary" : ""}`}>
+                  <Link href={`/pos/${r.id}`} className="btn sm todo-act">
                     {r.status === "to_check" || r.status === "failed" ? "Check and add" : "Open"}
                   </Link>
                 </li>

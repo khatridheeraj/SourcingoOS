@@ -34,22 +34,23 @@ export function LoginForm({ linkError }: { linkError: boolean }) {
 
   return (
     <form onSubmit={onSubmit} className="flex flex-col gap-3">
-      <label className="flex flex-col gap-1 text-sm font-semibold text-muted">
-        Work email
+      <label className="field">
+        <span>Work email</span>
         <input
           type="email"
           required
           autoFocus
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          className="rounded-lg border border-line bg-surface px-3 py-2 text-base font-normal text-foreground"
+          className="inp"
+          placeholder="you@sourcingo.in"
         />
       </label>
       {error && <p className="text-sm text-bad">{error}</p>}
       <button
         type="submit"
         disabled={state === "sending"}
-        className="rounded-lg bg-accent px-4 py-2 font-semibold text-white disabled:opacity-50"
+        className="btn primary w-full"
       >
         {state === "sending" ? "Sending…" : "Email me a sign-in link"}
       </button>

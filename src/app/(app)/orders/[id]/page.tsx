@@ -148,8 +148,8 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
     <>
       <div className="head">
         <div className="grow">
-          <Link href="/" className="link text-xs">← Orders</Link>
-          <h1><span className="code text-[19px]">{o.order_no}</span> · {opts.buyers.find((b) => b.id === o.buyer_id)?.label ?? ""} · PO {o.buyer_po}</h1>
+          <nav className="crumbs" aria-label="Breadcrumb"><Link href="/">Orders</Link><span aria-hidden>/</span><span>{o.order_no}</span></nav>
+          <h1>{opts.buyers.find((b) => b.id === o.buyer_id)?.label ?? "Order"} <span className="font-normal text-muted">PO {o.buyer_po}</span></h1>
           <p className="row">
             <span className={STATUS[o.status]?.cls}>{STATUS[o.status]?.label}</span>
             <span>{due ? `Ships ${day(due)}` : "No ship date yet"}{o.status === "open" && due && due < todayIST() && <b className="text-bad"> · {daysBetween(due, todayIST())} days late</b>}</span>

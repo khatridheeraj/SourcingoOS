@@ -237,32 +237,46 @@ export function OrderQc({ orderId, companyId, open, canRecord, today, checks, fi
           {mine.map((c) => {
             const editable = can && !c.cancelled_at;
             return (
-              <li key={c.id} className={`rounded-[10px] border border-line p-3 text-[13px] ${c.cancelled_at ? "opacity-60" : ""}`}>
-                <div className="row">
+              <li key={c.id} className={`qc-item ${c.cancelled_at ? "opacity-60" : ""}`}>
+                <div className="qc-top">
                   <b>{qcKindLabel(c.kind)}</b>
                   <span className={c.cancelled_at ? "chip" : c.result === "pass" ? "chip ok" : "chip bad"}>
                     {c.cancelled_at ? "Cancelled" : c.result === "pass" ? "Pass" : "Fail"}
                   </span>
                   <span className="muted">{day(c.checked_on)} · {c.by}</span>
-                  {editable && <button type="button" className="btn sm danger ml-auto" disabled={pending} onClick={() => cancel(c.id)}>Cancel</button>}
+                  {editable && (
+                    <span className="qc-acts">
+                      <label className={`btn sm ghost ${pending ? "pointer-events-none opacity-50" : ""}`}>
+                        {busy === c.id ? "Uploading…" : "Add photos"}
+                        <input type="file" accept="image/*" multiple className="sr-only" aria-label="Add photos to this check"
+                          onChange={(e) => { addLater(c.id, e.target.files, "photo"); e.target.value = ""; }} />
+                      </label>
+                      <label className={`btn sm ghost ${pending ? "pointer-events-none opacity-50" : ""}`}>
+                        Add report
+                        <input type="file" accept={REPORT_ACCEPT} multiple className="sr-only" aria-label="Add reports to this check"
+                          onChange={(e) => { addLater(c.id, e.target.files, "report"); e.target.value = ""; }} />
+                      </label>
+                      <button type="button" className="btn sm ghost danger" disabled={pending} onClick={() => cancel(c.id)}>Cancel check</button>
+                    </span>
+                  )}
                 </div>
                 {(c.pieces_checked != null || c.defects > 0) && (
-                  <div className="mt-1">
+                  <div className="mt-1.5">
                     {c.pieces_checked != null && <>{c.pieces_checked} pcs checked · </>}
                     {c.defects} {c.defects === 1 ? "defect" : "defects"}
                     {c.pieces_checked ? ` (${pct(c.defects, c.pieces_checked)})` : ""}
                   </div>
                 )}
-                {c.notes && <div className="mt-1 whitespace-pre-line">{c.notes}</div>}
-                {c.cancelled_at && <div className="muted mt-1">Cancelled: {c.cancel_reason}</div>}
+                {c.notes && <div className="mt-1.5 whitespace-pre-line">{c.notes}</div>}
+                {c.cancelled_at && <div className="muted mt-1.5">Cancelled: {c.cancel_reason}</div>}
 
-                {(c.photos.length > 0 || editable) && (
-                  <div className="mt-2 flex flex-wrap items-center gap-2">
+                {(c.photos.length > 0 || c.reports.length > 0) && (
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
                     {c.photos.map((ph, i) => (
                       <span key={ph.id} className="relative">
                         <a href={ph.url} target="_blank" rel="noreferrer" aria-label={`Photo ${i + 1} of this check`}>
                           {/* eslint-disable-next-line @next/next/no-img-element -- short-lived signed links, not for the image optimiser */}
-                          <img src={ph.url} alt="" className="h-20 w-20 rounded-lg border border-line object-cover" />
+                          <img src={ph.url} alt="" className="h-16 w-16 rounded-lg border border-line object-cover" />
                         </a>
                         {editable && (
                           <button type="button" className="absolute -right-1.5 -top-1.5 h-5 w-5 rounded-full border border-line bg-surface text-[11px] leading-none text-bad"
@@ -270,36 +284,17 @@ export function OrderQc({ orderId, companyId, open, canRecord, today, checks, fi
                         )}
                       </span>
                     ))}
-                    {editable && (
-                      <label className={`btn sm ${pending ? "pointer-events-none opacity-50" : ""}`}>
-                        {busy === c.id ? "Uploading…" : "Add photos"}
-                        <input type="file" accept="image/*" multiple className="sr-only" aria-label="Add photos to this check"
-                          onChange={(e) => { addLater(c.id, e.target.files, "photo"); e.target.value = ""; }} />
-                      </label>
-                    )}
-                  </div>
-                )}
-
-                {(c.reports.length > 0 || editable) && (
-                  <div className="mt-2 flex flex-wrap items-center gap-2">
                     {c.reports.map((r) => (
                       <span key={r.id} className="chip info">
                         <a href={r.url} target="_blank" rel="noreferrer" className="underline">{r.name}</a>
                         {editable && <button type="button" className="ml-1 text-bad" aria-label={`Remove ${r.name}`} disabled={pending} onClick={() => removeFile(r.id, "report")}>✕</button>}
                       </span>
                     ))}
-                    {editable && (
-                      <label className={`btn sm ${pending ? "pointer-events-none opacity-50" : ""}`}>
-                        Add report
-                        <input type="file" accept={REPORT_ACCEPT} multiple className="sr-only" aria-label="Add reports to this check"
-                          onChange={(e) => { addLater(c.id, e.target.files, "report"); e.target.value = ""; }} />
-                      </label>
-                    )}
                   </div>
                 )}
 
                 {c.comments.length > 0 && (
-                  <ul className="mt-3 flex flex-col gap-1.5 border-t border-line pt-2">
+                  <ul className="mt-3 flex flex-col gap-2 border-t border-line pt-3">
                     {c.comments.map((m) => (
                       <li key={m.id}>
                         <span className="muted text-xs">{m.by} · {time.format(new Date(m.at))}</span>
@@ -308,11 +303,11 @@ export function OrderQc({ orderId, companyId, open, canRecord, today, checks, fi
                     ))}
                   </ul>
                 )}
-                <div className="mt-2 flex gap-2">
-                  <input className="inp flex-1" placeholder="Add a comment" aria-label="Comment on this check" value={drafts[c.id] ?? ""}
+                <div className="qc-comment">
+                  <input className="inp" placeholder="Add a comment…" aria-label="Comment on this check" value={drafts[c.id] ?? ""}
                     onChange={(e) => setDrafts((d) => ({ ...d, [c.id]: e.target.value }))}
                     onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); comment(c.id); } }} />
-                  <button type="button" className="btn sm" disabled={pending || !(drafts[c.id] ?? "").trim()} onClick={() => comment(c.id)}>Comment</button>
+                  {(drafts[c.id] ?? "").trim() && <button type="button" className="btn sm" disabled={pending} onClick={() => comment(c.id)}>Comment</button>}
                 </div>
               </li>
             );

@@ -127,34 +127,34 @@ export default async function OrdersPage({ searchParams }: PageProps<"/">) {
       <div className="head">
         <div className="grow">
           <h1>Orders</h1>
-          <p>One line per buyer PO. Sorted by ship date, earliest first. A new ship date replaces the buyer&apos;s date when an order slips.</p>
+          <p>Every buyer PO, earliest ship date first. A new ship date replaces the buyer&apos;s when an order slips.</p>
         </div>
         {prices && <Link href="/orders/new" className="btn primary">New order</Link>}
       </div>
 
       {status === "open" && openCount > 0 && (
-        <div className="tiles">
-          <div className="tile"><span>Open orders</span><b>{openCount}</b></div>
-          <div className="tile"><span>Pieces on open orders</span><b>{qty(open.reduce((s, r) => s + r.pieces, 0))}</b></div>
-          <Link href="/?status=late" className={`tile ${late ? "alarm" : ""}`}><span>Late, past ship date</span><b>{late}</b></Link>
-          <div className={`tile ${noFactory ? "alarm" : ""}`}><span>Orders needing a factory</span><b>{noFactory}</b></div>
+        <div className="kpis" style={{ gridTemplateColumns: `repeat(${openMargin && openMargin.sale > 0 ? 5 : 4}, minmax(0, 1fr))` }}>
+          <div className="kpi"><span className="kpi-label"><i aria-hidden />Open orders</span><b>{openCount}</b><small>{qty(open.reduce((s, r) => s + r.styles.length, 0))} styles</small></div>
+          <div className="kpi"><span className="kpi-label"><i aria-hidden />Pieces</span><b>{qty(open.reduce((s, r) => s + r.pieces, 0))}</b><small>On open orders</small></div>
+          <Link href="/?status=late" className={`kpi ${late ? "bad" : "ok"}`}><span className="kpi-label"><i aria-hidden />Late</span><b>{late}</b><small>Past their ship date</small></Link>
+          <div className={`kpi ${noFactory ? "warn" : "ok"}`}><span className="kpi-label"><i aria-hidden />Need a factory</span><b>{noFactory}</b><small>{noFactory ? "Choose one on the order" : "Every style has one"}</small></div>
           {openMargin && openMargin.sale > 0 && (
-            <div className="tile"><span>Margin on open orders</span><b className={marginCls(openMargin.pct)}>{money(openMargin.margin)}</b><span className="mt-1">{pct(openMargin.pct)} of {money(openMargin.sale)}</span></div>
+            <div className="kpi"><span className="kpi-label"><i aria-hidden />Margin</span><b className={marginCls(openMargin.pct)}>{money(openMargin.margin)}</b><small>{pct(openMargin.pct)} of {money(openMargin.sale)}</small></div>
           )}
         </div>
       )}
 
-      <div className="row">
-        <div className="filters">
+      <div className="flex flex-wrap items-center gap-3">
+        <nav className="seg" aria-label="Show">
           {TABS.map((t) => (
-            <Link key={t.key} className="pill" href={t.key === "open" ? "/" : `/?status=${t.key}`} aria-current={status === t.key ? "page" : undefined}>
-              {t.label} {t.key === "all" ? all.length : t.key === "late" ? late : all.filter((o) => o.status === t.key).length}
+            <Link key={t.key} href={t.key === "open" ? "/" : `/?status=${t.key}`} aria-current={status === t.key ? "page" : undefined}>
+              {t.label} <span>{t.key === "all" ? all.length : t.key === "late" ? late : all.filter((o) => o.status === t.key).length}</span>
             </Link>
           ))}
-        </div>
-        <form className="ml-auto w-full sm:w-64">
+        </nav>
+        <form className="ml-auto w-full sm:w-72">
           {status !== "open" && <input type="hidden" name="status" value={status} />}
-          <input className="inp" name="q" defaultValue={q} placeholder="Search PO, style, buyer, factory" aria-label="Search orders" />
+          <input className="inp" type="search" name="q" defaultValue={q} placeholder="Search PO, style, buyer, factory" aria-label="Search orders" />
         </form>
       </div>
 
@@ -166,77 +166,51 @@ export default async function OrdersPage({ searchParams }: PageProps<"/">) {
           {all.length === 0 && "Add the first one with New order, or send the confirmed sheet and Claude will load it."}
         </div>
       ) : (
-        <>
-        <ul className="flex flex-col gap-2 sm:hidden">
+        <div className={`olist ${prices ? "" : "noprice"}`} role="table" aria-label="Orders">
+          <div className="olist-h" role="row">
+            <span role="columnheader">Order</span><span role="columnheader">Ship date</span><span role="columnheader" className="r">Pieces</span>
+            {prices && <><span role="columnheader" className="r">Value</span><span role="columnheader" className="r">Margin</span></>}
+            <span role="columnheader">Progress</span>
+          </div>
           {rows.map((r) => (
-            <li key={r.id}>
-              <Link href={`/orders/${r.id}`} className="panel flex flex-col gap-1 !p-3.5">
-                <div className="row justify-between">
-                  <b className="code text-accent">{r.order_no}</b>
-                  <span className={STATUS[r.status]?.cls}>{STATUS[r.status]?.label}</span>
-                </div>
-                <div className="font-semibold">{r.buyer_po} <span className="muted font-normal">{r.buyer}</span></div>
-                <div className="muted text-[13px]">{r.styles.length} {r.styles.length === 1 ? "style" : "styles"} · {qty(r.pieces)} pcs{r.value != null && ` · ${money(r.value)}`}
-                  {r.margin && r.margin.sale > 0 && <> · margin <span className={marginCls(r.margin.pct)}>{pct(r.margin.pct)}</span></>}</div>
-                <div className="row text-[13px]">
-                  {r.due ? <span>Ships {day(r.due)}</span> : <span className="muted">No ship date</span>}
-                  {r.progress && planChip(r.progress, r.looksShipped)}
-                  {r.late && <span className="chip bad">Late {r.lateBy}d</span>}
-                  {r.needsQc && <span className="chip warn">Needs final QC</span>}
-                  {r.missingFactory && <span className="chip warn">Needs factory</span>}
-                </div>
-                {r.progress && <div className="muted text-[13px]">{r.progress.text}{r.progress.total > 0 && ` · ${r.progress.done} of ${r.progress.total} steps done`}</div>}
-              </Link>
-            </li>
+            <Link key={r.id} href={`/orders/${r.id}`} className="olist-r" role="row">
+              <span className="o-main" role="cell">
+                <span className="o-title"><span className="code">{r.order_no}</span>{r.buyer}</span>
+                <span className="o-sub">
+                  PO {r.buyer_po} · {r.styles.length <= 2 ? r.styles.join(", ") : `${r.styles.slice(0, 2).join(", ")} +${r.styles.length - 2}`}
+                  {r.factoryNames.length > 0 && ` · ${r.factoryNames.join(", ")}`}
+                </span>
+                {(r.missingFactory || r.needsQc) && (
+                  <span className="mt-1.5 flex gap-1.5">
+                    {r.missingFactory && <span className="chip warn">Needs factory</span>}
+                    {r.needsQc && <span className="chip warn">Needs final QC</span>}
+                  </span>
+                )}
+              </span>
+              <span className="o-date" role="cell">
+                {r.due ? day(r.due) : <span className="muted">No ship date</span>}
+                {r.late ? <small className="text-bad">{r.lateBy} {r.lateBy === 1 ? "day" : "days"} late</small>
+                  : r.revised_ship_date && r.ship_date && r.revised_ship_date !== r.ship_date ? <small title={r.delay_reason ?? undefined}>Buyer date {day(r.ship_date)}</small> : null}
+              </span>
+              <span className="r num" role="cell"><span className="o-k">Pieces </span>{qty(r.pieces)}</span>
+              {prices && <span className="r num" role="cell"><span className="o-k">Value </span>{money(r.value)}</span>}
+              {prices && (
+                <span className="r num" role="cell">
+                  {r.margin && r.margin.sale > 0 ? <><span className="o-k">Margin </span>{money(r.margin.margin)}<small className={marginCls(r.margin.pct)}>{pct(r.margin.pct)}{r.margin.missing > 0 && " · rate missing"}</small></> : <span className="muted">–</span>}
+                </span>
+              )}
+              <span className="o-prog" role="cell">
+                {r.progress ? (
+                  <>
+                    <span className="flex items-center justify-between gap-2">{planChip(r.progress, r.looksShipped)}<small className="num">{r.progress.total > 0 && `${r.progress.done}/${r.progress.total}`}</small></span>
+                    <span className="bar"><i className={r.progress.behind ? "bad" : ""} style={{ width: `${r.progress.total ? Math.max(3, (100 * r.progress.done) / r.progress.total) : 0}%` }} /></span>
+                    <small>{r.progress.text}</small>
+                  </>
+                ) : <span className={STATUS[r.status]?.cls}>{STATUS[r.status]?.label}</span>}
+              </span>
+            </Link>
           ))}
-        </ul>
-        <div className="table-wrap hidden sm:block">
-          <table className="tbl">
-            <thead>
-              <tr>
-                <th>Order</th><th>Buyer and PO</th><th>Styles</th><th className="r">Pieces</th>
-                {prices && <><th className="r">Value</th><th className="r">Margin</th></>}<th>Factory</th><th>Ship date</th><th>Progress</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((r) => (
-                <tr key={r.id} className="click">
-                  <td className="whitespace-nowrap"><Link href={`/orders/${r.id}`} className="link code">{r.order_no}</Link></td>
-                  <td>{r.buyer}<div className="muted text-xs">PO {r.buyer_po}</div></td>
-                  <td>{r.styles.length <= 2 ? r.styles.join(", ") : `${r.styles.slice(0, 2).join(", ")} +${r.styles.length - 2}`}</td>
-                  <td className="r num">{qty(r.pieces)}</td>
-                  {prices && <td className="r num">{money(r.value)}</td>}
-                  {prices && (
-                    <td className="r num whitespace-nowrap">
-                      {r.margin && r.margin.sale > 0 && <>{money(r.margin.margin)}<div className={`text-xs ${marginCls(r.margin.pct)}`}>{pct(r.margin.pct)}{r.margin.missing > 0 && " · rate missing"}</div></>}
-                    </td>
-                  )}
-                  <td>
-                    {r.factoryNames.join(", ")}
-                    {r.missingFactory && <span className="chip warn ml-1">Needs factory</span>}
-                  </td>
-                  <td className="whitespace-nowrap">
-                    {day(r.due)}
-                    {r.late && <span className="chip bad ml-1">Late {r.lateBy}d</span>}
-                    {r.revised_ship_date && r.ship_date && r.revised_ship_date !== r.ship_date && (
-                      <div className="muted text-xs" title={r.delay_reason ?? undefined}>Buyer date {day(r.ship_date)}</div>
-                    )}
-                  </td>
-                  <td>
-                    {r.progress
-                      ? <div className="w-[170px]">
-                          <div className="row gap-1">{planChip(r.progress, r.looksShipped)}{r.needsQc && <span className="chip warn">Needs final QC</span>}</div>
-                          <span className="bar"><i className={r.progress.behind ? "bad" : ""} style={{ width: `${r.progress.total ? Math.max(3, (100 * r.progress.done) / r.progress.total) : 0}%` }} /></span>
-                          <div className="muted mt-1 text-xs">{r.progress.text}</div>
-                        </div>
-                      : <span className={STATUS[r.status]?.cls}>{STATUS[r.status]?.label}</span>}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
         </div>
-        </>
       )}
     </>
   );

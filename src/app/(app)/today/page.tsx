@@ -358,98 +358,53 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
         ))}
       </div>
 
-      <div className="home">
-        <div className="side">
-          <section className="card" aria-labelledby="todo-h">
-            <header className="card-h">
-              <div className="min-w-0">
-                <h2 id="todo-h">To do</h2>
-                <p>{TABS.find((t) => t.key === tab)?.hint}</p>
-              </div>
-              <nav className="seg" aria-label="When">
-                {TABS.filter((t) => t.key !== "waiting" || lists.waiting.length || tab === "waiting").map((t) => (
-                  <Link key={t.key} href={qs(t.key)} aria-current={tab === t.key ? "page" : undefined} scroll={false}>{t.label} <span>{lists[t.key].length}</span></Link>
-                ))}
-              </nav>
-            </header>
-            {lists[tab].length === 0 ? (
-              <p className="card-empty">
-                {tab === "now" ? "Nothing is late or blocked." : tab === "soon" ? "Nothing due in the next 7 days." : "Not waiting on any factory."}
-              </p>
-            ) : (
-              <ul className="todo">
-                {lists[tab].map((i) => (
-                  <li key={i.key}>
-                    <span className={`sev ${i.sev}`} aria-hidden />
-                    <div className="min-w-0">
-                      <Link href={i.href} className="todo-title">
-                        {i.code && <span className="code">{i.code}</span>}{i.title}
-                      </Link>
-                      <div className="todo-detail">{i.detail}</div>
-                      {i.links && (
-                        <div className="todo-links">
-                          {i.links.slice(0, 8).map((l) => <Link key={l.href} href={l.href} className="chip code">{l.text}</Link>)}
-                          {i.links.length > 8 && (
-                            <details>
-                              <summary className="chip">+{i.links.length - 8} more</summary>
-                              <div className="todo-links mt-1.5">{i.links.slice(8).map((l) => <Link key={l.href} href={l.href} className="chip code">{l.text}</Link>)}</div>
-                            </details>
-                          )}
-                        </div>
+      <section className="card" aria-labelledby="todo-h">
+        <header className="card-h">
+          <div className="min-w-0">
+            <h2 id="todo-h">To do</h2>
+            <p>{TABS.find((t) => t.key === tab)?.hint}</p>
+          </div>
+          <nav className="seg" aria-label="When">
+            {TABS.filter((t) => t.key !== "waiting" || lists.waiting.length || tab === "waiting").map((t) => (
+              <Link key={t.key} href={qs(t.key)} aria-current={tab === t.key ? "page" : undefined} scroll={false}>{t.label} <span>{lists[t.key].length}</span></Link>
+            ))}
+          </nav>
+        </header>
+        {lists[tab].length === 0 ? (
+          <p className="card-empty">
+            {tab === "now" ? "Nothing is late or blocked." : tab === "soon" ? "Nothing due in the next 7 days." : "Not waiting on any factory."}
+          </p>
+        ) : (
+          <ul className="todo">
+            {lists[tab].map((i) => (
+              <li key={i.key}>
+                <span className={`sev ${i.sev}`} aria-hidden />
+                <div className="min-w-0">
+                  <Link href={i.href} className="todo-title">
+                    {i.code && <span className="code">{i.code}</span>}{i.title}
+                  </Link>
+                  <div className="todo-detail">{i.detail}</div>
+                  {i.links && (
+                    <div className="todo-links">
+                      {i.links.slice(0, 8).map((l) => <Link key={l.href} href={l.href} className="chip code">{l.text}</Link>)}
+                      {i.links.length > 8 && (
+                        <details>
+                          <summary className="chip">+{i.links.length - 8} more</summary>
+                          <div className="todo-links mt-1.5">{i.links.slice(8).map((l) => <Link key={l.href} href={l.href} className="chip code">{l.text}</Link>)}</div>
+                        </details>
                       )}
                     </div>
-                    <div className="todo-chip">{i.chip && <span className={`chip ${i.chip.cls}`}>{i.chip.text}</span>}</div>
-                    <Link href={i.href} className={`btn sm todo-act ${i.sev === "bad" ? "primary" : ""}`}>{i.action}</Link>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
-
-          <section className="card styles-card" aria-labelledby="pipe-h">
-            <header className="card-h">
-              <div className="min-w-0">
-                <h2 id="pipe-h">Where the styles are</h2>
-                <p>Each style by the furthest step it has done.</p>
-              </div>
-              <span className="chip">{plural(styleTotal, "style")}</span>
-            </header>
-            <ul className="pipe">
-              {PHASES.map((p, i) => (
-                <li key={p.label} className="pipe-row">
-                  <span>{p.label}</span>
-                  <span className="track"><i className={i < 2 ? "dim" : i === PHASES.length - 1 ? "ok" : ""} style={{ width: `${styleTotal ? (100 * phaseCount[i]) / styleTotal : 0}%` }} /></span>
-                  <b className="num">{phaseCount[i]}</b>
-                </li>
-              ))}
-            </ul>
-          </section>
-        </div>
-
-        <div className="side">
-          {team && stale.length > 0 && (
-            <section className="card" aria-labelledby="tidy-h">
-              <header className="card-h">
-                <div className="min-w-0">
-                  <h2 id="tidy-h">Tidy up</h2>
-                  <p>Shipped long ago but still open, so they count as late.</p>
+                  )}
                 </div>
-                <span className="chip warn">{plural(stale.length, "order")}</span>
-              </header>
-              <ul className="rows">
-                {stale.map((o) => (
-                  <li key={o.id} className="tidy-row">
-                    <Link href={`/orders/${o.id}`} className="min-w-0">
-                      <span className="todo-title"><span className="code">{o.order_no}</span>{buyerOf.get(o.buyer_id)}</span>
-                      <span className="todo-detail block">Ship date {dm(dueDate(o)!)} · {qty(pcs([o]))} pcs</span>
-                    </Link>
-                    <MarkShipped orderId={o.id} orderNo={o.order_no} />
-                  </li>
-                ))}
-              </ul>
-            </section>
-          )}
+                <div className="todo-chip">{i.chip && <span className={`chip ${i.chip.cls}`}>{i.chip.text}</span>}</div>
+                <Link href={i.href} className="btn sm todo-act">{i.action}</Link>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
 
+      <div className="home">
           <section className="card" aria-labelledby="ship-h">
             <header className="card-h">
               <div className="min-w-0">
@@ -486,6 +441,48 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
             )}
           </section>
 
+        <div className="side">
+          {team && stale.length > 0 && (
+            <section className="card" aria-labelledby="tidy-h">
+              <header className="card-h">
+                <div className="min-w-0">
+                  <h2 id="tidy-h">Tidy up</h2>
+                  <p>Shipped long ago but still open, so they count as late.</p>
+                </div>
+                <span className="chip warn">{plural(stale.length, "order")}</span>
+              </header>
+              <ul className="rows">
+                {stale.map((o) => (
+                  <li key={o.id} className="tidy-row">
+                    <Link href={`/orders/${o.id}`} className="min-w-0">
+                      <span className="todo-title"><span className="code">{o.order_no}</span>{buyerOf.get(o.buyer_id)}</span>
+                      <span className="todo-detail block">Ship date {dm(dueDate(o)!)} · {qty(pcs([o]))} pcs</span>
+                    </Link>
+                    <MarkShipped orderId={o.id} orderNo={o.order_no} />
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+
+          <section className="card styles-card" aria-labelledby="pipe-h">
+            <header className="card-h">
+              <div className="min-w-0">
+                <h2 id="pipe-h">Where the styles are</h2>
+                <p>Each style by the furthest step it has done.</p>
+              </div>
+              <span className="chip">{plural(styleTotal, "style")}</span>
+            </header>
+            <ul className="pipe">
+              {PHASES.map((p, i) => (
+                <li key={p.label} className="pipe-row">
+                  <span>{p.label}</span>
+                  <span className="track"><i className={i < 2 ? "dim" : i === PHASES.length - 1 ? "ok" : ""} style={{ width: `${styleTotal ? (100 * phaseCount[i]) / styleTotal : 0}%` }} /></span>
+                  <b className="num">{phaseCount[i]}</b>
+                </li>
+              ))}
+            </ul>
+          </section>
         </div>
       </div>
     </>

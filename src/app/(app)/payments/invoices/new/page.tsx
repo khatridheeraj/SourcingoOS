@@ -11,7 +11,7 @@ export default async function NewInvoicePage({ searchParams }: PageProps<"/payme
     <>
       <div className="head">
         <div className="grow">
-          <Link href="/payments?tab=invoices" className="link text-xs">← Payments</Link>
+          <nav className="crumbs" aria-label="Breadcrumb"><Link href="/payments?tab=invoices">Payments</Link></nav>
           <h1>Add invoice</h1>
           <p>Enter each invoice you raise on a buyer, with the amount including tax.</p>
         </div>
