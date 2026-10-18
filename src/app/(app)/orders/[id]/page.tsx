@@ -161,25 +161,15 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
         {canEdit && o.status === "open" && <MarkShipped orderId={o.id} orderNo={o.order_no} />}
       </div>
       {saved && <div className="okbox">Order saved as {o.order_no}.</div>}
-      <OrderProduction
-        id={o.id}
-        open={o.status === "open"}
-        canEdit={canEdit}
-        shipDate={str(o.ship_date)}
-        today={todayIST()}
-        stage={o.stage}
-        stageAt={o.stage_at}
-        initial={{ revised_ship_date: str(o.revised_ship_date), delay_reason: str(o.delay_reason) }}
-      />
-      {canEdit && (
-        <OrderMargin
-          styles={lines.map((l) => ({
-            id: l.id, style: l.style, colour: str(l.colour), qty: l.qty,
-            buyerRate: l.buyer_rate == null ? null : Number(l.buyer_rate), factoryRate: l.factory_rate == null ? null : Number(l.factory_rate),
-          }))}
-          dispatches={dispatches}
-        />
-      )}
+      <nav className="jump" aria-label="Sections of this order">
+        <a href="#tna">Styles and TNA</a>
+        <a href="#qc">Quality checks</a>
+        {canEdit && <a href="#dispatch">Dispatch</a>}
+        {canEdit && <a href="#money">Margin</a>}
+        <a href="#ship">Ship date</a>
+        <a href="#details">Order details</a>
+        <a href="#history">History</a>
+      </nav>
       <OrderStyles
         // Start again from the saved dates whenever anyone's save changes them, so stale dates on this screen can't
         // be saved over someone else's newer ones.
@@ -202,12 +192,31 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
         initial={Object.fromEntries((lineStages ?? []).map((r) => [`${r.line_id}:${r.stage}`, { planned_on: str(r.planned_on), done_on: str(r.done_on), not_needed: !!r.not_needed }]))}
         qc={stepQc}
       />
+      <OrderQc orderId={o.id} companyId={o.company_id} open={o.status === "open"} canRecord={canRecordQc(me?.role)} today={todayIST()} checks={checks} finalPassed={finalPassed}
+        styles={lines.map((l) => ({ id: l.id, style: l.style, colour: str(l.colour), qty: l.qty }))} />
       {canEdit && (
         <OrderDispatch orderId={o.id} companyId={o.company_id} open={o.status === "open"} factories={dispatchFactories}
           dispatches={dispatches} now={Date.parse(new Date().toISOString())} today={todayIST()} />
       )}
-      <OrderQc orderId={o.id} companyId={o.company_id} open={o.status === "open"} canRecord={canRecordQc(me?.role)} today={todayIST()} checks={checks} finalPassed={finalPassed}
-        styles={lines.map((l) => ({ id: l.id, style: l.style, colour: str(l.colour), qty: l.qty }))} />
+      {canEdit && (
+        <OrderMargin
+          styles={lines.map((l) => ({
+            id: l.id, style: l.style, colour: str(l.colour), qty: l.qty,
+            buyerRate: l.buyer_rate == null ? null : Number(l.buyer_rate), factoryRate: l.factory_rate == null ? null : Number(l.factory_rate),
+          }))}
+          dispatches={dispatches}
+        />
+      )}
+      <OrderProduction
+        id={o.id}
+        open={o.status === "open"}
+        canEdit={canEdit}
+        shipDate={str(o.ship_date)}
+        today={todayIST()}
+        stage={o.stage}
+        stageAt={o.stage_at}
+        initial={{ revised_ship_date: str(o.revised_ship_date), delay_reason: str(o.delay_reason) }}
+      />
       {canEdit ? <OrderForm
         key={o.updated_at}
         initial={{
@@ -223,8 +232,8 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
         team={opts.team}
       /> : (
         // Quality sees what is being made, without prices.
-        <section className="panel">
-          <h2 className="mb-3 font-bold text-base">Styles</h2>
+        <section className="panel scroll-mt-20" id="details">
+          <h2 className="mb-3 font-bold text-base">Order details</h2>
           <div className="table-wrap">
             <table className="tbl">
               <thead><tr><th>Style</th><th>Colour</th><th>Description</th><th className="r">Pieces</th><th>Factory</th></tr></thead>
