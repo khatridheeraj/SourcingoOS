@@ -20,7 +20,7 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
   }
 
   const items = [
-    { href: "/today", label: "Today" },
+    { href: "/today", label: "Home" },
     { href: "/", label: "Orders" },
     ...(canEditOrders(me.role) ? [{ href: "/pos", label: toCheck ? `Incoming POs (${toCheck})` : "Incoming POs" }] : []),
     ...(canEditOrders(me.role) ? [{ href: "/buyers", label: "Buyers" }, { href: "/factories", label: "Factories" }] : []),
@@ -32,7 +32,7 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
     <div className="flex min-h-full flex-col">
       <header className="sticky top-0 z-30 border-b border-line bg-surface">
         <div className="mx-auto flex w-full max-w-[1180px] flex-wrap items-center gap-x-5 gap-y-2 px-4 py-2.5">
-          <Link href="/" className="flex items-baseline gap-2">
+          <Link href="/today" className="flex items-baseline gap-2">
             <b className="font-display text-lg tracking-tight">Sourcingo</b>
             <span className="text-[10.5px] uppercase tracking-widest text-muted">OS</span>
           </Link>

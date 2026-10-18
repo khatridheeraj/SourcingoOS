@@ -79,7 +79,7 @@ export function OrderDispatch({ orderId, companyId, open, factories, dispatches,
   }
 
   return (
-    <section className="panel" id="dispatch">
+    <section className="panel scroll-mt-20" id="dispatch">
       <div className="row mb-1">
         <h2 className="font-bold text-base">Dispatch</h2>
         {open && !adding && factories.length > 0 && <button type="button" className="btn sm ml-auto" onClick={() => setAdding(true)}>Record a purchase</button>}
