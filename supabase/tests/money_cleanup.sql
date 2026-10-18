@@ -61,7 +61,7 @@ select public.set_cheque_status(array[:'c1'::uuid, :'c2'::uuid, :'c3'::uuid], 'd
 -- ---------------------------------------------------------------- what is overdue counts Tally's receipts
 select pg_temp.expect((public.buyer_overdue(:'oz') ->> 'overdue_invoices')::int = 1, 'T1 is paid in Tally and T3 is not due, so only T2 is overdue');
 select pg_temp.expect((public.buyer_overdue(:'oz') ->> 'amount')::numeric = 700, 'T2 has 700 left after Tally''s 300');
-select pg_temp.expect((public.buyer_overdue(:'oz') ->> 'oldest_days')::int = 70, 'T2 fell due 70 days ago');
+select pg_temp.expect((public.buyer_overdue(:'oz') ->> 'oldest_days')::int = 70 + (public.india_today() - current_date), 'T2 fell due 70 days ago');
 select pg_temp.as_user('00000000-0000-0000-0000-00000000000b');
 select pg_temp.expect(public.buyer_overdue(:'oz') ->> 'amount' is null and (public.buyer_overdue(:'oz') ->> 'overdue_invoices')::int = 1,
   'the orders team sees the warning but not the amount');
@@ -89,7 +89,7 @@ select pg_temp.expect_error(format($$select public.save_cheque(jsonb_build_objec
   'Cheque 349892 is paid another way. Record a new cheque instead.');
 -- All or nothing: one bad entry keeps the others unchanged.
 select pg_temp.expect_error(format($$select public.settle_cheques('[{"id":"%s","status":"paid_other"},{"id":"%s","status":"paid_other","on":"%s"}]')$$,
-  :'c2', :'c2', current_date + 1), 'That date is in the future.');
+  :'c2', :'c2', public.india_today() + 1), 'That date is in the future.');
 select pg_temp.expect((select status = 'deposited' from public.cheques where id = :'c2'), 'a refused settle changed a cheque');
 -- Accounts can't undo it; the owner can.
 select pg_temp.expect_error(format($$select public.set_cheque_status(array['%s'::uuid], 'deposited', null, null)$$, :'c1'),
@@ -103,7 +103,7 @@ select pg_temp.as_user('00000000-0000-0000-0000-0000000000ac');
 select pg_temp.expect_error(format($$select public.set_cheque_notice('%s', current_date)$$, :'c2'), 'Only a bounced cheque has a legal notice.');
 select public.set_cheque_status(array[:'c2'::uuid], 'bounced', current_date - 4, 'Bounced: insufficient funds');
 select pg_temp.expect_error(format($$select public.set_cheque_notice('%s', current_date - 5)$$, :'c2'), 'Cheque 349893 bounced on %, so the notice can''t be sent before then.');
-select pg_temp.expect_error(format($$select public.set_cheque_notice('%s', current_date + 1)$$, :'c2'), 'That date is in the future.');
+select pg_temp.expect_error(format($$select public.set_cheque_notice('%s', public.india_today() + 1)$$, :'c2'), 'That date is in the future.');
 select public.set_cheque_notice(:'c2', current_date - 1);
 select pg_temp.expect((select notice_sent_on = current_date - 1 from public.cheques where id = :'c2'), 'notice date not kept');
 select public.set_cheque_notice(:'c2', null);

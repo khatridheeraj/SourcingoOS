@@ -64,7 +64,7 @@ select pg_temp.expect((:'bo'::jsonb ->> 'buyer') = 'Areeba Fashion House', 'buye
 select pg_temp.expect(jsonb_array_length(:'bo'::jsonb -> 'orders') = 1, 'buyer sees another buyer''s orders');
 select pg_temp.expect(jsonb_array_length(:'bo'::jsonb -> 'orders' -> 0 -> 'lines') = 2, 'buyer misses a style');
 select pg_temp.expect(jsonb_array_length(:'bo'::jsonb -> 'orders' -> 0 -> 'lines' -> 0 -> 'steps') = 15, 'buyer misses the steps');
-select pg_temp.expect(position('450' in :'bo') = 0 and position('555' in :'bo') = 0 and position('Kkora' in :'bo') = 0,
+select pg_temp.expect(not jsonb_path_exists(:'bo'::jsonb, '$.** ? (@ == 450 || @ == 555 || @ like_regex "^(450|555)(\\.0+)?$")') and position('Kkora' in :'bo') = 0,
   'buyer page shows a price or a factory');
 -- Only photos on the latest final QC open for a buyer (0039); a path with no QC photo behind it does not.
 select pg_temp.expect(not public.buyer_can_read_photo(:'co' || '/' || :'ord' || '/qc/x/p.jpg'), 'buyer opens a QC file that isn''t a final QC photo');
@@ -98,7 +98,7 @@ select pg_temp.expect(not public.factory_can_read_photo(:'co' || '/' || :'ord' |
 select pg_temp.expect_error(format($$select public.post_step_update('%s', 'greige', current_date, '', array['%s/%s/factory/%s/p.jpg'])$$, :'a1', :'co', :'ord', :'a1'),
   'You can update only your own styles on a released PO.');
 select pg_temp.expect_error(format($$select public.post_step_update('%s', 'greige', current_date, '', '{}')$$, :'k1'), 'Add at least one photo of the work.');
-select pg_temp.expect_error(format($$select public.post_step_update('%s', 'greige', current_date + 1, '', array['%s/%s/factory/%s/p.jpg'])$$, :'k1', :'co', :'ord', :'k1'),
+select pg_temp.expect_error(format($$select public.post_step_update('%s', 'greige', public.india_today() + 1, '', array['%s/%s/factory/%s/p.jpg'])$$, :'k1', :'co', :'ord', :'k1'),
   'Give the date the step was done%');
 select pg_temp.expect_error(format($$select public.post_step_update('%s', 'greige', current_date, '', array['%s/%s/factory/%s/p.jpg'])$$, :'k1', :'co', :'ord', :'a1'),
   'Those photos are not from this style.');
