@@ -51,7 +51,7 @@ create table public.marker_jobs (
   finished_at timestamptz
 );
 -- Readings are working files, not business records: they stay out of the activity history.
-drop trigger if exists marker_jobs_history on public.marker_jobs;
+alter table public.marker_jobs disable trigger marker_jobs_history;
 create index marker_jobs_open on public.marker_jobs (created_at) where status in ('uploading', 'reading', 'batch');
 
 create table public.marker_job_parts (
