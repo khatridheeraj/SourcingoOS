@@ -7,8 +7,9 @@ import { createClient } from "@/lib/supabase/server";
 export default async function AppLayout({ children }: LayoutProps<"/">) {
   const me = await getMe();
   if (!me) redirect("/login");
-  // A factory login only has its own panel.
+  // A factory or buyer login only has its own page.
   if (me.role === "factory") redirect("/factory");
+  if (me.role === "buyer") redirect("/buyer");
 
   // Buyer POs waiting for the orders team, shown on the menu.
   let toCheck = 0;

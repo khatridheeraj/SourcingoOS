@@ -1,0 +1,181 @@
+import { createClient } from "@/lib/supabase/server";
+import { day, daysBetween, qty, todayIST, TNA_STEPS } from "@/lib/format";
+import { PHOTO_BUCKET } from "@/lib/storage";
+
+type Step = { stage: string; label: string | null; planned_on: string | null; done_on: string | null };
+type FinalQc = { result: string; checked_on: string; pieces_checked: number | null; photos: string[] };
+type Line = { id: string; style: string; colour: string | null; description: string | null; qty: number; photo_path: string | null; steps: Step[]; final_qc: FinalQc | null };
+type Order = { id: string; order_no: string; buyer_po: string | null; po_date: string | null; status: string; ship_date: string | null; revised_ship_date: string | null; lines: Line[] };
+
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const dm = (d: string) => `${Number(d.slice(8, 10))} ${MONTHS[Number(d.slice(5, 7)) - 1]}`;
+const stepName = (s: Step) => s.label ?? TNA_STEPS.find((t) => t.key === s.stage)?.label ?? s.stage;
+
+// Where a style stands, in the buyer's words: the furthest step done and the one after it.
+// Inside targets are not deadlines for the buyer, so a passed target shows as "in progress", never as late.
+function where(l: Line, today: string) {
+  const done = l.steps.filter((s) => s.done_on).length;
+  let last = -1;
+  l.steps.forEach((s, i) => { if (s.done_on) last = i; });
+  const next = l.steps.slice(last + 1).find((s) => !s.done_on) ?? l.steps.find((s) => !s.done_on);
+  const at = last < 0 ? "Not started" : `At ${stepName(l.steps[last])}`;
+  const then = !next ? "Every step done"
+    : next.planned_on && next.planned_on >= today ? `Next: ${stepName(next)} by ${dm(next.planned_on)}` : `Next: ${stepName(next)}`;
+  return { done, total: l.steps.length, at, then, next };
+}
+
+function qcChip(q: FinalQc | null) {
+  if (!q) return { text: "Final QC not done yet", cls: "" };
+  return q.result === "pass" ? { text: `Final QC passed ${dm(q.checked_on)}`, cls: "ok" } : { text: "Final QC: being reworked", cls: "warn" };
+}
+
+export default async function BuyerPage() {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("buyer_orders");
+  const { buyer, orders } = (data ?? { buyer: "", orders: [] }) as { buyer: string; orders: Order[] };
+  const today = todayIST();
+
+  // One batch of short-lived links for every photo on the page.
+  const paths = [...new Set(orders.flatMap((o) => o.lines.flatMap((l) => [l.photo_path, ...(l.final_qc?.photos ?? [])]).filter((p): p is string => !!p)))];
+  const { data: signed } = paths.length ? await supabase.storage.from(PHOTO_BUCKET).createSignedUrls(paths, 3600) : { data: [] };
+  const url = new Map((signed ?? []).filter((s) => s.signedUrl).map((s) => [s.path, s.signedUrl]));
+
+  const open = orders.filter((o) => o.status === "open");
+  const styles = open.flatMap((o) => o.lines);
+  const passed = styles.filter((l) => l.final_qc?.result === "pass").length;
+  const nextShip = open.map((o) => o.revised_ship_date ?? o.ship_date).filter((d): d is string => !!d && d >= today).sort()[0];
+
+  return (
+    <>
+      <div className="head">
+        <div className="grow">
+          <h1>{buyer ? `${buyer}'s orders` : "Your orders"}</h1>
+          <p>Live from Sourcingo: where every style is, its ship date and its final quality check.</p>
+        </div>
+      </div>
+      {error && <div className="errbox">{error.message}</div>}
+
+      {orders.length === 0 && !error ? (
+        <div className="empty"><b>No open orders right now</b>Orders appear here as soon as Sourcingo enters your PO.</div>
+      ) : (
+        <>
+          <div className="kpis">
+            <div className="kpi"><span className="kpi-label"><i aria-hidden />Open orders</span><b>{open.length}</b><small>{styles.length} {styles.length === 1 ? "style" : "styles"}</small></div>
+            <div className="kpi"><span className="kpi-label"><i aria-hidden />Pieces</span><b>{qty(styles.reduce((n, l) => n + Number(l.qty), 0))}</b><small>across open orders</small></div>
+            <div className="kpi ok"><span className="kpi-label"><i aria-hidden />Final QC passed</span><b>{passed}<span className="kpi-of"> of {styles.length}</span></b><small>styles ready to pack</small></div>
+            <div className="kpi"><span className="kpi-label"><i aria-hidden />Next ship date</span><b>{nextShip ? dm(nextShip) : "None"}</b><small>{nextShip ? `in ${daysBetween(today, nextShip)} days` : "no open ship date ahead"}</small></div>
+          </div>
+
+          {orders.map((o) => {
+            const ship = o.revised_ship_date ?? o.ship_date;
+            const lines = o.lines.map((l) => ({ l, w: where(l, today), qc: qcChip(l.final_qc) }));
+            const done = lines.reduce((n, x) => n + x.w.done, 0);
+            const total = lines.reduce((n, x) => n + x.w.total, 0);
+            const shipped = o.status === "shipped";
+            const left = ship ? daysBetween(today, ship) : null;
+            return (
+              <section key={o.id} className="bord" aria-label={`PO ${o.buyer_po ?? o.order_no}`}>
+                <header className="bord-h">
+                  <div className="bord-id">
+                    <span className="eyebrow">Your PO</span>
+                    <h2>{o.buyer_po || o.order_no}</h2>
+                    <span className="muted">
+                      {[`Sourcingo ref ${o.order_no}`, o.po_date && `PO date ${day(o.po_date)}`, `${lines.length} ${lines.length === 1 ? "style" : "styles"}`,
+                        `${qty(o.lines.reduce((n, l) => n + Number(l.qty), 0))} pcs`].filter(Boolean).join(" · ")}
+                    </span>
+                  </div>
+                  <div className="bord-ship">
+                    {shipped ? <span className="chip ok">Shipped</span> : ship ? (
+                      <>
+                        <span className="eyebrow">{o.revised_ship_date ? "Revised ship date" : "Ship date"}</span>
+                        <b>{day(ship)}</b>
+                        {left != null && left >= 0 && <span className="muted">{left === 0 ? "today" : `in ${left} ${left === 1 ? "day" : "days"}`}</span>}
+                      </>
+                    ) : <span className="muted">Ship date to be confirmed</span>}
+                  </div>
+                </header>
+                {!shipped && total > 0 && (
+                  <div className="bord-prog">
+                    <div className="meter" role="progressbar" aria-valuemin={0} aria-valuemax={total} aria-valuenow={done} aria-label="Steps done">
+                      <i style={{ width: `${Math.round((done / total) * 100)}%` }} />
+                    </div>
+                    <span>{Math.round((done / total) * 100)}% done</span>
+                  </div>
+                )}
+                <ul className="bstyles">
+                  {lines.map(({ l, w, qc }) => {
+                    const photo = l.photo_path ? url.get(l.photo_path) : undefined;
+                    const qcPhotos = (l.final_qc?.photos ?? []).map((p) => url.get(p)).filter((u): u is string => !!u);
+                    return (
+                      <li key={l.id}>
+                        <details className="bstyle">
+                          <summary>
+                            <span className="style-photo">
+                              {/* eslint-disable-next-line @next/next/no-img-element -- short-lived signed links, not for the image optimiser */}
+                              {photo ? <img src={photo} alt="" /> : <span className="ph">No photo</span>}
+                            </span>
+                            <span className="bstyle-id">
+                              <b className="code">{l.style}</b>
+                              <span>{[l.colour, l.description, `${qty(l.qty)} pcs`].filter(Boolean).join(" · ")}</span>
+                            </span>
+                            <span className="bstyle-prog">
+                              <span className="stepper" aria-label={`${w.done} of ${w.total} steps done`}>
+                                {l.steps.map((s) => <i key={s.stage} className={s.done_on ? "ok" : s === w.next ? "now" : ""} />)}
+                              </span>
+                              <span className="style-line"><span>{w.at} · {w.done} of {w.total} done</span><b>{w.then}</b></span>
+                            </span>
+                            <span className={`chip ${qc.cls}`}>{qc.text}</span>
+                            <svg className="bstyle-chev" viewBox="0 0 16 16" aria-hidden><path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                          </summary>
+                          <div className="bstyle-body">
+                            <ol className="btimeline">
+                              {l.steps.map((s) => {
+                                const now = s === w.next;
+                                return (
+                                  <li key={s.stage} className={s.done_on ? "done" : now ? "now" : ""}>
+                                    <i aria-hidden>{s.done_on ? "✓" : ""}</i>
+                                    <span>{stepName(s)}</span>
+                                    <small>
+                                      {s.done_on ? `Done ${dm(s.done_on)}` : now ? (s.planned_on && s.planned_on >= today ? `In progress, by ${dm(s.planned_on)}` : "In progress")
+                                        : s.planned_on && s.planned_on >= today ? `Planned ${dm(s.planned_on)}` : "Coming up"}
+                                    </small>
+                                  </li>
+                                );
+                              })}
+                            </ol>
+                            {l.final_qc && (
+                              <div className="bqc">
+                                <div className="row">
+                                  <b>Final quality check</b>
+                                  <span className={`chip ${qc.cls}`}>{l.final_qc.result === "pass" ? "Passed" : "Being reworked"}</span>
+                                  <span className="muted text-[13px]">
+                                    {[day(l.final_qc.checked_on), l.final_qc.pieces_checked ? `${qty(l.final_qc.pieces_checked)} pcs checked` : ""].filter(Boolean).join(" · ")}
+                                  </span>
+                                </div>
+                                {qcPhotos.length > 0 && (
+                                  <div className="bqc-photos">
+                                    {qcPhotos.map((u, i) => (
+                                      <a key={u} href={u} target="_blank" rel="noreferrer" aria-label={`QC photo ${i + 1} of ${l.style}`}>
+                                        {/* eslint-disable-next-line @next/next/no-img-element -- short-lived signed links, not for the image optimiser */}
+                                        <img src={u} alt="" loading="lazy" />
+                                      </a>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        </details>
+                      </li>
+                    );
+                  })}
+                </ul>
+              </section>
+            );
+          })}
+          <p className="muted text-center text-[12.5px]">Questions about an order? Message your Sourcingo merchandiser.</p>
+        </>
+      )}
+    </>
+  );
+}

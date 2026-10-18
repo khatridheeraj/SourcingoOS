@@ -147,6 +147,19 @@ export async function saveLineStages(orderId: string, rows: LineStageInput[]): P
   return {};
 }
 
+// Confirms a factory's "step done" update (its done date goes in) or sends it back with a reason the factory sees.
+export async function reviewStepUpdate(orderId: string, updateId: string, confirm: boolean, note: string): Promise<{ error?: string }> {
+  const me = await getMe();
+  if (!canEnterDone(me?.role)) return { error: "Only the orders team and Quality confirm factory updates." };
+  if (!confirm && !note.trim()) return { error: "Say why, so the factory knows what to fix." };
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("review_step_update", { p_id: updateId, p_confirm: confirm, p_note: note.trim().slice(0, 300) });
+  if (error) return { error: friendly(error) };
+  revalidatePath("/today");
+  revalidatePath(`/orders/${orderId}`);
+  return {};
+}
+
 // Asks the factory for its TNA plan, with the buffer to keep before the PO's delivery date.
 // The factory then has 24 hours to send its dates in its panel. Nothing is sent outside the app.
 export async function requestPlan(orderId: string, factoryId: string, bufferDays: number): Promise<{ error?: string }> {

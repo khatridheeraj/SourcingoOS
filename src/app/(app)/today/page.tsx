@@ -231,6 +231,19 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
       chip: { text: `Ships in ${plural(daysBetween(today, due), "day")}`, cls: chip.cls }, action: me?.role === "quality" ? "Record final QC" : "Plan final QC", sort: due + o.order_no });
   }
 
+  // Steps factories marked done with photos in their panel, waiting for the orders team or Quality to confirm.
+  const { data: ups } = ids.length
+    ? await supabase.from("step_updates").select("order_id, line_id, stage, created_at").in("order_id", ids).eq("status", "pending").order("created_at")
+    : { data: [] };
+  for (const o of open) {
+    const mine = (ups ?? []).filter((u) => u.order_id === o.id);
+    if (!mine.length) continue;
+    const styleOf = new Map((o.order_lines ?? []).map((l) => [l.id, l.style]));
+    now_.push({ key: `upd:${o.id}`, href: `/orders/${o.id}#tna`, sev: "warn", ...base(o),
+      detail: `Factory marked ${mine.length === 1 ? "a step" : `${mine.length} steps`} done, with photos: ${mine.slice(0, 3).map((u) => `${styleOf.get(u.line_id) ?? ""} ${stepLabel(u.stage)}`.trim()).join(", ")}${mine.length > 3 ? ` and ${mine.length - 3} more` : ""}`,
+      action: "Check and confirm", sort: mine[0].created_at });
+  }
+
   // Buyer POs picked up from email or added from a file, waiting to be checked and added as orders.
   const { data: incoming } = team
     ? await supabase.from("incoming_pos").select("id, buyer_id, buyer_po, email_subject, status, received_at")
