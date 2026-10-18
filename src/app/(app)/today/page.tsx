@@ -309,121 +309,174 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
   const first = (me?.fullName ?? me?.email.split("@")[0] ?? "").split(" ")[0];
   const nowCount = lists.now.length;
 
+  const state = (o: (typeof open)[number]) => {
+    const d = dueDate(o);
+    const p = progress(o);
+    const lateBy = d && d < today ? daysBetween(d, today) : 0;
+    return !d ? { text: "No ship date", cls: "bad" } : lateBy ? { text: `${plural(lateBy, "day")} late`, cls: "bad" }
+      : finalPassed(o) ? { text: "Final QC passed", cls: "ok" } : !p.total ? { text: "No targets", cls: "warn" }
+      : p.behind ? { text: "Behind plan", cls: "bad" } : { text: "On plan", cls: "ok" };
+  };
+  const kpis = [
+    { key: "now", href: qs("now"), label: "Needs you now", value: String(nowCount), sev: nowCount ? "bad" : "ok", sub: nowCount ? "Late, overdue or blocking" : "All clear" },
+    { key: "late", href: team ? "/?status=late" : qs("now"), label: "Late orders", value: String(late.length), sev: late.length ? "bad" : "ok",
+      sub: stale.length ? `Past ship date · ${stale.length} more look shipped` : "Past ship date" },
+    { key: "ship", href: qs("soon"), label: "Ship in 14 days", value: String(shipSoon.length), sev: shipSoon.some((o) => !finalPassed(o)) ? "warn" : "",
+      sub: shipSoon.length ? `${qty(pcs(shipSoon))} pcs · ${shipSoon.filter((o) => !finalPassed(o)).length} without final QC` : "Nothing ships soon" },
+    team && book > 0
+      ? { key: "book", href: "/", label: "Open order book", value: lakh(book), sev: "",
+          sub: `${plural(open.length, "order")} · ${plural(allLines.length, "style")} · ${qty(pcs(open))} pcs${unpriced ? ` · ${unpriced} without a rate` : ""}` }
+      : { key: "book", href: "/", label: "Open orders", value: String(open.length), sev: "", sub: `${plural(allLines.length, "style")} · ${qty(pcs(open))} pcs` },
+  ];
+
   return (
     <>
       <div className="head">
         <div className="grow">
           <h1>Good {hour < 12 ? "morning" : hour < 17 ? "afternoon" : "evening"}{first && `, ${first}`}</h1>
           <p>
-            {longDay.format(ist(today))}.{" "}
-            {nowCount ? <b className="text-bad">{plural(nowCount, "thing")} {nowCount === 1 ? "needs" : "need"} you now.</b> : <b className="text-ok">Nothing urgent.</b>}
-            {shipSoon.length > 0 && ` ${plural(shipSoon.length, "order")} ${shipSoon.length === 1 ? "ships" : "ship"} in the next two weeks.`}
+            {longDay.format(ist(today))} ·{" "}
+            {nowCount ? <b className="text-bad">{plural(nowCount, "thing")} {nowCount === 1 ? "needs" : "need"} you now</b> : <b className="text-ok">Nothing urgent</b>}
+            {shipSoon.length > 0 && ` · ${plural(shipSoon.length, "order")} ${shipSoon.length === 1 ? "ships" : "ship"} in the next two weeks`}
           </p>
         </div>
         {mineCount > 0 && (
-          <div className="filters">
-            <Link className="pill" href="/today?who=mine" aria-current={who === "mine" ? "page" : undefined}>My orders {mineCount}</Link>
-            <Link className="pill" href="/today?who=all" aria-current={who === "all" ? "page" : undefined}>Everyone&apos;s {(orders ?? []).length}</Link>
-          </div>
+          <nav className="seg" aria-label="Whose orders">
+            <Link href="/today?who=mine" aria-current={who === "mine" ? "page" : undefined}>My orders <span>{mineCount}</span></Link>
+            <Link href="/today?who=all" aria-current={who === "all" ? "page" : undefined}>Everyone&apos;s <span>{(orders ?? []).length}</span></Link>
+          </nav>
         )}
       </div>
 
       <div className="kpis">
-        <Link href={qs("now")} className={`tile ${nowCount ? "alarm" : ""}`}><span>Needs you now</span><b>{nowCount}</b><small>{nowCount ? "late, overdue or blocking" : "all clear"}</small></Link>
-        <Link href={team ? "/?status=late" : qs("now")} className={`tile ${late.length ? "alarm" : ""}`}><span>Late orders</span><b>{late.length}</b>
-          <small>{stale.length ? `past ship date · ${stale.length} more look shipped` : "past ship date"}</small></Link>
-        <Link href={qs("soon")} className="tile"><span>Ship in 14 days</span><b>{shipSoon.length}</b>
-          <small>{shipSoon.length ? `${qty(pcs(shipSoon))} pcs · ${shipSoon.filter((o) => !finalPassed(o)).length} without final QC` : "nothing ships soon"}</small></Link>
-        {team && book > 0 ? (
-          <Link href="/" className="tile"><span>Open order book</span><b>{lakh(book)}</b>
-            <small>{plural(open.length, "order")} · {plural(allLines.length, "style")} · {qty(pcs(open))} pcs{unpriced ? ` · ${unpriced} without a rate` : ""}</small></Link>
-        ) : (
-          <Link href="/" className="tile"><span>Open orders</span><b>{open.length}</b><small>{plural(allLines.length, "style")} · {qty(pcs(open))} pcs</small></Link>
-        )}
+        {kpis.map((k) => (
+          <Link key={k.key} href={k.href} className={`kpi ${k.sev}`}>
+            <span className="kpi-label"><i aria-hidden />{k.label}</span>
+            <b className="num">{k.value}</b>
+            <small>{k.sub}</small>
+          </Link>
+        ))}
       </div>
 
       <div className="home">
-        <section className="panel" aria-labelledby="todo-h">
-          <div className="row mb-1">
-            <h2 id="todo-h" className="grow font-bold text-base">To do</h2>
-            <div className="filters">
-              {TABS.filter((t) => t.key !== "waiting" || lists.waiting.length || tab === "waiting").map((t) => (
-                <Link key={t.key} className="pill" href={qs(t.key)} aria-current={tab === t.key ? "page" : undefined} scroll={false}>{t.label} {lists[t.key].length}</Link>
-              ))}
-            </div>
-          </div>
-          <p className="muted mb-2 text-[13px]">{TABS.find((t) => t.key === tab)?.hint}</p>
-          {lists[tab].length === 0 ? (
-            <p className="py-3 text-[13px] font-semibold text-ok">
-              {tab === "now" ? "Nothing is late or blocked." : tab === "soon" ? "Nothing due in the next 7 days." : "Not waiting on any factory."}
-            </p>
-          ) : (
-            <ul className="todo">
-              {lists[tab].map((i) => (
-                <li key={i.key}>
-                  <span className={`sev ${i.sev}`} aria-hidden />
-                  <div className="min-w-0">
-                    <Link href={i.href} className="font-semibold hover:underline">
-                      {i.code && <span className="code mr-1.5 text-accent">{i.code}</span>}{i.title}
-                    </Link>
-                    <div className="muted text-[13px]">{i.detail}</div>
-                    {i.links && (
-                      <div className="mt-1.5 flex flex-wrap gap-1.5">
-                        {i.links.map((l) => <Link key={l.href} href={l.href} className="chip code hover:underline">{l.text}</Link>)}
-                      </div>
-                    )}
-                  </div>
-                  <div className="todo-end">
-                    {i.chip && <span className={`chip ${i.chip.cls}`}>{i.chip.text}</span>}
-                    <Link href={i.href} className={`btn sm ${i.sev === "bad" ? "primary" : ""}`}>{i.action}</Link>
-                  </div>
+        <div className="side">
+          <section className="card" aria-labelledby="todo-h">
+            <header className="card-h">
+              <div className="min-w-0">
+                <h2 id="todo-h">To do</h2>
+                <p>{TABS.find((t) => t.key === tab)?.hint}</p>
+              </div>
+              <nav className="seg" aria-label="When">
+                {TABS.filter((t) => t.key !== "waiting" || lists.waiting.length || tab === "waiting").map((t) => (
+                  <Link key={t.key} href={qs(t.key)} aria-current={tab === t.key ? "page" : undefined} scroll={false}>{t.label} <span>{lists[t.key].length}</span></Link>
+                ))}
+              </nav>
+            </header>
+            {lists[tab].length === 0 ? (
+              <p className="card-empty">
+                {tab === "now" ? "Nothing is late or blocked." : tab === "soon" ? "Nothing due in the next 7 days." : "Not waiting on any factory."}
+              </p>
+            ) : (
+              <ul className="todo">
+                {lists[tab].map((i) => (
+                  <li key={i.key}>
+                    <span className={`sev ${i.sev}`} aria-hidden />
+                    <div className="min-w-0">
+                      <Link href={i.href} className="todo-title">
+                        {i.code && <span className="code">{i.code}</span>}{i.title}
+                      </Link>
+                      <div className="todo-detail">{i.detail}</div>
+                      {i.links && (
+                        <div className="todo-links">
+                          {i.links.slice(0, 8).map((l) => <Link key={l.href} href={l.href} className="chip code">{l.text}</Link>)}
+                          {i.links.length > 8 && (
+                            <details>
+                              <summary className="chip">+{i.links.length - 8} more</summary>
+                              <div className="todo-links mt-1.5">{i.links.slice(8).map((l) => <Link key={l.href} href={l.href} className="chip code">{l.text}</Link>)}</div>
+                            </details>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                    <div className="todo-chip">{i.chip && <span className={`chip ${i.chip.cls}`}>{i.chip.text}</span>}</div>
+                    <Link href={i.href} className={`btn sm todo-act ${i.sev === "bad" ? "primary" : ""}`}>{i.action}</Link>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+
+          <section className="card styles-card" aria-labelledby="pipe-h">
+            <header className="card-h">
+              <div className="min-w-0">
+                <h2 id="pipe-h">Where the styles are</h2>
+                <p>Each style by the furthest step it has done.</p>
+              </div>
+              <span className="chip">{plural(styleTotal, "style")}</span>
+            </header>
+            <ul className="pipe">
+              {PHASES.map((p, i) => (
+                <li key={p.label} className="pipe-row">
+                  <span>{p.label}</span>
+                  <span className="track"><i className={i < 2 ? "dim" : i === PHASES.length - 1 ? "ok" : ""} style={{ width: `${styleTotal ? (100 * phaseCount[i]) / styleTotal : 0}%` }} /></span>
+                  <b className="num">{phaseCount[i]}</b>
                 </li>
               ))}
             </ul>
-          )}
-        </section>
+          </section>
+        </div>
 
-        <div className="flex min-w-0 flex-col gap-[18px]">
+        <div className="side">
           {team && stale.length > 0 && (
-            <section className="warnbox flex flex-col gap-2.5" aria-labelledby="tidy-h">
-              <h2 id="tidy-h" className="font-bold">Tidy up</h2>
-              <p className="text-foreground">These shipped long ago but are still open, so they count as late.</p>
-              {stale.map((o) => (
-                <div key={o.id} className="row justify-between">
-                  <Link href={`/orders/${o.id}`} className="min-w-0 text-foreground hover:underline">
-                    <b className="code">{o.order_no}</b> {buyerOf.get(o.buyer_id)} · ship date {dm(dueDate(o)!)}
-                  </Link>
-                  <MarkShipped orderId={o.id} orderNo={o.order_no} />
+            <section className="card" aria-labelledby="tidy-h">
+              <header className="card-h">
+                <div className="min-w-0">
+                  <h2 id="tidy-h">Tidy up</h2>
+                  <p>Shipped long ago but still open, so they count as late.</p>
                 </div>
-              ))}
+                <span className="chip warn">{plural(stale.length, "order")}</span>
+              </header>
+              <ul className="rows">
+                {stale.map((o) => (
+                  <li key={o.id} className="tidy-row">
+                    <Link href={`/orders/${o.id}`} className="min-w-0">
+                      <span className="todo-title"><span className="code">{o.order_no}</span>{buyerOf.get(o.buyer_id)}</span>
+                      <span className="todo-detail block">Ship date {dm(dueDate(o)!)} · {qty(pcs([o]))} pcs</span>
+                    </Link>
+                    <MarkShipped orderId={o.id} orderNo={o.order_no} />
+                  </li>
+                ))}
+              </ul>
             </section>
           )}
 
-          <section className="panel" aria-labelledby="ship-h">
-            <div className="row mb-3"><h2 id="ship-h" className="grow font-bold text-base">Shipping next</h2><Link href="/" className="link text-[13px]">All orders</Link></div>
-            {shipping.length === 0 ? <p className="muted text-[13px]">No open orders.</p> : (
-              <ul className="flex flex-col gap-3">
+          <section className="card" aria-labelledby="ship-h">
+            <header className="card-h">
+              <div className="min-w-0">
+                <h2 id="ship-h">Shipping next</h2>
+                <p>By ship date, with steps done against plan.</p>
+              </div>
+              <Link href="/" className="link text-[13px]">All orders</Link>
+            </header>
+            {shipping.length === 0 ? <p className="card-empty">No open orders.</p> : (
+              <ul className="rows">
                 {shipping.map((o) => {
                   const d = dueDate(o);
                   const p = progress(o);
-                  const passed = finalPassed(o);
-                  const lateBy = d && d < today ? daysBetween(d, today) : 0;
-                  const state = !d ? { text: "No ship date", cls: "text-bad" } : lateBy ? { text: `${plural(lateBy, "day")} late`, cls: "text-bad" }
-                    : passed ? { text: "Final QC passed", cls: "text-ok" } : !p.total ? { text: "No targets set", cls: "text-warn" }
-                    : p.behind ? { text: "Behind plan", cls: "text-bad" } : { text: "On plan", cls: "text-ok" };
+                  const st = state(o);
                   return (
                     <li key={o.id}>
                       <Link href={`/orders/${o.id}`} className="ship-row">
-                        <span className={`date ${!d || lateBy ? "late" : ""}`}>
-                          {d ? <><b>{Number(d.slice(8, 10))}</b><span>{MONTHS[Number(d.slice(5, 7)) - 1]}</span></> : <><b>?</b><span>date</span></>}
+                        <span className={`date ${st.cls === "bad" && (!d || d < today) ? "late" : ""}`}>
+                          {d ? <><b>{Number(d.slice(8, 10))}</b><span>{MONTHS[Number(d.slice(5, 7)) - 1]}</span></> : <><b>–</b><span>no date</span></>}
                         </span>
                         <span className="min-w-0">
-                          <span className="block truncate font-semibold"><span className="code mr-1.5 text-accent">{o.order_no}</span>{buyerOf.get(o.buyer_id)}</span>
-                          <span className="bar"><i className={state.cls === "text-bad" ? "bad" : state.cls === "text-ok" ? "ok" : ""} style={{ width: `${p.total ? Math.max(3, (100 * p.done) / p.total) : 0}%` }} /></span>
-                          <span className="muted mt-1 flex flex-wrap justify-between gap-x-2 text-xs">
-                            <span>{p.total ? `${p.done} of ${p.total} steps done` : "No steps planned"} · {qty(pcs([o]))} pcs</span>
-                            <span className={`font-semibold ${state.cls}`}>{state.text}</span>
+                          <span className="ship-top">
+                            <span className="todo-title truncate"><span className="code">{o.order_no}</span>{buyerOf.get(o.buyer_id)}</span>
+                            <span className={`ship-state ${st.cls}`}>{st.text}</span>
                           </span>
+                          <span className="bar"><i className={st.cls === "bad" ? "bad" : st.cls === "ok" ? "ok" : ""} style={{ width: `${p.total ? Math.max(3, (100 * p.done) / p.total) : 0}%` }} /></span>
+                          <span className="todo-detail block">{p.total ? `${p.done} of ${p.total} steps done` : "No steps planned yet"} · {qty(pcs([o]))} pcs</span>
                         </span>
                       </Link>
                     </li>
@@ -433,19 +486,6 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
             )}
           </section>
 
-          <section className="panel" aria-labelledby="pipe-h">
-            <div className="row mb-3"><h2 id="pipe-h" className="grow font-bold text-base">Where the styles are</h2><span className="chip">{plural(styleTotal, "style")}</span></div>
-            <ul className="flex flex-col gap-2">
-              {PHASES.map((p, i) => (
-                <li key={p.label} className="pipe-row">
-                  <span>{p.label}</span>
-                  <span className="track"><i className={i < 2 ? "dim" : i === PHASES.length - 1 ? "ok" : ""} style={{ width: `${styleTotal ? (100 * phaseCount[i]) / styleTotal : 0}%` }} /></span>
-                  <b className="num">{phaseCount[i]}</b>
-                </li>
-              ))}
-            </ul>
-            <p className="muted mt-3 text-xs">Each style counts by the furthest step it has done, since every style has its own TNA.</p>
-          </section>
         </div>
       </div>
     </>

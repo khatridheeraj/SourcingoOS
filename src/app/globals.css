@@ -146,45 +146,97 @@ h1, h2, h3 {
   .tile b { display: block; font-family: var(--font-display); font-size: 26px; line-height: 1.1; margin-top: 6px; font-variant-numeric: tabular-nums; }
   .tile.alarm b { color: var(--bad); }
 
-  /* Home: KPI tiles, the to-do list, and the side column (shipping, style progress). */
-  .kpis { display: grid; gap: 10px; grid-template-columns: repeat(4, minmax(0, 1fr)); }
-  .kpis .tile { display: flex; flex-direction: column; gap: 2px; }
-  .kpis .tile:hover { border-color: var(--muted); }
-  .kpis .tile small { font-size: 12px; color: var(--muted); margin-top: 2px; }
-  .kpis .tile.alarm { border-color: color-mix(in srgb, var(--bad) 40%, var(--line)); }
-  .home { display: grid; gap: 18px; grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr); align-items: start; }
-  .todo { display: flex; flex-direction: column; }
-  .todo li { display: grid; grid-template-columns: 4px minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 11px 0; border-top: 1px solid var(--line); }
-  .todo li:first-child { border-top: 0; }
-  .todo .sev { align-self: stretch; border-radius: 4px; background: var(--line); }
+  /* Home: one card system. Every card has the same header and row rhythm, so edges and buttons line up. */
+  .seg { display: inline-flex; gap: 2px; padding: 3px; border-radius: 10px; background: var(--surface-2); flex-wrap: wrap; }
+  .seg a { padding: 5px 11px; border-radius: 7px; font-size: 12.5px; font-weight: 600; color: var(--muted); white-space: nowrap; }
+  .seg a span { margin-left: 3px; font-variant-numeric: tabular-nums; opacity: 0.8; }
+  .seg a:hover { color: var(--foreground); }
+  .seg a[aria-current="page"] { background: var(--surface); color: var(--foreground); box-shadow: var(--shadow); }
+
+  .kpis { display: grid; gap: 12px; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .kpi {
+    display: flex; flex-direction: column; gap: 6px; padding: 16px 18px; border-radius: 12px; background: var(--surface);
+    border: 1px solid var(--line); box-shadow: var(--shadow); transition: border-color 0.15s;
+  }
+  .kpi:hover { border-color: var(--muted); }
+  .kpi-label { display: flex; align-items: center; gap: 7px; font-size: 12.5px; font-weight: 600; color: var(--muted); }
+  .kpi-label i { width: 8px; height: 8px; border-radius: 50%; background: var(--line); flex: none; }
+  .kpi b { font-family: var(--font-display); font-size: 30px; line-height: 1.05; letter-spacing: -0.01em; }
+  .kpi small { font-size: 12px; color: var(--muted); }
+  .kpi.bad .kpi-label i { background: var(--bad); }
+  .kpi.bad b { color: var(--bad); }
+  .kpi.warn .kpi-label i { background: var(--warn); }
+  .kpi.ok .kpi-label i { background: var(--ok); }
+
+  .home { display: grid; gap: 18px; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); align-items: start; }
+  .side { display: flex; flex-direction: column; gap: 18px; min-width: 0; }
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--shadow); min-width: 0; overflow: hidden; }
+  .card-h { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 14px 18px; border-bottom: 1px solid var(--line); }
+  .card-h h2 { font-size: 15.5px; font-weight: 700; line-height: 1.3; }
+  .card-h p { margin-top: 2px; font-size: 12.5px; color: var(--muted); }
+  .card-empty { padding: 18px; font-size: 13px; font-weight: 600; color: var(--ok); }
+  .rows > li { border-top: 1px solid var(--line); }
+  .rows > li:first-child { border-top: 0; }
+
+  .todo > li {
+    display: grid; grid-template-columns: 3px minmax(0, 1fr) 132px 128px; gap: 14px; align-items: center;
+    padding: 12px 18px 12px 0; border-top: 1px solid var(--line);
+  }
+  .todo > li:first-child { border-top: 0; }
+  .todo .sev { align-self: stretch; border-radius: 0 3px 3px 0; background: transparent; }
   .todo .sev.bad { background: var(--bad); }
   .todo .sev.warn { background: var(--warn); }
   .todo .sev.ok { background: var(--ok); }
-  .todo-end { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
-  .ship-row { display: grid; grid-template-columns: 48px minmax(0, 1fr); gap: 12px; align-items: start; }
-  .ship-row .date { text-align: center; border: 1px solid var(--line); border-radius: 10px; padding: 4px 0; }
-  .ship-row .date b { display: block; font-family: var(--font-display); font-size: 18px; line-height: 1.1; }
-  .ship-row .date span { display: block; font-size: 10.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
-  .ship-row .date.late, .ship-row .date.late span { border-color: var(--bad); color: var(--bad); }
-  .ship-row:hover .truncate { text-decoration: underline; }
-  .bar { display: block; height: 6px; border-radius: 6px; background: var(--surface-2); overflow: hidden; margin-top: 6px; }
-  .bar i { display: block; height: 100%; background: var(--accent); border-radius: 6px; }
+  .todo-title { display: inline; font-weight: 600; color: var(--foreground); }
+  a.todo-title:hover, a:hover > .todo-title { text-decoration: underline; }
+  .todo-title .code { color: var(--accent); margin-right: 7px; font-weight: 600; }
+  .todo-detail { margin-top: 2px; font-size: 13px; color: var(--muted); }
+  .todo-links { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+  .todo-links .chip:hover { color: var(--foreground); }
+  .todo-links summary { cursor: pointer; list-style: none; }
+  .todo-chip { display: flex; justify-content: flex-end; }
+  .todo-act { width: 100%; }
+
+  .tidy-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 12px 18px; }
+  .ship-row { display: grid; grid-template-columns: 44px minmax(0, 1fr); gap: 14px; align-items: center; padding: 12px 18px; }
+  .ship-row:hover { background: var(--surface-2); }
+  .ship-row .date { text-align: center; border: 1px solid var(--line); border-radius: 9px; padding: 4px 0 3px; background: var(--surface); }
+  .ship-row .date b { display: block; font-family: var(--font-display); font-size: 17px; line-height: 1.1; font-variant-numeric: tabular-nums; }
+  .ship-row .date span { display: block; font-size: 10px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+  .ship-row .date.late { border-color: var(--bad); background: var(--bad-soft); }
+  .ship-row .date.late b, .ship-row .date.late span { color: var(--bad); }
+  .ship-top { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+  .ship-state { flex: none; font-size: 12px; font-weight: 700; }
+  .ship-state.bad { color: var(--bad); }
+  .ship-state.warn { color: var(--warn); }
+  .ship-state.ok { color: var(--ok); }
+  .bar { display: block; height: 5px; border-radius: 5px; background: var(--surface-2); overflow: hidden; margin: 7px 0 5px; }
+  .bar i { display: block; height: 100%; background: var(--accent); border-radius: 5px; }
   .bar i.bad { background: var(--bad); }
   .bar i.ok { background: var(--ok); }
-  .pipe-row { display: grid; grid-template-columns: 150px minmax(0, 1fr) 28px; gap: 10px; align-items: center; font-size: 13px; }
-  .pipe-row .track { display: block; height: 12px; background: var(--surface-2); border-radius: 4px; overflow: hidden; }
-  .pipe-row .track i { display: block; height: 100%; background: var(--accent); border-radius: 4px; }
+  .pipe { display: flex; flex-direction: column; gap: 10px; padding: 16px 18px; }
+  .pipe-row { display: grid; grid-template-columns: 150px minmax(0, 1fr) 28px; gap: 12px; align-items: center; font-size: 13px; }
+  .pipe-row .track { display: block; height: 8px; background: var(--surface-2); border-radius: 8px; overflow: hidden; }
+  .pipe-row .track i { display: block; height: 100%; background: var(--accent); border-radius: 8px; }
   .pipe-row .track i.dim { background: var(--muted); opacity: 0.45; }
   .pipe-row .track i.ok { background: var(--ok); }
   .pipe-row b { text-align: right; }
-  @media (max-width: 900px) {
+  @media (max-width: 960px) {
     .home { grid-template-columns: minmax(0, 1fr); }
+    /* One column: to do, tidy up and shipping first, style progress last. */
+    .home > .side { display: contents; }
+    .styles-card { order: 1; }
     .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   }
-  @media (max-width: 520px) {
-    .todo li { grid-template-columns: 4px minmax(0, 1fr); }
-    .todo-end { grid-column: 2; flex-direction: row; align-items: center; flex-wrap: wrap; }
-    .pipe-row { grid-template-columns: 120px minmax(0, 1fr) 26px; }
+  @media (max-width: 600px) {
+    .todo > li { grid-template-columns: 3px minmax(0, 1fr) auto; row-gap: 8px; padding-right: 14px; }
+    .todo-chip { grid-column: 2; grid-row: 2; justify-content: flex-start; }
+    .todo-act { grid-column: 3; grid-row: 2; width: auto; }
+    .card-h, .tidy-row, .ship-row { padding-left: 14px; padding-right: 14px; }
+    .pipe { padding: 14px; }
+    .pipe-row { grid-template-columns: 118px minmax(0, 1fr) 24px; }
+    .kpi { padding: 14px; }
+    .kpi b { font-size: 26px; }
   }
 
   .steps { display: flex; gap: 4px; flex-wrap: wrap; }
