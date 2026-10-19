@@ -4,10 +4,21 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { acceptSender, ignoreSender } from "../actions";
 
+// The buyer whose name shows in the sender (its display name or mail domain), like Kaftanize for sourcing@kaftanize.com.
+export function guessBuyer(from: string, buyers: { id: string; label: string }[]): string {
+  const squash = (t: string) => t.toLowerCase().replace(/[^a-z0-9]/g, "");
+  const sender = squash(from);
+  const hits = buyers.filter((b) => {
+    const name = squash(b.label.replace(/\b(pvt|private|ltd|limited|llp|inc|co|the)\b\.?/gi, ""));
+    return name.length >= 4 && sender.includes(name);
+  });
+  return hits.length === 1 ? hits[0].id : "";
+}
+
 // An email from a sender no buyer is known by. The owner reads it as a PO (and can remember the sender) or ignores it.
 export function HeldSender({ id, from, buyers }: { id: string; from: string; buyers: { id: string; label: string }[] }) {
   const router = useRouter();
-  const [buyer, setBuyer] = useState("");
+  const [buyer, setBuyer] = useState(() => guessBuyer(from, buyers));
   const [error, setError] = useState("");
   const [note, setNote] = useState("");
   const [pending, start] = useTransition();
