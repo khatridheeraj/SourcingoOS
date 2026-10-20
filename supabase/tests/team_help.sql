@@ -1,4 +1,4 @@
--- Help and team notes (0042). Every block either passes quietly or raises.
+-- Help and team notes (0043). Every block either passes quietly or raises.
 \set ON_ERROR_STOP 1
 \set QUIET 1
 
