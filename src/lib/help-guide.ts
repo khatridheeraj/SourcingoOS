@@ -175,7 +175,7 @@ export const TOPICS: Topic[] = [
   // ---------------------------------------------------------------- quality
   { id: "record-qc", who: "staff", roles: ["owner", "quality"], q: "How do I record a QC check?",
     a: ["Open the order and go to QC. Tap Record QC.", "Pick the style and type of check, the date, pieces checked, defects found, and Pass or Fail.",
-        "Add at least one photo as proof, and any report files. If it failed, write what the factory must fix.", "Save. Each style has its own QC."],
+        "Attach the signed QC report as proof, and photos if you have them (a check needs at least one file). If it failed, write what the factory must fix.", "Save. Each style has its own QC."],
     words: "qc quality check inspection record qc inline midline final qc report defects pass fail", pages: ["/orders/"] },
   { id: "qc-types", who: "staff", q: "Which QC type do I pick?",
     a: ["Greige to size set: samples and approvals.", "Inline and mid-line: during production.", "Final: before shipping. Re-check: after a failed final; it counts as the final."],
