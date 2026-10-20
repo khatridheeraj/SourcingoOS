@@ -313,11 +313,19 @@ begin
     if sqlerrm not like 'That style isn''t on this order%' then raise; end if;
   end;
   begin
-    perform public.record_qc(v_order, jsonb_build_object('kind', 'greige', 'result', 'pass', 'line_id', v_line),
-      jsonb_build_array(jsonb_build_object('path', v_co || '/o/qc/x/r.pdf', 'kind', 'report', 'file_name', 'Greige report.pdf')));
-    raise exception 'a check without a photo was accepted';
+    perform public.record_qc(v_order, jsonb_build_object('kind', 'greige', 'result', 'pass', 'line_id', v_line), '[]'::jsonb);
+    raise exception 'a check without any proof was accepted';
   exception when raise_exception then
-    if sqlerrm not like 'Add at least one photo%' then raise; end if;
+    if sqlerrm not like 'Add the QC report or at least one photo%' then raise; end if;
+  end;
+  -- The signed QC report alone is proof enough (tried, then undone, so the checks below stay as they are).
+  declare v_r uuid := gen_random_uuid();
+  begin
+    perform public.record_qc(v_order, jsonb_build_object('id', v_r, 'kind', 'greige', 'result', 'pass', 'line_id', v_line),
+      jsonb_build_array(jsonb_build_object('path', v_co || '/' || v_order || '/qc/' || v_r || '/r.pdf', 'kind', 'report', 'file_name', 'Greige report.pdf')));
+    raise exception 'report only: saved';
+  exception when raise_exception then
+    if sqlerrm <> 'report only: saved' then raise; end if;
   end;
   perform public.record_qc(v_order, jsonb_build_object('id', v_id, 'line_id', v_line, 'kind', 'greige', 'result', 'pass', 'pieces_checked', '20'),
     jsonb_build_array(jsonb_build_object('path', v_co || '/' || v_order || '/qc/' || v_id || '/1.jpg', 'kind', 'photo'),

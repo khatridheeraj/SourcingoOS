@@ -44,7 +44,7 @@ function qcProblem(q: QcInput, photos: File[], reports: File[]): string {
   if (!fits(defects) || defects < 0) return "Defects must be a whole number, 0 or more.";
   if (pieces != null && defects > pieces) return "Defects can't be more than the pieces checked.";
   if (q.result === "fail" && !q.notes.trim()) return "Write what failed in the notes, so the factory knows what to fix.";
-  if (!photos.length) return "Add at least one photo as proof of the check.";
+  if (!photos.length && !reports.length) return "Add the QC report or at least one photo as proof of the check.";
   // File checks the upload would only make after the photos are already up.
   const notPhoto = photos.find((f) => !f.type.startsWith("image/") && !/\.(jpe?g|png|webp|gif|heic|heif)$/i.test(f.name));
   if (notPhoto) return `${notPhoto.name} is not a photo.`;
@@ -214,12 +214,12 @@ export function OrderQc({ orderId, companyId, open, canRecord, today, checks, fi
       </label>
       <div className="fgrid mt-3">
         <label className="field">
-          <span>Photos <i>*</i></span>
+          <span>Photos</span>
           <input className="inp" type="file" accept="image/*" multiple onChange={(e) => setPhotos([...(e.target.files ?? [])])} />
-          <small>{photos.length ? `${photos.length} ${photos.length === 1 ? "photo" : "photos"} ready` : "At least one photo as proof. Add as many as you need."}</small>
+          <small>{photos.length ? `${photos.length} ${photos.length === 1 ? "photo" : "photos"} ready` : "Optional when the QC report is attached. Add as many as you need."}</small>
         </label>
         <label className="field">
-          <span>Reports</span>
+          <span>QC report</span>
           <input className="inp" type="file" accept={REPORT_ACCEPT} multiple onChange={(e) => setReports([...(e.target.files ?? [])])} />
           <small>{reports.length ? `${reports.length} ${reports.length === 1 ? "report" : "reports"} ready` : `Inspection reports: PDF, Excel, Word or CSV. Big PDFs are shrunk automatically; up to ${REPORT_MAX_MB} MB each.`}</small>
         </label>

@@ -270,7 +270,7 @@ export async function recordQc(orderId: string, qcId: string, q: QcInput, files:
   if (!Number.isInteger(defects) || defects < 0) return { error: "Defects must be a whole number, 0 or more." };
   if (pieces != null && defects > pieces) return { error: "Defects can't be more than the pieces checked." };
   if (q.result === "fail" && !q.notes.trim()) return { error: "Write what failed in the notes, so the factory knows what to fix." };
-  if (!files.some((f) => f.kind === "photo")) return { error: "Add at least one photo as proof of the check." };
+  if (!files.length) return { error: "Add the QC report or at least one photo as proof of the check." };
   if (!checkFiles(`${me.companyId}/${orderId}/qc/${qcId}/`, files)) return { error: "Those files didn't upload properly. Try again." };
 
   const supabase = await createClient();
