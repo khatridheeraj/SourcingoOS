@@ -15,13 +15,13 @@ async function team() {
   return canEditOrders(me.role) ? me : null;
 }
 
-async function run(orderId: string, fn: string, args: Record<string, unknown>): Promise<Result> {
+async function run(orderId: string, fn: string, args: Record<string, unknown>): Promise<Result & { data?: unknown }> {
   const supabase = await createClient();
-  const { error } = await supabase.rpc(fn, args);
+  const { data, error } = await supabase.rpc(fn, args);
   if (error) return { error: friendly(error) };
   revalidatePath(`/orders/${orderId}`);
   revalidatePath("/today");
-  return {};
+  return { data };
 }
 
 export type PurchaseInput = {
@@ -29,8 +29,8 @@ export type PurchaseInput = {
   lines: { line_id: string; qty: string; purchase_rate: string; sale_rate: string }[];
 };
 
-// Step 1: the factory's bill. The 4 hours to invoice the buyer start now.
-export async function recordPurchase(orderId: string, p: PurchaseInput): Promise<Result> {
+// Step 1: the factory's bill. The 4 hours to invoice the buyer start now. Returns the new dispatch, for the bill's copy.
+export async function recordPurchase(orderId: string, p: PurchaseInput): Promise<Result & { id?: string }> {
   if (!(await team())) return { error: "Only the orders team can record dispatches." };
   if (!p.factory_id) return { error: "Pick the factory." };
   if (!p.bill_no.trim()) return { error: "Enter the factory's bill number." };
@@ -44,12 +44,13 @@ export async function recordPurchase(orderId: string, p: PurchaseInput): Promise
     if (num(l.sale_rate) !== "" && !(Number(num(l.sale_rate)) >= 0)) return { error: "The sale rate must be a number." };
   }
   // GST is worked out by the database from the styles' rates.
-  return run(orderId, "record_purchase", {
+  const res = await run(orderId, "record_purchase", {
     p: {
       order_id: orderId, factory_id: p.factory_id, bill_no: p.bill_no.trim(), bill_date: p.bill_date, notes: p.notes,
       lines: lines.map((l) => ({ line_id: l.line_id, qty: Number(num(l.qty)), purchase_rate: num(l.purchase_rate), sale_rate: num(l.sale_rate) })),
     },
   });
+  return res.error ? res : { id: res.data as string };
 }
 
 // Step 2: the buyer's invoice. It also goes into Payments.
@@ -65,6 +66,14 @@ export async function recordDispatchInvoice(orderId: string, id: string, p: { in
 async function filesOk(orderId: string, id: string, paths: string[]) {
   const me = await team();
   return !!me && paths.every((x) => x.startsWith(`${me.companyId}/${orderId}/dispatch/${id}/`) && !x.includes(".."));
+}
+
+// A copy of the factory's bill or our sales invoice, as printed from Tally, kept on record. It can be added or replaced any time.
+export async function attachDispatchCopy(orderId: string, id: string, kind: "bill" | "invoice", path: string): Promise<Result> {
+  if (!(await filesOk(orderId, id, [path]))) return { error: "The copy didn't upload properly. Try again." };
+  const res = await run(orderId, "attach_dispatch_copy", { p_id: id, p_kind: kind, p_path: path });
+  revalidatePath("/payments", "layout");
+  return { error: res.error };
 }
 
 // Step 3: the e-way bill, with its copy.

@@ -6,18 +6,21 @@ import { day, money, qty } from "@/lib/format";
 import { garmentBill, gstLabel, gstRate } from "@/lib/gst";
 import { uploadPhotos, uploadReports } from "@/lib/photos";
 import {
-  cancelDispatch, recordDispatchInvoice, recordEwayBill, recordGrn, recordPurchase, recordShipping,
+  attachDispatchCopy, cancelDispatch, recordDispatchInvoice, recordEwayBill, recordGrn, recordPurchase, recordShipping,
   type PurchaseInput, type ShippingInput,
 } from "../dispatch-actions";
 
 export type DispatchFactory = { id: string; name: string; lines: { id: string; style: string; colour: string; qty: number; factoryRate: string; buyerRate: string }[] };
-// Bills in Tally that no dispatch has taken yet: the order's factories' purchase bills and its buyer's invoices.
+// Bills in Tally that no dispatch has taken yet (the order's factories' purchase bills and its buyer's invoices),
+// to check a typed number against. Not shown as a list. buyerInTally: the buyer has a Tally ledger, so its invoice is picked up by itself.
 export type TallyBills = {
   purchases: { factory_id: string; no: string; date: string; amount: number }[];
   sales: { no: string; date: string; amount: number; eway: string | null }[];
+  buyerInTally: boolean;
 };
 export type Dispatch = {
   id: string; factoryName: string; billNo: string; billDate: string; purchaseTaxable: number; purchaseGst: number; purchaseTallyAmount: number | null;
+  billUrl: string | null; invoiceUrl: string | null;
   purchasedAt: string; invoiceDueAt: string; invoiceNo: string | null; invoiceTaxable: number | null; invoiceGst: number | null; invoicedAt: string | null;
   ewayNo: string | null; ewayDate: string | null; ewayValidUntil: string | null; ewayUrl: string | null; ewayFromTally: boolean;
   transporter: string | null; vehicleNo: string | null; lrNo: string | null; lrDate: string | null; lrUrl: string | null; cartons: number | null;
@@ -55,17 +58,34 @@ export function OrderDispatch({ orderId, companyId, open, owner, factories, disp
     lines: (f?.lines ?? []).map((l) => ({ line_id: l.id, qty: "", purchase_rate: l.factoryRate, sale_rate: l.buyerRate })),
   });
   const [p, setP] = useState<PurchaseInput>(blank(factories.length === 1 ? factories[0] : undefined));
+  const [billCopy, setBillCopy] = useState<File | null>(null);
 
   function savePurchase(e: React.FormEvent) {
     e.preventDefault();
     fail("new", "");
+    if (billCopy && !billCopy.type.startsWith("image/") && !billCopy.name.toLowerCase().endsWith(".pdf")) return fail("new", `${billCopy.name} isn't a PDF or a photo.`);
     start(async () => {
       const res = await recordPurchase(orderId, p);
-      if (res.error) return fail("new", res.error);
+      if (res.error || !res.id) return fail("new", res.error ?? "The purchase didn't save. Try again.");
       setAdding(false);
       setP(blank(factories.length === 1 ? factories[0] : undefined));
+      // The bill's copy goes into the new dispatch's folder; if it fails, the purchase stays and the copy can be added on the dispatch.
+      if (billCopy) {
+        const id = res.id;
+        try {
+          const up = await attachDispatchCopy(orderId, id, "bill", await uploadDoc(`${companyId}/${orderId}/dispatch/${id}`, billCopy));
+          if (up.error) fail(id, `The purchase is saved, but the bill copy wasn't: ${up.error}`);
+        } catch {
+          fail(id, "The purchase is saved, but the bill copy didn't upload. Add it again below.");
+        }
+        setBillCopy(null);
+      }
       router.refresh();
     });
+  }
+
+  function attach(id: string, kind: "bill" | "invoice", file: File) {
+    step(id, async (folder) => attachDispatchCopy(orderId, id, kind, await uploadDoc(folder, file)));
   }
 
   function step(id: string, work: (folder: string) => Promise<{ error?: string }>) {
@@ -99,7 +119,7 @@ export function OrderDispatch({ orderId, companyId, open, owner, factories, disp
 
       {adding && (
         <PurchaseForm p={p} setP={setP} blank={blank} factories={factories} bills={tally.purchases} today={today} pending={pending}
-          error={error.new} onSubmit={savePurchase} onClose={() => setAdding(false)} />
+          copy={billCopy} setCopy={setBillCopy} error={error.new} onSubmit={savePurchase} onClose={() => setAdding(false)} />
       )}
 
       {dispatches.length === 0 && !adding && <p className="muted text-[13px]">Nothing dispatched yet.</p>}
@@ -130,6 +150,8 @@ export function OrderDispatch({ orderId, companyId, open, owner, factories, disp
               </ol>
               <p className="muted mt-1 text-[13px]">{d.lines.map((l) => `${l.style} ${qty(l.qty)} pcs at ${money(l.purchaseRate)}`).join(" · ")}</p>
 
+              <Copies d={d} pending={pending} onAttach={(kind, file) => attach(d.id, kind, file)} />
+
               {d.invoicedAt && (
                 <p className="mt-2 text-[13px]">Invoice <b>{d.invoiceNo}</b>: {money(Math.round((d.invoiceTaxable ?? 0) + (d.invoiceGst ?? 0)))} with GST, made {at.format(new Date(d.invoicedAt))}.</p>
               )}
@@ -152,7 +174,7 @@ export function OrderDispatch({ orderId, companyId, open, owner, factories, disp
               )}
 
               {/* Each dispatch goes on to its next step even once the order is shipped or cancelled: the goods are already on their way. */}
-              {next === 1 && <InvoiceStep d={d} bills={tally.sales} today={today} late={invoiceLate} pending={pending} onSave={(v) => step(d.id, () => recordDispatchInvoice(orderId, d.id, v))} />}
+              {next === 1 && <InvoiceStep d={d} bills={tally.sales} buyerInTally={tally.buyerInTally} today={today} late={invoiceLate} pending={pending} onSave={(v) => step(d.id, () => recordDispatchInvoice(orderId, d.id, v))} />}
               {next === 2 && <EwayStep invoiceNo={d.invoiceNo ?? ""} today={today} pending={pending} onSave={(v, file) => step(d.id, async (folder) => recordEwayBill(orderId, d.id, { ...v, path: await uploadDoc(folder, file) }))} />}
               {next === 3 && <ShipStep today={today} pending={pending} qcBlock={owner ? [] : d.qcNotPassed ?? []} onSave={(v, lr, photos) => step(d.id, async (folder) => recordShipping(orderId, d.id, { ...v, lr_path: await uploadDoc(folder, lr), photos: await uploadPhotos(folder, photos) }))} />}
               {next === 4 && <GrnStep d={d} pcs={pcs} late={grnLate} pending={pending} onSave={(v, file) => step(d.id, async (folder) => recordGrn(orderId, d.id, { ...v, path: await uploadDoc(folder, file) }))} />}
@@ -171,28 +193,23 @@ const rs = (x: number) => (Number.isInteger(x) ? money(x) : `₹${x.toLocaleStri
 
 type TallyBill = { no: string; date: string; amount: number };
 
-// The bills in Tally to tap. "Not in Tally yet" opens the number and date to type.
-function BillPicker({ label, bills, chosen, manual, onPick, onManual }: {
-  label: string; bills: TallyBill[]; chosen: string; manual: boolean; onPick: (b: TallyBill) => void; onManual: () => void;
-}) {
-  // The newest few first; older ones a tap away, so the phone isn't a long scroll.
-  const [all, setAll] = useState(false);
-  const isChosen = (b: TallyBill) => !manual && chosen.trim().toLowerCase() === b.no.toLowerCase();
-  const shown = all ? bills : bills.filter((b, i) => i < 4 || isChosen(b));
+// Copies of the factory's bill and our sales invoice as printed from Tally (a PDF or a photo), kept on record.
+// Either can be added or replaced at any time, even after Tally has filled in the numbers.
+function Copies({ d, pending, onAttach }: { d: Dispatch; pending: boolean; onAttach: (kind: "bill" | "invoice", file: File) => void }) {
+  const one = (kind: "bill" | "invoice", what: string, url: string | null) => (
+    <span className="copy">
+      {url ? <a className="link" href={url} target="_blank" rel="noreferrer">{what}</a> : <span className="muted">{what}: none yet</span>}
+      <label className={`btn sm ${pending ? "disabled" : ""}`}>
+        {url ? "Replace" : "Upload"}
+        <input type="file" accept={DOC_ACCEPT} className="sr-only" disabled={pending} aria-label={`${url ? "Replace" : "Upload"} the ${what.toLowerCase()}`}
+          onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) onAttach(kind, f); }} />
+      </label>
+    </span>
+  );
   return (
-    <div>
-      <p className="mb-1.5 text-[12.5px] font-medium">{label}</p>
-      <div className="pick-list" role="group" aria-label={label}>
-        {shown.map((b) => (
-          <button key={b.no} type="button" className="pick" aria-pressed={isChosen(b)} onClick={() => onPick(b)}>
-            <b>{b.no}</b><span className="amt">{money(b.amount)}</span><small>{day(b.date)}</small>
-          </button>
-        ))}
-        {shown.length < bills.length && (
-          <button type="button" className="btn sm self-start" onClick={() => setAll(true)}>Show {bills.length - shown.length} older</button>
-        )}
-        <button type="button" className="pick plain" aria-pressed={manual} onClick={onManual}>Not in Tally yet: type the number</button>
-      </div>
+    <div className="copies mt-2 text-[13px]" aria-label="Copies on record">
+      {one("bill", "Factory bill copy", d.billUrl)}
+      {one("invoice", "Sales invoice copy", d.invoiceUrl)}
     </div>
   );
 }
@@ -225,14 +242,14 @@ function TallyMatch({ what, no, total, tally, none, fix }: {
   );
 }
 
-function PurchaseForm({ p, setP, blank, factories, bills, today, pending, error, onSubmit, onClose }: {
+function PurchaseForm({ p, setP, blank, factories, bills, today, pending, copy, setCopy, error, onSubmit, onClose }: {
   p: PurchaseInput; setP: (p: PurchaseInput) => void; blank: (f?: DispatchFactory) => PurchaseInput; factories: DispatchFactory[];
-  bills: TallyBills["purchases"]; today: string; pending: boolean; error?: string; onSubmit: (e: React.FormEvent) => void; onClose: () => void;
+  bills: TallyBills["purchases"]; today: string; pending: boolean; copy: File | null; setCopy: (f: File | null) => void;
+  error?: string; onSubmit: (e: React.FormEvent) => void; onClose: () => void;
 }) {
   const factory = factories.find((f) => f.id === p.factory_id);
+  // The factory's bills in Tally aren't listed: the typed number is only checked against them.
   const mine = bills.filter((b) => b.factory_id === p.factory_id);
-  const [manual, setManual] = useState(false);
-  const typing = manual || mine.length === 0;
   const tally = mine.find((b) => b.no.toLowerCase() === p.bill_no.trim().toLowerCase());
   const bill = garmentBill(p.lines.map((l) => ({ qty: n(l.qty), rate: n(l.purchase_rate) })));
   return (
@@ -244,18 +261,13 @@ function PurchaseForm({ p, setP, blank, factories, bills, today, pending, error,
       {factories.length > 1 && (
         <label className="field max-w-[320px]">
           <span>Factory <i>*</i></span>
-          <select className="inp" value={p.factory_id} onChange={(e) => { setManual(false); setP(blank(factories.find((f) => f.id === e.target.value))); }} aria-label="Purchase factory">
+          <select className="inp" value={p.factory_id} onChange={(e) => { setP(blank(factories.find((f) => f.id === e.target.value))); }} aria-label="Purchase factory">
             <option value="">Pick the factory</option>
             {factories.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
           </select>
         </label>
       )}
-      {factory && mine.length > 0 && (
-        <BillPicker label={`Bills from ${factory.name} in Tally`} bills={mine} chosen={p.bill_no} manual={manual}
-          onPick={(b) => { setManual(false); setP({ ...p, bill_no: b.no, bill_date: b.date }); }}
-          onManual={() => { setManual(true); setP({ ...p, bill_no: "", bill_date: today }); }} />
-      )}
-      {factory && typing && (
+      {factory && (
         <div className="fgrid">
           <label className="field">
             <span>Bill number <i>*</i></span>
@@ -264,6 +276,11 @@ function PurchaseForm({ p, setP, blank, factories, bills, today, pending, error,
           <label className="field">
             <span>Bill date <i>*</i></span>
             <input className="inp" type="date" max={today} value={p.bill_date} onChange={(e) => setP({ ...p, bill_date: e.target.value })} aria-label="Factory bill date" />
+          </label>
+          <label className="field">
+            <span>Copy of the bill</span>
+            <input className="inp" type="file" accept={DOC_ACCEPT} onChange={(e) => setCopy(e.target.files?.[0] ?? null)} aria-label="Copy of the factory bill" />
+            <small>{copy ? copy.name : "PDF or photo, for the record. You can add it later too."}</small>
           </label>
         </div>
       )}
@@ -294,7 +311,7 @@ function PurchaseForm({ p, setP, blank, factories, bills, today, pending, error,
         <div className="bill-sum" aria-label="Bill total">
           <BillSum taxable={bill.taxable} gst={bill.gst} rates={bill.rates} total={bill.total} label="Bill total" />
           <TallyMatch what="Bill" no={tally?.no ?? ""} total={bill.total} tally={tally}
-            none={p.bill_no.trim() ? `Not in Tally yet. It links by itself once Accounts books bill ${p.bill_no.trim()} in Tally.` : "Pick the bill, or type its number."}
+            none={p.bill_no.trim() ? `Not in Tally yet. It links by itself once Accounts books bill ${p.bill_no.trim()} in Tally.` : "Enter the bill number to check it against Tally."}
             fix="Check the pieces and rates against the paper bill." />
         </div>
       )}
@@ -310,15 +327,39 @@ function PurchaseForm({ p, setP, blank, factories, bills, today, pending, error,
   );
 }
 
-function InvoiceStep({ d, bills, today, late, pending, onSave }: {
-  d: Dispatch; bills: TallyBills["sales"]; today: string; late: boolean; pending: boolean;
+function InvoiceStep({ d, bills, buyerInTally, today, late, pending, onSave }: {
+  d: Dispatch; bills: TallyBills["sales"]; buyerInTally: boolean; today: string; late: boolean; pending: boolean;
   onSave: (v: { invoice_no: string; invoice_date: string; taxable: string }) => void;
 }) {
   const pcs = d.lines.reduce((s, l) => s + l.qty, 0);
   const sale = d.lines.length && d.lines.every((l) => l.saleRate != null) ? garmentBill(d.lines.map((l) => ({ qty: l.qty, rate: l.saleRate ?? 0 }))) : null;
   const [v, setV] = useState({ invoice_no: "", invoice_date: today, taxable: sale?.taxable ? String(sale.taxable) : "" });
+  // The invoice comes from Tally by itself when the buyer is in Tally and the sale rates are known; typing is the fallback.
+  const auto = buyerInTally && !!sale && sale.taxable > 0;
   const [manual, setManual] = useState(false);
-  const typing = manual || bills.length === 0;
+  const due = (
+    <p className={`text-[13px] font-semibold ${late ? "text-bad" : "text-warn"}`}>
+      {late ? `Emergency: the invoice was due by ${at.format(new Date(d.invoiceDueAt))}.` : `Invoice the buyer by ${at.format(new Date(d.invoiceDueAt))}.`}
+    </p>
+  );
+  if (auto && !manual) {
+    return (
+      <div className="mt-3 flex flex-col gap-3 rounded-[10px] bg-surface-2 p-3">
+        {due}
+        <div className="tally-wait" role="status">
+          <div className="say">
+            <b><span className="dot" aria-hidden />Waiting for the invoice from Tally</b>
+            <span>Make the sales invoice in Tally for <b className="num">{rs(sale.total)}</b>, with its e-way bill.</span>
+            <span className="muted text-[13px]">The app picks up its number, date and e-way bill by itself, within about 15 minutes while Tally is open on the office PC. It then goes into Payments.</span>
+          </div>
+          <div className="bill-sum" aria-label="Invoice total">
+            <BillSum taxable={sale.taxable} gst={sale.gst} rates={sale.rates} total={sale.total} label="Invoice total" />
+          </div>
+        </div>
+        <button type="button" className="btn sm self-start" onClick={() => setManual(true)}>Enter it by hand instead</button>
+      </div>
+    );
+  }
   const taxable = n(v.taxable);
   // The same as the database: the styles' own GST rates when every sale rate is known, else the average piece's.
   const ratio = sale && sale.taxable > 0 ? sale.gst / sale.taxable : gstRate(taxable / Math.max(pcs, 1));
@@ -329,17 +370,11 @@ function InvoiceStep({ d, bills, today, late, pending, onSave }: {
   const total = tally && !off ? tally.amount : Math.round(taxable + gst);
   return (
     <form className="mt-3 flex flex-col gap-3 rounded-[10px] bg-surface-2 p-3" onSubmit={(e) => { e.preventDefault(); onSave(v); }}>
-      <p className={`text-[13px] font-semibold ${late ? "text-bad" : "text-warn"}`}>
-        {late ? `Emergency: the invoice was due by ${at.format(new Date(d.invoiceDueAt))}.` : `Invoice the buyer by ${at.format(new Date(d.invoiceDueAt))}.`}
-      </p>
-      {bills.length > 0 && (
-        <BillPicker label="The buyer's invoices in Tally" bills={bills} chosen={v.invoice_no} manual={manual}
-          onPick={(b) => { setManual(false); setV({ ...v, invoice_no: b.no, invoice_date: b.date }); }}
-          onManual={() => { setManual(true); setV({ ...v, invoice_no: "", invoice_date: today }); }} />
-      )}
+      {due}
+      {!buyerInTally && <p className="muted text-[13px]">This buyer has no ledger in Tally yet, so enter the invoice here once it&apos;s made.</p>}
       <div className="fgrid">
-        {typing && <label className="field"><span>Tally invoice number <i>*</i></span><input className="inp" value={v.invoice_no} onChange={(e) => setV({ ...v, invoice_no: e.target.value })} aria-label="Invoice number" placeholder="SPL/26-27/…" /></label>}
-        {typing && <label className="field"><span>Invoice date <i>*</i></span><input className="inp" type="date" value={v.invoice_date} onChange={(e) => setV({ ...v, invoice_date: e.target.value })} aria-label="Invoice date" /></label>}
+        <label className="field"><span>Tally invoice number <i>*</i></span><input className="inp" value={v.invoice_no} onChange={(e) => setV({ ...v, invoice_no: e.target.value })} aria-label="Invoice number" placeholder="SPL/26-27/…" /></label>
+        <label className="field"><span>Invoice date <i>*</i></span><input className="inp" type="date" value={v.invoice_date} onChange={(e) => setV({ ...v, invoice_date: e.target.value })} aria-label="Invoice date" /></label>
         <label className="field">
           <span>Value before GST ₹ <i>*</i></span>
           <input className="inp" inputMode="decimal" value={v.taxable} onChange={(e) => setV({ ...v, taxable: e.target.value })} aria-label="Invoice value before GST" />
@@ -350,12 +385,13 @@ function InvoiceStep({ d, bills, today, late, pending, onSave }: {
         <div className="bill-sum" aria-label="Invoice total">
           <BillSum taxable={taxable} gst={gst} rates={rates} total={total} label="Invoice total" />
           <TallyMatch what="Invoice" no={tally?.no ?? ""} total={taxable + gst} tally={tally}
-            none={typing && v.invoice_no.trim() ? "Not in Tally yet: make it in Tally with its e-way bill, so the e-way bill fills in by itself." : bills.length ? "Pick the invoice." : "Make the invoice in Tally with its e-way bill, then enter its number."}
+            none={v.invoice_no.trim() ? "Not in Tally yet: make it in Tally with its e-way bill, so the e-way bill fills in by itself." : "Enter the invoice number from Tally."}
             fix={tally && <button type="button" className="btn sm mt-1.5" onClick={() => setV({ ...v, taxable: String(paise(tally.amount / (1 + ratio))) })}>Use Tally&apos;s value</button>} />
         </div>
       )}
       <div className="row">
         <button className="btn primary" disabled={pending || off}>{pending ? "Saving…" : "Save invoice"}</button>
+        {auto && <button type="button" className="btn" onClick={() => setManual(false)}>Wait for Tally instead</button>}
         <span className="muted text-[13px]">It also goes into Payments{tally?.eway ? `, with e-way bill ${tally.eway}` : ""}.</span>
       </div>
     </form>

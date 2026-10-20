@@ -154,6 +154,7 @@ do $$ begin
   if (select string_agg(x ->> 'no', ',' order by x ->> 'no') from bills, jsonb_array_elements(b -> 'sales') x) <> 'SPL/104,SPL/105' then
     raise exception 'invoices to pick: %', (select b from bills);
   end if;
+  if not (select (b ->> 'buyer_in_tally')::boolean from bills) then raise exception 'buyer not seen as in Tally'; end if;
 end $$;
 -- Shipping with a style not bought and billed is refused, for the owner too.
 select pg_temp.expect_error(format($$update public.orders set status = 'shipped' where id = '%s'$$, :'ord'), 'A-1 has no factory bill and invoice in Dispatch yet.%');
@@ -161,7 +162,7 @@ select pg_temp.as_user('00000000-0000-0000-0000-00000000000a');
 select pg_temp.expect_error(format($$update public.orders set status = 'shipped' where id = '%s'$$, :'ord'), 'A-1 has no factory bill and invoice in Dispatch yet.%');
 select pg_temp.as_user('00000000-0000-0000-0000-00000000000b');
 select public.record_purchase(jsonb_build_object('order_id', :'ord', 'factory_id', '20000000-0000-0000-0000-000000000002', 'bill_no', 'an/2',
-  'bill_date', current_date, 'gst', 1, 'lines', jsonb_build_array(jsonb_build_object('line_id', :'a1', 'qty', 50, 'purchase_rate', 332, 'sale_rate', 400)))) as d3 \gset
+  'bill_date', current_date, 'gst', 1, 'lines', jsonb_build_array(jsonb_build_object('line_id', :'a1', 'qty', 50, 'purchase_rate', 332)))) as d3 \gset
 reset role;
 do $$ begin
   -- 50 x 332 = 16,600 + 5% = 17,430: linked to this year's Tally bill, not last year's.
@@ -172,7 +173,8 @@ do $$ begin
 end $$;
 set role authenticated;
 select pg_temp.expect_error(format($$update public.orders set status = 'shipped' where id = '%s'$$, :'ord'), 'Factory bill an/2 has no invoice to the buyer yet.%');
--- The invoice must come to its Tally total; GST is worked out at the styles' rates.
+-- No sale rate, so nothing is picked up by itself. Typed in, the invoice must come to its Tally total; GST is worked out
+-- from the average piece (₹400, so 5%).
 select pg_temp.expect_error(format($$select public.record_dispatch_invoice('%s', '{"invoice_no":"SPL/105","invoice_date":"%s","taxable":20000}')$$, :'d3', current_date),
   'Invoice SPL/105 is ₹20000% in Tally, but the value here with GST comes to ₹21000.00.%');
 select public.record_dispatch_invoice(:'d3', format('{"invoice_no":"spl/104","invoice_date":"%s","taxable":20000,"gst":5}', current_date)::jsonb);
@@ -194,3 +196,52 @@ update public.orders set status = 'shipped' where id = :'ord';
 do $$ begin
   if (select status from public.orders limit 1) <> 'shipped' then raise exception 'owner could not ship a bought and billed order'; end if;
 end $$;
+
+-- ---------------------------------------------------------------- the invoice comes from Tally by itself
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000a');
+select public.save_order(jsonb_build_object('buyer_id', :'ah', 'buyer_po', 'AFH08'),
+  '[{"style":"B-1","qty":"20","buyer_rate":"1000","factory_id":"20000000-0000-0000-0000-000000000002","factory_rate":"800"}]'::jsonb) as ord2 \gset
+select id as b1 from public.order_lines where style = 'B-1' \gset
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000b');
+-- 10 x 1,000 = 10,000 + 5% = 10,500. Not in Tally yet: the dispatch waits.
+select public.record_purchase(jsonb_build_object('order_id', :'ord2', 'factory_id', '20000000-0000-0000-0000-000000000002', 'bill_no', 'AN/3',
+  'bill_date', current_date, 'lines', jsonb_build_array(jsonb_build_object('line_id', :'b1', 'qty', 10, 'purchase_rate', 800, 'sale_rate', 1000)))) as d4 \gset
+reset role;
+do $$ begin
+  if (select invoice_id from public.dispatches where purchase_bill_no = 'AN/3') is not null then raise exception 'invoiced with nothing in Tally'; end if;
+end $$;
+-- The Tally reader brings the invoice (and one for another value, and one for another buyer): the dispatch takes the right one.
+insert into public.tally_vouchers (company_id, guid, vtype, kind, number, reference, vdate, party, amount, eway_bill_no)
+select id, 's-108', 'TAX INVOICE', 'sales', 'SPL/108', null, current_date, 'AREEBA', 10600, null from public.companies union all
+select id, 's-109', 'TAX INVOICE', 'sales', 'SPL/109', null, current_date, 'SOMEONE ELSE', 10500, null from public.companies union all
+select id, 's-110', 'TAX INVOICE', 'sales', 'SPL/110', null, current_date, 'AREEBA', -10500, '123456789110' from public.companies;
+do $$ begin
+  if (select (d.invoice_no, d.invoice_taxable, d.invoice_gst, i.amount, d.eway_bill_no)
+      from public.dispatches d join public.invoices i on i.id = d.invoice_id where d.purchase_bill_no = 'AN/3')
+     is distinct from ('SPL/110'::text, 10000.00::numeric(14,2), 500.00::numeric(14,2), 10500.00::numeric(14,2), '123456789110'::text) then
+    raise exception 'invoice not taken from Tally with its e-way bill: %', (select row(invoice_no, invoice_taxable, invoice_gst, eway_bill_no) from public.dispatches where purchase_bill_no = 'AN/3');
+  end if;
+end $$;
+-- An invoice already in Tally is taken the moment the purchase is recorded.
+insert into public.tally_vouchers (company_id, guid, vtype, kind, number, reference, vdate, party, amount)
+select id, 's-111', 'TAX INVOICE', 'sales', 'SPL/111', null, current_date, 'AREEBA', 10500 from public.companies;
+set role authenticated;
+select public.record_purchase(jsonb_build_object('order_id', :'ord2', 'factory_id', '20000000-0000-0000-0000-000000000002', 'bill_no', 'AN/4',
+  'bill_date', current_date, 'lines', jsonb_build_array(jsonb_build_object('line_id', :'b1', 'qty', 10, 'purchase_rate', 800, 'sale_rate', 1000)))) as d5 \gset
+do $$ begin
+  if (select invoice_no from public.dispatches where purchase_bill_no = 'AN/4') is distinct from 'SPL/111' then raise exception 'invoice already in Tally not taken'; end if;
+end $$;
+
+-- ---------------------------------------------------------------- copies of the bill and the invoice, kept on record
+select pg_temp.expect_error(format($$select public.attach_dispatch_copy('%s', 'bill', 'elsewhere/bill.pdf')$$, :'d4'), 'The copy didn''t upload properly. Try again.');
+select pg_temp.expect_error(format($$select public.attach_dispatch_copy('%s', 'other', '%s')$$, :'d4',
+  (select company_id || '/' || :'ord2' || '/dispatch/' || :'d4' || '/x.pdf' from public.orders where id = :'ord2')), 'Unknown copy.');
+select public.attach_dispatch_copy(:'d4', 'bill', (select company_id || '/' || :'ord2' || '/dispatch/' || :'d4' || '/bill.pdf' from public.orders where id = :'ord2'));
+select public.attach_dispatch_copy(:'d4', 'invoice', (select company_id || '/' || :'ord2' || '/dispatch/' || :'d4' || '/inv.jpg' from public.orders where id = :'ord2'));
+do $$ begin
+  if (select bill_path like '%/bill.pdf' and invoice_path like '%/inv.jpg' from public.dispatches where purchase_bill_no = 'AN/3') is not true then
+    raise exception 'copies not kept';
+  end if;
+end $$;
+select pg_temp.as_user('00000000-0000-0000-0000-0000000000a9');
+select pg_temp.expect_error(format($$select public.attach_dispatch_copy('%s', 'bill', 'x')$$, :'d4'), 'Only the orders team can record dispatches.');
