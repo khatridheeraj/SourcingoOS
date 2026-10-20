@@ -237,8 +237,8 @@ export const TOPICS: Topic[] = [
     words: "marker fabric consumption cad cutting marker average", link: { href: "/markers", label: "Open Markers" }, pages: ["/markers"] },
   { id: "notes", who: "staff", q: "How do I report a problem or suggest an idea?",
     a: ["Right here in Help: tap Something's wrong, Wrong data or I have an idea, or just type it.",
-        "It goes to Dheeraj with the screen you were on. Add a screenshot if it helps.", "The answer shows under My notes."],
-    words: "report bug problem idea suggestion feedback complaint improvement" },
+        "It goes to Dheeraj with the screen you were on. Attach screenshots, a short screen recording, or the PDF or Excel file that shows the problem.", "The answer shows under My notes."],
+    words: "report bug problem idea suggestion feedback complaint improvement attach attachment file video recording pdf excel screenshot" },
 
   // ---------------------------------------------------------------- factory panel
   { id: "f-tna", who: "factory", q: "How do I send my TNA dates?",
@@ -288,8 +288,8 @@ export const TOPICS: Topic[] = [
     hi: { q: "मेरा लिंक नहीं खुल रहा।", a: ["Sourcingo से WhatsApp पर नया लिंक माँगें। नया लिंक बनने पर पुराना बंद हो जाता है।"] },
     words: "link not working open login cannot open link nahi khul raha" },
   { id: "f-notes", who: "factory", q: "How do I tell Sourcingo about a problem?",
-    a: ["Right here: tap Something's wrong or just type it, and send. Add a photo if it helps. Sourcingo's answer shows under My notes."],
-    hi: { q: "Sourcingo को कोई दिक्कत कैसे बताएँ?", a: ["यहीं पर: \"कुछ गड़बड़ है\" दबाएँ या लिखकर भेजें। चाहें तो फोटो डालें। जवाब \"मेरे संदेश\" में दिखेगा।"] },
+    a: ["Right here: tap Something's wrong or just type it, and send. Attach a photo, a short video or a PDF if it helps. Sourcingo's answer shows under My notes."],
+    hi: { q: "Sourcingo को कोई दिक्कत कैसे बताएँ?", a: ["यहीं पर: \"कुछ गड़बड़ है\" दबाएँ या लिखकर भेजें। चाहें तो फोटो, छोटा वीडियो या PDF जोड़ें। जवाब \"मेरे संदेश\" में दिखेगा।"] },
     words: "problem complaint issue dikkat shikayat help" },
 
   // ---------------------------------------------------------------- buyer page

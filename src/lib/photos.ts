@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/client";
 
 import { shrinkPdf } from "@/lib/shrink-pdf";
+import { PHOTO_EXT, VIDEO_TYPES } from "@/lib/attachments";
 import { PHOTO_BUCKET } from "@/lib/storage";
 
 // Shrinks a phone photo to at most 1600 px on its longest side as a JPEG, so uploads stay quick on mobile data.
@@ -47,6 +48,8 @@ const REPORT_TYPES: Record<string, string> = {
   docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
 };
 export const REPORT_ACCEPT = Object.keys(REPORT_TYPES).map((e) => `.${e}`).join(",");
+export const ATTACH_ACCEPT = ["image/*", "video/mp4", "video/quicktime", "video/webm", ".mov", ".m4v", REPORT_ACCEPT].join(",");
+export const VIDEO_MAX_MB = 30;
 export const REPORT_MAX_MB = 50;
 
 // Uploads report files (PDF, Excel, Word, CSV) and returns their storage paths with the original names.
@@ -66,4 +69,38 @@ export async function uploadReports(folder: string, files: File[]): Promise<{ pa
     out.push({ path, file_name: file.name });
   }
   return out;
+}
+
+// Uploads anything attached to a note: photos are shrunk to JPEGs, PDFs shrunk if big, Excel/Word/CSV and short
+// videos go up as they are. Each file keeps its name in the path so the reader sees what it is.
+export async function uploadAttachments(folder: string, files: File[]): Promise<string[]> {
+  const supabase = createClient();
+  // Everything is checked and prepared before anything is uploaded, so one bad file doesn't leave the others half sent.
+  const ready: { name: string; blob: Blob; ext: string; type: string }[] = [];
+  for (const file of files) {
+    const ext = file.name.split(".").pop()?.toLowerCase() ?? "";
+    const base = file.name.replace(/\.[^.]*$/, "");
+    if (file.type.startsWith("image/") || PHOTO_EXT.test(ext)) {
+      ready.push({ name: base, blob: await shrink(file), ext: "jpg", type: "image/jpeg" });
+    } else if (file.type.startsWith("video/") || VIDEO_TYPES[ext]) {
+      const type = VIDEO_TYPES[ext] ?? (file.type === "video/quicktime" ? "video/quicktime" : file.type === "video/webm" ? "video/webm" : "video/mp4");
+      if (file.size > VIDEO_MAX_MB * 1024 * 1024) throw new Error(`${file.name} is over ${VIDEO_MAX_MB} MB. Record a shorter clip (about a minute) and attach that.`);
+      ready.push({ name: base, blob: file, ext: VIDEO_TYPES[ext] ? ext : type === "video/quicktime" ? "mov" : type === "video/webm" ? "webm" : "mp4", type });
+    } else if (REPORT_TYPES[ext]) {
+      const out = ext === "pdf" ? await shrinkPdf(file) : file;
+      if (out.size > REPORT_MAX_MB * 1024 * 1024) throw new Error(`${file.name} is over ${REPORT_MAX_MB} MB. Split it into two.`);
+      ready.push({ name: base, blob: out, ext, type: REPORT_TYPES[ext] });
+    } else {
+      throw new Error(`${file.name} can't be attached. Send a photo, a short video, or a PDF, Excel, Word or CSV file.`);
+    }
+  }
+  const paths: string[] = [];
+  for (const r of ready) {
+    const safe = r.name.normalize("NFKD").replace(/[^\w.-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60) || "file";
+    const path = `${folder}/${crypto.randomUUID()}__${safe}.${r.ext}`;
+    const { error } = await supabase.storage.from(PHOTO_BUCKET).upload(path, r.blob, { contentType: r.type });
+    if (error) throw new Error(/mime|type/i.test(error.message) ? `${r.name}.${r.ext} can't be stored yet. Try a photo or PDF instead.` : `Couldn't upload ${r.name}: ${error.message}`);
+    paths.push(path);
+  }
+  return paths;
 }

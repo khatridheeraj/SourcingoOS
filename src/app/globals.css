@@ -971,6 +971,7 @@ h1, h2, h3 { font-family: var(--font-display); text-wrap: balance; font-weight: 
   .compose-meta label { cursor: pointer; }
   .compose-files { display: flex; gap: 4px; flex-wrap: wrap; }
   .compose-where { flex-basis: 100%; }
+  .compose-hint { font-size: 12px; color: var(--faint); }
   .note-sent { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; color: var(--muted); }
   .note { display: flex; flex-direction: column; gap: 8px; padding: 14px; border-radius: 14px; background: var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow); }
   .note.unseen { border-color: var(--accent); box-shadow: var(--ring); }
@@ -980,6 +981,10 @@ h1, h2, h3 { font-family: var(--font-display); text-wrap: balance; font-weight: 
   .note-where { font-size: 12.5px; color: var(--muted); }
   .note-photos { display: flex; gap: 6px; flex-wrap: wrap; }
   .note-photos img { width: 64px; height: 64px; object-fit: cover; border-radius: 8px; border: 1px solid var(--line); }
+  .note-photos video { width: 100%; max-width: 280px; max-height: 220px; border-radius: 10px; border: 1px solid var(--line); background: #000; }
+  .note-docs { display: flex; flex-direction: column; gap: 6px; }
+  .note-doc { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 8px 10px; border-radius: 10px; background: var(--surface-2); border: 1px solid var(--line); font-size: 13.5px; color: var(--accent); }
+  .note-doc:hover { border-color: var(--line-strong); }
   .note-reply { padding: 10px 12px; border-radius: 10px; background: var(--accent-soft); font-size: 14px; }
   .note-reply span { display: block; margin-bottom: 2px; font-size: 12px; font-weight: 600; color: var(--accent); }
   .note-reply p { white-space: pre-wrap; overflow-wrap: anywhere; }

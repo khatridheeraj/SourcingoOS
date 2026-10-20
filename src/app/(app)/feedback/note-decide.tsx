@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { decideNote, type TeamNote } from "@/components/help/actions";
-import { STATUS_TONE } from "@/components/help/help-chat";
+import { NoteFiles, STATUS_TONE } from "@/components/help/help-chat";
 import { toast } from "@/components/toast";
 import { roleLabel, type Role } from "@/lib/auth-roles";
 
@@ -49,12 +49,7 @@ export function NoteDecide({ n }: { n: TeamNote }) {
         {n.page_title && <> · {n.page?.startsWith("/") ? <Link href={n.page} className="link">{n.page_title}</Link> : n.page_title}</>}
       </div>
       <p className="note-body">{n.body}</p>
-      {!!n.photo_urls?.length && (
-        <div className="note-photos">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          {n.photo_urls.map((u, i) => <a key={i} href={u} target="_blank" rel="noreferrer"><img src={u} alt={`Photo ${i + 1} of note ${n.no}`} /></a>)}
-        </div>
-      )}
+      <NoteFiles files={n.files} label={`note ${n.no}`} />
       {n.suggestion ? (
         <div className="note-idea"><span>Claude suggests</span><p className="whitespace-pre-wrap">{n.suggestion}</p></div>
       ) : n.status === "new" && (
