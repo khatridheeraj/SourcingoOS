@@ -6,8 +6,8 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import { toast } from "@/components/toast";
 import type { Role } from "@/lib/auth-roles";
 import { guessKind, pageTitle, searchScored, suggestions, type Audience, type NoteKind, type Topic } from "@/lib/help-guide";
-import { uploadPhotos } from "@/lib/photos";
-import { loadNotes, logAsk, markSeen, rateAsk, sendNote, type TeamNote } from "./actions";
+import { ATTACH_ACCEPT, uploadAttachments } from "@/lib/photos";
+import { loadNotes, logAsk, markSeen, rateAsk, sendNote, type NoteFile, type TeamNote } from "./actions";
 
 type Lang = "en" | "hi";
 const OPEN = "sourcingo:help";
@@ -38,7 +38,7 @@ const T = {
       idea: "What would make the app better for you?",
       question: "What do you want to know?",
     } as Record<NoteKind, string>,
-    photo: "Add screenshot", photos: (n: number) => `${n} ${n === 1 ? "photo" : "photos"}`, removePhoto: "Remove photo",
+    photo: "Attach", attachHint: "Screenshot, photo, short video, PDF or Excel. Up to 4.", removePhoto: "Remove",
     from: "Sent from", sendTo: (o: string) => `Send to ${o}`, sending: "Sending…", cancel: "Cancel",
     sent: (no: number, o: string) => `Sent to ${o} as note #${no}. The answer will show in My notes.`,
     sendAsNote: (o: string) => `Send to ${o}`,
@@ -67,7 +67,7 @@ const T = {
       idea: "ऐप में क्या बेहतर हो सकता है?",
       question: "आप क्या जानना चाहते हैं?",
     } as Record<NoteKind, string>,
-    photo: "फोटो जोड़ें", photos: (n: number) => `${n} फोटो`, removePhoto: "फोटो हटाएँ",
+    photo: "फोटो / फाइल जोड़ें", attachHint: "फोटो, छोटा वीडियो, PDF या Excel. 4 तक.", removePhoto: "हटाएँ",
     from: "पेज", sendTo: () => "Sourcingo को भेजें", sending: "भेज रहे हैं…", cancel: "रहने दें",
     sent: (no: number) => `Sourcingo को भेज दिया (संदेश #${no})। जवाब "मेरे संदेश" में दिखेगा।`,
     sendAsNote: () => "Sourcingo को भेजें",
@@ -309,7 +309,7 @@ export function HelpChat({ who, role, name, userId, companyId, ownerName = "Dhee
 
 type Words = (typeof T)["en"] | (typeof T)["hi"];
 
-// The note form inside the chat: what kind, what happened, a screenshot, and the screen it came from.
+// The note form inside the chat: what kind, what happened, attachments, and the screen it came from.
 function Compose({ w, owner, lang, kind: first, body: firstBody, done, page, pageName, folder, onSent, onCancel }: {
   w: Words; owner: string; lang: Lang; kind: NoteKind; body: string; done: boolean; page: string; pageName: string; folder: string;
   onSent: (no: number) => void; onCancel: () => void;
@@ -331,7 +331,7 @@ function Compose({ w, owner, lang, kind: first, body: firstBody, done, page, pag
     setError("");
     start(async () => {
       try {
-        const photos = files.length ? await uploadPhotos(folder, files) : [];
+        const photos = files.length ? await uploadAttachments(folder, files) : [];
         const res = await sendNote({ kind, body, page, pageTitle: where, photos });
         if (res.error) return setError(res.error);
         toast(lang === "hi" ? "भेज दिया" : `Sent to ${owner}`);
@@ -358,7 +358,7 @@ function Compose({ w, owner, lang, kind: first, body: firstBody, done, page, pag
         onChange={(e) => setBody(e.target.value)} />
       <div className="compose-meta">
         <label className="btn sm">
-          <input type="file" accept="image/*" multiple className="sr-only"
+          <input type="file" accept={ATTACH_ACCEPT} multiple className="sr-only" disabled={files.length >= 4}
             onChange={(e) => { setFiles((f) => [...f, ...Array.from(e.target.files ?? [])].slice(0, 4)); e.target.value = ""; }} />
           📎 {w.photo}
         </label>
@@ -366,11 +366,12 @@ function Compose({ w, owner, lang, kind: first, body: firstBody, done, page, pag
           <span className="compose-files">
             {files.map((f, i) => (
               <button key={i} type="button" className="chip" aria-label={`${w.removePhoto} ${f.name}`} onClick={() => setFiles((all) => all.filter((_, j) => j !== i))}>
-                {f.name.length > 14 ? `${f.name.slice(0, 12)}…` : f.name} ✕
+                {fileIcon(f.type, f.name)} {f.name.length > 16 ? `${f.name.slice(0, 13)}…` : f.name} ✕
               </button>
             ))}
           </span>
         )}
+        {files.length === 0 && <span className="compose-hint">{w.attachHint}</span>}
         <span className="compose-where">{w.from}: {where}</span>
       </div>
       {error && <div className="errbox">{error}</div>}
@@ -394,12 +395,7 @@ function NoteCard({ n, w, lang }: { n: TeamNote; w: Words; lang: Lang }) {
         <span className="note-when">#{n.no} · {dm(n.created_at, lang)}</span>
       </div>
       <p className="note-body">{n.body}</p>
-      {!!n.photo_urls?.length && (
-        <div className="note-photos">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          {n.photo_urls.map((u, i) => <a key={i} href={u} target="_blank" rel="noreferrer"><img src={u} alt="" /></a>)}
-        </div>
-      )}
+      <NoteFiles files={n.files} label={`note ${n.no}`} />
       {n.page_title && <p className="note-where">{n.page && n.page.startsWith("/") ? <Link href={n.page} className="link">{n.page_title}</Link> : n.page_title}</p>}
       {n.reply && (
         <div className="note-reply">
@@ -408,6 +404,42 @@ function NoteCard({ n, w, lang }: { n: TeamNote; w: Words; lang: Lang }) {
         </div>
       )}
     </article>
+  );
+}
+
+function fileIcon(type: string, name: string) {
+  return type.startsWith("image/") ? "🖼" : type.startsWith("video/") || /\.(mov|mp4|m4v|webm)$/i.test(name) ? "🎬" : "📄";
+}
+
+// A note's attachments: photos as thumbnails, videos playable in place, other files as named links.
+export function NoteFiles({ files, label }: { files?: NoteFile[]; label: string }) {
+  if (!files?.length) return null;
+  const media = files.filter((f) => f.kind !== "file");
+  const docs = files.filter((f) => f.kind === "file");
+  return (
+    <>
+      {media.length > 0 && (
+        <div className="note-photos">
+          {media.map((f, i) => f.kind === "video" ? (
+            <video key={i} src={`${f.url}#t=0.1`} controls playsInline preload="metadata" aria-label={`Video ${f.name}, ${label}`} />
+          ) : (
+            <a key={i} href={f.url} target="_blank" rel="noreferrer">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={f.url} alt={`Photo ${i + 1} of ${label}`} />
+            </a>
+          ))}
+        </div>
+      )}
+      {docs.length > 0 && (
+        <div className="note-docs">
+          {docs.map((f, i) => (
+            <a key={i} href={f.url} target="_blank" rel="noreferrer" className="note-doc">
+              <span aria-hidden>📄</span><span className="truncate">{f.name}</span>
+            </a>
+          ))}
+        </div>
+      )}
+    </>
   );
 }
 

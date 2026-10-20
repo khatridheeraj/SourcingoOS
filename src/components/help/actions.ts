@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { attachKind, attachName } from "@/lib/attachments";
 import { getMe } from "@/lib/auth";
 import { friendly } from "@/lib/errors";
 import type { NoteKind } from "@/lib/help-guide";
@@ -12,9 +13,11 @@ export type TeamNote = {
   decided_at: string | null; seen: boolean; created_at: string; mine: boolean;
   // The owner only.
   suggestion?: string | null; sender?: string | null; sender_role?: string | null;
-  // Signed links to the photos, filled in here.
-  photo_urls?: string[];
+  // The attachments with signed links, filled in here.
+  files?: NoteFile[];
 };
+
+export type NoteFile = { url: string; kind: "photo" | "video" | "file"; name: string };
 
 // Logs a question typed into Help with the topic it was answered with, if any. Returns its id for the thumbs up or down.
 export async function logAsk(question: string, page: string, topic: string | null): Promise<string | null> {
@@ -38,7 +41,7 @@ export async function sendNote(n: { kind: NoteKind; body: string; page: string; 
   return { no: Number((data as { no: number }).no) };
 }
 
-// The signed-in person's notes (the owner: everyone's), newest first, with links to their photos.
+// The signed-in person's notes (the owner: everyone's), newest first, with links to their attachments.
 export async function loadNotes(): Promise<{ notes: TeamNote[]; error?: string }> {
   const supabase = await createClient();
   const { data, error } = await supabase.rpc("team_notes_list");
@@ -48,7 +51,12 @@ export async function loadNotes(): Promise<{ notes: TeamNote[]; error?: string }
   if (paths.length) {
     const { data: signed } = await supabase.storage.from("order-photos").createSignedUrls(paths, 3600);
     const url = new Map((signed ?? []).map((s) => [s.path, s.signedUrl]));
-    for (const n of notes) n.photo_urls = (n.photos ?? []).map((p) => url.get(p)).filter((u): u is string => !!u);
+    for (const n of notes) {
+      n.files = (n.photos ?? []).flatMap((p) => {
+        const u = url.get(p);
+        return u ? [{ url: u, kind: attachKind(p), name: attachName(p) }] : [];
+      });
+    }
   }
   return { notes };
 }
