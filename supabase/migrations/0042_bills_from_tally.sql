@@ -35,6 +35,8 @@ begin
     join public.factories f on f.id = d2.factory_id
     join public.tally_vouchers v on v.company_id = d2.company_id and v.kind = 'purchase' and v.gone_at is null
       and v.party = f.tally_ledger and lower(public.tally_bill_no(v)) = lower(btrim(d2.purchase_bill_no))
+      -- Bill numbers start again each year: only a voucher dated near the bill counts.
+      and v.vdate between d2.purchase_bill_date - 60 and d2.purchase_bill_date + 60
     where d2.cancelled_at is null
     order by d2.id, v.vdate desc
   ) m
@@ -189,6 +191,8 @@ begin
   select abs(v.amount) into v_tally from public.tally_vouchers v
   where v.company_id = d.company_id and v.kind = 'sales' and v.gone_at is null and v.party = v_ledger
     and lower(btrim(v.number)) = lower(v_no)
+    -- Invoice numbers start again each year: only a voucher dated near this invoice counts.
+    and v.vdate between (p ->> 'invoice_date')::date - 60 and (p ->> 'invoice_date')::date + 60
   order by v.vdate desc limit 1;
   if v_tally is not null then
     if abs(v_tally - v_total) > 1 then

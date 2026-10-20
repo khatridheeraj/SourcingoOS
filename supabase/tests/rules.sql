@@ -155,12 +155,12 @@ do $$ begin
   if (select count(*) from public.orders) <> 1 then raise exception 'a failed save left an order behind'; end if;
 end $$;
 
--- Quality checks gate shipping: no final check, or a failed latest one, keeps the order open for staff.
+-- Shipping needs the goods bought and billed in Dispatch first (the dispatch tests cover the rest).
 do $$ begin
   update public.orders set status = 'shipped';
-  raise exception 'shipped without a final QC';
+  raise exception 'shipped with nothing in Dispatch';
 exception when raise_exception then
-  if sqlerrm not like '%passed final QC%' then raise; end if;
+  if sqlerrm not like 'Nothing is in Dispatch yet.%' then raise; end if;
 end $$;
 
 -- QC belongs to the Quality team: a merchandiser can't record it.
@@ -358,12 +358,12 @@ end $$;
 
 -- Editing keeps the lines it is given (same id), drops the ones left out, and adds new ones in order.
 select public.save_order(
-  jsonb_build_object('id', :'save_order', 'buyer_id', '10000000-0000-0000-0000-000000000001', 'buyer_po', 'OZIA PO 001', 'status', 'shipped'),
+  jsonb_build_object('id', :'save_order', 'buyer_id', '10000000-0000-0000-0000-000000000001', 'buyer_po', 'OZIA PO 001', 'status', 'cancelled'),
   jsonb_build_array(
     jsonb_build_object('style', 'OZ-103', 'qty', 50),
     jsonb_build_object('id', (select id from public.order_lines where style = 'OZ-101'), 'style', 'OZ-101', 'colour', 'Navy', 'qty', 520)));
 do $$ begin
-  if (select status from public.orders) <> 'shipped' then raise exception 'status not updated'; end if;
+  if (select status from public.orders) <> 'cancelled' then raise exception 'status not updated'; end if;
   if (select string_agg(style || ':' || qty, ',' order by position) from public.order_lines where removed_at is null) <> 'OZ-103:50,OZ-101:520' then
     raise exception 'lines not saved as given: %', (select string_agg(style || ':' || qty, ',' order by position) from public.order_lines where removed_at is null);
   end if;
@@ -395,7 +395,7 @@ do $$ begin
 end $$;
 set role authenticated;
 select public.save_order(
-  jsonb_build_object('id', :'save_order', 'buyer_id', '10000000-0000-0000-0000-000000000001', 'buyer_po', 'OZIA PO 001', 'status', 'shipped'),
+  jsonb_build_object('id', :'save_order', 'buyer_id', '10000000-0000-0000-0000-000000000001', 'buyer_po', 'OZIA PO 001', 'status', 'cancelled'),
   jsonb_build_array(jsonb_build_object('id', (select id from public.order_lines where style = 'OZ-103' and removed_at is null), 'style', 'OZ-103', 'qty', 50),
     jsonb_build_object('id', (select id from public.order_lines where style = 'OZ-101'), 'style', 'OZ-101', 'colour', 'Navy', 'qty', 520)));
 do $$ begin
@@ -783,10 +783,12 @@ do $$ begin
     raise exception 'invite not reopened';
   end if;
 end $$;
--- The owner can mark an order shipped without a final QC (for example a fabric-only order).
+-- A new order can't start as shipped, not even the owner's: its goods aren't in Dispatch yet.
 do $$ begin
   perform public.save_order('{"buyer_id":"10000000-0000-0000-0000-000000000001","buyer_po":"OWNER-SHIPPED","status":"shipped"}', '[{"style":"F-1","qty":5}]');
-  if (select status from public.orders where buyer_po = 'OWNER-SHIPPED') <> 'shipped' then raise exception 'owner could not ship'; end if;
+  raise exception 'a new order started as shipped';
+exception when raise_exception then
+  if sqlerrm not like 'A new order starts open.%' then raise; end if;
 end $$;
 reset role;
 

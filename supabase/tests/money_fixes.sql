@@ -211,7 +211,7 @@ select pg_temp.as_user('00000000-0000-0000-0000-0000000000ac');
 select public.save_invoice(jsonb_build_object('invoice_no', 'SPL/118', 'buyer_id', :'oz', 'invoice_date', '2026-10-16', 'amount', 3000)) as t118 \gset
 select pg_temp.as_user('00000000-0000-0000-0000-00000000000b');
 select pg_temp.expect_error(format($$select public.record_dispatch_invoice('%s', '{"invoice_no":"SPL/118","invoice_date":"2026-10-16","taxable":"2250","gst":"112.5"}')$$, :'d3'),
-  'Invoice SPL/118 is already in Payments for ₹3000.00, but value and GST here come to ₹2362.50. Check the amounts.');
+  'Invoice SPL/118 is already in Payments for ₹3000.00, but the value here with GST comes to ₹2363. Check the value before GST.');
 select pg_temp.as_user('00000000-0000-0000-0000-00000000000a');
 select pg_temp.expect((select d.invoice_id = :'t114' and d.invoice_no = 'SPL/114' and d.invoiced_at is not null from public.dispatches d where d.id = :'d1'),
   'dispatch not linked to the invoice already in Payments');
