@@ -139,7 +139,8 @@ export function OrderForm({ initial, initialLines, buyers, factories, team, inco
             <span>Status</span>
             <select className="inp" value={order.status} onChange={set("status")}>
               <option value="open">Open</option>
-              <option value="shipped">Shipped</option>
+              {/* Shipped is set with Mark shipped on the order, which first checks the factory bill and invoice are in Dispatch. */}
+              <option value="shipped" disabled={order.status !== "shipped"}>{order.status === "shipped" ? "Shipped" : "Shipped (use Mark shipped)"}</option>
               <option value="cancelled">Cancelled</option>
             </select>
           </label>

@@ -47,10 +47,12 @@ select public.record_purchase(jsonb_build_object('order_id', :'ord', 'factory_id
   'bill_date', '2026-10-11', 'gst', 2250, 'lines', jsonb_build_array(jsonb_build_object('line_id', :'k1', 'qty', 100, 'purchase_rate', 450, 'sale_rate', 555)))) as d1 \gset
 do $$ begin
   if (select purchase_taxable from public.dispatches) <> 45000 then raise exception 'purchase value not worked out'; end if;
+  -- GST is worked out at 5% (₹555 a piece is under ₹2,500), whatever GST is sent in.
+  if (select purchase_gst from public.dispatches) <> 2250 then raise exception 'purchase GST not worked out'; end if;
   if (select invoice_due_at - purchased_at from public.dispatches) <> interval '4 hours' then raise exception 'invoice not due in 4 hours'; end if;
 end $$;
 select pg_temp.expect_error(format($$select public.record_purchase('{"order_id":"%s","factory_id":"20000000-0000-0000-0000-000000000001","bill_no":"kk/9 ","bill_date":"2026-10-11","lines":[{"line_id":"%s","qty":1,"purchase_rate":1}]}')$$, :'ord', :'k1'),
-  '%dispatches_bill_key%');
+  'Bill kk/9 of this factory is already on a dispatch.');
 
 -- Steps must go in order.
 select pg_temp.expect_error(format($$select public.record_eway_bill('%s', '{"no":"123456789012","date":"2026-10-11","path":"x"}')$$, :'d1'), 'Make the invoice first.');
@@ -129,4 +131,66 @@ do $$ begin
   update public.dispatches set notes = 'x';
   raise exception 'dispatches could be changed directly';
 exception when insufficient_privilege then null;
+end $$;
+
+-- ---------------------------------------------------------------- Tally bills, worked-out GST, and shipping only once bought and billed
+reset role;
+update public.factories set tally_ledger = 'ANYA (PURCHASE)' where name = 'Anya';
+update public.buyers set tally_ledger = 'AREEBA' where id = :'ah';
+insert into public.tally_vouchers (company_id, guid, vtype, kind, number, reference, vdate, party, amount)
+select id, 'p-an2', 'PURCHASE', 'purchase', '501', 'AN/2', current_date, 'ANYA (PURCHASE)', 17430 from public.companies union all
+select id, 'p-an2-old', 'PURCHASE', 'purchase', '77', 'AN/2', current_date - 365, 'ANYA (PURCHASE)', 999 from public.companies union all
+select id, 's-104', 'TAX INVOICE', 'sales', 'SPL/104', null, current_date, 'AREEBA', 21000 from public.companies union all
+select id, 's-105', 'TAX INVOICE', 'sales', 'SPL/105', null, current_date, 'AREEBA', 20000 from public.companies union all
+select id, 's-106', 'TAX INVOICE', 'sales', 'SPL/106', null, current_date, 'SOMEONE ELSE', 5000 from public.companies;
+set role authenticated;
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000b');
+-- The order's factory bill and the buyer's invoices from Tally, to pick from; not another buyer's, not last year's.
+create temp table bills as select public.dispatch_tally_bills(:'ord') as b;
+do $$ begin
+  if (select string_agg(x ->> 'no' || '=' || (x ->> 'amount')::numeric::int, ',') from bills, jsonb_array_elements(b -> 'purchases') x) <> 'AN/2=17430' then
+    raise exception 'purchase bills to pick: %', (select b from bills);
+  end if;
+  if (select string_agg(x ->> 'no', ',' order by x ->> 'no') from bills, jsonb_array_elements(b -> 'sales') x) <> 'SPL/104,SPL/105' then
+    raise exception 'invoices to pick: %', (select b from bills);
+  end if;
+end $$;
+-- Shipping with a style not bought and billed is refused, for the owner too.
+select pg_temp.expect_error(format($$update public.orders set status = 'shipped' where id = '%s'$$, :'ord'), 'A-1 has no factory bill and invoice in Dispatch yet.%');
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000a');
+select pg_temp.expect_error(format($$update public.orders set status = 'shipped' where id = '%s'$$, :'ord'), 'A-1 has no factory bill and invoice in Dispatch yet.%');
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000b');
+select public.record_purchase(jsonb_build_object('order_id', :'ord', 'factory_id', '20000000-0000-0000-0000-000000000002', 'bill_no', 'an/2',
+  'bill_date', current_date, 'gst', 1, 'lines', jsonb_build_array(jsonb_build_object('line_id', :'a1', 'qty', 50, 'purchase_rate', 332, 'sale_rate', 400)))) as d3 \gset
+reset role;
+do $$ begin
+  -- 50 x 332 = 16,600 + 5% = 17,430: linked to this year's Tally bill, not last year's.
+  if (select (purchase_gst, purchase_tally, purchase_tally_amount) from public.dispatches where purchase_bill_no = 'an/2')
+     is distinct from (830.00::numeric(14,2), 'p-an2'::text, 17430.00::numeric(14,2)) then
+    raise exception 'purchase not worked out and linked to Tally';
+  end if;
+end $$;
+set role authenticated;
+select pg_temp.expect_error(format($$update public.orders set status = 'shipped' where id = '%s'$$, :'ord'), 'Factory bill an/2 has no invoice to the buyer yet.%');
+-- The invoice must come to its Tally total; GST is worked out at the styles' rates.
+select pg_temp.expect_error(format($$select public.record_dispatch_invoice('%s', '{"invoice_no":"SPL/105","invoice_date":"%s","taxable":20000}')$$, :'d3', current_date),
+  'Invoice SPL/105 is ₹20000% in Tally, but the value here with GST comes to ₹21000.00.%');
+select public.record_dispatch_invoice(:'d3', format('{"invoice_no":"spl/104","invoice_date":"%s","taxable":20000,"gst":5}', current_date)::jsonb);
+reset role;
+do $$ begin
+  if (select (invoice_gst, i.amount) from public.dispatches d join public.invoices i on i.id = d.invoice_id where d.purchase_bill_no = 'an/2')
+     is distinct from (1000.00::numeric(14,2), 21000.00::numeric(14,2)) then
+    raise exception 'invoice GST not worked out or amount not the Tally total';
+  end if;
+end $$;
+set role authenticated;
+-- Bought and billed: staff still need A-1's final QC; the owner can close it.
+select pg_temp.expect_error(format($$update public.orders set status = 'shipped' where id = '%s'$$, :'ord'), '%passed final QC%');
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000a');
+do $$ begin
+  if public.ship_blocker((select id from public.orders limit 1)) is not null then raise exception 'still blocked when bought and billed'; end if;
+end $$;
+update public.orders set status = 'shipped' where id = :'ord';
+do $$ begin
+  if (select status from public.orders limit 1) <> 'shipped' then raise exception 'owner could not ship a bought and billed order'; end if;
 end $$;

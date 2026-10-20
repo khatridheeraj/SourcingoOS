@@ -116,6 +116,10 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
   // Orders that shipped long ago but were never closed: 30+ days past the ship date and packed or further.
   const stale = open.filter((o) => { const d = dueDate(o); return !!d && d < addDays(today, -30) && stageReached(o.stage, "packed"); });
   const staleIds = new Set(stale.map((o) => o.id));
+  // Why each can't be closed yet: its goods must be bought and billed in Dispatch first.
+  const staleBlocker = new Map(team && stale.length
+    ? await Promise.all(stale.map(async (o) => [o.id, (await supabase.rpc("ship_blocker", { p_order: o.id })).data as string | null] as const))
+    : []);
   const active = open.filter((o) => !staleIds.has(o.id));
   const base = (o: (typeof open)[number]) => ({ code: o.order_no, title: `${buyerOf.get(o.buyer_id) ?? ""}${o.buyer_po ? ` · PO ${o.buyer_po}` : ""}` });
 
@@ -546,7 +550,7 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
                       <span className="todo-title"><span className="code">{o.order_no}</span>{buyerOf.get(o.buyer_id)}</span>
                       <span className="todo-detail block">Ship date {dm(dueDate(o)!)} · {qty(pcs([o]))} pcs</span>
                     </Link>
-                    <MarkShipped orderId={o.id} orderNo={o.order_no} />
+                    <MarkShipped orderId={o.id} orderNo={o.order_no} blocked={staleBlocker.get(o.id)} />
                   </li>
                 ))}
               </ul>
