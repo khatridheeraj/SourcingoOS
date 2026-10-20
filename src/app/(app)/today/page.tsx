@@ -88,7 +88,7 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
 
   const [{ data: pos }, { data: stages }, { data: checks }] = ids.length
     ? await Promise.all([
-        fetchAll((a, z) => supabase.from("factory_pos").select("order_id, factory_id, plan_requested_on, plan_requested_at, factory_sent_at, released_at, buffer_days")
+        fetchAll((a, z) => supabase.from("factory_pos").select("order_id, factory_id, plan_requested_on, plan_requested_at, factory_sent_at, released_at, buffer_days, lock_requested_at, lock_note")
           .in("order_id", ids).order("id").range(a, z)).then(keep),
         fetchAll((a, z) => supabase.from("line_stages").select("order_id, line_id, stage, label, planned_on, done_on, not_needed, factory_on").in("order_id", ids).order("id").range(a, z)).then(keep),
         fetchAll((a, z) => supabase.from("qc_checks").select("line_id, kind, result, checked_on").in("order_id", ids).is("cancelled_at", null)
@@ -173,8 +173,15 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
         const hours = Math.floor((now - dueAt.getTime()) / 3_600_000);
         now_.push({ ...item, sev: "bad", detail: `${fname} hasn't sent its TNA within ${PLAN_HOURS} hours. Chase them, or move the styles to another factory.`,
           chip: { text: hours ? `${plural(hours, "hour")} past deadline` : "Just past deadline", cls: "bad" }, action: "Chase factory", sort: dueAt.toISOString() });
+      } else if (!gaps && po?.lock_requested_at) {
+        // Every factory PO waits for the owner's lock (Dheeraj, 20 Oct 2026); the owner sees these first.
+        if (me?.role === "owner") now_.push({ ...item, sev: "bad", detail: `${fname} · plan sent for your lock ${at.format(new Date(po.lock_requested_at))}. The factory gets the PO once you lock it.`,
+          chip: { text: "Waiting for your lock", cls: "bad" }, action: "Check and lock", sort: `0${po.lock_requested_at}` });
+        else waiting.push({ ...item, sev: "", detail: `${fname} · sent for the owner's lock ${at.format(new Date(po.lock_requested_at))}`, action: "Open" });
+      } else if (!gaps && po?.lock_note && me?.role !== "owner") {
+        now_.push({ ...item, sev: "bad", detail: `${fname} · the owner sent the plan back: ${po.lock_note}`, action: "Fix and send again" });
       } else if (!gaps) {
-        soon.push({ ...item, sev: "ok", detail: `${fname} · plan is complete`, action: "Release PO" });
+        soon.push({ ...item, sev: "ok", detail: `${fname} · plan is complete`, action: me?.role === "owner" ? "Lock and release" : "Send for lock" });
       } else if (!po?.plan_requested_at && !po?.plan_requested_on) {
         now_.push({ ...item, sev: "bad", detail: `${fname} · ${plural(gaps, "item")} missing before the PO can be released`, action: noTarget ? `Set ${plural(noTarget, "target")}` : "Ask the factory" });
       } else if (sent) {
@@ -308,6 +315,22 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
       title: held.length === 1 ? "1 email from an unknown sender" : `${held.length} emails from unknown senders`,
       detail: `Not read as POs until you accept them. ${held.slice(0, 3).map((p) => p.email_from ?? p.email_subject ?? "").join(", ")}${held.length > 3 ? ` and ${held.length - 3} more` : ""}`,
       action: "Accept or ignore", sort: held[0].received_at,
+    });
+  }
+
+  // Buyer inquiries whose follow-up is due: today's in Soon, late ones in Now.
+  const { data: inqs } = team
+    ? keep(await fetchAll((a, z) => supabase.from("inquiries").select("id, inquiry_no, buyer_id, prospect, product, next_follow_up, merchandiser_id, status")
+        .eq("company_id", companyId).in("status", ["new", "quoted"]).lte("next_follow_up", today).order("next_follow_up").order("id").range(a, z)))
+    : { data: [] };
+  for (const i of (inqs ?? []).filter((x) => who === "all" || x.merchandiser_id === me?.id)) {
+    const late = i.next_follow_up! < today;
+    (late ? now_ : soon).push({
+      key: `inq:${i.id}`, href: `/inquiries/${i.id}`, sev: late ? "bad" : "warn", code: i.inquiry_no,
+      title: `${(i.buyer_id && buyerOf.get(i.buyer_id)) || i.prospect || ""} · ${i.product}`,
+      detail: `${i.status === "quoted" ? "Quote sent; ask the buyer for a decision" : "Inquiry to answer"} · follow-up ${late ? `was due ${dm(i.next_follow_up!)}` : "due today"}`,
+      chip: late ? { text: `${plural(daysBetween(i.next_follow_up!, today), "day")} late`, cls: "bad" } : { text: "Today", cls: "warn" },
+      action: "Follow up", sort: i.next_follow_up!,
     });
   }
 

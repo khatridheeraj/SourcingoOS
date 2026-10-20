@@ -1,6 +1,15 @@
 -- Buyer logins and factory step updates (0032). Every block either passes quietly or raises.
 \set ON_ERROR_STOP 1
 \set QUIET 1
+-- Only the owner locks and releases a factory PO (0048): the team's release steps below run as the owner.
+create function pg_temp.owner_release(p_order uuid, p_factory uuid) returns void language plpgsql as $$
+declare
+  v_was text := current_setting('request.jwt.claim.sub', true);
+begin
+  perform set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-00000000000a', false);
+  perform public.release_factory_po(p_order, p_factory);
+  perform set_config('request.jwt.claim.sub', coalesce(v_was, ''), false);
+end $$;
 
 create function pg_temp.as_user(p uuid) returns void language sql as $$
   select set_config('request.jwt.claim.sub', p::text, false);
@@ -86,7 +95,7 @@ select pg_temp.expect_error(format($$select public.post_step_update('%s', 'greig
   'You can update only your own styles on a released PO.');
 select pg_temp.as_user('00000000-0000-0000-0000-00000000000b');
 select public.accept_targets_for_factory(:'ord', '20000000-0000-0000-0000-000000000001');
-select public.release_factory_po(:'ord', '20000000-0000-0000-0000-000000000001');
+select pg_temp.owner_release(:'ord', '20000000-0000-0000-0000-000000000001');
 
 select pg_temp.as_user('00000000-0000-0000-0000-0000000000fa');
 select pg_temp.expect(public.can_upload_photo(:'co' || '/' || :'ord' || '/factory/' || :'k1' || '/p.jpg'), 'factory can''t upload its photo');

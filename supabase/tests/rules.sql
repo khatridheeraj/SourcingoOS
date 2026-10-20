@@ -1,6 +1,15 @@
 -- Rule tests. Every block either passes quietly or raises.
 \set ON_ERROR_STOP 1
 \set QUIET 1
+-- Only the owner locks and releases a factory PO (0048): the team's release steps below run as the owner.
+create function pg_temp.owner_release(p_order uuid, p_factory uuid) returns void language plpgsql as $$
+declare
+  v_was text := current_setting('request.jwt.claim.sub', true);
+begin
+  perform set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-00000000000a', false);
+  perform public.release_factory_po(p_order, p_factory);
+  perform set_config('request.jwt.claim.sub', coalesce(v_was, ''), false);
+end $$;
 
 create function pg_temp.as_user(p uuid) returns void language sql as $$
   select set_config('request.jwt.claim.sub', p::text, false);
@@ -441,7 +450,7 @@ do $$ begin
     if sqlerrm not like 'Release the factory PO%' then raise; end if;
   end;
   begin
-    perform public.release_factory_po((select id from public.orders), '20000000-0000-0000-0000-000000000001');
+    perform pg_temp.owner_release((select id from public.orders), '20000000-0000-0000-0000-000000000001');
     raise exception 'a PO with an incomplete plan was released';
   exception when raise_exception then
     if sqlerrm not like 'The plan is not complete yet. Missing: OZ-103 (target: Greige%; factory dates: Greige%) | OZ-101 (factory rate; target: Greige%' then raise; end if;
@@ -461,7 +470,7 @@ select public.save_line_stages(:'save_order', (
   where l.order_id = :'save_order' and l.removed_at is null));
 update public.order_lines set factory_rate = 240 where style = 'OZ-101';
 do $$ begin
-  perform public.release_factory_po((select id from public.orders), '20000000-0000-0000-0000-000000000001');
+  perform pg_temp.owner_release((select id from public.orders), '20000000-0000-0000-0000-000000000001');
   raise exception 'a PO was released without the factory''s dates';
 exception when raise_exception then
   if sqlerrm not like 'The plan is not complete yet. Missing: OZ-103 (factory dates: Greige, Fit sample%' then raise; end if;
@@ -580,7 +589,7 @@ do $$ begin
   if (select count(*) from public.line_stages where factory_on is not null) <> 31 then
     raise exception 'factory dates: % (15 steps on each style, Embroidery is extra on one: 31)', (select count(*) from public.line_stages where factory_on is not null);
   end if;
-  perform public.release_factory_po((select id from public.orders), '20000000-0000-0000-0000-000000000001');
+  perform pg_temp.owner_release((select id from public.orders), '20000000-0000-0000-0000-000000000001');
   raise exception 'released with factory dates later than the targets';
 exception when raise_exception then
   if sqlerrm not like '%OZ-103 (factory later than target: Greige%Embroidery)%' then raise; end if;
@@ -592,7 +601,7 @@ create function pg_temp.plan(p_style text, p_stage text) returns text language s
 $$;
 -- The merchandiser accepts the factory's dates as the targets, then releases.
 update public.line_stages set planned_on = factory_on where planned_on < factory_on;
-select public.release_factory_po(:'save_order', '20000000-0000-0000-0000-000000000001');
+select pg_temp.owner_release(:'save_order', '20000000-0000-0000-0000-000000000001');
 select pg_temp.as_user('00000000-0000-0000-0000-0000000000fa');
 do $$ begin
   if (public.factory_tna() -> 'orders' -> 0 -> 'lines' -> 0 -> 'stages' -> 0 ->> 'planned_on') is null then
@@ -606,7 +615,7 @@ exception when raise_exception then
 end $$;
 select pg_temp.as_user('00000000-0000-0000-0000-00000000000b');
 do $$ begin
-  if (select released_at is null or released_by <> auth.uid() from public.factory_pos where order_id = (select id from public.orders)) then
+  if (select released_at is null or released_by <> '00000000-0000-0000-0000-00000000000a' from public.factory_pos where order_id = (select id from public.orders)) then
     raise exception 'factory PO not released';
   end if;
   if (select count(*) from public.line_stages) <> 31 then raise exception 'full TNA not saved: %', (select count(*) from public.line_stages); end if;

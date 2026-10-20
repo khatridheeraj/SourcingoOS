@@ -1,6 +1,15 @@
 -- Locked targets, factory links and the morning brief (0033). Every block either passes quietly or raises.
 \set ON_ERROR_STOP 1
 \set QUIET 1
+-- Only the owner locks and releases a factory PO (0048): the team's release steps below run as the owner.
+create function pg_temp.owner_release(p_order uuid, p_factory uuid) returns void language plpgsql as $$
+declare
+  v_was text := current_setting('request.jwt.claim.sub', true);
+begin
+  perform set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-00000000000a', false);
+  perform public.release_factory_po(p_order, p_factory);
+  perform set_config('request.jwt.claim.sub', coalesce(v_was, ''), false);
+end $$;
 
 create function pg_temp.as_user(p uuid) returns void language sql as $$
   select set_config('request.jwt.claim.sub', p::text, false);
@@ -49,7 +58,7 @@ select pg_temp.expect((select baseline_on is null and planned_on = current_date 
   'a target before release was locked or given a baseline');
 select public.request_factory_plan(:'ord', '20000000-0000-0000-0000-000000000001', 7);
 select public.accept_targets_for_factory(:'ord', '20000000-0000-0000-0000-000000000001');
-select public.release_factory_po(:'ord', '20000000-0000-0000-0000-000000000001');
+select pg_temp.owner_release(:'ord', '20000000-0000-0000-0000-000000000001');
 select pg_temp.expect((select count(*) = 15 from public.line_stages where line_id = :'k1' and baseline_on = planned_on), 'release did not keep the baseline');
 select pg_temp.expect((select count(*) = 0 from public.line_stages where line_id = :'a1' and baseline_on is not null), 'another factory''s plan got a baseline');
 -- The merchandiser can't move a released target, even with a reason; done dates still go in.

@@ -3,6 +3,7 @@ import { HelpChat } from "@/components/help/help-chat";
 import { Sidebar, type NavGroup } from "@/components/nav";
 import { Toaster } from "@/components/toast";
 import { canEditOrders, getMe, roleLabel } from "@/lib/auth";
+import { todayIST } from "@/lib/format";
 import { createClient } from "@/lib/supabase/server";
 
 export default async function AppLayout({ children }: LayoutProps<"/">) {
@@ -14,11 +15,16 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
 
   // Buyer POs waiting for the orders team, and Help's counts, shown on the menu.
   const supabase = await createClient();
-  const [pos, counts] = await Promise.all([
+  const today = todayIST();
+  const [pos, counts, due] = await Promise.all([
     canEditOrders(me.role) && me.companyId
       ? supabase.from("incoming_pos").select("id", { count: "exact", head: true }).eq("company_id", me.companyId).in("status", ["to_check", "failed"])
       : Promise.resolve({ count: 0 }),
     me.role ? supabase.rpc("help_counts") : Promise.resolve({ data: null }),
+    // Inquiries whose follow-up is due today or earlier.
+    canEditOrders(me.role) && me.companyId
+      ? supabase.from("inquiries").select("id", { count: "exact", head: true }).eq("company_id", me.companyId).in("status", ["new", "quoted"]).lte("next_follow_up", today)
+      : Promise.resolve({ count: 0 }),
   ]);
   const toCheck = pos.count ?? 0;
   const help = (counts.data ?? {}) as { unseen?: number; new?: number | null; owner?: string | null };
@@ -29,7 +35,8 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
     { items: [
       { href: "/today", label: "Home", icon: "home" },
       { href: "/", label: "Orders", icon: "orders" },
-      ...(edit ? [{ href: "/pos", label: "Incoming POs", icon: "inbox" as const, count: toCheck }] : []),
+      ...(edit ? [{ href: "/inquiries", label: "Inquiries", icon: "inquiry" as const, count: due.count ?? 0 },
+        { href: "/pos", label: "Incoming POs", icon: "inbox" as const, count: toCheck }] : []),
       { href: "/brief", label: "Brief", icon: "sun" as const },
     ] },
     ...(edit ? [{ label: "Partners", items: [{ href: "/buyers", label: "Buyers", icon: "buyers" as const }, { href: "/factories", label: "Factories", icon: "factories" as const }] }] : []),
