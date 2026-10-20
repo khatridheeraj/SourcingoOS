@@ -4,6 +4,7 @@ import { Sidebar, type NavGroup } from "@/components/nav";
 import { Toaster } from "@/components/toast";
 import { canEditOrders, getMe, roleLabel } from "@/lib/auth";
 import { todayIST } from "@/lib/format";
+import { heldSince } from "@/lib/goods";
 import { createClient } from "@/lib/supabase/server";
 
 export default async function AppLayout({ children }: LayoutProps<"/">) {
@@ -16,7 +17,7 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
   // Buyer POs waiting for the orders team, and Help's counts, shown on the menu.
   const supabase = await createClient();
   const today = todayIST();
-  const [pos, counts, due] = await Promise.all([
+  const [pos, counts, due, held] = await Promise.all([
     canEditOrders(me.role) && me.companyId
       ? supabase.from("incoming_pos").select("id", { count: "exact", head: true }).eq("company_id", me.companyId).in("status", ["to_check", "failed"])
       : Promise.resolve({ count: 0 }),
@@ -24,6 +25,11 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
     // Inquiries whose follow-up is due today or earlier.
     canEditOrders(me.role) && me.companyId
       ? supabase.from("inquiries").select("id", { count: "exact", head: true }).eq("company_id", me.companyId).in("status", ["new", "quoted"]).lte("next_follow_up", today)
+      : Promise.resolve({ count: 0 }),
+    // Goods bought from a factory and still with us after a day.
+    canEditOrders(me.role) && me.companyId
+      ? supabase.from("dispatches").select("id", { count: "exact", head: true }).eq("company_id", me.companyId).is("cancelled_at", null).is("shipped_at", null)
+        .lt("purchased_at", heldSince())
       : Promise.resolve({ count: 0 }),
   ]);
   const toCheck = pos.count ?? 0;
@@ -36,7 +42,8 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
       { href: "/today", label: "Home", icon: "home" },
       { href: "/", label: "Orders", icon: "orders" },
       ...(edit ? [{ href: "/inquiries", label: "Inquiries", icon: "inquiry" as const, count: due.count ?? 0 },
-        { href: "/pos", label: "Incoming POs", icon: "inbox" as const, count: toCheck }] : []),
+        { href: "/pos", label: "Incoming POs", icon: "inbox" as const, count: toCheck },
+        { href: "/goods", label: "Goods with us", icon: "box" as const, count: held.count ?? 0 }] : []),
       { href: "/brief", label: "Brief", icon: "sun" as const },
     ] },
     ...(edit ? [{ label: "Partners", items: [{ href: "/buyers", label: "Buyers", icon: "buyers" as const }, { href: "/factories", label: "Factories", icon: "factories" as const }] }] : []),

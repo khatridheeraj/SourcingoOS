@@ -1074,3 +1074,34 @@ h1, h2, h3 { font-family: var(--font-display); text-wrap: balance; font-weight: 
   .finfo b { font-weight: 600; color: var(--foreground); }
   .finfo .chip { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 }
+
+@layer components {
+  .challan { display: grid; gap: 20px; padding: 28px; border-radius: 14px; border: 1px solid var(--line); background: var(--surface); box-shadow: var(--shadow); font-size: 13.5px; }
+  .challan p { margin: 2px 0 0; color: var(--muted); line-height: 1.45; }
+  .challan dl { display: grid; gap: 4px; margin: 6px 0 0; }
+  .challan dl > div { display: flex; gap: 10px; }
+  .challan dt { min-width: 86px; color: var(--muted); }
+  .challan dd { margin: 0; font-weight: 500; }
+  .challan-top { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 18px; padding-bottom: 18px; border-bottom: 2px solid var(--foreground); }
+  .challan-top > div:first-child { flex: 1 1 260px; min-width: 0; }
+  .challan-co { font-size: 18px; font-weight: 700; letter-spacing: -0.01em; }
+  .challan-title h2 { margin: 0; font-size: 13px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
+  .challan-parties { display: grid; gap: 18px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+  .challan-parties b { display: block; font-size: 15px; font-weight: 600; }
+  .challan-label { display: block; margin-bottom: 4px; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+  .challan-tbl tfoot td { font-weight: 700; border-top: 2px solid var(--line-strong); }
+  .challan-sign { display: grid; gap: 28px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); padding-top: 12px; }
+  .challan-sign > div { display: grid; gap: 6px; }
+  .challan-sign i { display: block; height: 52px; border-bottom: 1px solid var(--foreground); }
+  .challan-sign small { color: var(--muted); }
+  .challan-note { font-size: 12px; }
+  @media (max-width: 640px) { .challan { padding: 18px 16px; } }
+}
+
+@media print {
+  .no-print, .sidebar, .topbar, .tabbar, .scrim, .help-btn, [data-help], .toasts { display: none !important; }
+  body, .shell, .page { background: #fff !important; margin: 0 !important; padding: 0 !important; display: block !important; }
+  .challan { border: 0; box-shadow: none; padding: 0; color: #000; }
+  .challan * { color: #000 !important; }
+  @page { size: A4; margin: 14mm; }
+}

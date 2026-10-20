@@ -7,6 +7,7 @@ import { day, daysBetween, dueDate, nowMs, planDueAt, PLAN_HOURS, qcKindLabel, q
 import { NO_COMPANY } from "@/lib/names";
 import { poWaitDays, PO_WAIT_DAYS } from "@/lib/order-checks";
 import { project, shipRisk } from "@/lib/tna-plan";
+import { HOLD_HOURS, heldHours, heldText } from "@/lib/goods";
 import { createClient } from "@/lib/supabase/server";
 import { Icon, type IconName } from "@/components/nav";
 import { MarkShipped } from "../orders/mark-shipped";
@@ -337,7 +338,7 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
   // Dispatch: invoice within 4 hours of the purchase (an emergency after that), then e-way bill and shipping, then the GRN.
   // Dispatches of every order, shipped ones too: an order marked shipped still waits for the buyer's GRN.
   const { data: disp } = team
-    ? keep(await fetchAll((a, z) => supabase.from("dispatches").select("id, order_id, purchase_bill_no, invoice_due_at, invoiced_at, eway_at, shipped_at, grn_due_on, grn_at")
+    ? keep(await fetchAll((a, z) => supabase.from("dispatches").select("id, order_id, purchase_bill_no, purchased_at, invoice_due_at, invoiced_at, eway_at, shipped_at, grn_due_on, grn_at")
         .eq("company_id", companyId).is("cancelled_at", null).is("grn_at", null).order("id").range(a, z)))
     : { data: [] };
   const shippedIds = [...new Set((disp ?? []).map((d) => d.order_id))].filter((id) => !(orders ?? []).some((o) => o.id === id));
@@ -355,6 +356,10 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
       (late ? now_ : soon).push({ ...item, key: `inv:${d.id}`, sev: late ? "bad" : "warn",
         detail: `Buyer invoice ${late ? "was due" : "due"} ${at.format(new Date(d.invoice_due_at))} (within 4 hours of the purchase)`,
         chip: late ? { text: "Emergency", cls: "bad" } : { text: "Invoice within 4 hours", cls: "warn" }, action: "Make invoice", sort: d.invoice_due_at });
+    } else if ((!d.eway_at || !d.shipped_at) && heldHours(d.purchased_at, now) >= HOLD_HOURS) {
+      // Goods bought should leave within a day; past that they are held up with us.
+      now_.push({ ...item, key: `held:${d.id}`, sev: "bad", detail: `${heldText(heldHours(d.purchased_at, now))}, not shipped. ${!d.eway_at ? "Add the e-way bill" : "Add goods photos and the LR"} and send them today.`,
+        chip: { text: `Held over ${HOLD_HOURS} hours`, cls: "bad" }, action: !d.eway_at ? "Add e-way bill" : "Add photos and LR", sort: d.purchased_at });
     } else if (!d.eway_at || !d.shipped_at) {
       soon.push({ ...item, key: `disp:${d.id}`, sev: "warn", detail: !d.eway_at ? "Invoiced; add the e-way bill" : "E-way bill in; add goods photos and the LR",
         action: !d.eway_at ? "Add e-way bill" : "Add photos and LR", sort: d.invoiced_at });

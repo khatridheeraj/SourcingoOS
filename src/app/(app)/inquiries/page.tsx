@@ -4,7 +4,7 @@ import { Icon } from "@/components/nav";
 import { canEditOrders, getMe } from "@/lib/auth";
 import { buyerName, loadBuyers, loadTeam, personName } from "@/lib/data";
 import { fetchAll } from "@/lib/fetch-all";
-import { day, daysBetween, money, qty, todayIST } from "@/lib/format";
+import { day, dayAt, daysBetween, money, qty, todayIST } from "@/lib/format";
 import { INQUIRY_COLUMNS, INQUIRY_STATUS, isOpenInquiry, sourceLabel, type Inquiry } from "@/lib/inquiries";
 import { createClient } from "@/lib/supabase/server";
 import { addDays } from "@/lib/payments";
@@ -134,7 +134,7 @@ export default async function InquiriesPage({ searchParams }: PageProps<"/inquir
                     </Link>
                     <div className="todo-detail">
                       {[i.est_qty ? `${qty(i.est_qty)} ${i.unit}` : "", i.quoted_price != null ? `quoted ${money(i.quoted_price)}` : i.target_price != null ? `target ${money(i.target_price)}` : "",
-                        i.merchandiser_id ? people.get(i.merchandiser_id) : "Not assigned", `${sourceLabel(i.source)} ${day(i.created_at.slice(0, 10))}`].filter(Boolean).join(" · ")}
+                        i.merchandiser_id ? people.get(i.merchandiser_id) : "Not assigned", `${sourceLabel(i.source)} ${dayAt(i.created_at)}`].filter(Boolean).join(" · ")}
                       {i.status === "lost" && i.lost_reason && <> · {i.lost_reason}</>}
                     </div>
                     {(isDue || (i.next_follow_up && isOpenInquiry(i.status)) || i.order_id) && (

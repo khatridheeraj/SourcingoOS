@@ -141,6 +141,7 @@ export function OrderDispatch({ orderId, companyId, open, owner, factories, disp
                 {d.purchaseTallyAmount == null
                   ? <span className="chip" title="Linked by itself once Accounts books this bill in Tally.">Not in Tally yet</span>
                   : tallyOff ? <span className="chip bad">Tally says {money(d.purchaseTallyAmount)}</span> : <span className="chip ok">In Tally</span>}
+                <a href={`/goods/${d.id}/challan`} className={`btn sm ${d.invoicedAt ? "ml-auto" : ""}`}>Delivery challan</a>
                 {!d.invoicedAt && <button type="button" className="btn sm ml-auto" disabled={pending} onClick={() => cancel(d.id)}>Cancel</button>}
               </div>
               <ol className="steps mt-2" aria-label="Dispatch steps">
