@@ -395,21 +395,7 @@ h1, h2, h3 { font-family: var(--font-display); text-wrap: balance; font-weight: 
   .steps button[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #fff; }
   .steps button:disabled { cursor: not-allowed; opacity: 0.6; }
 
-  /* Dispatch: bills from Tally to tap, and a bill's totals the way the paper bill ends. */
-  .pick-list { display: flex; flex-direction: column; gap: 6px; max-width: 560px; }
-  .pick {
-    display: grid; grid-template-columns: 18px minmax(0, 1fr) auto; align-items: center; gap: 4px 10px; width: 100%; min-height: 48px;
-    padding: 8px 12px; border: 1px solid var(--line-strong); border-radius: 10px; background: var(--surface); text-align: left;
-    cursor: pointer; box-shadow: var(--shadow); transition: border-color 0.12s, background 0.12s;
-  }
-  .pick:hover { border-color: var(--faint); }
-  .pick::before { content: ""; grid-row: 1 / span 2; width: 16px; height: 16px; border-radius: 50%; box-shadow: inset 0 0 0 1.5px var(--line-strong); }
-  .pick[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); }
-  .pick[aria-pressed="true"]::before { box-shadow: inset 0 0 0 5px var(--accent); }
-  .pick b { font-weight: 600; font-variant-numeric: tabular-nums; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .pick small { grid-column: 2; color: var(--muted); font-size: 12px; }
-  .pick .amt { grid-row: 1 / span 2; grid-column: 3; font-weight: 600; font-variant-numeric: tabular-nums; }
-  .pick.plain { grid-template-columns: 18px minmax(0, 1fr); color: var(--muted); font-weight: 500; font-size: 13.5px; }
+  /* Dispatch: a bill's totals the way the paper bill ends. */
   .bill-lines { display: flex; flex-direction: column; gap: 8px; }
   .bill-line { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px 10px; align-items: end; padding-bottom: 8px; border-bottom: 1px solid var(--line); }
   .bill-line:last-child { border-bottom: 0; padding-bottom: 0; }
@@ -428,6 +414,18 @@ h1, h2, h3 { font-family: var(--font-display); text-wrap: balance; font-weight: 
   .tally-match.ok { background: var(--ok-soft); color: var(--ok); }
   .tally-match.bad { background: var(--bad-soft); color: var(--bad); }
   .tally-match.none { background: var(--surface-2); color: var(--muted); }
+  /* Waiting for Tally to bring the invoice: a calm card with a live dot, the amount to make it for, and the bill foot. */
+  .tally-wait { display: flex; flex-wrap: wrap; gap: 12px 20px; align-items: flex-start; padding: 12px; border-radius: 10px; border: 1px dashed var(--line-strong); background: var(--surface); }
+  .tally-wait .say { flex: 1 1 240px; display: flex; flex-direction: column; gap: 4px; font-size: 13.5px; line-height: 1.45; }
+  .tally-wait .say > b:first-child { display: flex; align-items: center; gap: 8px; font-size: 14px; }
+  .tally-wait .dot { width: 8px; height: 8px; border-radius: 99px; background: var(--accent); animation: tally-pulse 1.6s ease-in-out infinite; }
+  @keyframes tally-pulse { 50% { opacity: 0.3; } }
+  @media (prefers-reduced-motion: reduce) { .tally-wait .dot { animation: none; } }
+  .tally-wait .bill-sum { flex: 1 1 220px; }
+  .copies { display: flex; flex-wrap: wrap; gap: 6px 18px; }
+  .copy { display: inline-flex; align-items: center; gap: 8px; }
+  label.btn { cursor: pointer; }
+  label.btn.disabled { opacity: 0.45; cursor: not-allowed; }
 
   .filters { display: inline-flex; gap: 2px; padding: 2px; width: fit-content; max-width: 100%; overflow-x: auto; border-radius: 9px; background: var(--surface-2); box-shadow: inset 0 0 0 1px var(--line); scrollbar-width: none; }
   .pill { display: inline-flex; align-items: center; height: 28px; padding: 0 11px; border-radius: 7px; font-size: 13px; font-weight: 500; color: var(--muted); white-space: nowrap; }

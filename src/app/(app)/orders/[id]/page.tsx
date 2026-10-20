@@ -63,13 +63,13 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
     ? await Promise.all([
         supabase.from("dispatches").select("*").eq("order_id", id).is("cancelled_at", null).order("purchased_at"),
         supabase.from("dispatch_lines").select("dispatch_id, line_id, qty, purchase_rate, sale_rate").in("line_id", (o.order_lines ?? []).map((l) => l.id)),
-        // The factories' bills and the buyer's invoices in Tally, to pick from instead of typing.
+        // Bills in Tally that no dispatch has taken yet, to check typed numbers against, and whether the buyer is in Tally.
         supabase.rpc("dispatch_tally_bills", { p_order: id }),
         // Why the order can't be marked shipped yet: its goods must be bought and billed in Dispatch first.
         supabase.rpc("ship_blocker", { p_order: id }),
       ])
     : [{ data: [] }, { data: [] }, { data: null }, { data: null }];
-  const tallyBills: TallyBills = { purchases: tallyRaw?.purchases ?? [], sales: tallyRaw?.sales ?? [] };
+  const tallyBills: TallyBills = { purchases: tallyRaw?.purchases ?? [], sales: tallyRaw?.sales ?? [], buyerInTally: !!tallyRaw?.buyer_in_tally };
   // Only this order's photos: reading the whole company's list stopped at 1,000 rows and dropped the newest.
   const { data: dPhotos } = dRows?.length
     ? await supabase.from("dispatch_photos").select("dispatch_id, path").in("dispatch_id", dRows.map((d) => d.id)).order("created_at")
@@ -85,7 +85,7 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
       ])
     : [{ data: [] }, { data: [] }];
   const stylePaths = lines.map((l) => l.photo_path).filter(Boolean) as string[];
-  const dispatchPaths = [...(dRows ?? []).flatMap((d) => [d.eway_path, d.lr_path, d.grn_path]), ...dispatchPhotos.map((p) => p.path)].filter(Boolean) as string[];
+  const dispatchPaths = [...(dRows ?? []).flatMap((d) => [d.bill_path, d.invoice_path, d.eway_path, d.lr_path, d.grn_path]), ...dispatchPhotos.map((p) => p.path)].filter(Boolean) as string[];
   const allPaths = [...(photoRows ?? []).map((p) => p.path), ...stylePaths, ...dispatchPaths, ...(stepUps ?? []).flatMap((u) => u.photos as string[])];
   const { data: signed } = allPaths.length
     ? await supabase.storage.from(PHOTO_BUCKET).createSignedUrls(allPaths, 3600)
@@ -153,7 +153,7 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
   const dispatches: Dispatch[] = (dRows ?? []).map((d) => ({
     id: d.id, factoryName: factoryLabel(d.factory_id), billNo: d.purchase_bill_no, billDate: d.purchase_bill_date,
     purchaseTaxable: Number(d.purchase_taxable), purchaseGst: Number(d.purchase_gst),
-    purchaseTallyAmount: d.purchase_tally_amount == null ? null : Number(d.purchase_tally_amount), purchasedAt: d.purchased_at, invoiceDueAt: d.invoice_due_at,
+    purchaseTallyAmount: d.purchase_tally_amount == null ? null : Number(d.purchase_tally_amount), billUrl: url(d.bill_path), invoiceUrl: url(d.invoice_path), purchasedAt: d.purchased_at, invoiceDueAt: d.invoice_due_at,
     invoiceNo: d.invoice_no, invoiceTaxable: d.invoice_taxable == null ? null : Number(d.invoice_taxable), invoiceGst: d.invoice_gst == null ? null : Number(d.invoice_gst),
     invoicedAt: d.invoiced_at, ewayNo: d.eway_bill_no, ewayDate: d.eway_bill_date, ewayValidUntil: d.eway_valid_until, ewayUrl: url(d.eway_path), ewayFromTally: !!d.eway_from_tally,
     transporter: d.transporter, vehicleNo: d.vehicle_no, lrNo: d.lr_no, lrDate: d.lr_date, lrUrl: url(d.lr_path), cartons: d.cartons,
