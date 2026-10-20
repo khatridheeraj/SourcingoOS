@@ -54,16 +54,18 @@ create trigger tally_vouchers_purchase after insert or update on public.tally_vo
 revoke execute on function public.take_purchase_bills_from_tally(), public.take_purchase_bills_trigger() from public, anon, authenticated;
 
 -- The bills an order's dispatch can be made from: its factories' purchase bills and its buyer's invoices in Tally
--- from the last 120 days that no live dispatch has taken yet. For the orders team, who can't read Tally itself.
+-- dated from a week before the order's PO (and within 90 days) that no live dispatch has taken yet. For the orders
+-- team, who can't read Tally itself.
 create function public.dispatch_tally_bills(p_order uuid) returns jsonb
 language plpgsql stable security definer set search_path = '' as $$
 declare
   v_company uuid;
   v_buyer uuid;
   v_ledger text;
-  v_from date := public.india_today() - 120;
+  v_from date;
 begin
-  select o.company_id, o.buyer_id, b.tally_ledger into v_company, v_buyer, v_ledger
+  select o.company_id, o.buyer_id, b.tally_ledger, greatest(coalesce(o.po_date, o.created_at::date) - 7, public.india_today() - 90)
+  into v_company, v_buyer, v_ledger, v_from
   from public.orders o join public.buyers b on b.id = o.buyer_id where o.id = p_order;
   if v_company is null or not public.can_edit_orders(v_company) then
     return jsonb_build_object('purchases', '[]'::jsonb, 'sales', '[]'::jsonb);

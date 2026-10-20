@@ -175,15 +175,22 @@ type TallyBill = { no: string; date: string; amount: number };
 function BillPicker({ label, bills, chosen, manual, onPick, onManual }: {
   label: string; bills: TallyBill[]; chosen: string; manual: boolean; onPick: (b: TallyBill) => void; onManual: () => void;
 }) {
+  // The newest few first; older ones a tap away, so the phone isn't a long scroll.
+  const [all, setAll] = useState(false);
+  const isChosen = (b: TallyBill) => !manual && chosen.trim().toLowerCase() === b.no.toLowerCase();
+  const shown = all ? bills : bills.filter((b, i) => i < 4 || isChosen(b));
   return (
     <div>
       <p className="mb-1.5 text-[12.5px] font-medium">{label}</p>
       <div className="pick-list" role="group" aria-label={label}>
-        {bills.map((b) => (
-          <button key={b.no} type="button" className="pick" aria-pressed={!manual && chosen.trim().toLowerCase() === b.no.toLowerCase()} onClick={() => onPick(b)}>
+        {shown.map((b) => (
+          <button key={b.no} type="button" className="pick" aria-pressed={isChosen(b)} onClick={() => onPick(b)}>
             <b>{b.no}</b><span className="amt">{money(b.amount)}</span><small>{day(b.date)}</small>
           </button>
         ))}
+        {shown.length < bills.length && (
+          <button type="button" className="btn sm self-start" onClick={() => setAll(true)}>Show {bills.length - shown.length} older</button>
+        )}
         <button type="button" className="pick plain" aria-pressed={manual} onClick={onManual}>Not in Tally yet: type the number</button>
       </div>
     </div>
