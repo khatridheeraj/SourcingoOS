@@ -14,6 +14,8 @@ export type BriefData = {
   updates_waiting: number;
   pos_to_check: number | null;
   cheques: { to_clear: number; to_clear_amount: number; to_deposit: number; to_deposit_amount: number } | null;
+  // The owner only: notes sent from Help still waiting for a decision.
+  team_notes?: { no: number; kind: string; body: string; by: string; at: string; suggestion: string | null }[];
 };
 
 export type BriefItem = { text: string; sub?: string; href: string };
@@ -96,6 +98,15 @@ export function buildBrief(d: BriefData): Brief {
     sections.push({ key: "money", title: "Money", tone: "warn", items: money });
   }
 
+  if (d.team_notes?.length) {
+    const kind: Record<string, string> = { problem: "not working", wrong_data: "wrong data", idea: "idea", question: "question" };
+    sections.push({ key: "team", title: "From the team, for your call", tone: "info", items: d.team_notes.map((n) => ({
+      text: `#${n.no} ${n.by} (${kind[n.kind] ?? n.kind}): ${n.body.length > 120 ? `${n.body.slice(0, 117)}…` : n.body}`,
+      sub: n.suggestion ? `Claude suggests: ${n.suggestion}` : undefined,
+      href: "/feedback",
+    })) });
+  }
+
   const nRisk = risk.length;
   const nLate = overdue.length;
   const headline = !sections.length ? "Nothing is late or waiting. A clear day."
@@ -105,8 +116,9 @@ export function buildBrief(d: BriefData): Brief {
   return { title: `${WEEKDAYS[date.getUTCDay()]} ${dm(today)}`, headline, sections };
 }
 
-// The brief to share with a group: everything but money, which stays with the owner and Accounts.
-export const teamCopy = (b: Brief): Brief => ({ ...b, sections: b.sections.filter((s) => s.key !== "money") });
+// The brief to share with a group: everything but money, which stays with the owner and Accounts,
+// and the team's notes, which are for the owner.
+export const teamCopy = (b: Brief): Brief => ({ ...b, sections: b.sections.filter((s) => s.key !== "money" && s.key !== "team") });
 
 // Plain text for WhatsApp: bold titles with asterisks, one line per item.
 export function briefText(b: Brief, company: string): string {

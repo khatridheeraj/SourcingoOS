@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
+import { openHelp } from "@/components/help/help-chat";
 
 export type IconName = keyof typeof ICONS;
 export type NavItem = { href: string; label: string; icon: IconName; count?: number };
@@ -27,6 +28,8 @@ const ICONS = {
   share: "M10 3v10m0-10L6.5 6.5M10 3l3.5 3.5M5 10H4.5a1 1 0 0 0-1 1v5a1 1 0 0 0 1 1h11a1 1 0 0 0 1-1v-5a1 1 0 0 0-1-1H15",
   more: "M4 4.5h4.5V9H4zM11.5 4.5H16V9h-4.5zM4 11.5h4.5V16H4zM11.5 11.5H16V16h-4.5z",
   sun: "M10 13.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7ZM10 2v1.5m0 13V18m8-8h-1.5M3.5 10H2m13.66-5.66-1.06 1.06M5.4 14.6l-1.06 1.06m11.32 0L14.6 14.6M5.4 5.4 4.34 4.34",
+  help: "M10 17.5a7.5 7.5 0 1 0 0-15 7.5 7.5 0 0 0 0 15ZM7.9 7.6a2.2 2.2 0 0 1 4.25.8c0 1.5-2.15 1.9-2.15 3.1M10 14.2v.05",
+  notes: "M4.5 4.5h11a1 1 0 0 1 1 1v7.5a1 1 0 0 1-1 1H9l-3.5 3v-3h-1a1 1 0 0 1-1-1V5.5a1 1 0 0 1 1-1ZM7 8h6M7 11h4",
   link: "M8.5 11.5a3 3 0 0 0 4.24 0l2.5-2.5a3 3 0 0 0-4.24-4.24L10 5.76m1.5 2.74a3 3 0 0 0-4.24 0l-2.5 2.5a3 3 0 0 0 4.24 4.24L10 14.24",
 };
 
@@ -40,7 +43,8 @@ export function Icon({ name, size = 18 }: { name: IconName; size?: number }) {
 
 // The app's side menu. On a phone it becomes a tab bar along the bottom, like a native app,
 // with everything else in a sheet under More.
-export function Sidebar({ groups, user, role, company }: { groups: NavGroup[]; user: string; role: string; company: string }) {
+// Help sits in the top bar on a phone and above the account on a computer; its dot counts replies not yet read.
+export function Sidebar({ groups, user, role, company, helpUnseen = 0 }: { groups: NavGroup[]; user: string; role: string; company: string; helpUnseen?: number }) {
   const path = usePathname();
   const [open, setOpen] = useState(false);
   const on = (href: string) => (href === "/" ? path === "/" || path.startsWith("/orders") : path.startsWith(href));
@@ -53,9 +57,14 @@ export function Sidebar({ groups, user, role, company }: { groups: NavGroup[]; u
     <>
       <header className="topbar">
         <Link href="/today" className="brand"><span className="brand-mark" aria-hidden>S</span>Sourcingo</Link>
-        <button type="button" className="avatar-btn" aria-label="Account and menu" aria-expanded={open} aria-controls="sidebar" onClick={() => setOpen(true)}>
-          <span className="avatar" aria-hidden>{initials}</span>
-        </button>
+        <div className="top-acts">
+          <button type="button" className="help-btn" aria-label={helpUnseen ? `Help, ${helpUnseen} new replies` : "Help"} onClick={() => openHelp(helpUnseen ? "notes" : "ask")}>
+            <Icon name="help" size={22} />{helpUnseen > 0 && <span className="tab-badge">{helpUnseen}</span>}
+          </button>
+          <button type="button" className="avatar-btn" aria-label="Account and menu" aria-expanded={open} aria-controls="sidebar" onClick={() => setOpen(true)}>
+            <span className="avatar" aria-hidden>{initials}</span>
+          </button>
+        </div>
       </header>
       <nav className="tabbar" aria-label="Main">
         {tabs.map((it) => (
@@ -87,6 +96,10 @@ export function Sidebar({ groups, user, role, company }: { groups: NavGroup[]; u
             </div>
           ))}
         </nav>
+        <button type="button" className="side-help hide-phone" onClick={() => openHelp(helpUnseen ? "notes" : "ask")}>
+          <Icon name="help" /><span className="grow text-left">Help and ideas</span>
+          {helpUnseen > 0 && <span className="side-count">{helpUnseen}</span>}
+        </button>
         <div className="side-user">
           <span className="avatar" aria-hidden>{initials}</span>
           <div className="min-w-0 grow">
