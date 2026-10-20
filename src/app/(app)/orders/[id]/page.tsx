@@ -7,7 +7,7 @@ import { day, dayAt, daysBetween, qty, SHIP_QC, STATUS, TNA_STEPS, todayIST } fr
 import { createClient } from "@/lib/supabase/server";
 import { OrderForm } from "../order-form";
 import { FactoryUpdates, type PendingUpdate } from "./factory-updates";
-import { OrderDispatch, type Dispatch, type DispatchFactory } from "./order-dispatch";
+import { OrderDispatch, type Dispatch, type DispatchFactory, type TallyBills } from "./order-dispatch";
 import { OrderHistory } from "./order-history";
 import { OrderMargin } from "./order-margin";
 import { OrderProduction } from "./order-production";
@@ -59,12 +59,17 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
   ]);
   const canEdit = canEditOrders(me?.role);
   // Dispatches (purchase to GRN) are for the orders team only.
-  const [{ data: dRows }, { data: dLines }] = canEdit
+  const [{ data: dRows }, { data: dLines }, { data: tallyRaw }, { data: shipBlocker }] = canEdit
     ? await Promise.all([
         supabase.from("dispatches").select("*").eq("order_id", id).is("cancelled_at", null).order("purchased_at"),
         supabase.from("dispatch_lines").select("dispatch_id, line_id, qty, purchase_rate, sale_rate").in("line_id", (o.order_lines ?? []).map((l) => l.id)),
+        // The factories' bills and the buyer's invoices in Tally, to pick from instead of typing.
+        supabase.rpc("dispatch_tally_bills", { p_order: id }),
+        // Why the order can't be marked shipped yet: its goods must be bought and billed in Dispatch first.
+        supabase.rpc("ship_blocker", { p_order: id }),
       ])
-    : [{ data: [] }, { data: [] }];
+    : [{ data: [] }, { data: [] }, { data: null }, { data: null }];
+  const tallyBills: TallyBills = { purchases: tallyRaw?.purchases ?? [], sales: tallyRaw?.sales ?? [] };
   // Only this order's photos: reading the whole company's list stopped at 1,000 rows and dropped the newest.
   const { data: dPhotos } = dRows?.length
     ? await supabase.from("dispatch_photos").select("dispatch_id, path").in("dispatch_id", dRows.map((d) => d.id)).order("created_at")
@@ -147,7 +152,8 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
   const url = (p: string | null) => (p && urlByPath.get(p)) || null;
   const dispatches: Dispatch[] = (dRows ?? []).map((d) => ({
     id: d.id, factoryName: factoryLabel(d.factory_id), billNo: d.purchase_bill_no, billDate: d.purchase_bill_date,
-    purchaseTaxable: Number(d.purchase_taxable), purchaseGst: Number(d.purchase_gst), purchasedAt: d.purchased_at, invoiceDueAt: d.invoice_due_at,
+    purchaseTaxable: Number(d.purchase_taxable), purchaseGst: Number(d.purchase_gst),
+    purchaseTallyAmount: d.purchase_tally_amount == null ? null : Number(d.purchase_tally_amount), purchasedAt: d.purchased_at, invoiceDueAt: d.invoice_due_at,
     invoiceNo: d.invoice_no, invoiceTaxable: d.invoice_taxable == null ? null : Number(d.invoice_taxable), invoiceGst: d.invoice_gst == null ? null : Number(d.invoice_gst),
     invoicedAt: d.invoiced_at, ewayNo: d.eway_bill_no, ewayDate: d.eway_bill_date, ewayValidUntil: d.eway_valid_until, ewayUrl: url(d.eway_path), ewayFromTally: !!d.eway_from_tally,
     transporter: d.transporter, vehicleNo: d.vehicle_no, lrNo: d.lr_no, lrDate: d.lr_date, lrUrl: url(d.lr_path), cartons: d.cartons,
@@ -244,11 +250,11 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
           </p>
           <p className="hide-phone text-xs">Entered {dayAt(o.created_at)}{o.updated_at.slice(0, 16) !== o.created_at.slice(0, 16) && `, last changed ${dayAt(o.updated_at)}`}</p>
         </div>
-        {/* Closing an order: the owner can always; others once every style's final QC has passed. */}
+        {/* Closing an order: once every style is bought and billed in Dispatch, and (except for the owner) its final QC has passed. */}
         <div className="head-acts">
           {/* Keyed like the styles below, so the message is worded afresh after every save. */}
           <ShareUpdate key={`${(lineStages ?? []).length}:${(lineStages ?? []).reduce((a, r) => (r.updated_at > a ? r.updated_at : a), "")}`} options={share} />
-          {canEdit && o.status === "open" && <MarkShipped orderId={o.id} orderNo={o.order_no} />}
+          {canEdit && o.status === "open" && <MarkShipped orderId={o.id} orderNo={o.order_no} blocked={shipBlocker as string | null} />}
         </div>
       </div>
       {saved && <div className="okbox">Order saved as {o.order_no}.</div>}
@@ -286,7 +292,7 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
       </div>
       {canEdit && (
         <div data-sec="dispatch"><OrderDispatch orderId={o.id} companyId={o.company_id} open={o.status === "open"} owner={me?.role === "owner"} factories={dispatchFactories}
-          dispatches={dispatches} now={Date.parse(new Date().toISOString())} today={todayIST()} /></div>
+          dispatches={dispatches} tally={tallyBills} now={Date.parse(new Date().toISOString())} today={todayIST()} /></div>
       )}
       {canEdit && (
         <div data-sec="money"><OrderMargin

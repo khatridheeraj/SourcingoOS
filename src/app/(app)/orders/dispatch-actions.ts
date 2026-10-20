@@ -25,7 +25,7 @@ async function run(orderId: string, fn: string, args: Record<string, unknown>): 
 }
 
 export type PurchaseInput = {
-  factory_id: string; bill_no: string; bill_date: string; gst: string; notes: string;
+  factory_id: string; bill_no: string; bill_date: string; notes: string;
   lines: { line_id: string; qty: string; purchase_rate: string; sale_rate: string }[];
 };
 
@@ -43,23 +43,22 @@ export async function recordPurchase(orderId: string, p: PurchaseInput): Promise
     if (!(Number(num(l.purchase_rate)) >= 0) || num(l.purchase_rate) === "") return { error: "Every style needs its purchase rate." };
     if (num(l.sale_rate) !== "" && !(Number(num(l.sale_rate)) >= 0)) return { error: "The sale rate must be a number." };
   }
-  if (num(p.gst) !== "" && !(Number(num(p.gst)) >= 0)) return { error: "GST must be a number." };
+  // GST is worked out by the database from the styles' rates.
   return run(orderId, "record_purchase", {
     p: {
-      order_id: orderId, factory_id: p.factory_id, bill_no: p.bill_no.trim(), bill_date: p.bill_date, gst: num(p.gst), notes: p.notes,
+      order_id: orderId, factory_id: p.factory_id, bill_no: p.bill_no.trim(), bill_date: p.bill_date, notes: p.notes,
       lines: lines.map((l) => ({ line_id: l.line_id, qty: Number(num(l.qty)), purchase_rate: num(l.purchase_rate), sale_rate: num(l.sale_rate) })),
     },
   });
 }
 
 // Step 2: the buyer's invoice. It also goes into Payments.
-export async function recordDispatchInvoice(orderId: string, id: string, p: { invoice_no: string; invoice_date: string; taxable: string; gst: string }): Promise<Result> {
+export async function recordDispatchInvoice(orderId: string, id: string, p: { invoice_no: string; invoice_date: string; taxable: string }): Promise<Result> {
   if (!(await team())) return { error: "Only the orders team can record dispatches." };
   if (!p.invoice_no.trim()) return { error: "Enter the invoice number." };
   if (!isDate(p.invoice_date)) return { error: "Enter the invoice date." };
   if (!(Number(num(p.taxable)) >= 0) || num(p.taxable) === "") return { error: "Enter the invoice value before GST." };
-  if (num(p.gst) !== "" && !(Number(num(p.gst)) >= 0)) return { error: "GST must be a number." };
-  return run(orderId, "record_dispatch_invoice", { p_id: id, p: { invoice_no: p.invoice_no.trim(), invoice_date: p.invoice_date, taxable: num(p.taxable), gst: num(p.gst) } });
+  return run(orderId, "record_dispatch_invoice", { p_id: id, p: { invoice_no: p.invoice_no.trim(), invoice_date: p.invoice_date, taxable: num(p.taxable) } });
 }
 
 // Files for a dispatch live under <company>/<order>/dispatch/<dispatch>/.

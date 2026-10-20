@@ -1,12 +1,15 @@
 "use client";
 
+import Link from "next/link";
 import { useState, useTransition } from "react";
 import { markShipped } from "./actions";
 
-// Closes an order that left the factory long ago, after a second tap so it isn't done by accident.
-export function MarkShipped({ orderId, orderNo }: { orderId: string; orderNo: string }) {
+// Closes an order once it has gone out, after a second tap so it isn't done by accident.
+// blocked: why it can't be closed yet (no factory bill or no invoice in Dispatch); the tap says so instead.
+export function MarkShipped({ orderId, orderNo, blocked }: { orderId: string; orderNo: string; blocked?: string | null }) {
   const [sure, setSure] = useState(false);
   const [error, setError] = useState("");
+  const [why, setWhy] = useState(false);
   const [pending, start] = useTransition();
 
   function ship() {
@@ -28,9 +31,14 @@ export function MarkShipped({ orderId, orderNo }: { orderId: string; orderNo: st
           <button className="btn sm primary" onClick={ship} disabled={pending}>{pending ? "Closing…" : `Yes, ${orderNo} shipped`}</button>
         </div>
       ) : (
-        <button className="btn sm" onClick={() => setSure(true)}>Mark shipped</button>
+        <button className="btn sm" aria-expanded={blocked ? why : undefined} onClick={() => (blocked ? setWhy(!why) : setSure(true))}>Mark shipped</button>
       )}
-      {error && <span className="max-w-[260px] text-right text-xs font-semibold text-bad">{error}</span>}
+      {blocked && why && (
+        <span className="max-w-[300px] text-right text-xs font-semibold text-warn" role="status">
+          Not yet: {blocked} <Link className="link" href={`/orders/${orderId}#dispatch`}>Open Dispatch</Link>
+        </span>
+      )}
+      {error && <span className="max-w-[300px] text-right text-xs font-semibold text-bad" role="alert">{error}</span>}
     </div>
   );
 }
