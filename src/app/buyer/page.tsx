@@ -31,6 +31,12 @@ function qcChip(q: FinalQc | null) {
   return q.result === "pass" ? { text: `Final QC passed ${dm(q.checked_on)}`, cls: "ok" } : { text: "Final QC: being reworked", cls: "warn" };
 }
 
+// "Final QC not done yet" means something only once a style is near the end of production.
+const NEAR_QC = ["finishing", "packed", "final_qc", "ex_factory"];
+
+// Styles shown per PO before "Show more", so a 9-style PO doesn't bury the next one.
+const SHOWN = 3;
+
 export default async function BuyerPage() {
   const supabase = await createClient();
   const [me, { data, error }, { data: sampleRows }] = await Promise.all([getMe(), supabase.rpc("buyer_orders"), supabase.rpc("buyer_samples")]);
@@ -87,6 +93,74 @@ export default async function BuyerPage() {
             const ordered = o.lines.reduce((n, l) => n + Number(l.qty), 0);
             const sent = o.lines.reduce((n, l) => n + Number(l.shipped ?? 0), 0);
             const left = ship ? daysBetween(today, ship) : null;
+            // Hiding just one style saves nothing, so a PO is cut only when two or more would be hidden.
+            const cut = lines.length > SHOWN + 1 ? SHOWN : lines.length;
+            const item = ({ l, w, qc }: (typeof lines)[number]) => {
+              const photo = l.photo_path ? url.get(l.photo_path) : undefined;
+              const qcPhotos = (l.final_qc?.photos ?? []).map((p) => url.get(p)).filter((u): u is string => !!u);
+              return (
+                <li key={l.id}>
+                  <details className="bstyle">
+                    <summary>
+                      <span className="style-photo">
+                        {/* eslint-disable-next-line @next/next/no-img-element -- short-lived signed links, not for the image optimiser */}
+                        {photo ? <img src={photo} alt="" /> : <span className="ph">No photo</span>}
+                      </span>
+                      <span className="bstyle-id">
+                        <b className="code">{l.style}</b>
+                        <span>{[l.colour, l.description, `${qty(l.qty)} pcs`, !shipped && l.shipped ? `${qty(l.shipped)} shipped` : ""].filter(Boolean).join(" · ")}</span>
+                      </span>
+                      <span className="bstyle-prog">
+                        <span className="stepper" aria-label={`${w.done} of ${w.total} steps done`}>
+                          {l.steps.map((s) => <i key={s.stage} className={s.done_on ? "ok" : s === w.next ? "now" : ""} />)}
+                        </span>
+                        <span className="style-line"><span>{w.at} · {w.done} of {w.total} done</span><b>{w.then}</b></span>
+                      </span>
+                      {l.final_qc || !w.next || NEAR_QC.includes(w.next.stage) ? <span className={`chip ${qc.cls}`}>{qc.text}</span> : <span className="bstyle-nochip" aria-hidden />}
+                      <svg className="bstyle-chev" viewBox="0 0 16 16" aria-hidden><path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                    </summary>
+                    <div className="bstyle-body">
+                      <ol className="btimeline">
+                        {l.steps.map((s) => {
+                          const now = s === w.next;
+                          return (
+                            <li key={s.stage} className={s.done_on ? "done" : now ? "now" : ""}>
+                              <i aria-hidden>{s.done_on ? "✓" : ""}</i>
+                              <span>{stepName(s)}</span>
+                              <small>
+                                {s.done_on ? `Done ${dm(s.done_on)}` : now ? (s.planned_on && s.planned_on >= today ? `In progress, by ${dm(s.planned_on)}` : "In progress")
+                                  : s.planned_on && s.planned_on >= today ? `Planned ${dm(s.planned_on)}` : "Coming up"}
+                              </small>
+                            </li>
+                          );
+                        })}
+                      </ol>
+                      {l.final_qc && (
+                        <div className="bqc">
+                          <div className="row">
+                            <b>Final quality check</b>
+                            <span className={`chip ${qc.cls}`}>{l.final_qc.result === "pass" ? "Passed" : "Being reworked"}</span>
+                            <span className="muted text-[13px]">
+                              {[day(l.final_qc.checked_on), l.final_qc.pieces_checked ? `${qty(l.final_qc.pieces_checked)} pcs checked` : ""].filter(Boolean).join(" · ")}
+                            </span>
+                          </div>
+                          {qcPhotos.length > 0 && (
+                            <div className="bqc-photos">
+                              {qcPhotos.map((u, i) => (
+                                <a key={u} href={u} target="_blank" rel="noreferrer" aria-label={`QC photo ${i + 1} of ${l.style}`}>
+                                  {/* eslint-disable-next-line @next/next/no-img-element -- short-lived signed links, not for the image optimiser */}
+                                  <img src={u} alt="" loading="lazy" />
+                                </a>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </details>
+                </li>
+              );
+            };
             return (
               <section key={o.id} className="bord" aria-label={`PO ${o.buyer_po ?? o.order_no}`}>
                 <header className="bord-h">
@@ -119,74 +193,13 @@ export default async function BuyerPage() {
                     <span>{Math.round((done / total) * 100)}% done</span>
                   </div>
                 )}
-                <ul className="bstyles">
-                  {lines.map(({ l, w, qc }) => {
-                    const photo = l.photo_path ? url.get(l.photo_path) : undefined;
-                    const qcPhotos = (l.final_qc?.photos ?? []).map((p) => url.get(p)).filter((u): u is string => !!u);
-                    return (
-                      <li key={l.id}>
-                        <details className="bstyle">
-                          <summary>
-                            <span className="style-photo">
-                              {/* eslint-disable-next-line @next/next/no-img-element -- short-lived signed links, not for the image optimiser */}
-                              {photo ? <img src={photo} alt="" /> : <span className="ph">No photo</span>}
-                            </span>
-                            <span className="bstyle-id">
-                              <b className="code">{l.style}</b>
-                              <span>{[l.colour, l.description, `${qty(l.qty)} pcs`, !shipped && l.shipped ? `${qty(l.shipped)} shipped` : ""].filter(Boolean).join(" · ")}</span>
-                            </span>
-                            <span className="bstyle-prog">
-                              <span className="stepper" aria-label={`${w.done} of ${w.total} steps done`}>
-                                {l.steps.map((s) => <i key={s.stage} className={s.done_on ? "ok" : s === w.next ? "now" : ""} />)}
-                              </span>
-                              <span className="style-line"><span>{w.at} · {w.done} of {w.total} done</span><b>{w.then}</b></span>
-                            </span>
-                            <span className={`chip ${qc.cls}`}>{qc.text}</span>
-                            <svg className="bstyle-chev" viewBox="0 0 16 16" aria-hidden><path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" /></svg>
-                          </summary>
-                          <div className="bstyle-body">
-                            <ol className="btimeline">
-                              {l.steps.map((s) => {
-                                const now = s === w.next;
-                                return (
-                                  <li key={s.stage} className={s.done_on ? "done" : now ? "now" : ""}>
-                                    <i aria-hidden>{s.done_on ? "✓" : ""}</i>
-                                    <span>{stepName(s)}</span>
-                                    <small>
-                                      {s.done_on ? `Done ${dm(s.done_on)}` : now ? (s.planned_on && s.planned_on >= today ? `In progress, by ${dm(s.planned_on)}` : "In progress")
-                                        : s.planned_on && s.planned_on >= today ? `Planned ${dm(s.planned_on)}` : "Coming up"}
-                                    </small>
-                                  </li>
-                                );
-                              })}
-                            </ol>
-                            {l.final_qc && (
-                              <div className="bqc">
-                                <div className="row">
-                                  <b>Final quality check</b>
-                                  <span className={`chip ${qc.cls}`}>{l.final_qc.result === "pass" ? "Passed" : "Being reworked"}</span>
-                                  <span className="muted text-[13px]">
-                                    {[day(l.final_qc.checked_on), l.final_qc.pieces_checked ? `${qty(l.final_qc.pieces_checked)} pcs checked` : ""].filter(Boolean).join(" · ")}
-                                  </span>
-                                </div>
-                                {qcPhotos.length > 0 && (
-                                  <div className="bqc-photos">
-                                    {qcPhotos.map((u, i) => (
-                                      <a key={u} href={u} target="_blank" rel="noreferrer" aria-label={`QC photo ${i + 1} of ${l.style}`}>
-                                        {/* eslint-disable-next-line @next/next/no-img-element -- short-lived signed links, not for the image optimiser */}
-                                        <img src={u} alt="" loading="lazy" />
-                                      </a>
-                                    ))}
-                                  </div>
-                                )}
-                              </div>
-                            )}
-                          </div>
-                        </details>
-                      </li>
-                    );
-                  })}
-                </ul>
+                <ul className="bstyles">{lines.slice(0, cut).map(item)}</ul>
+                {lines.length > cut && (
+                  <details className="bmore">
+                    <summary>Show {lines.length - cut} more styles</summary>
+                    <ul className="bstyles">{lines.slice(cut).map(item)}</ul>
+                  </details>
+                )}
               </section>
             );
           })}
