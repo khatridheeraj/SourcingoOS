@@ -17,6 +17,7 @@ const tallyText = (a: Advice | undefined) =>
   : a.kind === "part" ? { tone: "text-warn", text: `Tally: ${money(a.paid)} paid, ${money(a.left)} still due` }
   : { tone: "muted", text: "Tally: nothing paid yet" };
 
+const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;
 const TABS = [{ key: "today", label: "To do" }, { key: "invoices", label: "Invoices" }, { key: "cheques", label: "Cheques" }, { key: "buyers", label: "Buyers" }];
 const INV_FILTERS = [
   { key: "unpaid", label: "Not paid" }, { key: "open", label: "No cheque" }, { key: "overdue", label: "Overdue" },
@@ -249,17 +250,18 @@ export default async function PaymentsPage({ searchParams }: PageProps<"/payment
           <h1>Payments</h1>
           <p>Invoices raised on buyers and the cheques that pay them. Only Accounts and the owner see this page.</p>
         </div>
-        <Link className="btn" href="/tally">Check with Tally</Link>
-        <Link className="btn" href="/payments/invoices/new">Add invoice</Link>
-        <Link className="btn primary" href="/payments/cheques/new">Record cheque</Link>
+        <div className="head-acts">
+          <Link className="btn" href="/tally">Check Tally</Link>
+          <Link className="btn" href="/payments/invoices/new">Add invoice</Link>
+          <Link className="btn primary" href="/payments/cheques/new">Record cheque</Link>
+        </div>
       </div>
       {error && <div className="errbox">Couldn&apos;t load everything: {error.message}</div>}
       <div className="tiles">
-        <Link className="tile" href="/payments?tab=invoices"><span>Left to collect</span><b>{rs(unpaid.reduce((a, i) => a + i.outstanding, 0))}</b><small className="muted text-xs">{unpaid.length} unpaid invoices</small></Link>
-        <Link className="tile" href="/payments?tab=cheques"><span>Cheques held</span><b>{rs(held.reduce((a, c) => a + Number(c.amount), 0))}</b><small className="muted text-xs">{b.toDeposit.length} to deposit · {b.awaitingClear.length} awaiting clearance</small></Link>
-        <Link className="tile" href="/payments?tab=invoices&status=open"><span>No cheque yet</span><b>{rs(uncovered.reduce((a, i) => a + i.uncovered, 0))}</b><small className="muted text-xs">{uncovered.length} invoices</small></Link>
-        <Link className="tile" href="/payments?tab=invoices"><span>Due in 30 days</span><b>{rs(unpaid.filter((i) => i.due && i.due >= t && i.due <= addDays(t, 30)).reduce((a, i) => a + i.outstanding, 0))}</b></Link>
-        <Link className={`tile ${overdue.length ? "alarm" : ""}`} href="/payments?tab=invoices&status=overdue"><span>Overdue</span><b>{rs(overdue.reduce((a, i) => a + i.outstanding, 0))}</b><small className="muted text-xs">{overdue.length} invoices past due</small></Link>
+        <Link className="tile" href="/payments?tab=invoices"><span>Left to collect</span><b>{rs(unpaid.reduce((a, i) => a + i.outstanding, 0))}</b><small className="muted text-xs">{plural(unpaid.length, "unpaid invoice")}{!uncovered.length ? "" : uncovered.length === unpaid.length && uncovered.every((i) => i.uncovered === i.outstanding) ? " · no cheque yet" : ` · ${rs(uncovered.reduce((a, i) => a + i.uncovered, 0))} without a cheque`}</small></Link>
+        <Link className={`tile ${overdue.length ? "alarm" : ""}`} href="/payments?tab=invoices&status=overdue"><span>Overdue</span><b>{rs(overdue.reduce((a, i) => a + i.outstanding, 0))}</b><small className="muted text-xs">{overdue.length ? `${plural(overdue.length, "invoice")} past due` : "Nothing past due"}</small></Link>
+        <Link className="tile" href="/payments?tab=cheques"><span>Cheques held</span><b>{rs(held.reduce((a, c) => a + Number(c.amount), 0))}</b><small className="muted text-xs">{b.toDeposit.length || b.awaitingClear.length ? `${b.toDeposit.length} to deposit · ${b.awaitingClear.length} awaiting clearance` : held.length ? "Post-dated, not due at the bank yet" : "None in hand"}</small></Link>
+        <Link className="tile" href="/payments?tab=invoices"><span>Due in 30 days</span><b>{rs(unpaid.filter((i) => i.due && i.due >= t && i.due <= addDays(t, 30)).reduce((a, i) => a + i.outstanding, 0))}</b><small className="muted text-xs">Not yet due</small></Link>
       </div>
       <nav className="filters" aria-label="Payments">
         {TABS.map((x) => (
