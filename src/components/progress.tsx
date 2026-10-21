@@ -1,4 +1,5 @@
 import type { Progress } from "@/lib/progress";
+import { partText, type OrderShip } from "@/lib/shipments";
 
 // Whether an open order (or one factory's part of it) is on plan, as one chip.
 export function PlanChip({ p, looksShipped = false }: { p: Progress; looksShipped?: boolean }) {
@@ -10,7 +11,17 @@ export function PlanChip({ p, looksShipped = false }: { p: Progress; looksShippe
 }
 
 // The plan chip, steps done out of planned, a bar and where the slowest styles are.
-export function ProgressCell({ p, looksShipped = false }: { p: Progress; looksShipped?: boolean }) {
+// An order sent in parts shows its pieces shipped instead: what is left is what matters now.
+export function ProgressCell({ p, looksShipped = false, ship }: { p: Progress; looksShipped?: boolean; ship?: OrderShip | null }) {
+  if (ship?.part) {
+    return (
+      <>
+        <span className="flex items-center justify-between gap-2"><span className="chip info">Part shipped</span><small className="num">{Math.floor((100 * ship.shipped) / ship.ordered)}%</small></span>
+        <span className="bar"><i className="ok" style={{ width: `${Math.max(3, (100 * ship.shipped) / ship.ordered)}%` }} /></span>
+        <small>{partText(ship)}</small>
+      </>
+    );
+  }
   return (
     <>
       <span className="flex items-center justify-between gap-2"><PlanChip p={p} looksShipped={looksShipped} /><small className="num">{p.total > 0 && `${p.done}/${p.total}`}</small></span>

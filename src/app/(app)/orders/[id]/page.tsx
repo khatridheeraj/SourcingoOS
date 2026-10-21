@@ -21,6 +21,7 @@ import { OrderSections, type SectionTab } from "./order-sections";
 import { ShareUpdate, type ShareOption } from "./share-update";
 import { formOptions } from "../options";
 import type { LineFileKind } from "../actions";
+import { loadShipProgress, orderShip, partText } from "@/lib/shipments";
 
 const str = (v: unknown) => (v == null ? "" : String(v));
 
@@ -31,7 +32,7 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
   const supabase = await createClient();
   const { data: o } = await supabase
     .from("orders")
-    .select("id, company_id, order_no, edit_no, buyer_id, buyer_po, po_date, ship_date, status, merchandiser_id, notes, buyer_terms, stage, stage_at, revised_ship_date, delay_reason, created_at, updated_at, order_lines(id, style, description, colour, qty, factory_id, position, photo_path, fabric, sizes)")
+    .select("id, company_id, order_no, edit_no, buyer_id, buyer_po, po_date, ship_date, status, merchandiser_id, notes, buyer_terms, stage, stage_at, revised_ship_date, delay_reason, closed_short_at, closed_short_by, short_reason, created_at, updated_at, order_lines(id, style, description, colour, qty, factory_id, position, photo_path, fabric, sizes)")
     .eq("id", id)
     .is("order_lines.removed_at", null)
     .maybeSingle();
@@ -42,7 +43,7 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
   const priceOf = new Map(((prices ?? []) as LinePrice[]).map((p) => [p.id, p]));
   const lines = [...(o.order_lines ?? [])].sort((a, b) => a.position - b.position)
     .map((l) => ({ ...l, buyer_rate: priceOf.get(l.id)?.buyer_rate ?? null, factory_rate: priceOf.get(l.id)?.factory_rate ?? null }));
-  const [{ data: qc }, team, me, { data: lineStages }, { data: factoryPos }, { data: stepUps }, { data: lineFiles }] = await Promise.all([
+  const [{ data: qc }, team, me, { data: lineStages }, { data: factoryPos }, { data: stepUps }, { data: lineFiles }, { data: shipRows }] = await Promise.all([
     supabase
       .from("qc_checks")
       .select("id, line_id, kind, checked_on, result, pieces_checked, defects, notes, checked_by, cancelled_at, cancel_reason")
@@ -59,7 +60,10 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
     supabase.from("step_updates").select("id, line_id, factory_id, stage, done_on, note, photos, created_at").eq("order_id", id).eq("status", "pending").order("created_at"),
     // Each style's tech pack, cutting program and other files.
     supabase.from("line_files").select("id, line_id, kind, path, file_name").eq("order_id", id).is("removed_at", null).order("created_at"),
+    // Each style's pieces bought, billed and shipped across the order's dispatches.
+    loadShipProgress(supabase, [id]),
   ]);
+  const ship = orderShip(shipRows);
   const canEdit = canEditOrders(me?.role);
   // Dispatches (purchase to GRN) are for the orders team only.
   const [{ data: dRows }, { data: dLines }, { data: tallyRaw }, { data: shipBlocker }] = canEdit
@@ -257,7 +261,9 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
             <span className={STATUS[o.status]?.cls}>{STATUS[o.status]?.label}</span>
             <span>{due ? `Ships ${day(due)}` : "No ship date yet"}{o.status === "open" && due && due < todayIST() && <b className="text-bad"> · {daysBetween(due, todayIST())} days late</b>}</span>
             <span>{lines.length} {lines.length === 1 ? "style" : "styles"} · {qty(lines.reduce((t, l) => t + l.qty, 0))} pcs</span>
-            {outlook?.level === "risk" && <span className="chip bad" title="A late step pushes back every step after it">Ship date at risk · about {outlook.daysLate} {outlook.daysLate === 1 ? "day" : "days"} late</span>}
+            {ship.part && o.status === "open" && <a href="#dispatch" className="chip info">Part shipped · {partText(ship)}</a>}
+            {o.closed_short_at && <span className="chip warn" title={o.short_reason ?? undefined}>Closed short · {qty(ship.billed)} of {qty(ship.ordered)} pcs</span>}
+            {!ship.part && outlook?.level === "risk" && <span className="chip bad" title="A late step pushes back every step after it">Ship date at risk · about {outlook.daysLate} {outlook.daysLate === 1 ? "day" : "days"} late</span>}
           </p>
           <p className="hide-phone text-xs">Entered {dayAt(o.created_at)}{o.updated_at.slice(0, 16) !== o.created_at.slice(0, 16) && `, last changed ${dayAt(o.updated_at)}`}</p>
         </div>
@@ -302,7 +308,12 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
         styles={lines.map((l) => ({ id: l.id, style: l.style, colour: str(l.colour), qty: l.qty }))} />
       </div>
       {canEdit && (
-        <div data-sec="dispatch"><OrderDispatch orderId={o.id} companyId={o.company_id} open={o.status === "open"} owner={me?.role === "owner"} factories={dispatchFactories}
+        <div data-sec="dispatch"><OrderDispatch orderId={o.id} orderNo={o.order_no} companyId={o.company_id} open={o.status === "open"} owner={me?.role === "owner"} factories={dispatchFactories}
+          ship={lines.map((l) => {
+            const r = shipRows.find((x) => x.line_id === l.id);
+            return { id: l.id, style: l.style, colour: str(l.colour), ordered: l.qty, bought: r?.bought ?? 0, billed: r?.billed ?? 0, shipped: r?.shipped ?? 0 };
+          })}
+          closedShort={o.closed_short_at ? { at: o.closed_short_at, reason: str(o.short_reason), by: (o.closed_short_by && people.get(o.closed_short_by)) || "the orders team" } : null}
           dispatches={dispatches} tally={tallyBills} now={Date.parse(new Date().toISOString())} today={todayIST()} /></div>
       )}
       {canEdit && (

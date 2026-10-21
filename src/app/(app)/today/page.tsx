@@ -9,6 +9,7 @@ import { poWaitDays, PO_WAIT_DAYS } from "@/lib/order-checks";
 import { project, shipRisk } from "@/lib/tna-plan";
 import { HOLD_HOURS, heldHours, heldText } from "@/lib/goods";
 import { createClient } from "@/lib/supabase/server";
+import { loadShipProgress, orderShip, partText } from "@/lib/shipments";
 import { Icon, type IconName } from "@/components/nav";
 import { MarkShipped } from "../orders/mark-shipped";
 
@@ -87,15 +88,18 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
   const open = (orders ?? []).filter((o) => who === "all" || o.merchandiser_id === me?.id);
   const ids = open.map((o) => o.id);
 
-  const [{ data: pos }, { data: stages }, { data: checks }] = ids.length
+  const [{ data: pos }, { data: stages }, { data: checks }, { data: shipRows }] = ids.length
     ? await Promise.all([
         fetchAll((a, z) => supabase.from("factory_pos").select("order_id, factory_id, plan_requested_on, plan_requested_at, factory_sent_at, released_at, buffer_days, lock_requested_at, lock_note")
           .in("order_id", ids).order("id").range(a, z)).then(keep),
         fetchAll((a, z) => supabase.from("line_stages").select("order_id, line_id, stage, label, planned_on, done_on, not_needed, factory_on").in("order_id", ids).order("id").range(a, z)).then(keep),
         fetchAll((a, z) => supabase.from("qc_checks").select("line_id, kind, result, checked_on").in("order_id", ids).is("cancelled_at", null)
           .order("checked_on", { ascending: false }).order("created_at", { ascending: false }).order("id").range(a, z)).then(keep),
+        // Pieces shipped so far, for orders sent in parts.
+        loadShipProgress(supabase, ids).then(keep),
       ])
-    : [{ data: [] }, { data: [] }, { data: [] }];
+    : [{ data: [] }, { data: [] }, { data: [] }, { data: [] }];
+  const shipOf = (o: { id: string }) => orderShip(shipRows ?? [], o.id);
 
   const buyerOf = new Map(buyers.map((b) => [b.id, buyerName(b)]));
   const factoryName = new Map(factories.map((f) => [f.id, f.name]));
@@ -335,6 +339,24 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
     });
   }
 
+  // Orders sent in parts: the rest still to send (late once the ship date has passed), and orders whose every
+  // piece has shipped but which are still open.
+  for (const o of team ? open : []) {
+    const sh = shipOf(o);
+    const due = dueDate(o);
+    const href = `/orders/${o.id}#dispatch`;
+    if (sh.part) {
+      const late = !!due && due < today;
+      (late ? now_ : soon).push({ key: `part:${o.id}`, href, sev: late ? "bad" : "warn", ...base(o),
+        detail: `${partText(sh)}${due ? ` · ship date ${dm(due)}` : ""}. Record the next part, or close the order short if the rest won't go.`,
+        chip: late ? { text: `Part shipped · ${plural(daysBetween(due!, today), "day")} late`, cls: "bad" } : { text: "Part shipped", cls: "warn" },
+        action: "Next part", sort: due ?? "" });
+    } else if (sh.shipped > 0 && sh.toShip === 0) {
+      soon.push({ key: `allshipped:${o.id}`, href, sev: "ok", ...base(o), detail: `All ${qty(sh.ordered)} pcs have shipped. Mark the order shipped to close it.`,
+        chip: { text: "All shipped", cls: "ok" }, action: "Close order", sort: due ?? "" });
+    }
+  }
+
   // Dispatch: invoice within 4 hours of the purchase (an emergency after that), then e-way bill and shipping, then the GRN.
   // Dispatches of every order, shipped ones too: an order marked shipped still waits for the buyer's GRN.
   const { data: disp } = team
@@ -406,7 +428,9 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
     const d = dueDate(o);
     const p = progress(o);
     const lateBy = d && d < today ? daysBetween(d, today) : 0;
-    return !d ? { text: "No ship date", cls: "bad" } : lateBy ? { text: `${plural(lateBy, "day")} late`, cls: "bad" }
+    const part = shipOf(o).part;
+    return !d ? { text: "No ship date", cls: "bad" } : lateBy ? { text: `${part ? "Part shipped · " : ""}${plural(lateBy, "day")} late`, cls: "bad" }
+      : part ? { text: "Part shipped", cls: "warn" }
       : finalPassed(o) ? { text: "Final QC passed", cls: "ok" } : !p.total ? { text: "No targets", cls: "warn" }
       : riskDays(o) ? { text: `At risk · ${riskDays(o)}d late`, cls: "bad" } : p.behind ? { text: "Behind plan", cls: "bad" } : { text: "On plan", cls: "ok" };
   };
@@ -539,6 +563,7 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
                   const d = dueDate(o);
                   const p = progress(o);
                   const st = state(o);
+                  const sh = shipOf(o);
                   return (
                     <li key={o.id}>
                       <Link href={`/orders/${o.id}`} className="ship-row">
@@ -550,8 +575,17 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
                             <span className="todo-title truncate"><span className="code">{o.order_no}</span>{buyerOf.get(o.buyer_id)}</span>
                             <span className={`ship-state ${st.cls}`}>{st.text}</span>
                           </span>
-                          <span className="bar"><i className={st.cls === "bad" ? "bad" : st.cls === "ok" ? "ok" : ""} style={{ width: `${p.total ? Math.max(3, (100 * p.done) / p.total) : 0}%` }} /></span>
-                          <span className="todo-detail block">{p.total ? `${p.done} of ${p.total} steps done` : "No steps planned yet"} · {qty(pcs([o]))} pcs</span>
+                          {sh.part ? (
+                            <>
+                              <span className="bar"><i className="ok" style={{ width: `${Math.max(3, (100 * sh.shipped) / sh.ordered)}%` }} /></span>
+                              <span className="todo-detail block">{partText(sh)}</span>
+                            </>
+                          ) : (
+                            <>
+                              <span className="bar"><i className={st.cls === "bad" ? "bad" : st.cls === "ok" ? "ok" : ""} style={{ width: `${p.total ? Math.max(3, (100 * p.done) / p.total) : 0}%` }} /></span>
+                              <span className="todo-detail block">{p.total ? `${p.done} of ${p.total} steps done` : "No steps planned yet"} · {qty(pcs([o]))} pcs</span>
+                            </>
+                          )}
                         </span>
                       </Link>
                     </li>

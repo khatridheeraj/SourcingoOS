@@ -9,7 +9,10 @@ import {
   attachDispatchCopy, cancelDispatch, recordDispatchInvoice, recordEwayBill, recordGrn, recordPurchase, recordShipping,
   type PurchaseInput, type ShippingInput,
 } from "../dispatch-actions";
+import { closeShort } from "../actions";
 
+// Each style's pieces across the order's dispatches: ordered, bought, billed (invoiced) and shipped.
+export type ShipLine = { id: string; style: string; colour: string; ordered: number; bought: number; billed: number; shipped: number };
 export type DispatchFactory = { id: string; name: string; lines: { id: string; style: string; colour: string; qty: number; factoryRate: string; buyerRate: string }[] };
 // Bills in Tally that no dispatch has taken yet (the order's factories' purchase bills and its buyer's invoices),
 // to check a typed number against. Not shown as a list. buyerInTally: the buyer has a Tally ledger, so its invoice is picked up by itself.
@@ -44,8 +47,9 @@ async function uploadDoc(folder: string, file: File): Promise<string> {
   return (await uploadReports(folder, [file]))[0].path;
 }
 
-export function OrderDispatch({ orderId, companyId, open, owner, factories, dispatches, tally, now, today }: {
-  orderId: string; companyId: string; open: boolean; owner: boolean; factories: DispatchFactory[]; dispatches: Dispatch[]; tally: TallyBills; now: number; today: string;
+export function OrderDispatch({ orderId, orderNo, companyId, open, owner, factories, dispatches, tally, now, today, ship, closedShort }: {
+  orderId: string; orderNo: string; companyId: string; open: boolean; owner: boolean; factories: DispatchFactory[]; dispatches: Dispatch[]; tally: TallyBills; now: number; today: string;
+  ship: ShipLine[]; closedShort: { at: string; reason: string; by: string } | null;
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
@@ -55,10 +59,20 @@ export function OrderDispatch({ orderId, companyId, open, owner, factories, disp
 
   const blank = (f?: DispatchFactory): PurchaseInput => ({
     factory_id: f?.id ?? "", bill_no: "", bill_date: today, notes: "",
-    lines: (f?.lines ?? []).map((l) => ({ line_id: l.id, qty: "", purchase_rate: l.factoryRate, sale_rate: l.buyerRate })),
+    // The next part starts with what is left to buy of each style.
+    lines: (f?.lines ?? []).map((l) => {
+      const s = ship.find((x) => x.id === l.id);
+      const left = s ? s.ordered - s.bought : 0;
+      return { line_id: l.id, qty: s?.bought && left > 0 ? String(left) : "", purchase_rate: l.factoryRate, sale_rate: l.buyerRate };
+    }),
   });
   const [p, setP] = useState<PurchaseInput>(blank(factories.length === 1 ? factories[0] : undefined));
   const [billCopy, setBillCopy] = useState<File | null>(null);
+  // Sent in parts: some pieces have gone and some are still to go.
+  const shipped = ship.reduce((t, l) => t + l.shipped, 0);
+  const part = open && shipped > 0 && ship.some((l) => l.shipped < l.ordered);
+  const numbered = dispatches.length > 1 || part;
+  const toBuy = ship.some((l) => l.bought < l.ordered);
 
   function savePurchase(e: React.FormEvent) {
     e.preventDefault();
@@ -111,21 +125,30 @@ export function OrderDispatch({ orderId, companyId, open, owner, factories, disp
     <section className="panel scroll-mt-20" id="dispatch">
       <div className="row mb-1">
         <h2 className="font-bold text-base">Dispatch</h2>
-        {open && !adding && factories.length > 0 && <button type="button" className="btn sm ml-auto" onClick={() => setAdding(true)}>Record a purchase</button>}
+        {open && !adding && factories.length > 0 && (
+          <button type="button" className={`btn sm ml-auto ${part && toBuy ? "primary" : ""}`} onClick={() => { setP(blank(factories.length === 1 ? factories[0] : undefined)); setAdding(true); }}>
+            {dispatches.length ? "Record the next part" : "Record a purchase"}
+          </button>
+        )}
       </div>
       <p className="muted mb-3 text-[13px]">
         Purchase from the factory, then invoice the buyer within 4 hours, add the e-way bill, ship with photos and the LR, and collect the buyer&apos;s GRN in time.
       </p>
 
+      {dispatches.length > 0 && (
+        <ShipSummary orderId={orderId} orderNo={orderNo} ship={ship} open={open} closedShort={closedShort} pending={pending} start={start}
+          onRefresh={() => router.refresh()} />
+      )}
+
       {adding && (
-        <PurchaseForm p={p} setP={setP} blank={blank} factories={factories} bills={tally.purchases} today={today} pending={pending}
+        <PurchaseForm p={p} setP={setP} blank={blank} factories={factories} ship={ship} bills={tally.purchases} today={today} pending={pending}
           copy={billCopy} setCopy={setBillCopy} error={error.new} onSubmit={savePurchase} onClose={() => setAdding(false)} />
       )}
 
       {dispatches.length === 0 && !adding && <p className="muted text-[13px]">Nothing dispatched yet.</p>}
 
       <div className="flex flex-col gap-3">
-        {dispatches.map((d) => {
+        {dispatches.map((d, di) => {
           const done = [true, !!d.invoicedAt, !!d.ewayNo, !!d.shippedAt, !!d.grnAt];
           const next = done.indexOf(false);
           const pcs = d.lines.reduce((s, l) => s + l.qty, 0);
@@ -136,7 +159,7 @@ export function OrderDispatch({ orderId, companyId, open, owner, factories, disp
           return (
             <article key={d.id} className="rounded-[10px] border border-line p-3" aria-label={`Dispatch ${d.billNo}`}>
               <div className="row">
-                <b>{d.factoryName} · bill {d.billNo}</b>
+                <b>{numbered && <span className="part-no">Part {di + 1}</span>}{d.factoryName} · bill {d.billNo}</b>
                 <span className="muted text-[13px]">{day(d.billDate)} · {qty(pcs)} pcs · {money(billTotal)} with GST</span>
                 {d.purchaseTallyAmount == null
                   ? <span className="chip" title="Linked by itself once Accounts books this bill in Tally.">Not in Tally yet</span>
@@ -243,8 +266,8 @@ function TallyMatch({ what, no, total, tally, none, fix }: {
   );
 }
 
-function PurchaseForm({ p, setP, blank, factories, bills, today, pending, copy, setCopy, error, onSubmit, onClose }: {
-  p: PurchaseInput; setP: (p: PurchaseInput) => void; blank: (f?: DispatchFactory) => PurchaseInput; factories: DispatchFactory[];
+function PurchaseForm({ p, setP, blank, factories, ship, bills, today, pending, copy, setCopy, error, onSubmit, onClose }: {
+  p: PurchaseInput; setP: (p: PurchaseInput) => void; blank: (f?: DispatchFactory) => PurchaseInput; factories: DispatchFactory[]; ship: ShipLine[];
   bills: TallyBills["purchases"]; today: string; pending: boolean; copy: File | null; setCopy: (f: File | null) => void;
   error?: string; onSubmit: (e: React.FormEvent) => void; onClose: () => void;
 }) {
@@ -256,7 +279,7 @@ function PurchaseForm({ p, setP, blank, factories, bills, today, pending, copy, 
   return (
     <form onSubmit={onSubmit} className="mb-4 flex flex-col gap-4 rounded-[10px] border border-line p-3">
       <div className="row">
-        <h3 className="font-semibold">Purchase: the factory&apos;s bill</h3>
+        <h3 className="font-semibold">{ship.some((l) => l.bought > 0) ? "Next part: the factory\u2019s bill" : "Purchase: the factory\u2019s bill"}</h3>
         {factories.length === 1 && <span className="muted text-[13px]">from {factories[0].name}</span>}
       </div>
       {factories.length > 1 && (
@@ -293,11 +316,17 @@ function PurchaseForm({ p, setP, blank, factories, bills, today, pending, copy, 
             {p.lines.map((l, i) => {
               const line = factory.lines.find((x) => x.id === l.line_id);
               const set = (k: "qty" | "purchase_rate" | "sale_rate", v: string) => setP({ ...p, lines: p.lines.map((x, j) => (j === i ? { ...x, [k]: v } : x)) });
+              const sh = ship.find((x) => x.id === l.line_id);
+              const left = sh ? sh.ordered - sh.bought : 0;
+              const over = sh && n(l.qty) > Math.max(0, left) ? n(l.qty) - Math.max(0, left) : 0;
               return (
                 <div key={l.line_id} className="bill-line">
                   <div className="who">
                     <b className="code">{line?.style}{line?.colour && <span className="muted font-normal"> · {line.colour}</span>}</b>
-                    <span className="muted text-[12px]">{qty(line?.qty)} ordered</span>
+                    <span className="muted text-[12px]">
+                      {!sh?.bought ? `${qty(line?.qty)} ordered` : left > 0 ? `${qty(sh.bought)} of ${qty(sh.ordered)} bought · ${qty(left)} left` : `All ${qty(sh.ordered)} bought`}
+                    </span>
+                    {over > 0 && <span className="text-[12px] font-semibold text-warn">{qty(over)} more than ordered</span>}
                   </div>
                   <label><span className="sm:hidden">Pieces bought</span><input className="inp" inputMode="numeric" value={l.qty} onChange={(e) => set("qty", e.target.value)} aria-label={`${line?.style} pieces bought`} /></label>
                   <label><span className="sm:hidden">Purchase rate ₹</span><input className="inp" inputMode="decimal" value={l.purchase_rate} onChange={(e) => set("purchase_rate", e.target.value)} aria-label={`${line?.style} purchase rate`} /></label>
@@ -514,5 +543,79 @@ function GrnStep({ d, pcs, late, pending, onSave }: {
         {err && <span className="text-[13px] font-semibold text-bad" role="alert">{err}</span>}
       </div>
     </form>
+  );
+}
+
+// Where the order's pieces are, style by style, and what is left to send. An order whose rest won't go
+// (the buyer took less, or the factory can't make it) is closed short here, with the reason.
+function ShipSummary({ orderId, orderNo, ship, open, closedShort, pending, start, onRefresh }: {
+  orderId: string; orderNo: string; ship: ShipLine[]; open: boolean; closedShort: { at: string; reason: string; by: string } | null;
+  pending: boolean; start: React.TransitionStartFunction; onRefresh: () => void;
+}) {
+  const [closing, setClosing] = useState(false);
+  const [reason, setReason] = useState("");
+  const [err, setErr] = useState("");
+  const ordered = ship.reduce((t, l) => t + l.ordered, 0);
+  const shipped = ship.reduce((t, l) => t + l.shipped, 0);
+  const billed = ship.reduce((t, l) => t + l.billed, 0);
+  const unbilled = ship.reduce((t, l) => t + Math.max(0, l.ordered - l.billed), 0);
+  const toShip = ship.reduce((t, l) => t + Math.max(0, l.ordered - l.shipped), 0);
+  // Of what is still to ship: pieces already bought on a dispatch on its way, and the rest not bought yet.
+  const moving = ship.reduce((t, l) => t + Math.max(0, Math.min(l.ordered, l.bought) - l.shipped), 0);
+  function close(e: React.FormEvent) {
+    e.preventDefault();
+    if (!reason.trim()) return setErr("Say why the rest won't be sent.");
+    setErr("");
+    start(async () => {
+      const res = await closeShort(orderId, reason);
+      if (res.error) return setErr(res.error);
+      setClosing(false);
+      onRefresh();
+    });
+  }
+  return (
+    <div className="ship-sum mb-3" aria-label="Pieces shipped">
+      <div className="row">
+        <b className="text-[14px]">{toShip === 0 ? `All ${qty(ordered)} pcs shipped` : `${qty(shipped)} of ${qty(ordered)} pcs shipped`}</b>
+        {closedShort ? <span className="chip warn">Closed short</span> : toShip > moving && shipped > 0 ? <span className="chip info">{qty(toShip - moving)} to send</span>
+          : moving > 0 && shipped > 0 ? <span className="chip info">{qty(moving)} on the way</span> : null}
+      </div>
+      <ul className="ship-lines">
+        {ship.map((l) => (
+          <li key={l.id}>
+            <span className="code">{l.style}{l.colour && <span className="muted font-normal"> · {l.colour}</span>}</span>
+            <span className="bar" aria-hidden><i className="ok" style={{ width: `${Math.min(100, (100 * l.shipped) / Math.max(1, l.ordered))}%` }} /></span>
+            <span className="num text-[13px]">
+              {qty(l.shipped)}/{qty(l.ordered)}
+              {l.bought > l.shipped && <span className="muted"> · {qty(l.bought - l.shipped)} on the way</span>}
+            </span>
+          </li>
+        ))}
+      </ul>
+      {closedShort && (
+        <p className="mt-2 text-[13px]">Closed short with {qty(billed)} of {qty(ordered)} pcs by {closedShort.by}, {at.format(new Date(closedShort.at))}: {closedShort.reason}</p>
+      )}
+      {open && unbilled > 0 && billed > 0 && !closing && (
+        <p className="muted mt-2 text-[13px]">
+          The order stays open until the rest is sent.{" "}
+          <button type="button" className="link font-semibold" onClick={() => setClosing(true)}>The rest won&apos;t go? Close short</button>
+        </p>
+      )}
+      {open && closing && (
+        <form className="mt-3 flex flex-col gap-2 rounded-[10px] bg-surface-2 p-3" onSubmit={close}>
+          <p className="text-[13px] font-semibold text-warn">Close {orderNo} with {qty(billed)} of {qty(ordered)} pcs? The other {qty(unbilled)} won&apos;t be sent.</p>
+          <label className="field">
+            <span>Why <i>*</i></span>
+            <input className="inp" value={reason} onChange={(e) => setReason(e.target.value)} aria-label="Why the rest won't be sent" placeholder="For example: buyer accepted 579 pcs" autoFocus />
+          </label>
+          <div className="row">
+            <button className="btn primary" disabled={pending}>{pending ? "Closing…" : "Close short"}</button>
+            <button type="button" className="btn" onClick={() => { setClosing(false); setErr(""); }}>Keep open</button>
+            {err && <span className="text-[13px] font-semibold text-bad" role="alert">{err}</span>}
+          </div>
+          <p className="muted text-[12px]">The order is marked shipped and the owner sees the reason in the morning brief. Opening it again later undoes this.</p>
+        </form>
+      )}
+    </div>
   );
 }
