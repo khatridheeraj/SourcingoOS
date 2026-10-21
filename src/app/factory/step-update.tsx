@@ -5,6 +5,7 @@ import { useRef, useState, useTransition } from "react";
 import { toast } from "@/components/toast";
 import { day, todayIST, TNA_STEPS } from "@/lib/format";
 import { uploadPhotos } from "@/lib/photos";
+import { SAMPLE_STEPS } from "@/lib/samples";
 import { postStepUpdate } from "./actions";
 import type { PanelOrder } from "./factory-order";
 import { errorText, stepName, words, type Lang } from "./i18n";
@@ -13,8 +14,9 @@ export type FactoryUpdate = { id: string; order_id: string; line_id: string; sta
 
 type Line = PanelOrder["lines"][number];
 const MAX_PHOTOS = 10;
-// Sourcingo enters these itself; the factory never marks them done.
-const SOURCINGO_STEPS = ["final_qc", "ex_factory"];
+// Sourcingo enters these itself; the factory never marks them done. Samples are sent with Send sample instead,
+// so the buyer can approve them.
+const SOURCINGO_STEPS = ["final_qc", "ex_factory", ...SAMPLE_STEPS.map((s) => s.key)];
 const openSteps = (l: Line) => l.stages.filter((s) => !s.done_on && !SOURCINGO_STEPS.includes(s.stage));
 const addDays = (d: string, n: number) => new Date(Date.parse(d) + n * 86_400_000).toISOString().slice(0, 10);
 

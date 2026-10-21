@@ -7,6 +7,7 @@ import { saveFactoryTna, type FactoryDateInput } from "./actions";
 import { stepName, words, type Lang } from "./i18n";
 import { sizeEntries } from "@/lib/sizes";
 import { FactoryProgress, type FactoryUpdate } from "./step-update";
+import { FactorySamples, type FactoryRound } from "./factory-samples";
 
 type Stage = { stage: string; label: string | null; factory_on: string | null; planned_on: string | null; done_on: string | null };
 export type PanelOrder = {
@@ -45,8 +46,8 @@ function Info({ info, lang }: { info?: StyleInfo; lang: Lang }) {
 const at = new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit", timeZone: "Asia/Kolkata" });
 
 // One order in the factory's panel: its styles, and the factory's date for every TNA step.
-export function FactoryOrder({ order, now, companyId, updates, lang, info }: {
-  order: PanelOrder; now: string; companyId: string; updates: FactoryUpdate[]; lang: Lang; info: Record<string, StyleInfo>;
+export function FactoryOrder({ order, now, companyId, updates, rounds, lang, info }: {
+  order: PanelOrder; now: string; companyId: string; updates: FactoryUpdate[]; rounds: FactoryRound[]; lang: Lang; info: Record<string, StyleInfo>;
 }) {
   const router = useRouter();
   const w = words(lang);
@@ -125,6 +126,7 @@ export function FactoryOrder({ order, now, companyId, updates, lang, info }: {
         {!released && !sentAt && order.plan_due_at && <>{w.sendBy} <b className="text-foreground">{at.format(new Date(order.plan_due_at))}</b>. </>}
         {released ? w.releasedHelp : w.planHelp}
       </p>
+      {released && <FactorySamples companyId={companyId} order={order} rounds={rounds} lang={lang} />}
       {released && <FactoryProgress companyId={companyId} order={order} updates={updates.filter((u) => u.order_id === order.order_id)} lang={lang} />}
       {/* On a phone: one card per style, one row per step, big date boxes. */}
       <div className="show-phone fstyles">

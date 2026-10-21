@@ -630,7 +630,7 @@ h1, h2, h3 { font-family: var(--font-display); text-wrap: balance; font-weight: 
   .jump-n.info { background: var(--info-soft); color: var(--info); }
   .sections > [data-sec] { display: flex; flex-direction: column; gap: 20px; }
   .seg button { display: inline-flex; align-items: center; justify-content: center; height: 28px; padding: 0 11px; border-radius: 7px; font-size: 13px; font-weight: 500; color: var(--muted); white-space: nowrap; }
-  .seg button[aria-selected="true"], .seg button[aria-pressed="true"] { background: var(--surface); color: var(--foreground); box-shadow: var(--shadow), 0 0 0 1px var(--line); }
+  .seg button[aria-selected="true"], .seg button[aria-pressed="true"], .seg button[aria-checked="true"] { background: var(--surface); color: var(--foreground); box-shadow: var(--shadow), 0 0 0 1px var(--line); }
   .seg.w-full button { flex: 1; }
   /* A sheet: a centred card on a computer, sliding up from the bottom on a phone. */
   .sheet { margin: auto; width: min(520px, calc(100vw - 32px)); max-height: calc(100vh - 48px); padding: 0; border: 0; border-radius: 16px; background: var(--surface); color: var(--foreground); box-shadow: var(--shadow-pop); }
@@ -735,6 +735,80 @@ h1, h2, h3 { font-family: var(--font-display); text-wrap: balance; font-weight: 
   .fupd-photos img { display: block; width: 64px; height: 64px; object-fit: cover; border-radius: 9px; border: 1px solid var(--line); }
   .fupd-acts { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
   .fupd-acts .inp { min-width: 220px; flex: 1; }
+
+  /* Samples: one card per style's sample step, with its latest round, the next action and earlier rounds. */
+  .smp-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(360px, 1fr)); gap: 12px; padding: 14px 16px 16px; }
+  .panel .smp-list { padding: 0; }
+  .smp { display: flex; flex-direction: column; gap: 10px; min-width: 0; padding: 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); box-shadow: var(--shadow); }
+  .smp.warn { border-color: var(--warn-line); }
+  .smp.bad { border-color: var(--bad-line); }
+  .smp-h { display: flex; align-items: center; gap: 10px; min-width: 0; }
+  .smp-h > .chip, .bsmp-h > .chip { flex: none; }
+  .smp-thumb { display: grid; place-items: center; flex: none; width: 44px; height: 44px; overflow: hidden; border-radius: 10px; background: var(--surface-2); border: 1px solid var(--line); font-size: 12px; font-weight: 600; color: var(--faint); text-transform: uppercase; }
+  .smp-thumb img { width: 100%; height: 100%; object-fit: cover; }
+  .smp-title { display: flex; align-items: baseline; gap: 8px; min-width: 0; flex-wrap: wrap; font-size: 12.5px; color: var(--muted); }
+  .smp-title b { font-size: 14.5px; color: var(--foreground); }
+  .smp-stage { margin-top: 1px; font-size: 13.5px; font-weight: 600; color: var(--foreground); }
+  .smp-stage span { font-weight: 500; color: var(--muted); }
+  .smp-sub { margin-top: 1px; font-size: 12.5px; color: var(--muted); }
+  .smp-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; font-size: 12.5px; }
+  .smp-round { display: flex; flex-direction: column; gap: 10px; }
+  .smp-photos { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; }
+  .smp-photos img { display: block; width: 72px; height: 72px; object-fit: cover; border-radius: 9px; border: 1px solid var(--line); }
+  .smp-photos.lg img { width: 112px; height: 112px; border-radius: 10px; }
+  .smp-trail { display: flex; flex-direction: column; gap: 0; margin: 0; padding: 0; list-style: none; }
+  .smp-trail li { position: relative; display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; padding: 0 0 8px 18px; font-size: 13px; }
+  .smp-trail li::before { content: ""; position: absolute; left: 3px; top: 6px; width: 7px; height: 7px; border-radius: 50%; background: var(--line-strong); }
+  .smp-trail li:not(:last-child)::after { content: ""; position: absolute; left: 6px; top: 15px; bottom: 0; width: 1px; background: var(--line); }
+  .smp-trail li.done::before { background: var(--faint); }
+  .smp-trail li.ok::before { background: var(--ok); }
+  .smp-trail li.bad::before { background: var(--bad); }
+  .smp-trail li.now::before { background: var(--surface); box-shadow: 0 0 0 2px var(--info); }
+  .smp-trail li.now b { color: var(--info); font-weight: 500; }
+  .smp-trail b { font-weight: 600; }
+  .smp-trail span { font-size: 12.5px; color: var(--muted); }
+  .smp-trail q, .fsmp-note, .bsmp-note, .bsmp-hist q { display: block; flex-basis: 100%; margin-top: 2px; padding: 6px 10px; border-radius: 8px; background: var(--surface-2); font-size: 13px; color: var(--foreground); quotes: none; white-space: pre-line; }
+  .bsmp-note, .fsmp-note { flex-basis: auto; }
+  .smp-photos { flex: none; }
+  .smp-acts { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: auto; padding-top: 2px; }
+  .smp-acts .btn { width: 100%; }
+  .smp-acts .btn.primary:not(:only-child):nth-last-child(odd) { grid-column: 1 / -1; }
+  .smp-earlier { border-top: 1px solid var(--line); padding-top: 8px; }
+  .smp-earlier summary { cursor: pointer; font-size: 12.5px; font-weight: 500; color: var(--muted); }
+  .smp-old { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; padding: 10px; border-radius: 10px; background: var(--surface-2); }
+  .smp-old q { background: var(--surface); }
+  .smp-old-h { display: flex; align-items: center; justify-content: space-between; font-size: 13px; }
+  .smp-pick { display: flex; flex-wrap: wrap; gap: 6px; }
+  .smp-pick button { height: 34px; padding: 0 12px; border-radius: 999px; border: 1px solid var(--line-strong); background: var(--surface); font-size: 13px; font-weight: 500; color: var(--foreground); }
+  .smp-pick button[aria-checked="true"] { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+  /* The factory's samples on a released PO. */
+  .fsmp { margin-bottom: 14px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-2); }
+  .fsmp-styles { display: grid; gap: 10px; margin-top: 10px; }
+  .fsmp-style { padding: 10px 12px; border-radius: 10px; background: var(--surface); border: 1px solid var(--line); }
+  .fsmp-style > ul { margin-top: 4px; }
+  .fsmp-step { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 0; border-top: 1px solid var(--line); }
+  .fsmp-step:first-child { border-top: 0; }
+  .fsmp-step > div { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+  .fsmp-step b { font-size: 13.5px; }
+  .fsmp-step .btn { flex: none; }
+  .fsmp-step .smp-photos img { width: 56px; height: 56px; }
+  /* The buyer's samples to approve. */
+  .bsmp { border-color: var(--warn-line); }
+  .bsmp-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 12px; padding: 14px 16px 16px; }
+  .bsmp-item { display: flex; flex-direction: column; gap: 10px; padding: 14px; border: 1px solid var(--line); border-radius: 12px; }
+  .bsmp-h { display: flex; align-items: center; gap: 10px; }
+  .bsmp-ship { font-size: 13px; color: var(--muted); }
+  .bsmp-ship b { color: var(--foreground); }
+  .bsmp-acts { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: auto; }
+  .bsmp-acts .btn { min-height: 40px; }
+  .bsmp-done > summary { cursor: pointer; list-style: none; }
+  .bsmp-done > summary::-webkit-details-marker { display: none; }
+  .bsmp-hist { display: flex; flex-direction: column; }
+  .bsmp-hist li { display: flex; align-items: flex-start; gap: 12px; padding: 12px 16px; border-top: 1px solid var(--line); }
+  .bsmp-hist li:first-child { border-top: 0; }
+  .bsmp-hist li > .chip { flex: none; margin-top: 1px; }
+  .bsmp-hist li > div { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+  .bsmp-hist small { font-size: 12.5px; color: var(--muted); }
 }
 
 /* The phone: built for one thumb. Big tap targets, one thing per row, swipeable strips, nothing sideways. */
@@ -835,6 +909,14 @@ h1, h2, h3 { font-family: var(--font-display); text-wrap: balance; font-weight: 
     .sheet-body { padding: 8px 16px calc(16px + env(safe-area-inset-bottom)); }
     .sheet .grabber { display: block; }
     .sheet-acts .btn { min-height: 48px; font-size: 15px; }
+    .smp-list, .bsmp-list { grid-template-columns: minmax(0, 1fr); padding: 12px; }
+    .panel .smp-list { padding: 0; }
+    .smp-acts .btn, .bsmp-acts .btn { min-height: 44px; }
+    .smp-photos img { width: 84px; height: 84px; }
+    .smp-photos.lg img { width: 128px; height: 128px; }
+    .smp-pick button { height: 40px; }
+    .fsmp { margin-inline: -4px; padding: 12px 10px; }
+    .fsmp-step .btn { min-height: 40px; }
     .head-acts { width: 100%; }
     .head-acts > * { flex: 1; }
     .head-acts > .btn, .head-acts > div > .btn:first-child { width: 100%; min-height: 44px; }

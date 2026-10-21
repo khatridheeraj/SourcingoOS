@@ -23,6 +23,9 @@ export type BriefData = {
   inquiries_due?: { id: string; inquiry_no: string; product: string; on: string; who: string | null }[];
   // Open orders sent in part, and (the owner only) orders closed short in the last two days.
   part_shipped?: { order_id: string; order_no: string; ordered: number; shipped: number }[];
+  // Each style's open sample, or changes the factory hasn't sent again yet (owner and orders team).
+  samples?: { order_id: string; order_no: string; style: string; stage: string; round: number; status: "with_team" | "with_buyer" | "changes" | "returned";
+    factory: string; at: string; courier: string | null; awb: string | null; note: string | null }[];
   closed_short?: { order_id: string; order_no: string; reason: string; at: string; by: string | null; ordered: number; billed: number }[];
   // The owner and Accounts: suppliers with bills overdue or due in the next 7 days, from Tally.
   payables?: { ledger: string; name: string; overdue: number; soon: number; bills: number; first_due: string; msme_late: boolean }[];
@@ -116,6 +119,18 @@ export function buildBrief(d: BriefData): Brief {
   if (d.pos_to_check) waiting.push({ text: `${d.pos_to_check} new buyer ${d.pos_to_check === 1 ? "PO" : "POs"} to check`, href: "/pos" });
   if (noTarget) waiting.push({ text: `${noTarget} ${noTarget === 1 ? "step has" : "steps have"} no target date`, sub: `${noTargetOrders.slice(0, 4).join(", ")}${noTargetOrders.length > 4 ? ` and ${noTargetOrders.length - 4} more` : ""}. Lateness can't show without one.`, href: "/today" });
   if (waiting.length) sections.push({ key: "waiting", title: "Waiting on you or a factory", tone: "info", items: waiting });
+  if (d.samples?.length) {
+    const step: Record<string, string> = { fit_sample: "fit sample", strike_off: "strike off", pp_sample: "PP sample", size_set: "size set" };
+    const rank = { with_team: 0, changes: 1, returned: 1, with_buyer: 2 };
+    sections.push({ key: "samples", title: "Samples", tone: "warn", items: [...d.samples].sort((a, b) => rank[a.status] - rank[b.status] || a.at.localeCompare(b.at)).map((x) => {
+      const what = `${x.order_no} ${x.style} ${step[x.stage] ?? x.stage}${x.round > 1 ? ` (round ${x.round})` : ""}`;
+      const waited = Math.max(0, diff(istDay(x.at), today));
+      const since = days(waited);
+      return x.status === "with_team" ? { text: `${what}: sent by ${x.factory}, check it and send it to the buyer`, sub: waited ? `Waiting ${since}` : "Came in today", href: `/orders/${x.order_id}#samples` }
+        : x.status === "with_buyer" ? { text: waited ? `${what}: with the buyer for ${since}` : `${what}: sent to the buyer today`, sub: [x.courier, x.awb && `AWB ${x.awb}`].filter(Boolean).join(" · ") || undefined, href: `/orders/${x.order_id}#samples` }
+        : { text: `${what}: changes asked, ${x.factory} to send the next round`, sub: x.note ?? undefined, href: `/orders/${x.order_id}#samples` };
+    }) });
+  }
   // Orders sent in part whose ship date hasn't passed (late ones are under Ship dates at risk).
   const parts = (d.part_shipped ?? []).filter((p) => !risk.some((r) => r.href === `/orders/${p.order_id}#dispatch`));
   if (parts.length) {

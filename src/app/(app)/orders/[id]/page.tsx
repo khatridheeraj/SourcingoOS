@@ -22,6 +22,8 @@ import { ShareUpdate, type ShareOption } from "./share-update";
 import { formOptions } from "../options";
 import type { LineFileKind } from "../actions";
 import { loadShipProgress, orderShip, partText } from "@/lib/shipments";
+import { loadSampleThreads } from "@/lib/samples-server";
+import { SampleThreadCard } from "../../samples/sample-thread";
 
 const str = (v: unknown) => (v == null ? "" : String(v));
 
@@ -65,6 +67,9 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
   ]);
   const ship = orderShip(shipRows);
   const canEdit = canEditOrders(me?.role);
+  // Each style's fit, strike off, PP and size-set samples, with every round.
+  const samples = await loadSampleThreads(id);
+  const samplesToAct = samples.threads.filter((t) => t.state === "with_team").length;
   // Dispatches (purchase to GRN) are for the orders team only.
   const [{ data: dRows }, { data: dLines }, { data: tallyRaw }, { data: shipBlocker }] = canEdit
     ? await Promise.all([
@@ -244,6 +249,7 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
     .reduce((w, r) => (r.daysLate > w.daysLate || (w.level === "ok" && r.level === "behind") ? r : w), { level: "ok" as "ok" | "behind" | "risk", daysLate: 0 }) : null;
   const tabs: SectionTab[] = [
     { id: "tna", label: "Styles", count: pendingUpdates.length || behind || undefined, tone: pendingUpdates.length ? "info" : "bad" },
+    { id: "samples", label: "Samples", count: samplesToAct || undefined, tone: "warn" },
     { id: "qc", label: "QC" },
     ...(canEdit ? [{ id: "dispatch", label: "Dispatch" }, { id: "money", label: "Margin" }] : []),
     { id: "ship", label: "Ship date" },
@@ -302,6 +308,24 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
         baselines={Object.fromEntries((lineStages ?? []).filter((r) => r.baseline_on).map((r): [string, Baseline] => [`${r.line_id}:${r.stage}`, { on: String(r.baseline_on), note: str(r.target_note) }]))}
         qc={stepQc}
       />
+      </div>
+      <div data-sec="samples">
+        <section className="panel" aria-labelledby="osmp-h">
+          <div className="row mb-1">
+            <h2 id="osmp-h" className="font-bold text-base">Samples</h2>
+            {samplesToAct > 0 && <span className="chip warn">{samplesToAct} to check</span>}
+            <Link href="/samples" className="link ml-auto text-[13px]">All samples</Link>
+          </div>
+          <p className="muted mb-3 text-[13px]">Each style&apos;s fit, strike off, PP and size-set samples. The buyer&apos;s approval marks the TNA step done.</p>
+          {samples.error && <div className="errbox">Couldn&apos;t load the samples. Reload to try again. ({samples.error})</div>}
+          {samples.threads.length === 0 ? (
+            <p className="card-empty">Samples start once a factory PO is released. The factory then sends them from its panel.</p>
+          ) : (
+            <div className="smp-list">
+              {samples.threads.map((t) => <SampleThreadCard key={t.key} t={t} today={todayIST()} showOrder={false} readOnly={!canEdit || o.status !== "open"} />)}
+            </div>
+          )}
+        </section>
       </div>
       <div data-sec="qc">
       <OrderQc orderId={o.id} companyId={o.company_id} open={o.status === "open"} canRecord={canRecordQc(me?.role)} today={todayIST()} checks={checks} finalPassed={finalPassed}

@@ -34,3 +34,16 @@ export async function postStepUpdate(lineId: string, stage: string, doneOn: stri
   revalidatePath("/factory");
   return {};
 }
+
+// The factory sends a style's sample (fit, strike off, PP or size set) with photos already uploaded.
+// Sourcingo checks it and sends it to the buyer.
+export async function sendSample(lineId: string, stage: string, note: string, photos: string[]): Promise<{ error?: string }> {
+  const me = await getMe();
+  if (me?.role !== "factory") return { error: "This login is not set up for a factory." };
+  if (!photos.length) return { error: "Add at least one photo of the sample." };
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("send_sample", { p_line: lineId, p_stage: stage, p_note: note.slice(0, 500), p_photos: photos });
+  if (error) return { error: friendly(error) };
+  revalidatePath("/factory");
+  return {};
+}
