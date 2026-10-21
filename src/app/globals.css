@@ -1576,3 +1576,25 @@ h1, h2, h3 { font-family: var(--font-display); text-wrap: balance; font-weight: 
 
 /* Outside the layers, so it wins over the global focus ring: the search field's box already shows focus. */
 .sp-input:focus-visible { outline: none; }
+
+/* Quick QC: one choice per row, a big Pass or Fail, photos from the camera. */
+@layer components {
+  .qs-label { margin: 0 0 -6px; font-size: 12px; font-weight: 600; letter-spacing: 0.02em; text-transform: uppercase; color: var(--faint); }
+  .qc-chips { padding: 0; }
+  .qc-chips button[aria-checked="true"] { color: var(--accent); background: var(--accent-soft); box-shadow: inset 0 0 0 1.5px var(--accent); }
+
+  .qc-result { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .qc-result button {
+    display: flex; align-items: center; justify-content: center; gap: 8px; height: 56px; border-radius: 14px; font-size: 16px; font-weight: 600;
+    color: var(--muted); background: var(--surface); box-shadow: inset 0 0 0 1.5px var(--line-strong); transition: background 0.12s, color 0.12s, box-shadow 0.12s, transform 0.1s;
+  }
+  .qc-result button:active { transform: scale(0.98); }
+  .qc-result button span { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; font-size: 13px; background: var(--surface-2); }
+  .qc-result .pass[aria-checked="true"] { color: var(--ok); background: var(--ok-soft); box-shadow: inset 0 0 0 2px var(--ok); }
+  .qc-result .pass[aria-checked="true"] span { color: #fff; background: var(--ok); }
+  .qc-result .fail[aria-checked="true"] { color: var(--bad); background: var(--bad-soft); box-shadow: inset 0 0 0 2px var(--bad); }
+  .qc-result .fail[aria-checked="true"] span { color: #fff; background: var(--bad); }
+  .qc-more { align-self: flex-start; font-size: 13.5px; }
+  .qc-extra { display: flex; flex-direction: column; gap: 10px; }
+  .btn.primary.danger { background: var(--bad); border-color: var(--bad); color: #fff; }
+}

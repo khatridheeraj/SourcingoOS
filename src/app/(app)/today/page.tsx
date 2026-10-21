@@ -1,6 +1,6 @@
 import type { LinePrice } from "@/lib/margin";
 import Link from "next/link";
-import { canEditOrders, getMe } from "@/lib/auth";
+import { canEditOrders, canRecordQc, getMe } from "@/lib/auth";
 import { fetchAll } from "@/lib/fetch-all";
 import { buyerName, loadBuyers, loadFactories } from "@/lib/data";
 import { day, daysBetween, dueDate, nowMs, planDueAt, PLAN_HOURS, qcKindLabel, qty, SHIP_QC, stageReached, TNA_STEPS, todayIST } from "@/lib/format";
@@ -12,9 +12,11 @@ import { createClient } from "@/lib/supabase/server";
 import { loadShipProgress, orderShip, partText } from "@/lib/shipments";
 import { Icon, type IconName } from "@/components/nav";
 import { ChaseLink, SheetButton } from "@/components/order-sheet";
-import { chaseText, waLink, type QStyle } from "@/lib/quick";
+import { chaseText, panelLine, waLink, type QStyle } from "@/lib/quick";
 import { buildUpdates } from "@/lib/updates";
+import { appOrigin } from "@/lib/origin";
 import { SearchTile } from "@/components/search";
+import { QcButton } from "@/components/qc-sheet";
 import { MarkShipped } from "../orders/mark-shipped";
 import { sampleLabel, type SampleStatus } from "@/lib/samples";
 import { isFinance } from "../payments/load";
@@ -30,6 +32,8 @@ type Item = {
   sheet?: { orderId: string; mode: "update" | "start"; factoryId?: string };
   // A WhatsApp chase to the factory, with the message written.
   chase?: { href: string; factoryId: string; orderId: string; chased: boolean };
+  // The action opens the quick QC sheet for this check.
+  qc?: { orderId: string; kind: string };
 };
 
 const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;
@@ -109,11 +113,13 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
   const chaseP = team
     ? Promise.all([
         supabase.from("factory_chases").select("factory_id, order_id").gte("chased_at", dayStart),
+        // Each factory's own panel link, put at the end of a chase so the factory can answer with photos.
+        Promise.all([supabase.from("factory_links").select("factory_id, secret"), appOrigin()]),
         // Steps this person marked done today, read from the activity log: a done date that wasn't there before.
         supabase.from("history").select("id", { count: "exact", head: true }).eq("table_name", "line_stages").eq("actor", me?.id ?? NO_COMPANY)
           .gte("at", dayStart).not("after->>done_on", "is", null).is("before->>done_on", null),
       ])
-    : Promise.resolve([{ data: [] }, { count: 0 }] as const);
+    : Promise.resolve([{ data: [] }, [{ data: [] }, ""], { count: 0 }] as const);
   const upsP = ids.length
     ? fetchAll((a, z) => supabase.from("step_updates").select("order_id, line_id, stage, created_at").in("order_id", ids).eq("status", "pending").order("created_at").order("id").range(a, z))
     : none;
@@ -191,7 +197,8 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
   const { data: rates } = keep(await ratesP);
   const priceOf = new Map(((rates ?? []) as LinePrice[]).map((r) => [r.id, r]));
   // Factories chased on WhatsApp today, and what each step done today by this person adds up to.
-  const [{ data: chases }, { count: doneToday }] = await chaseP;
+  const [{ data: chases }, [{ data: links }, origin], { count: doneToday }] = await chaseP;
+  const linkOf = new Map((links ?? []).map((l) => [l.factory_id, `${origin}/f/${l.secret}`]));
   const chasedToday = new Set((chases ?? []).map((c) => `${c.factory_id}:${c.order_id}`));
   const factoryPhone = new Map(factories.map((f) => [f.id, f.phone]));
   const lateSteps = (o: (typeof open)[number], f: string) => live.filter((s) => s.order_id === o.id && !s.done_on && s.planned_on && s.planned_on < today
@@ -205,12 +212,12 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
     const po = (pos ?? []).find((p) => p.order_id === o.id && p.factory_id === f);
     const due = dueDate(o);
     const target = due && po?.buffer_days != null ? addDays(due, -po.buffer_days) : "";
-    const msg = text ?? chaseText(o.order_no, o.buyer_po ?? "", factoryName.get(f) ?? "", lines.filter((l) => l.factory_id === f).map(qStyle), today, target);
+    const msg = text ?? chaseText(o.order_no, o.buyer_po ?? "", factoryName.get(f) ?? "", lines.filter((l) => l.factory_id === f).map(qStyle), today, target, linkOf.get(f));
     return { href: waLink(factoryPhone.get(f), msg), factoryId: f, orderId: o.id, chased: chasedToday.has(`${f}:${o.id}`) };
   };
   // Factories behind plan, one WhatsApp each listing every late order.
   const chaseList = team
-    ? buildUpdates({ orders: active, stages: stages ?? [], pos: pos ?? [], factories, buyerName: () => "", chased: new Set((chases ?? []).map((c) => c.factory_id)), today }).chases
+    ? buildUpdates({ orders: active, stages: stages ?? [], pos: pos ?? [], factories: factories.map((f) => ({ ...f, link: linkOf.get(f.id) })), buyerName: () => "", chased: new Set((chases ?? []).map((c) => c.factory_id)), today }).chases
     : [];
   const releasedFor = (o: { id: string }) => (pos ?? []).some((p) => p.order_id === o.id && p.released_at);
   const now_: Item[] = [];
@@ -260,7 +267,7 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
         const hours = Math.floor((now - dueAt.getTime()) / 3_600_000);
         now_.push({ ...item, sev: "bad", detail: `${fname} hasn't sent its dates within ${PLAN_HOURS} hours. Chase them, or tap Factory agreed if they said yes on the phone.`,
           chip: { text: hours ? `${plural(hours, "hour")} past deadline` : "Just past deadline", cls: "bad" }, action: "Factory agreed", sort: dueAt.toISOString(),
-          chase: chaseFor(o, f, `*${o.order_no}${o.buyer_po ? ` · PO ${o.buyer_po}` : ""} · ${fname}*\nPlease send your dates for these styles today, or tell us you agree to ours: ${fl.map((l) => l.style).join(", ")}.`) });
+          chase: chaseFor(o, f, `*${o.order_no}${o.buyer_po ? ` · PO ${o.buyer_po}` : ""} · ${fname}*\nPlease send your dates for these styles today, or tell us you agree to ours: ${fl.map((l) => l.style).join(", ")}.${linkOf.get(f) ? `\n\n${panelLine(linkOf.get(f))}` : ""}`) });
       } else if (!gaps && po?.lock_requested_at) {
         // Every factory PO waits for the owner's lock (Dheeraj, 20 Oct 2026); the owner sees these first.
         if (me?.role === "owner") now_.push({ ...item, sev: "bad", detail: `${fname} · plan sent for your lock ${at.format(new Date(po.lock_requested_at))}. The factory gets the PO once you lock it.`,
@@ -331,17 +338,18 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
     const steps = [...new Map(due.sort((a, b) => a.planned_on!.localeCompare(b.planned_on!)).map((s) => [s.stage, s.planned_on!])).entries()];
     const chip = when(first, today);
     // Quality's own work: the QC checks among these steps that no style has passed yet.
-    const qcDue = steps.flatMap(([k]) => {
+    const qcKinds = steps.flatMap(([k]) => {
       const kinds = TNA_STEPS.find((s) => s.key === k)?.qc;
-      return kinds && due.some((s) => s.stage === k && latest(s.line_id, kinds)?.result !== "pass") ? [qcKindLabel(kinds[0])] : [];
+      return kinds && due.some((s) => s.stage === k && latest(s.line_id, kinds)?.result !== "pass") ? [kinds[0]] : [];
     });
+    const qcDue = qcKinds.map(qcKindLabel);
     if (me?.role === "quality" && !qcDue.length) continue;
     soon.push({
       key: `week:${o.id}`, href: me?.role === "quality" ? `/orders/${o.id}#qc` : `/orders/${o.id}#tna`, sev: chip.cls, ...base(o),
       detail: me?.role === "quality" ? `${qcDue.join(", ")} QC · planned ${dm(first)}`
         : steps.slice(0, 4).map(([k, d]) => `${stepLabel(k)} ${dm(d)}`).join(", ") + (steps.length > 4 ? ` and ${steps.length - 4} more` : "") + (qcDue.length ? " · QC needed" : ""),
       chip, action: me?.role === "quality" ? "Record QC" : "Update", sort: first + o.order_no,
-      ...(me?.role === "quality" ? {} : { sheet: { orderId: o.id, mode: "update" as const } }),
+      ...(me?.role === "quality" ? { qc: { orderId: o.id, kind: qcKinds[0] } } : { sheet: { orderId: o.id, mode: "update" as const } }),
     });
   }
 
@@ -353,7 +361,8 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
     const chip = when(due, today);
     soon.push({ key: `ship:${o.id}`, href: `/orders/${o.id}#qc`, sev: chip.cls, ...base(o),
       detail: `Ships ${dm(due)} · final QC not passed for ${notPassed.length === (o.order_lines ?? []).length ? "any style" : notPassed.map((l) => l.style).join(", ")}`,
-      chip: { text: `Ships in ${plural(daysBetween(today, due), "day")}`, cls: chip.cls }, action: me?.role === "quality" ? "Record final QC" : "Plan final QC", sort: due + o.order_no });
+      chip: { text: `Ships in ${plural(daysBetween(today, due), "day")}`, cls: chip.cls }, action: me?.role === "quality" ? "Record final QC" : "Plan final QC", sort: due + o.order_no,
+      ...(canRecordQc(me?.role) ? { qc: { orderId: o.id, kind: "final" } } : {}) });
   }
 
   // Steps factories marked done with photos in their panel, waiting for the orders team or Quality to confirm.
@@ -645,7 +654,9 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
                 <div className="todo-chip">{i.chip && <span className={`chip ${i.chip.cls}`}>{i.chip.text}</span>}</div>
                 <div className="todo-acts">
                   {i.chase && <ChaseLink {...i.chase} />}
-                  {i.sheet
+                  {i.qc
+                    ? <QcButton orderId={i.qc.orderId} kind={i.qc.kind} className="btn sm todo-act primary">{i.action}</QcButton>
+                    : i.sheet
                     ? <SheetButton {...i.sheet} className={`btn sm todo-act ${i.sev === "bad" || i.sheet.mode === "start" ? "primary" : ""}`}>{i.action}</SheetButton>
                     : <Link href={i.href} className="btn sm todo-act">{i.action}</Link>}
                 </div>

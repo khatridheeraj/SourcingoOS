@@ -12,7 +12,7 @@ export type QGroup = {
 };
 export type QOrder = {
   id: string; orderNo: string; buyer: string; buyerPo: string; due: string; shipDate: string; status: string;
-  today: string; isOwner: boolean; ownerName: string;
+  today: string; isOwner: boolean; ownerName: string; companyId: string;
   factories: { id: string; name: string }[];
   groups: QGroup[];
 };
@@ -109,7 +109,10 @@ export function styleLine(s: QStyle, today: string) {
 const tidy = (xs: string[]) => xs.filter((x, i, a) => x !== "" || (i > 0 && (a[i - 1] ?? "") !== "")).join("\n").trim();
 
 // The message asking a factory for today's status, listing what is late or next on each of its styles.
-export function chaseText(orderNo: string, buyerPo: string, factoryName: string, styles: QStyle[], today: string, target: string) {
+// The factory's own panel, where it marks steps done with photos, ends every chase when it has one.
+export const panelLine = (link?: string) => (link ? `Mark each step done with photos here, no password needed:\n${link}` : "");
+
+export function chaseText(orderNo: string, buyerPo: string, factoryName: string, styles: QStyle[], today: string, target: string, link?: string) {
   return tidy([
     `*${orderNo}${buyerPo ? ` · PO ${buyerPo}` : ""} · ${factoryName}*`,
     "Please share today's status and photos for these styles:",
@@ -117,16 +120,20 @@ export function chaseText(orderNo: string, buyerPo: string, factoryName: string,
     ...styles.map((s) => styleLine(s, today)),
     "",
     target ? `Everything must be ready by ${dm(target)}.` : "",
+    "",
+    panelLine(link),
   ]);
 }
 
 // One message to a factory covering every order it is behind on.
-export function chaseAllText(factoryName: string, orders: { orderNo: string; buyerPo: string; target: string; styles: QStyle[] }[], today: string) {
-  if (orders.length === 1) return chaseText(orders[0].orderNo, orders[0].buyerPo, factoryName, orders[0].styles, today, orders[0].target);
+export function chaseAllText(factoryName: string, orders: { orderNo: string; buyerPo: string; target: string; styles: QStyle[] }[], today: string, link?: string) {
+  if (orders.length === 1) return chaseText(orders[0].orderNo, orders[0].buyerPo, factoryName, orders[0].styles, today, orders[0].target, link);
   return tidy([
     `*${factoryName} · status needed today*`,
     "Please share today's status and photos for these orders:",
     ...orders.flatMap((o) => ["", `*${o.orderNo}${o.buyerPo ? ` · PO ${o.buyerPo}` : ""}*${o.target ? ` (ready by ${dm(o.target)})` : ""}`, ...o.styles.map((s) => styleLine(s, today))]),
+    "",
+    panelLine(link),
   ]);
 }
 

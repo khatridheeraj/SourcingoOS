@@ -64,7 +64,7 @@ export async function loadQuick(orderId: string): Promise<{ error?: string; orde
   return {
     order: {
       id: o.id, orderNo: o.order_no, buyer: b ? buyerName(b) : "", buyerPo: str(o.buyer_po), due: str(o.revised_ship_date || o.ship_date), shipDate: str(o.ship_date),
-      status: o.status, today: todayIST(), isOwner: me?.role === "owner", ownerName: owner ? personName(owner).split(" ")[0] : "the owner",
+      status: o.status, today: todayIST(), isOwner: me?.role === "owner", companyId: me?.companyId ?? "", ownerName: owner ? personName(owner).split(" ")[0] : "the owner",
       factories: factories.filter((f) => f.active).map((f) => ({ id: f.id, name: f.name })).sort((a, b) => a.name.localeCompare(b.name)),
       groups,
     },

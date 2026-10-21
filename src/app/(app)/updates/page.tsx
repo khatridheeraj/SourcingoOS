@@ -6,6 +6,7 @@ import { fetchAll } from "@/lib/fetch-all";
 import { todayIST } from "@/lib/format";
 import { NO_COMPANY } from "@/lib/names";
 import { createClient } from "@/lib/supabase/server";
+import { appOrigin } from "@/lib/origin";
 import { buildUpdates } from "@/lib/updates";
 import { UpdatesView } from "./updates-view";
 
@@ -18,13 +19,16 @@ export default async function UpdatesPage({ searchParams }: PageProps<"/updates"
   const supabase = await createClient();
   const today = todayIST();
   const dayStart = new Date(`${today}T00:00:00+05:30`).toISOString();
-  const [{ data: all, error }, buyers, factories, { data: chases }] = await Promise.all([
+  const [{ data: all, error }, buyers, factories, { data: chases }, { data: links }, origin] = await Promise.all([
     fetchAll((a, z) => supabase.from("orders").select("id, order_no, buyer_id, buyer_po, ship_date, revised_ship_date, merchandiser_id, order_lines(id, style, colour, qty, factory_id, position)")
       .eq("company_id", companyId).eq("status", "open").is("order_lines.removed_at", null).order("id").range(a, z)),
     loadBuyers(),
     loadFactories(),
     supabase.from("factory_chases").select("factory_id").gte("chased_at", dayStart),
+    supabase.from("factory_links").select("factory_id, secret"),
+    appOrigin(),
   ]);
+  const linkOf = new Map((links ?? []).map((l) => [l.factory_id, `${origin}/f/${l.secret}`]));
   const mineCount = (all ?? []).filter((o) => o.merchandiser_id === me?.id).length;
   const who = sp.who === "all" || sp.who === "mine" ? sp.who : me?.role === "merchandiser" && mineCount ? "mine" : "all";
   const orders = (all ?? []).filter((o) => who === "all" || o.merchandiser_id === me?.id)
@@ -38,7 +42,7 @@ export default async function UpdatesPage({ searchParams }: PageProps<"/updates"
     : [{ data: [], error: null }, { data: [], error: null }];
   const names = new Map(buyers.map((b) => [b.id, buyerName(b)]));
   const { chases: factoryList, buyers: buyerList } = buildUpdates({
-    orders, stages: stages ?? [], pos: pos ?? [], factories, buyerName: (id) => names.get(id) ?? "Buyer",
+    orders, stages: stages ?? [], pos: pos ?? [], factories: factories.map((f) => ({ ...f, link: linkOf.get(f.id) })), buyerName: (id) => names.get(id) ?? "Buyer",
     chased: new Set((chases ?? []).map((c) => c.factory_id)), today,
   });
   const tab = sp.tab === "buyers" ? "buyers" : "factories";

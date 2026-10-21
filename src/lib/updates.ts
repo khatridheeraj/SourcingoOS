@@ -26,7 +26,7 @@ export function toQStyle(l: Line, stages: Stage[]): QStyle {
 const lateIn = (s: QStyle, today: string) => s.steps.filter((x) => !x.not_needed && !x.done_on && x.planned_on && x.planned_on < today).length;
 
 export function buildUpdates({ orders, stages, pos, factories, buyerName, chased, today }: {
-  orders: Order[]; stages: Stage[]; pos: Po[]; factories: { id: string; name: string; phone: string | null }[];
+  orders: Order[]; stages: Stage[]; pos: Po[]; factories: { id: string; name: string; phone: string | null; link?: string }[];
   buyerName: (id: string) => string; chased: Set<string>; today: string;
 }): { chases: FactoryChase[]; buyers: BuyerUpdate[] } {
   const byLine = new Map<string, Stage[]>();
@@ -47,7 +47,7 @@ export function buildUpdates({ orders, stages, pos, factories, buyerName, chased
       return [{ o, styles, late, target: due && p.buffer_days != null ? addDays(due, -p.buffer_days) : "" }];
     }).sort((a, b) => b.late - a.late);
     if (!mine.length) continue;
-    const text = chaseAllText(f.name, mine.map((m) => ({ orderNo: m.o.order_no, buyerPo: m.o.buyer_po ?? "", target: m.target, styles: m.styles })), today);
+    const text = chaseAllText(f.name, mine.map((m) => ({ orderNo: m.o.order_no, buyerPo: m.o.buyer_po ?? "", target: m.target, styles: m.styles })), today, f.link);
     chases.push({
       factoryId: f.id, name: f.name, late: mine.reduce((n, m) => n + m.late, 0), orders: mine.map((m) => ({ id: m.o.id, orderNo: m.o.order_no })),
       href: waLink(f.phone, text), text, chased: chased.has(f.id), hasPhone: !!f.phone,

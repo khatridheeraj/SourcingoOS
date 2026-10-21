@@ -4,7 +4,8 @@ import { Sidebar, type NavGroup } from "@/components/nav";
 import { Toaster } from "@/components/toast";
 import { OrderSheet } from "@/components/order-sheet";
 import { SearchPalette } from "@/components/search";
-import { canEditOrders, canEnterDone, getMe, roleLabel } from "@/lib/auth";
+import { QcSheet } from "@/components/qc-sheet";
+import { canEditOrders, canEnterDone, canRecordQc, getMe, roleLabel } from "@/lib/auth";
 import { todayIST } from "@/lib/format";
 import { heldSince } from "@/lib/goods";
 import { createClient } from "@/lib/supabase/server";
@@ -79,6 +80,7 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
       )}
       {canEnterDone(me.role) && <OrderSheet />}
       <SearchPalette groups={groups} />
+      {canRecordQc(me.role) && <QcSheet />}
       <Toaster />
     </div>
   );
