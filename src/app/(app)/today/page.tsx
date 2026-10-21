@@ -17,6 +17,7 @@ import { buildUpdates } from "@/lib/updates";
 import { appOrigin } from "@/lib/origin";
 import { SearchTile } from "@/components/search";
 import { QcButton } from "@/components/qc-sheet";
+import { WhatsNew } from "@/components/whats-new";
 import { MarkShipped } from "../orders/mark-shipped";
 import { sampleLabel, type SampleStatus } from "@/lib/samples";
 import { isFinance } from "../payments/load";
@@ -602,6 +603,8 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
           </nav>
         )}
       </div>
+
+      {me?.role && <WhatsNew role={me.role} />}
 
       {errors.length > 0 && (
         <div className="errbox">Some lists couldn&apos;t load, so this page may be missing work. Reload to try again. ({[...new Set(errors)].join("; ")})</div>
