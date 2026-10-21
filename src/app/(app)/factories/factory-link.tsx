@@ -3,17 +3,10 @@
 import { useRef, useState, useTransition } from "react";
 import { Icon } from "@/components/nav";
 import { toast } from "@/components/toast";
+import { waNumber } from "@/lib/whatsapp";
 import { factoryLink } from "./actions";
 
 type Lang = "hi" | "en";
-
-// WhatsApp wants the number with its country code and no signs; Indian numbers are usually saved without +91.
-function waNumber(phone: string | null | undefined): string {
-  let d = (phone ?? "").replace(/\D/g, "");
-  if (d.length === 11 && d.startsWith("0")) d = d.slice(1);
-  if (d.length === 10) d = `91${d}`;
-  return d.length >= 11 ? d : "";
-}
 
 function message(lang: Lang, name: string, url: string): string {
   const link = `${url}?lang=${lang}`;

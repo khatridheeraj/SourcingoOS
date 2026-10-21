@@ -1,6 +1,8 @@
 import { createClient } from "@/lib/supabase/server";
 import { day, daysBetween, qty, todayIST, TNA_STEPS } from "@/lib/format";
 import { PHOTO_BUCKET } from "@/lib/storage";
+import { getMe } from "@/lib/auth";
+import { BuyerSamples, type BuyerSample } from "./buyer-samples";
 
 type Step = { stage: string; label: string | null; planned_on: string | null; done_on: string | null };
 type FinalQc = { result: string; checked_on: string; pieces_checked: number | null; photos: string[] };
@@ -31,15 +33,23 @@ function qcChip(q: FinalQc | null) {
 
 export default async function BuyerPage() {
   const supabase = await createClient();
-  const { data, error } = await supabase.rpc("buyer_orders");
+  const [me, { data, error }, { data: sampleRows }] = await Promise.all([getMe(), supabase.rpc("buyer_orders"), supabase.rpc("buyer_samples")]);
   const { buyer, orders } = (data ?? { buyer: "", orders: [] }) as { buyer: string; orders: Order[] };
+  const rawSamples = (sampleRows ?? []) as (Omit<BuyerSample, "styleUrl" | "answerPhotos"> & { photo_path: string | null; answer_photos: string[] })[];
   const today = todayIST();
 
   // One batch of short-lived links for every photo on the page.
-  const paths = [...new Set(orders.flatMap((o) => o.lines.flatMap((l) => [l.photo_path, ...(l.final_qc?.photos ?? [])]).filter((p): p is string => !!p)))];
+  const paths = [...new Set([
+    ...orders.flatMap((o) => o.lines.flatMap((l) => [l.photo_path, ...(l.final_qc?.photos ?? [])])),
+    ...rawSamples.flatMap((s) => [s.photo_path, ...s.photos, ...s.answer_photos]),
+  ].filter((p): p is string => !!p))];
   const { data: signed } = paths.length ? await supabase.storage.from(PHOTO_BUCKET).createSignedUrls(paths, 3600) : { data: [] };
   const url = new Map((signed ?? []).filter((s) => s.signedUrl).map((s) => [s.path, s.signedUrl]));
 
+  const samples: BuyerSample[] = rawSamples.map(({ photo_path, answer_photos, ...s }) => ({
+    ...s, styleUrl: (photo_path && url.get(photo_path)) || null,
+    photos: s.photos.map((p) => url.get(p)).filter((u): u is string => !!u), answerPhotos: answer_photos.map((p) => url.get(p)).filter((u): u is string => !!u),
+  }));
   const open = orders.filter((o) => o.status === "open");
   const styles = open.flatMap((o) => o.lines);
   const passed = styles.filter((l) => l.final_qc?.result === "pass").length;
@@ -54,6 +64,7 @@ export default async function BuyerPage() {
         </div>
       </div>
       {error && <div className="errbox">{error.message}</div>}
+      <BuyerSamples companyId={me?.companyId ?? ""} samples={samples} />
 
       {orders.length === 0 && !error ? (
         <div className="empty"><b>No open orders right now</b>Orders appear here as soon as Sourcingo enters your PO.</div>

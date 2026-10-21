@@ -12,6 +12,7 @@ import { createClient } from "@/lib/supabase/server";
 import { loadShipProgress, orderShip, partText } from "@/lib/shipments";
 import { Icon, type IconName } from "@/components/nav";
 import { MarkShipped } from "../orders/mark-shipped";
+import { sampleLabel, type SampleStatus } from "@/lib/samples";
 
 type Sev = "bad" | "warn" | "ok" | "";
 // One line of the to-do list: what it is, why, and the one button that deals with it.
@@ -51,7 +52,7 @@ const PHASES = [
 const TABS = [
   { key: "now", label: "Now", hint: "Late, overdue or blocking work. Red first." },
   { key: "soon", label: "Coming up", hint: "Steps due in the next 7 days, dispatch, GRNs, and shipments without a passed final QC." },
-  { key: "waiting", label: "Waiting on others", hint: `Factories asked for their TNA (they have ${PLAN_HOURS} hours).` },
+  { key: "waiting", label: "Waiting on others", hint: `Factories asked for their TNA (they have ${PLAN_HOURS} hours), samples with buyers, and changes factories are making.` },
 ] as const;
 
 // The home screen: what needs doing across open orders, one line per order, plus shipping and style progress.
@@ -280,6 +281,42 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
     now_.push({ key: `upd:${o.id}`, href: `/orders/${o.id}#tna`, sev: "warn", ...base(o),
       detail: `Factory marked ${mine.length === 1 ? "a step" : `${mine.length} steps`} done, with photos: ${mine.slice(0, 3).map((u) => `${styleOf.get(u.line_id) ?? ""} ${stepLabel(u.stage)}`.trim()).join(", ")}${mine.length > 3 ? ` and ${mine.length - 3} more` : ""}`,
       action: "Check and confirm", sort: mine[0].created_at });
+  }
+
+  // Samples (Fit, strike off, PP, size set): each style's latest round decides. Sent by the factory: check and send on.
+  // With the buyer: a reminder after 5 days. Changes asked: the factory is making the next round.
+  const { data: rounds } = team && ids.length
+    ? keep(await fetchAll((a, z) => supabase.from("sample_rounds").select("order_id, line_id, stage, round, status, sent_at, forwarded_at, dispatched_on, answered_at")
+        .in("order_id", ids).order("round").order("id").range(a, z)))
+    : { data: [] };
+  const latestRound = new Map<string, { order_id: string; line_id: string; stage: string; round: number; status: SampleStatus; sent_at: string; forwarded_at: string | null; dispatched_on: string | null; answered_at: string | null }>();
+  for (const r of rounds ?? []) latestRound.set(`${r.line_id}:${r.stage}`, r);
+  for (const o of open) {
+    const styleOf = new Map((o.order_lines ?? []).map((l) => [l.id, l.style]));
+    const mine = [...latestRound.values()].filter((r) => r.order_id === o.id && styleOf.has(r.line_id) && !stageOf.get(`${r.line_id}:${r.stage}`)?.done_on);
+    const named = (rs: typeof mine) => `${rs.slice(0, 3).map((r) => `${styleOf.get(r.line_id)} ${sampleLabel(r.stage)}${r.round > 1 ? ` (round ${r.round})` : ""}`).join(", ")}${rs.length > 3 ? ` and ${rs.length - 3} more` : ""}`;
+    const href = `/orders/${o.id}#samples`;
+    const toCheck = mine.filter((r) => r.status === "with_team");
+    if (toCheck.length) {
+      now_.push({ key: `smp:${o.id}`, href, sev: "warn", ...base(o), detail: `Factory sent ${toCheck.length === 1 ? "a sample" : `${toCheck.length} samples`} to check and send to the buyer: ${named(toCheck)}`,
+        chip: { text: "Sample to send", cls: "warn" }, action: "Check samples", sort: toCheck[0].sent_at });
+    }
+    const withBuyer = mine.filter((r) => r.status === "with_buyer");
+    const days = (r: (typeof mine)[number]) => daysBetween(r.dispatched_on ?? (r.forwarded_at ?? r.sent_at).slice(0, 10), today);
+    const slow = withBuyer.filter((r) => days(r) >= 5);
+    if (slow.length) {
+      soon.push({ key: `smpb:${o.id}`, href, sev: "warn", ...base(o), detail: `Sample with the buyer ${plural(Math.max(...slow.map(days)), "day")}, no answer yet: ${named(slow)}`,
+        chip: { text: "Buyer to answer", cls: "warn" }, action: "Remind buyer", sort: slow[0].forwarded_at ?? "" });
+    }
+    if (withBuyer.length > slow.length) {
+      const rest = withBuyer.filter((r) => !slow.includes(r));
+      waiting.push({ key: `smpw:${o.id}`, href, sev: "", ...base(o), detail: `With the buyer for approval: ${named(rest)}`, action: "Open", sort: rest[0].forwarded_at ?? "" });
+    }
+    const changes = mine.filter((r) => r.status === "changes" || r.status === "returned");
+    if (changes.length) {
+      waiting.push({ key: `smpc:${o.id}`, href, sev: "", ...base(o), detail: `Changes asked, factory making the next round: ${named(changes)}`,
+        chip: { text: "With factory", cls: "" }, action: "Open", sort: changes[0].answered_at ?? "" });
+    }
   }
 
   // Buyer POs picked up from email or added from a file, latePos to be checked and added as orders.
@@ -516,7 +553,7 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
         </header>
         {lists[tab].length === 0 ? (
           <p className="card-empty">
-            {errors.length ? "Couldn't load this list. Reload to try again." : tab === "now" ? "Nothing is late or blocked." : tab === "soon" ? "Nothing due in the next 7 days." : "Not waiting on any factory."}
+            {errors.length ? "Couldn't load this list. Reload to try again." : tab === "now" ? "Nothing is late or blocked." : tab === "soon" ? "Nothing due in the next 7 days." : "Not waiting on any factory or buyer."}
           </p>
         ) : (
           <ul className="todo">

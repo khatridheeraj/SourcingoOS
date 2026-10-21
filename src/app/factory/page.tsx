@@ -4,17 +4,22 @@ import { createClient } from "@/lib/supabase/server";
 import { PHOTO_BUCKET } from "@/lib/storage";
 import { FactoryOrder, type PanelOrder, type StyleInfo } from "./factory-order";
 import type { FactoryUpdate } from "./step-update";
+import type { FactoryRound } from "./factory-samples";
 import { LANG_COOKIE, langOf, words } from "./i18n";
 
 export default async function FactoryPage() {
   const supabase = await createClient();
-  const [me, { data, error }, { data: ups }, { data: fileRows }, { data: detailRows }] = await Promise.all([
+  const [me, { data, error }, { data: ups }, { data: fileRows }, { data: detailRows }, { data: sampleRows }] = await Promise.all([
     getMe(), supabase.rpc("factory_tna"), supabase.rpc("factory_step_updates"),
     // Each style's tech pack, cutting program, fabric and sizes, as the orders team entered them.
     supabase.rpc("factory_line_files"), supabase.rpc("factory_line_details"),
+    // Every sample round of its styles, with Sourcingo's and the buyer's answers.
+    supabase.rpc("factory_samples"),
   ]);
   const files = (fileRows ?? []) as { line_id: string; kind: string; path: string; file_name: string | null }[];
-  const { data: signed } = files.length ? await supabase.storage.from(PHOTO_BUCKET).createSignedUrls(files.map((f) => f.path), 3600) : { data: [] };
+  const rawRounds = (sampleRows ?? []) as (Omit<FactoryRound, "photos" | "answerPhotos"> & { photos: string[]; answer_photos: string[] })[];
+  const paths = [...files.map((f) => f.path), ...rawRounds.flatMap((r) => [...r.photos, ...r.answer_photos])];
+  const { data: signed } = paths.length ? await supabase.storage.from(PHOTO_BUCKET).createSignedUrls(paths, 3600) : { data: [] };
   const urlOf = new Map((signed ?? []).filter((x) => x.signedUrl).map((x) => [x.path, x.signedUrl]));
   const info: Record<string, StyleInfo> = {};
   const infoOf = (id: string) => (info[id] ??= { fabric: "", sizes: {}, files: [] });
@@ -26,6 +31,9 @@ export default async function FactoryPage() {
     if (url) infoOf(f.line_id).files.push({ kind: f.kind, name: f.file_name || (f.kind === "cutting" ? "Cutting program" : "Tech pack"), url });
   }
   const updates = (ups ?? []) as FactoryUpdate[];
+  const rounds: FactoryRound[] = rawRounds.map(({ answer_photos, ...r }) => ({
+    ...r, photos: r.photos.map((p) => urlOf.get(p)).filter((u): u is string => !!u), answerPhotos: answer_photos.map((p) => urlOf.get(p)).filter((u): u is string => !!u),
+  }));
   const panel = (data ?? { factory: "", orders: [] }) as { factory: string; orders: PanelOrder[] };
   const waiting = panel.orders.filter((o) => !o.released_at);
   const now = new Date().toISOString();
@@ -51,7 +59,7 @@ export default async function FactoryPage() {
               {w.needDates(waiting.length)}
             </p>
           )}
-          {panel.orders.map((o) => <FactoryOrder key={o.order_id} order={o} now={now} companyId={me?.companyId ?? ""} updates={updates} lang={lang} info={info} />)}
+          {panel.orders.map((o) => <FactoryOrder key={o.order_id} order={o} now={now} companyId={me?.companyId ?? ""} updates={updates} rounds={rounds.filter((r) => r.order_id === o.order_id)} lang={lang} info={info} />)}
         </>
       )}
     </>

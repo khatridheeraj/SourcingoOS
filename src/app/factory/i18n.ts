@@ -92,6 +92,24 @@ const EN = {
   upTo: (n: number) => `Up to ${n} photos. The first ${n} are kept.`,
   sentToast: (style: string, step: string) => `Sent: ${style} ${step} done. Sourcingo will confirm it.`,
   photoFail: "Couldn't send the photos. Try again.",
+  samples: "Samples",
+  samplesHelp: "Send each sample with photos. Sourcingo sends it to the buyer; the buyer's approval marks the step done.",
+  sendSample: "Send sample",
+  sendRound: (n: number) => `Send round ${n}`,
+  round: (n: number) => `round ${n}`,
+  sampleNotSent: "Not sent yet",
+  sampleDue: (d: string) => `Due ${d}`,
+  sampleChecking: (d: string) => `Sent ${d}, Sourcingo checking`,
+  sampleWithBuyer: (d: string) => `With buyer${d ? ` since ${d}` : ""}`,
+  sampleReturned: "Sourcingo sent it back",
+  sampleChanges: "Buyer wants changes",
+  sampleApproved: (d: string) => `Approved ${d}`,
+  sampleSheetHelp: "Take clear photos: front, back, and close-ups of any detail asked for. Sourcingo checks them before the buyer sees them.",
+  samplePhotos: "Photos of the sample",
+  sampleNotePlaceholder: "e.g. Size M, chest taken in by 1 cm as asked",
+  addSamplePhoto: "Add at least one photo of the sample.",
+  sampleSentToast: (style: string, step: string) => `Sent: ${style} ${step}. Sourcingo will check it.`,
+  photo: "Photo",
 };
 
 const HI: typeof EN = {
@@ -163,6 +181,24 @@ const HI: typeof EN = {
   upTo: (n: number) => `ज़्यादा से ज़्यादा ${n} फोटो। पहली ${n} रखी गई हैं।`,
   sentToast: (style: string, step: string) => `भेज दिया: ${style} ${step} पूरा। Sourcingo कन्फर्म करेगा।`,
   photoFail: "फोटो नहीं गईं। फिर से कोशिश करें।",
+  samples: "सैंपल",
+  samplesHelp: "हर सैंपल फोटो के साथ भेजें। Sourcingo उसे बायर को भेजेगा; बायर के अप्रूव करने पर स्टेप पूरा हो जाएगा।",
+  sendSample: "सैंपल भेजें",
+  sendRound: (n: number) => `राउंड ${n} भेजें`,
+  round: (n: number) => `राउंड ${n}`,
+  sampleNotSent: "अभी नहीं भेजा",
+  sampleDue: (d: string) => `${d} तक भेजना है`,
+  sampleChecking: (d: string) => `${d} को भेजा, Sourcingo देख रहा है`,
+  sampleWithBuyer: (d: string) => `बायर के पास${d ? `, ${d} से` : ""}`,
+  sampleReturned: "Sourcingo ने वापस भेजा",
+  sampleChanges: "बायर ने बदलाव माँगे",
+  sampleApproved: (d: string) => `अप्रूव हुआ ${d}`,
+  sampleSheetHelp: "साफ़ फोटो लें: आगे, पीछे, और जो डिटेल माँगी गई उसकी नज़दीक से। बायर को दिखाने से पहले Sourcingo इन्हें देखेगा।",
+  samplePhotos: "सैंपल की फोटो",
+  sampleNotePlaceholder: "जैसे साइज़ M, कहे अनुसार छाती 1 cm कम की",
+  addSamplePhoto: "सैंपल की कम से कम एक फोटो लगाएँ।",
+  sampleSentToast: (style: string, step: string) => `भेज दिया: ${style} ${step}। Sourcingo देखेगा।`,
+  photo: "फोटो",
 };
 
 export type Words = typeof EN;
@@ -195,6 +231,13 @@ const ERRORS_HI: Record<string, string> = {
   "Couldn't read that photo.": "यह फोटो खुल नहीं पाई।",
   "You don't have permission to do that.": "आपको यह करने की इजाज़त नहीं है।",
   "Something went wrong. Try again.": "कुछ गड़बड़ हो गई। फिर से कोशिश करें।",
+  "Add at least one photo of the sample.": "सैंपल की कम से कम एक फोटो लगाएँ।",
+  "Samples are sent once the factory PO is released.": "PO रिलीज़ होने के बाद ही सैंपल भेजे जाते हैं।",
+  "This step is already done, so no sample is needed.": "यह स्टेप पहले से पूरा है, सैंपल की ज़रूरत नहीं।",
+  "This sample is already with Sourcingo. Wait for the answer before sending another.": "यह सैंपल अभी Sourcingo के पास है। जवाब आने के बाद ही दूसरा भेजें।",
+  "This sample is already with the buyer. Wait for the answer before sending another.": "यह सैंपल अभी बायर के पास है। जवाब आने के बाद ही दूसरा भेजें।",
+  "Only the factory making this style, or the orders team, can send its sample.": "इस स्टाइल का सैंपल सिर्फ़ इसे बनाने वाली फैक्ट्री भेज सकती है।",
+  "Samples go to the buyer for approval. Use Send sample for this step.": "सैंपल बायर के अप्रूवल के लिए जाते हैं। इस स्टेप के लिए 'सैंपल भेजें' का इस्तेमाल करें।",
 };
 
 // Messages that carry a file name or a date.
