@@ -20,6 +20,7 @@ import { MarkShipped } from "../mark-shipped";
 import { OrderSections, type SectionTab } from "./order-sections";
 import { ShareUpdate, type ShareOption } from "./share-update";
 import { formOptions } from "../options";
+import { SheetButton } from "@/components/order-sheet";
 import type { LineFileKind } from "../actions";
 import { loadShipProgress, orderShip, partText } from "@/lib/shipments";
 import { loadSampleThreads } from "@/lib/samples-server";
@@ -276,6 +277,15 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
         {/* Closing an order: once every style is bought and billed in Dispatch, and (except for the owner) its final QC has passed. */}
         <div className="head-acts">
           {/* Keyed like the styles below, so the message is worded afresh after every save. */}
+          {o.status === "open" && canEnterDone(me?.role) && groups.some((g) => g.releasedAt) && (
+            <SheetButton orderId={o.id} mode="update" className="btn primary">Update progress</SheetButton>
+          )}
+          {o.status === "open" && canEdit && groups.some((g) => !g.releasedAt) && (
+            <SheetButton orderId={o.id} mode="start" factoryId={groups.find((g) => !g.releasedAt)?.factoryId ?? ""}
+              className={`btn ${groups.some((g) => g.releasedAt) || (me?.role !== "owner" && groups.every((g) => g.releasedAt || g.lockRequestedAt)) ? "" : "primary"}`}>
+              {groups.some((g) => !g.releasedAt && g.lockRequestedAt) && me?.role === "owner" ? "Check and lock"
+                : groups.every((g) => g.releasedAt || g.lockRequestedAt) ? "Waiting for the lock" : "Start production"}</SheetButton>
+          )}
           <ShareUpdate key={`${(lineStages ?? []).length}:${(lineStages ?? []).reduce((a, r) => (r.updated_at > a ? r.updated_at : a), "")}`} options={share} />
           {canEdit && o.status === "open" && <MarkShipped orderId={o.id} orderNo={o.order_no} blocked={shipBlocker as string | null} />}
         </div>

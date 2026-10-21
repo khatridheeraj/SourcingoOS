@@ -2,7 +2,10 @@ import { redirect } from "next/navigation";
 import { HelpChat } from "@/components/help/help-chat";
 import { Sidebar, type NavGroup } from "@/components/nav";
 import { Toaster } from "@/components/toast";
-import { canEditOrders, getMe, roleLabel } from "@/lib/auth";
+import { OrderSheet } from "@/components/order-sheet";
+import { SearchPalette } from "@/components/search";
+import { QcSheet } from "@/components/qc-sheet";
+import { canEditOrders, canEnterDone, canRecordQc, getMe, roleLabel } from "@/lib/auth";
 import { todayIST } from "@/lib/format";
 import { heldSince } from "@/lib/goods";
 import { createClient } from "@/lib/supabase/server";
@@ -48,7 +51,8 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
       { href: "/", label: "Orders", icon: "orders" },
       ...(edit ? [{ href: "/inquiries", label: "Inquiries", icon: "inquiry" as const, count: due.count ?? 0 },
         { href: "/pos", label: "Incoming POs", icon: "inbox" as const, count: toCheck },
-        { href: "/goods", label: "Goods with us", icon: "box" as const, count: held.count ?? 0 }] : []),
+        { href: "/goods", label: "Goods with us", icon: "box" as const, count: held.count ?? 0 },
+        { href: "/updates", label: "Updates", icon: "share" as const }] : []),
       { href: "/samples", label: "Samples", icon: "sample" as const, count: samples.count ?? 0 },
       { href: "/brief", label: "Brief", icon: "sun" as const },
     ] },
@@ -74,6 +78,9 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
       {me.role && me.companyId && (
         <HelpChat who="staff" role={me.role} name={me.fullName ?? ""} userId={me.id} companyId={me.companyId} ownerName={me.role === "owner" ? "Claude" : help.owner || "the owner"} unseen={help.unseen ?? 0} />
       )}
+      {canEnterDone(me.role) && <OrderSheet />}
+      <SearchPalette groups={groups} />
+      {canRecordQc(me.role) && <QcSheet />}
       <Toaster />
     </div>
   );
