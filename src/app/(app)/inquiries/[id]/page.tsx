@@ -4,6 +4,7 @@ import { canEditOrders, getMe } from "@/lib/auth";
 import { buyerName, loadBuyers, loadTeam, personName } from "@/lib/data";
 import { day, dayAt, daysBetween, money, qty, todayIST } from "@/lib/format";
 import { INQUIRY_COLUMNS, INQUIRY_STATUS, isOpenInquiry, sourceLabel, type Inquiry } from "@/lib/inquiries";
+import { suggestBuyerCode } from "@/lib/names";
 import { PHOTO_BUCKET } from "@/lib/storage";
 import { createClient } from "@/lib/supabase/server";
 import { InquiryActions } from "./inquiry-actions";
@@ -68,6 +69,7 @@ export default async function InquiryPage({ params }: PageProps<"/inquiries/[id]
         status={i.status}
         hasBuyer={!!i.buyer_id}
         prospect={i.prospect ?? ""}
+        newBuyerCode={i.buyer_id ? "" : suggestBuyerCode(i.prospect ?? "", buyers.map((b) => b.code))}
         isOwner={me.role === "owner"}
         quotedPrice={i.quoted_price != null ? String(i.quoted_price) : i.target_price != null ? String(i.target_price) : ""}
         nextFollowUp={i.next_follow_up ?? ""}

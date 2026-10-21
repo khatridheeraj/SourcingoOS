@@ -6,6 +6,7 @@ import { canEditOrders, getMe, roleLabel } from "@/lib/auth";
 import { todayIST } from "@/lib/format";
 import { heldSince } from "@/lib/goods";
 import { createClient } from "@/lib/supabase/server";
+import { MARKERS_ON } from "@/lib/features";
 
 export default async function AppLayout({ children }: LayoutProps<"/">) {
   const me = await getMe();
@@ -48,7 +49,7 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
     ] },
     ...(edit ? [{ label: "Partners", items: [{ href: "/buyers", label: "Buyers", icon: "buyers" as const }, { href: "/factories", label: "Factories", icon: "factories" as const }] }] : []),
     ...(edit ? [{ label: "Tools", items: [{ href: "/styles", label: "Style catalogue", icon: "styles" as const }, { href: "/reports", label: "Reports", icon: "chart" as const },
-      { href: "/markers", label: "Markers", icon: "markers" as const }] }] : []),
+      ...(MARKERS_ON ? [{ href: "/markers", label: "Markers", icon: "markers" as const }] : [])] }] : []),
     ...(money ? [{ label: "Finance", items: [{ href: "/payments", label: "Payments", icon: "payments" as const }, { href: "/tally", label: "Tally", icon: "tally" as const }] }] : []),
     ...(me.role === "owner" ? [{ label: "Admin", items: [{ href: "/team", label: "Team", icon: "team" as const }, { href: "/activity", label: "Activity log", icon: "activity" as const },
       { href: "/feedback", label: "Team notes", icon: "notes" as const, count: help.new ?? 0 }] }] : []),

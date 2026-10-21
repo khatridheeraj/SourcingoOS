@@ -6,17 +6,19 @@ import { useState, useTransition } from "react";
 import { LOST_REASONS } from "@/lib/inquiries";
 import { uploadPhotos } from "@/lib/photos";
 import { toast } from "@/components/toast";
-import { addInquiryNote, setInquiryPhotos, setInquiryStatus } from "../actions";
+import { addInquiryBuyer, addInquiryNote, setInquiryPhotos, setInquiryStatus } from "../actions";
 
 type Photo = { path: string; url: string };
 
 // What the team does on an inquiry: note a follow-up, send a quote, mark it lost, make it an order, and keep its photos.
-export function InquiryActions({ id, companyId, status, hasBuyer, prospect, isOwner, quotedPrice, nextFollowUp, today, photos, allPhotos }: {
+export function InquiryActions({ id, companyId, status, hasBuyer, prospect, newBuyerCode, isOwner, quotedPrice, nextFollowUp, today, photos, allPhotos }: {
   id: string;
   companyId: string;
   status: string;
   hasBuyer: boolean;
   prospect: string;
+  // A code for the new buyer, for the owner to add them here.
+  newBuyerCode: string;
   isOwner: boolean;
   quotedPrice: string;
   nextFollowUp: string;
@@ -25,7 +27,9 @@ export function InquiryActions({ id, companyId, status, hasBuyer, prospect, isOw
   allPhotos: string[];
 }) {
   const router = useRouter();
-  const [mode, setMode] = useState<"" | "quote" | "lost">("");
+  const [mode, setMode] = useState<"" | "quote" | "lost" | "buyer">("");
+  const [buyerNameIn, setBuyerNameIn] = useState(prospect);
+  const [buyerCode, setBuyerCode] = useState(newBuyerCode);
   const [note, setNote] = useState("");
   const [next, setNext] = useState(nextFollowUp && nextFollowUp >= today ? nextFollowUp : "");
   const [price, setPrice] = useState(quotedPrice);
@@ -77,10 +81,37 @@ export function InquiryActions({ id, companyId, status, hasBuyer, prospect, isOw
             </button>
             <button type="button" className="btn danger" aria-expanded={mode === "lost"} onClick={() => setMode(mode === "lost" ? "" : "lost")}>Mark lost</button>
           </div>
-          {!hasBuyer && (
+          {!hasBuyer && !isOwner && (
             <p className="mt-2 text-[13px] text-warn">
-              {prospect} isn&apos;t a buyer in the app yet. {isOwner ? <>Add them in <Link href="/buyers" className="link">Buyers</Link></> : "Ask the owner to add them in Buyers"}, then pick them with Edit details to make the order.
+              {prospect} isn&apos;t a buyer in the app yet. Ask the owner to open this inquiry and tap Add as a buyer; then you can make the order.
             </p>
+          )}
+          {!hasBuyer && isOwner && mode !== "buyer" && (
+            <div className="mt-2 row !gap-2 text-[13px] text-warn">
+              <span>{prospect} isn&apos;t a buyer in the app yet.</span>
+              <button type="button" className="btn sm" onClick={() => setMode("buyer")}>Add {prospect || "them"} as a buyer</button>
+            </div>
+          )}
+          {!hasBuyer && isOwner && mode === "buyer" && (
+            <div className="inq-choice">
+              <div className="fgrid">
+                <label className="field">
+                  <span>Buyer&apos;s real name <i>*</i></span>
+                  <input className="inp" value={buyerNameIn} onChange={(e) => setBuyerNameIn(e.target.value)} maxLength={120} autoFocus />
+                </label>
+                <label className="field">
+                  <span>Code <i>*</i></span>
+                  <input className="inp code" value={buyerCode} onChange={(e) => setBuyerCode(e.target.value)} maxLength={20} />
+                </label>
+              </div>
+              <div className="row">
+                <button type="button" className="btn primary" disabled={pending || !buyerNameIn.trim() || !buyerCode.trim()}
+                  onClick={() => run("buyer", () => addInquiryBuyer(id, buyerCode, buyerNameIn), `${buyerNameIn.trim()} added to Buyers. Make the sales order when they confirm.`, () => setMode(""))}>
+                  {busy === "buyer" ? "Adding…" : "Add buyer"}
+                </button>
+                <button type="button" className="btn" onClick={() => setMode("")}>Cancel</button>
+              </div>
+            </div>
           )}
           {mode === "quote" && (
             <div className="inq-choice">

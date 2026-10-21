@@ -5,6 +5,7 @@ import { canEditOrders, getMe } from "@/lib/auth";
 import { friendly } from "@/lib/errors";
 import { todayIST } from "@/lib/format";
 import { createClient } from "@/lib/supabase/server";
+import { addBuyer } from "../buyers/actions";
 
 export type InquiryInput = {
   buyer_id: string;
@@ -139,6 +140,20 @@ export async function setInquiryPhotos(id: string, photos: string[]): Promise<{ 
   if (photos.some((p) => !p.startsWith(`${t.me.companyId}/inquiries/${id}/`) || p.includes(".."))) return { error: "Those photos didn't upload properly. Try again." };
   const { error } = await t.supabase.from("inquiries").update({ photos }).eq("id", id);
   if (error) return { error: friendly(error) };
+  revalidatePath(`/inquiries/${id}`);
+  return {};
+}
+
+// The owner adds an inquiry's new buyer to Buyers and puts it on the inquiry, so the order can be made from it.
+export async function addInquiryBuyer(id: string, code: string, realName: string): Promise<{ error?: string }> {
+  const t = await team();
+  if ("error" in t) return { error: t.error };
+  const added = await addBuyer(code, realName);
+  if (added.error || !added.id) return { error: added.error ?? "Couldn't add the buyer." };
+  const { data, error } = await t.supabase.from("inquiries").update({ buyer_id: added.id }).eq("id", id).in("status", ["new", "quoted"]).select("id");
+  if (error) return { error: friendly(error) };
+  if (!data?.length) return { error: "The buyer was added, but this inquiry is closed. Pick them on a new inquiry or order." };
+  revalidatePath("/inquiries");
   revalidatePath(`/inquiries/${id}`);
   return {};
 }

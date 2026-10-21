@@ -20,7 +20,7 @@ export default async function FactoryLayout({ children }: LayoutProps<"/factory"
   return (
     <div className="flex min-h-full flex-col">
       <header className="fbar">
-        <div className="brand"><span className="brand-mark" aria-hidden>S</span>Sourcingo<small>{w.panel}</small></div>
+        <div className="brand"><span className="brand-mark" aria-hidden>S</span><span className="fbar-name">Sourcingo</span><small>{w.panel}</small></div>
         <span className="hide-phone ml-auto text-[13px] text-muted">{me.fullName || me.email}</span>
         <div className="ml-auto flex items-center gap-2 sm:ml-0"><HelpPill label={lang === "hi" ? "मदद" : "Help"} unseen={unseen} /><LangSwitch lang={lang} /></div>
         {/* A WhatsApp-link login has no email to sign back in with, so it has no Sign out: the link is the way in. */}

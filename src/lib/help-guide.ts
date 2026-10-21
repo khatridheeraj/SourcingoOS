@@ -255,7 +255,7 @@ export const TOPICS: Topic[] = [
 
   // ---------------------------------------------------------------- tools
   { id: "markers", who: "staff", roles: ORDERS_TEAM, q: "What is Markers for?",
-    a: ["It works out fabric consumption and the most efficient cutting marker from photos of the garment.", "Saved styles are shared with the team."],
+    a: ["It works out fabric consumption and the most efficient cutting marker from photos of the garment.", "It is paused for now: it needs credit on the AI account, which has none. It comes back on the menu once credit is added."],
     words: "marker fabric consumption cad cutting marker average", link: { href: "/markers", label: "Open Markers" }, pages: ["/markers"] },
   { id: "notes", who: "staff", q: "How do I report a problem or suggest an idea?",
     a: ["Right here in Help: tap Something's wrong, Wrong data or I have an idea, or just type it.",
