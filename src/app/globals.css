@@ -1165,3 +1165,58 @@ h1, h2, h3 { font-family: var(--font-display); text-wrap: balance; font-weight: 
   .score-list dt { font-size: 12px; color: var(--muted); }
   .score-list dd { margin: 0; font-size: 18px; font-weight: 650; font-variant-numeric: tabular-nums; }
 }
+
+/* Bills to pay: one row per bill, tick to build a payment list, tap to see why it is due and to hold it. */
+@layer components {
+  .bills-sum { display: flex; align-items: center; gap: 10px; }
+  .bills-sum b { font-size: 15px; font-weight: 600; }
+  .bills { margin: 0; padding: 0; list-style: none; }
+  .bills > li { display: grid; grid-template-columns: 44px minmax(0, 1fr); border-top: 1px solid var(--line); transition: background 0.12s; }
+  .bills > li:first-child { border-top: 0; }
+  .bills > li.on { background: color-mix(in srgb, var(--accent) 6%, transparent); }
+  .bill-tick { display: flex; justify-content: center; padding-top: 15px; cursor: pointer; }
+  .bill-tick input { width: 18px; height: 18px; accent-color: var(--accent); }
+  .bill summary { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: start; padding: 12px 16px 12px 0; cursor: pointer; list-style: none; }
+  .bill summary::-webkit-details-marker { display: none; }
+  .bill summary:hover .bill-who { text-decoration: underline; text-underline-offset: 2px; text-decoration-color: var(--line-strong); }
+  .bill-main { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+  .bill-who { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .bill-who .code { color: var(--muted); margin-left: 8px; }
+  .bill-sub { font-size: 12.5px; color: var(--muted); }
+  .bill-sub .code { color: var(--foreground); }
+  .bill-tags { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 5px; }
+  .bill-note { font-size: 12.5px; color: var(--foreground); font-style: italic; }
+  .bill-amt { display: flex; flex-direction: column; align-items: flex-end; gap: 5px; }
+  .bill-amt b { font-size: 15px; font-weight: 600; }
+  .bill-more { padding: 0 16px 14px 0; display: flex; flex-direction: column; gap: 10px; font-size: 13px; }
+  .bill-more ul { margin: 0; padding: 10px 12px; list-style: none; display: flex; flex-direction: column; gap: 6px; border-radius: 10px; background: var(--surface-2); color: var(--muted); }
+  .bill-hold { display: flex; flex-direction: column; gap: 8px; max-width: 520px; }
+  .bills-bar { margin-top: 4px; }
+  .suppliers { margin: 0; padding: 0; list-style: none; }
+  .suppliers > li { padding: 14px 16px 12px 20px; border-top: 1px solid var(--line); }
+  .suppliers > li:first-child { border-top: 0; }
+  .sup-top { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: start; }
+  .sup-name { font-weight: 600; }
+  .sup-name:hover { text-decoration: underline; text-underline-offset: 2px; }
+  .sup-sub { font-size: 12.5px; color: var(--muted); margin-top: 2px; }
+  .sup-amt { display: flex; flex-direction: column; align-items: flex-end; gap: 5px; }
+  .sup-amt b { font-size: 16px; font-weight: 600; }
+  .sup-terms { margin-top: 8px; }
+  .sup-terms summary { font-size: 13px; font-weight: 500; color: var(--accent); cursor: pointer; width: max-content; }
+  .terms { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px 12px; margin-top: 10px; }
+  .terms label { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--muted); }
+  .terms label .inp { width: 150px; }
+  .terms label:first-child .inp { width: 90px; }
+  .terms-udyam .inp { width: 220px !important; }
+  .terms-warn { flex-basis: 100%; font-size: 12.5px; color: var(--warn); }
+  .money-card .bills-sum b { font-size: 18px; }
+  @media (max-width: 640px) {
+    .bills > li { grid-template-columns: 40px minmax(0, 1fr); }
+    .bill summary { padding-right: 14px; }
+    .bill-more { padding-right: 14px; }
+    .suppliers > li { padding: 14px 16px; }
+    .terms label, .terms-udyam { flex: 1 1 140px; }
+    .terms label .inp, .terms-udyam .inp { width: 100% !important; }
+    .bills-bar .text-xs { display: none; }
+  }
+}
