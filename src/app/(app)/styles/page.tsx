@@ -2,7 +2,8 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { canEditOrders, getMe } from "@/lib/auth";
 import { buyerName, loadBuyers, loadFactories } from "@/lib/data";
-import { day, qty, stageLabel, STATUS } from "@/lib/format";
+import { day, qty, STATUS, todayIST } from "@/lib/format";
+import { styleProgress, type StepRow } from "@/lib/progress";
 import { sizeEntries } from "@/lib/sizes";
 import { PHOTO_BUCKET } from "@/lib/storage";
 import { createClient } from "@/lib/supabase/server";
@@ -12,7 +13,7 @@ const PAGE = 48;
 type Row = {
   id: string; style: string; description: string | null; colour: string | null; qty: number; factory_id: string | null; photo_path: string | null;
   fabric: string | null; sizes: Record<string, number> | null;
-  orders: { id: string; order_no: string; buyer_id: string; buyer_po: string; status: string; ship_date: string | null; revised_ship_date: string | null; stage: string | null };
+  orders: { id: string; order_no: string; buyer_id: string; buyer_po: string; status: string; ship_date: string | null; revised_ship_date: string | null };
 };
 
 // Every style the company has made or is making, as a picture gallery to search by style, buyer, factory or fabric.
@@ -30,7 +31,7 @@ export default async function StylesPage({ searchParams }: PageProps<"/styles">)
   const [buyers, factories] = await Promise.all([loadBuyers(), loadFactories()]);
 
   let query = supabase.from("order_lines")
-    .select("id, style, description, colour, qty, factory_id, photo_path, fabric, sizes, orders!inner(id, order_no, buyer_id, buyer_po, status, ship_date, revised_ship_date, stage)", { count: "exact" })
+    .select("id, style, description, colour, qty, factory_id, photo_path, fabric, sizes, orders!inner(id, order_no, buyer_id, buyer_po, status, ship_date, revised_ship_date)", { count: "exact" })
     .eq("company_id", me.companyId).is("removed_at", null);
   if (!all) query = query.eq("orders.status", "open");
   if (buyer) query = query.eq("orders.buyer_id", buyer);
@@ -40,10 +41,15 @@ export default async function StylesPage({ searchParams }: PageProps<"/styles">)
   const rows = (data ?? []) as unknown as Row[];
 
   const paths = rows.map((r) => r.photo_path).filter(Boolean) as string[];
-  const [{ data: signed }, { data: packs }] = await Promise.all([
+  const ids = rows.map((r) => r.id);
+  const [{ data: signed }, { data: packs }, { data: steps }] = await Promise.all([
     paths.length ? supabase.storage.from(PHOTO_BUCKET).createSignedUrls(paths, 3600) : Promise.resolve({ data: [] }),
-    rows.length ? supabase.from("line_files").select("line_id").in("line_id", rows.map((r) => r.id)).eq("kind", "tech_pack").is("removed_at", null) : Promise.resolve({ data: [] }),
+    ids.length ? supabase.from("line_files").select("line_id").in("line_id", ids).eq("kind", "tech_pack").is("removed_at", null) : Promise.resolve({ data: [] }),
+    // Each style's own steps: the order's stage is its slowest style's, which would show a style that is ahead as behind.
+    ids.length ? supabase.from("line_stages").select("line_id, stage, planned_on, done_on").in("line_id", ids) : Promise.resolve({ data: [] }),
   ]);
+  const today = todayIST();
+  const stepRows = (steps ?? []) as StepRow[];
   const urlOf = new Map((signed ?? []).filter((s) => s.signedUrl).map((s) => [s.path, s.signedUrl]));
   const hasPack = new Set((packs ?? []).map((p) => p.line_id));
   const buyerOf = new Map(buyers.map((b) => [b.id, buyerName(b)]));
@@ -93,13 +99,14 @@ export default async function StylesPage({ searchParams }: PageProps<"/styles">)
             const url = r.photo_path ? urlOf.get(r.photo_path) : null;
             const sizes = sizeEntries(r.sizes);
             const st = STATUS[o.status];
+            const pr = o.status === "open" ? styleProgress([r.id], stepRows, o.revised_ship_date || o.ship_date, today) : null;
             return (
               <li key={r.id}>
                 <Link href={`/orders/${o.id}#style-${r.id}`} className="cat-card">
                   <div className="cat-img">
                     {/* eslint-disable-next-line @next/next/no-img-element -- short-lived signed links, not for the image optimiser */}
                     {url ? <img src={url} alt={`${r.style} ${r.colour ?? ""}`} loading="lazy" /> : <span>{r.style}</span>}
-                    {o.status === "open" ? <em className="chip info">{stageLabel(o.stage)}</em> : st ? <em className={st.cls}>{st.label}</em> : null}
+                    {pr ? <em className={`chip ${pr.behind ? "warn" : "info"}`}>{pr.text}</em> : st ? <em className={st.cls}>{st.label}</em> : null}
                   </div>
                   <div className="cat-body">
                     <b className="code">{r.style}</b>

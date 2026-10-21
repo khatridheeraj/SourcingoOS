@@ -1029,8 +1029,16 @@ h1, h2, h3 { font-family: var(--font-display); text-wrap: balance; font-weight: 
     .note-acts .btn { min-height: 42px; font-size: 14px; }
   }
 }
-@media (max-width: 380px) {
+@media (max-width: 520px) {
+  /* A factory's phone: brand mark, Help, language and Sign out must fit 360px without the page zooming out. */
+  .fbar { gap: 8px; padding-left: 12px; padding-right: 12px; }
   .fbar .brand small { display: none; }
+  .fbar .help-pill { padding: 0 10px; }
+  .fbar .seg button { padding-left: 9px; padding-right: 9px; }
+  .fbar form .btn { padding-left: 8px; padding-right: 8px; }
+}
+@media (max-width: 420px) {
+  .fbar:has(form) .fbar-name { display: none; }
 }
 
 @layer components {

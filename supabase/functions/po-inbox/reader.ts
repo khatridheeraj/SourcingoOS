@@ -165,8 +165,17 @@ export async function readPos(
   ].filter(Boolean).join("\n\n");
 
   const content = [...blocks, { type: "text", text: context }];
-  return ask(key, content);
+  try {
+    return await ask(key, content);
+  } catch (err) {
+    // The AI is out of credit, refused or down: read it the free way instead of leaving the PO failed.
+    if (!(err instanceof AiUnavailable)) throw err;
+    const read = await readPosFree(files, email, buyers, excelRows);
+    return read.map((p) => ({ ...p, doubts: [`Read without the AI (${err.message}). Check every line against the file.`, ...p.doubts] }));
+  }
 }
+
+class AiUnavailable extends Error {}
 
 async function ask(key: string, content: unknown[]): Promise<PoReading[]> {
   const res = await fetch("https://api.anthropic.com/v1/messages", {
@@ -182,7 +191,8 @@ async function ask(key: string, content: unknown[]): Promise<PoReading[]> {
   });
   if (!res.ok) {
     const text = await res.text();
-    throw new Error(`The AI could not read the files (${res.status}). ${text.slice(0, 300)}`);
+    const why = /credit balance/i.test(text) ? "out of credit" : `error ${res.status}`;
+    throw new AiUnavailable(why);
   }
   const data = (await res.json()) as { stop_reason?: string; content: { type: string; text?: string }[] };
   if (data.stop_reason === "max_tokens") throw new Error("These files are too long to read in one go. Split the PO into smaller files.");

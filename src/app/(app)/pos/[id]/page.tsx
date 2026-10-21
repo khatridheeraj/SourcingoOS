@@ -13,15 +13,9 @@ import { STATE } from "../state";
 import { HeldSender } from "./held-sender";
 import { NewBuyer } from "./new-buyer";
 import { PoActions } from "./po-actions";
+import { suggestBuyerCode } from "@/lib/names";
 
 const when = new Intl.DateTimeFormat("en-IN", { timeZone: "Asia/Kolkata", day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit" });
-
-// A code for a new buyer: initials of its name and the next number, like BYR-FC-0015.
-function suggestCode(name: string, codes: string[]): string {
-  const initials = name.replace(/[^a-z\s]/gi, " ").trim().split(/\s+/).filter(Boolean).slice(0, 3).map((w) => w[0].toUpperCase()).join("") || "NEW";
-  const next = Math.max(0, ...codes.map((c) => Number(c.match(/(\d+)$/)?.[1] ?? 0))) + 1;
-  return `BYR-${initials}-${String(next).padStart(4, "0")}`;
-}
 
 export default async function IncomingPoPage({ params, searchParams }: PageProps<"/pos/[id]">) {
   const { id } = await params;
@@ -75,7 +69,7 @@ export default async function IncomingPoPage({ params, searchParams }: PageProps
     ...(!buyerId && po.status === "to_check" ? [{
       cls: "bad", body: <>
         Buyer not recognised{owner && buyerName ? `: the PO says "${buyerName}"` : ""}. {owner ? "Pick the right one in the form, or add it as a new buyer." : "Pick the buyer in the form, or ask the owner to add a new buyer."}
-        {owner && <div className="mt-2"><NewBuyer name={(buyerName as string | null) ?? ""} code={suggestCode((buyerName as string | null) ?? "", o.buyers.map((b) => b.code))} /></div>}
+        {owner && <div className="mt-2"><NewBuyer name={(buyerName as string | null) ?? ""} code={suggestBuyerCode((buyerName as string | null) ?? "", o.buyers.map((b) => b.code))} /></div>}
       </>,
     }] : []),
     ...(read.doubts ?? []).map((d) => ({ cls: "warn", body: <>{d}</> })),
