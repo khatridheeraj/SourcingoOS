@@ -423,6 +423,12 @@ h1, h2, h3 { font-family: var(--font-display); text-wrap: balance; font-weight: 
   @media (prefers-reduced-motion: reduce) { .tally-wait .dot { animation: none; } }
   .tally-wait .bill-sum { flex: 1 1 220px; }
   .copies { display: flex; flex-wrap: wrap; gap: 6px 18px; }
+  /* An order sent in parts: pieces shipped per style, and the dispatches numbered Part 1, Part 2. */
+  .ship-sum { padding: 12px; border-radius: 10px; background: var(--surface-2); }
+  .ship-lines { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; }
+  .ship-lines li { display: grid; grid-template-columns: minmax(64px, max-content) minmax(60px, 1fr) max-content; align-items: center; gap: 10px; }
+  .ship-lines .bar { margin: 0; height: 6px; }
+  .part-no { display: inline-block; margin-right: 8px; padding: 1px 7px; border-radius: 6px; background: var(--info-soft); color: var(--info); font-size: 12px; font-weight: 600; vertical-align: 1px; }
   .copy { display: inline-flex; align-items: center; gap: 8px; }
   label.btn { cursor: pointer; }
   label.btn.disabled { opacity: 0.45; cursor: not-allowed; }

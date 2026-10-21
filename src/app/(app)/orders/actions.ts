@@ -167,6 +167,22 @@ export async function markShipped(id: string): Promise<{ error?: string }> {
   return {};
 }
 
+// Closes an open order with pieces left unsent, when the rest won't go (the buyer took less, or the factory
+// can't make it). The reason goes on the order and into the owner's morning brief.
+export async function closeShort(id: string, reason: string): Promise<{ error?: string }> {
+  const me = await getMe();
+  if (!me?.role) return { error: "Your account is not switched on yet." };
+  if (!canEditOrders(me.role)) return { error: "Only the orders team can change orders." };
+  if (!reason.trim()) return { error: "Say why the rest won't be sent." };
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("close_order_short", { p_order: id, p_reason: reason.trim() });
+  if (error) return { error: friendly(error) };
+  revalidatePath("/");
+  revalidatePath("/today");
+  revalidatePath(`/orders/${id}`);
+  return {};
+}
+
 type StageCell = { planned_on: string; done_on: string; not_needed: boolean };
 // was: the step as the screen loaded it, so only what this person changed is saved and someone else's newer dates are kept.
 // target_note: the owner's reason for moving targets that release locked.

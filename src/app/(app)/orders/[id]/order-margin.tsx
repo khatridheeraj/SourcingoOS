@@ -2,7 +2,7 @@ import { money, qty } from "@/lib/format";
 import { marginCls, pct, planMargin, THIN_MARGIN_PCT } from "@/lib/margin";
 
 export type MarginStyle = { id: string; style: string; colour: string; qty: number; buyerRate: number | null; factoryRate: number | null };
-export type MarginDispatch = { invoiceTaxable: number | null; purchaseTaxable: number };
+export type MarginDispatch = { invoiceTaxable: number | null; purchaseTaxable: number; lines: { qty: number }[] };
 
 // What the order earns: planned from the rates, and actual from what has been bought and invoiced so far.
 export function OrderMargin({ styles, dispatches }: { styles: MarginStyle[]; dispatches: MarginDispatch[] }) {
@@ -11,6 +11,9 @@ export function OrderMargin({ styles, dispatches }: { styles: MarginStyle[]; dis
   const sold = invoiced.reduce((t, d) => t + (d.invoiceTaxable ?? 0), 0);
   const bought = invoiced.reduce((t, d) => t + d.purchaseTaxable, 0);
   const actualPct = sold > 0 ? ((sold - bought) / sold) * 100 : null;
+  // An order sent in parts earns part by part.
+  const pcsInvoiced = invoiced.reduce((t, d) => t + d.lines.reduce((u, l) => u + l.qty, 0), 0);
+  const pcsOrdered = styles.reduce((t, s) => t + s.qty, 0);
   const thin = styles.filter((s) => {
     if (s.buyerRate == null || s.factoryRate == null || s.buyerRate === 0) return false;
     return ((s.buyerRate - s.factoryRate) / s.buyerRate) * 100 < THIN_MARGIN_PCT;
@@ -31,7 +34,7 @@ export function OrderMargin({ styles, dispatches }: { styles: MarginStyle[]; dis
           <div className="tile">
             <span>Earned on invoiced goods</span>
             <b className={marginCls(actualPct)}>{money(sold - bought)}</b>
-            <span className="mt-1">{pct(actualPct)} on {money(sold)} invoiced</span>
+            <span className="mt-1">{pct(actualPct)} on {money(sold)} invoiced{pcsInvoiced < pcsOrdered && ` · ${qty(pcsInvoiced)} of ${qty(pcsOrdered)} pcs`}</span>
           </div>
         )}
       </div>

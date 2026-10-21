@@ -6,6 +6,7 @@ import { day, daysBetween, dueDate, money, qty, SHIP_QC, stageReached, STATUS, t
 import { type LinePrice, marginCls, pct, planMargin } from "@/lib/margin";
 import { fetchAll } from "@/lib/fetch-all";
 import { styleProgress } from "@/lib/progress";
+import { loadShipProgress, orderShip } from "@/lib/shipments";
 import { ProgressCell } from "@/components/progress";
 import { createClient } from "@/lib/supabase/server";
 
@@ -50,9 +51,13 @@ export default async function OrdersPage({ searchParams }: PageProps<"/">) {
   ]);
   // TNA steps of the open orders listed, for each style's progress and whether the order is on plan.
   const openIds = (data ?? []).filter((o) => o.status === "open").map((o) => o.id);
-  const { data: steps, error: stepsError } = openIds.length
-    ? await fetchAll((a, z) => supabase.from("line_stages").select("order_id, line_id, stage, planned_on, done_on, not_needed").in("order_id", openIds).eq("not_needed", false).order("id").range(a, z))
-    : { data: [] };
+  const [{ data: steps, error: stepsError }, { data: shipRows, error: shipError }] = await Promise.all([
+    openIds.length
+      ? fetchAll((a, z) => supabase.from("line_stages").select("order_id, line_id, stage, planned_on, done_on, not_needed").in("order_id", openIds).eq("not_needed", false).order("id").range(a, z))
+      : { data: [], error: null },
+    // Pieces shipped so far, for orders sent in parts.
+    loadShipProgress(supabase, openIds),
+  ]);
   // Each style's latest final QC result (rows come newest first).
   const finalQc = new Map<string, string>();
   for (const c of qc ?? []) if (!finalQc.has(c.line_id)) finalQc.set(c.line_id, c.result);
@@ -96,6 +101,7 @@ export default async function OrdersPage({ searchParams }: PageProps<"/">) {
       late: isLate(o),
       lateBy: isLate(o) ? daysBetween(dueDate(o)!, today) : 0,
       progress: o.status === "open" ? progressOf(o) : null,
+      ship: o.status === "open" ? orderShip(shipRows, o.id) : null,
       // Shipped long ago but never closed: 30+ days past the ship date and packed or further.
       looksShipped: o.status === "open" && !!dueDate(o) && daysBetween(dueDate(o)!, today) > 30 && stageReached(o.stage, "packed"),
     };
@@ -107,7 +113,7 @@ export default async function OrdersPage({ searchParams }: PageProps<"/">) {
 
   const all = counts.data ?? [];
   // A list that failed to load must not look like "no orders" or "on plan".
-  const loadError = [error, counts.error, qcError, stepsError, ratesError].find(Boolean);
+  const loadError = [error, counts.error, qcError, stepsError, ratesError, shipError].find(Boolean);
   const openCount = all.filter((o) => o.status === "open").length;
   // Tiles count every open order, whatever is typed in the search box.
   const open = built.filter((r) => r.status === "open");
@@ -195,7 +201,7 @@ export default async function OrdersPage({ searchParams }: PageProps<"/">) {
               )}
               <span className="o-prog" role="cell">
                 {r.progress ? (
-                  <ProgressCell p={r.progress} looksShipped={r.looksShipped} />
+                  <ProgressCell p={r.progress} looksShipped={r.looksShipped} ship={r.ship} />
                 ) : <span className={STATUS[r.status]?.cls}>{STATUS[r.status]?.label}</span>}
               </span>
             </Link>

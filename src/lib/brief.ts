@@ -20,6 +20,9 @@ export type BriefData = {
   locks?: { order_id: string; order_no: string; factory: string; at: string; note: string | null }[];
   // Inquiry follow-ups due today or late.
   inquiries_due?: { id: string; inquiry_no: string; product: string; on: string; who: string | null }[];
+  // Open orders sent in part, and (the owner only) orders closed short in the last two days.
+  part_shipped?: { order_id: string; order_no: string; ordered: number; shipped: number }[];
+  closed_short?: { order_id: string; order_no: string; reason: string; at: string; by: string | null; ordered: number; billed: number }[];
 };
 
 export type BriefItem = { text: string; sub?: string; href: string };
@@ -43,8 +46,11 @@ export function buildBrief(d: BriefData): Brief {
   let noTarget = 0;
   const noTargetOrders: string[] = [];
 
+  const partOf = new Map((d.part_shipped ?? []).map((p) => [p.order_id, p]));
+  const pcs = (n: number) => inr.format(n);
   for (const o of d.orders) {
     const name = `${o.order_no} · ${o.buyer}${o.buyer_po ? ` PO ${o.buyer_po}` : ""}`;
+    const part = partOf.get(o.id);
     const href = `/orders/${o.id}#tna`;
     let worst = 0;
     let why = "";
@@ -70,7 +76,9 @@ export function buildBrief(d: BriefData): Brief {
       noTargetOrders.push(o.order_no);
     }
     if (o.due && o.due < today) {
-      risk.push({ text: `${name}: ship date ${dm(o.due)} has passed, ${days(diff(o.due, today))} ago`, sub: why || undefined, href, n: 1000 + diff(o.due, today) });
+      risk.push({ text: `${name}: ship date ${dm(o.due)} has passed, ${days(diff(o.due, today))} ago`,
+        sub: part ? `${pcs(part.shipped)} of ${pcs(part.ordered)} pcs shipped, ${pcs(part.ordered - part.shipped)} still to send` : why || undefined,
+        href: part ? `/orders/${o.id}#dispatch` : href, n: 1000 + diff(o.due, today) });
     } else if (worst > 0) {
       risk.push({ text: `${name}: likely ${days(worst)} late for ${dm(o.due!)}`, sub: why, href, n: worst });
     } else if (late.length) {
@@ -105,6 +113,21 @@ export function buildBrief(d: BriefData): Brief {
   if (d.pos_to_check) waiting.push({ text: `${d.pos_to_check} new buyer ${d.pos_to_check === 1 ? "PO" : "POs"} to check`, href: "/pos" });
   if (noTarget) waiting.push({ text: `${noTarget} ${noTarget === 1 ? "step has" : "steps have"} no target date`, sub: `${noTargetOrders.slice(0, 4).join(", ")}${noTargetOrders.length > 4 ? ` and ${noTargetOrders.length - 4} more` : ""}. Lateness can't show without one.`, href: "/today" });
   if (waiting.length) sections.push({ key: "waiting", title: "Waiting on you or a factory", tone: "info", items: waiting });
+  // Orders sent in part whose ship date hasn't passed (late ones are under Ship dates at risk).
+  const parts = (d.part_shipped ?? []).filter((p) => !risk.some((r) => r.href === `/orders/${p.order_id}#dispatch`));
+  if (parts.length) {
+    sections.push({ key: "parts", title: "Shipped in part, rest to send", tone: "warn", items: parts.map((p) => ({
+      text: `${p.order_no}: ${pcs(p.shipped)} of ${pcs(p.ordered)} pcs shipped, ${pcs(p.ordered - p.shipped)} to send`,
+      href: `/orders/${p.order_id}#dispatch`,
+    })) });
+  }
+  if (d.closed_short?.length) {
+    sections.push({ key: "short", title: "Closed short", tone: "info", items: d.closed_short.map((c) => ({
+      text: `${c.order_no}: closed with ${pcs(c.billed)} of ${pcs(c.ordered)} pcs`,
+      sub: `${c.by ? `${c.by}, ` : ""}${dm(istDay(c.at))}: ${c.reason}`,
+      href: `/orders/${c.order_id}#dispatch`,
+    })) });
+  }
   if (d.inquiries_due?.length) {
     sections.push({ key: "inquiries", title: "Inquiry follow-ups due", tone: "warn", items: d.inquiries_due.map((i) => ({
       text: `${i.inquiry_no} · ${i.who ?? "New buyer"}: ${i.product}`,
