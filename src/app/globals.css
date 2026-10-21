@@ -1598,3 +1598,14 @@ h1, h2, h3 { font-family: var(--font-display); text-wrap: balance; font-weight: 
   .qc-extra { display: flex; flex-direction: column; gap: 10px; }
   .btn.primary.danger { background: var(--bad); border-color: var(--bad); color: #fff; }
 }
+
+/* Factory panel: agree to every target in one tap. */
+@layer components {
+  .fagree { display: flex; align-items: center; gap: 12px; margin: 0 0 14px; padding: 12px 14px; border-radius: 12px; background: var(--accent-soft); }
+  .fagree p { flex: 1; font-size: 13.5px; color: var(--foreground); }
+  .fagree .btn { flex: none; }
+  @media (max-width: 760px) {
+    .fagree { flex-direction: column; align-items: stretch; }
+    .fagree .btn { min-height: 48px; font-size: 15px; }
+  }
+}

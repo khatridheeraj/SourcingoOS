@@ -81,6 +81,20 @@ export function FactoryOrder({ order, now, companyId, updates, rounds, lang, inf
     setSent(false);
   }
 
+  // Most factories just agree to the targets: one tap fills every empty date with Sourcingo's target.
+  function agreeTargets() {
+    setDates((d) => {
+      const next = { ...d };
+      for (const l of order.lines) for (const s of l.stages) if (!next[key(l.id, s.stage)] && s.planned_on) {
+        // A target after the PO's target date can't be sent, so it comes in on the target date.
+        next[key(l.id, s.stage)] = order.target && s.planned_on > order.target ? order.target : s.planned_on;
+      }
+      return next;
+    });
+    setSent(false);
+  }
+  const fillable = order.lines.reduce((n, l) => n + l.stages.filter((s) => !dates[key(l.id, s.stage)] && s.planned_on).length, 0);
+
   function send() {
     setError("");
     start(async () => {
@@ -126,6 +140,12 @@ export function FactoryOrder({ order, now, companyId, updates, rounds, lang, inf
         {!released && !sentAt && order.plan_due_at && <>{w.sendBy} <b className="text-foreground">{at.format(new Date(order.plan_due_at))}</b>. </>}
         {released ? w.releasedHelp : w.planHelp}
       </p>
+      {!released && fillable > 0 && (
+        <div className="fagree">
+          <p>{w.useTargetsHelp(missing)}</p>
+          <button type="button" className="btn primary" disabled={pending} onClick={agreeTargets}>{w.useTargets}</button>
+        </div>
+      )}
       {released && <FactorySamples companyId={companyId} order={order} rounds={rounds} lang={lang} />}
       {released && <FactoryProgress companyId={companyId} order={order} updates={updates.filter((u) => u.order_id === order.order_id)} lang={lang} />}
       {/* On a phone: one card per style, one row per step, big date boxes. */}
