@@ -1,22 +1,31 @@
 "use client";
 
-import { useEffect, useRef, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useRef, useSyncExternalStore } from "react";
 
 export type SectionTab = { id: string; label: string; count?: number; tone?: string };
-
-const subscribe = (fn: () => void) => {
-  window.addEventListener("hashchange", fn);
-  window.addEventListener("popstate", fn);
-  return () => {
-    window.removeEventListener("hashchange", fn);
-    window.removeEventListener("popstate", fn);
-  };
-};
 
 // The order's sections. On a computer they sit one under another and the tabs jump between them;
 // on a phone only the chosen section shows, so the order reads like an app instead of one endless page.
 export function OrderSections({ tabs, children }: { tabs: SectionTab[]; children: React.ReactNode }) {
-  const hash = useSyncExternalStore(subscribe, () => window.location.hash.slice(1), () => "");
+  // The open section, kept apart from the address: saving anything on the order runs a server action, and Next
+  // rewrites the address without its #section when the page refreshes. Without this, every save on a phone
+  // jumped back to the first tab and the step just saved looked like it had vanished.
+  const kept = useRef<string | null>(null);
+  const subscribe = useCallback((fn: () => void) => {
+    const on = () => { kept.current = window.location.hash.slice(1); fn(); };
+    window.addEventListener("hashchange", on);
+    window.addEventListener("popstate", on);
+    return () => {
+      window.removeEventListener("hashchange", on);
+      window.removeEventListener("popstate", on);
+    };
+  }, []);
+  const hash = useSyncExternalStore(subscribe, () => window.location.hash.slice(1) || (kept.current ?? ""), () => "");
+  useEffect(() => { kept.current ??= window.location.hash.slice(1); }, []);
+  // Put the section back in the address after a save, so a reload or a shared link opens the same tab.
+  useEffect(() => {
+    if (!window.location.hash && kept.current) window.history.replaceState(window.history.state, "", `#${kept.current}`);
+  });
   // Links into a section (a style's QC, a style card) open the section they sit in.
   const tab = tabs.find((t) => hash === t.id || hash.startsWith(`${t.id}-`))?.id
     ?? (hash.startsWith("style-") || hash.startsWith("steps-") ? "tna" : tabs[0].id);

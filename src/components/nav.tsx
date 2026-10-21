@@ -62,7 +62,7 @@ export function Sidebar({ groups, user, role, company, helpUnseen = 0 }: { group
       <header className="topbar">
         <Link href="/today" className="brand"><span className="brand-mark" aria-hidden>S</span>Sourcingo</Link>
         <div className="top-acts">
-          <button type="button" className="help-btn" aria-label={helpUnseen ? `Help, ${helpUnseen} new replies` : "Help"} onClick={() => openHelp(helpUnseen ? "notes" : "ask")}>
+          <button type="button" className="help-btn" aria-label={helpUnseen ? `Help, ${helpUnseen} new ${helpUnseen === 1 ? "reply" : "replies"}` : "Help"} onClick={() => openHelp(helpUnseen ? "notes" : "ask")}>
             <Icon name="help" size={22} />{helpUnseen > 0 && <span className="tab-badge">{helpUnseen}</span>}
           </button>
           <button type="button" className="avatar-btn" aria-label="Account and menu" aria-expanded={open} aria-controls="sidebar" onClick={() => setOpen(true)}>

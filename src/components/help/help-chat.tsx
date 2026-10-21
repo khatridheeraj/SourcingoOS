@@ -186,6 +186,8 @@ export function HelpChat({ who, role, name, userId, companyId, ownerName = "Dhee
   }
 
   function compose(kind: NoteKind, body = "") {
+    // One open note form at a time: an unsent one is replaced, so two forms never stack up.
+    setMsgs((all) => all.filter((m) => !("kind" in m && m.kind === "compose" && !m.done)));
     push({ from: "bot", kind: "compose", note: kind, body });
   }
 
@@ -359,7 +361,12 @@ function Compose({ w, owner, lang, kind: first, body: firstBody, done, page, pag
       <div className="compose-meta">
         <label className="btn sm">
           <input type="file" accept={ATTACH_ACCEPT} multiple className="sr-only" disabled={files.length >= 4}
-            onChange={(e) => { setFiles((f) => [...f, ...Array.from(e.target.files ?? [])].slice(0, 4)); e.target.value = ""; }} />
+            onChange={(e) => {
+              // Read the picked files now: clearing the input below empties e.target.files before React runs the updater.
+              const picked = Array.from(e.target.files ?? []);
+              setFiles((f) => [...f, ...picked].slice(0, 4));
+              e.target.value = "";
+            }} />
           📎 {w.photo}
         </label>
         {files.length > 0 && (
