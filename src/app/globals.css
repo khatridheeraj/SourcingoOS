@@ -958,6 +958,8 @@ h1, h2, h3 { font-family: var(--font-display); text-wrap: balance; font-weight: 
     .bstyle summary .bstyle-chev { grid-row: 1; grid-column: 3; }
     .bstyle summary .bstyle-nochip { display: none; }
     .bstyle-body { grid-template-columns: minmax(0, 1fr); padding: 0 16px 16px; }
+    .ship-lines li { grid-template-columns: minmax(0, 1fr) max-content; gap: 4px 10px; }
+    .ship-lines li > .code { grid-column: 1 / -1; }
     .btimeline { columns: 1; }
     .btimeline li { padding: 9px 0; font-size: 14px; }
     .fprog { margin: 0 -4px 12px; padding: 12px; }
