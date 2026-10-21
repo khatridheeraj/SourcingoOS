@@ -155,7 +155,7 @@ export function buildBrief(d: BriefData): Brief {
   const nLate = overdue.length;
   const nLocks = owner ? d.locks?.length ?? 0 : 0;
   const headline = !sections.length ? "Nothing is late or waiting. A clear day."
-    : [nLocks ? `${nLocks} ${nLocks === 1 ? "PO waits" : "POs wait"} for your lock` : "", nRisk ? `${nRisk} ${nRisk === 1 ? "order" : "orders"} at risk` : "", nLate ? `${nLate} more with overdue steps` : "",
+    : [nLocks ? `${nLocks} ${nLocks === 1 ? "PO waits" : "POs wait"} for your lock` : "", nRisk ? `${nRisk} ${nRisk === 1 ? "order" : "orders"} at risk` : "", nLate ? `${nLate}${nRisk ? " more" : ""} ${nLate === 1 ? "order" : "orders"} with overdue steps` : "",
        !nRisk && !nLate ? (nLocks ? "nothing at risk" : "Nothing at risk") : ""].filter(Boolean).join(", ") + `, ${d.orders.length} open ${d.orders.length === 1 ? "order" : "orders"}.`;
   const date = new Date(`${today}T00:00:00Z`);
   return { title: `${WEEKDAYS[date.getUTCDay()]} ${dm(today)}`, headline, sections };

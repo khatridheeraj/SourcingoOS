@@ -24,8 +24,8 @@ export async function addPerson(email: string, role: string, factoryId = "", buy
   revalidatePath("/team");
   return {
     ok: data === "added"
-      ? `${email.trim()} is in. They can use the app now.`
-      : `${email.trim()} is added. They're in as soon as they sign in at this site with that email.`,
+      ? `${email.trim().toLowerCase()} is in. They can use the app now.`
+      : `${email.trim().toLowerCase()} is added. They're in as soon as they sign in at this site with that email.`,
   };
 }
 

@@ -103,7 +103,8 @@ export function OrderForm({ initial, initialLines, buyers, factories, team, inco
 
   const w = shown.warnings;
   const orderLink = (o: { id: string; order_no: string }) => <Link href={`/orders/${o.id}`} className="link code" target="_blank">{o.order_no}</Link>;
-  const showOverdue = shown.overdue && order.buyer_id !== overdueShown;
+  // On an order already confirmed the warning only matters when its buyer is being changed.
+  const showOverdue = shown.overdue && order.buyer_id !== overdueShown && !(initial.id && order.buyer_id === initial.buyer_id);
   const hasChecks = showOverdue || w.same_po.length > 0 || w.similar_po.length > 0 || w.same_style.length > 0;
 
   return (

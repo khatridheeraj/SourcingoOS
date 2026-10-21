@@ -65,7 +65,8 @@ export const fieldLabel = (k: string) => FIELD[k] ?? k.replace(/_id$/, "").repla
 export function fmtValue(k: string, v: unknown, n: Names): string {
   if (v == null || v === "") return "blank";
   if (typeof v === "boolean") return v ? "yes" : "no";
-  const s = typeof v === "object" ? JSON.stringify(v) : String(v);
+  if (typeof v === "object") return fmtObject(v);
+  const s = String(v);
   if (k === "buyer_id") return n.buyers.get(s) ?? "a buyer";
   if (k === "factory_id") return n.factories.get(s) ?? "a factory";
   if (k === "order_id" || k === "matched_order_id") return n.orders.get(s) ?? "an order";
@@ -73,6 +74,28 @@ export function fmtValue(k: string, v: unknown, n: Names): string {
   if (/(^|_)(rate|amount|value|balance)$/.test(k) && !isNaN(Number(v))) return money(Number(v));
   if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return day(s);
   if (/^\d{4}-\d{2}-\d{2}T/.test(s)) return when(s);
+  return s.length > 140 ? `${s.slice(0, 140)}…` : s;
+}
+
+// Lists and records (a PO as read, its files, photo lists) in words, not raw JSON with nulls in it.
+function fmtObject(v: object): string {
+  const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? "" : "s"}`;
+  if (Array.isArray(v)) {
+    if (!v.length) return "none";
+    if (v.every((x) => typeof x === "string" || typeof x === "number")) {
+      const s = v.map((x) => (typeof x === "string" && x.includes("/") ? x.split("/").pop()!.replace(/^[0-9a-f-]{36}__/, "") : String(x))).join(", ");
+      return s.length > 140 ? `${s.slice(0, 140)}…` : s;
+    }
+    if (v.every((x) => x && typeof x === "object" && "name" in x)) return v.map((x) => String((x as { name: unknown }).name)).join(", ");
+    return plural(v.length, "item");
+  }
+  const r = v as Record<string, unknown>;
+  if (Array.isArray(r.lines)) {
+    const doubts = Array.isArray(r.doubts) ? r.doubts.length : 0;
+    return `${plural(r.lines.length, "style")} read${doubts ? `, ${plural(doubts, "thing")} to check` : ""}`;
+  }
+  const parts = Object.entries(r).filter(([, x]) => x != null && x !== "" && typeof x !== "object").map(([k, x]) => `${fieldLabel(k)} ${x}`);
+  const s = parts.join("; ") || "details";
   return s.length > 140 ? `${s.slice(0, 140)}…` : s;
 }
 

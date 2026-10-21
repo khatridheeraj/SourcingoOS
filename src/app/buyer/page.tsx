@@ -4,8 +4,8 @@ import { PHOTO_BUCKET } from "@/lib/storage";
 
 type Step = { stage: string; label: string | null; planned_on: string | null; done_on: string | null };
 type FinalQc = { result: string; checked_on: string; pieces_checked: number | null; photos: string[] };
-type Line = { id: string; style: string; colour: string | null; description: string | null; qty: number; photo_path: string | null; steps: Step[]; final_qc: FinalQc | null };
-type Order = { id: string; order_no: string; buyer_po: string | null; po_date: string | null; status: string; ship_date: string | null; revised_ship_date: string | null; lines: Line[] };
+type Line = { id: string; style: string; colour: string | null; description: string | null; qty: number; shipped?: number; photo_path: string | null; steps: Step[]; final_qc: FinalQc | null };
+type Order = { id: string; order_no: string; buyer_po: string | null; po_date: string | null; status: string; ship_date: string | null; revised_ship_date: string | null; closed_short?: boolean; lines: Line[] };
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const dm = (d: string) => `${Number(d.slice(8, 10))} ${MONTHS[Number(d.slice(5, 7)) - 1]}`;
@@ -72,6 +72,9 @@ export default async function BuyerPage() {
             const done = lines.reduce((n, x) => n + x.w.done, 0);
             const total = lines.reduce((n, x) => n + x.w.total, 0);
             const shipped = o.status === "shipped";
+            // Pieces already sent, for an order going out in parts.
+            const ordered = o.lines.reduce((n, l) => n + Number(l.qty), 0);
+            const sent = o.lines.reduce((n, l) => n + Number(l.shipped ?? 0), 0);
             const left = ship ? daysBetween(today, ship) : null;
             return (
               <section key={o.id} className="bord" aria-label={`PO ${o.buyer_po ?? o.order_no}`}>
@@ -85,7 +88,7 @@ export default async function BuyerPage() {
                     </span>
                   </div>
                   <div className="bord-ship">
-                    {shipped ? <span className="chip ok">Shipped</span> : ship ? (
+                    {shipped ? <span className="chip ok">{o.closed_short && sent < ordered ? `Shipped · ${qty(sent)} of ${qty(ordered)} pcs` : "Shipped"}</span> : ship ? (
                       <>
                         <span className="eyebrow">{o.revised_ship_date ? "Revised ship date" : "Ship date"}</span>
                         <b>{day(ship)}</b>
@@ -94,6 +97,9 @@ export default async function BuyerPage() {
                     ) : <span className="muted">Ship date to be confirmed</span>}
                   </div>
                 </header>
+                {!shipped && sent > 0 && (
+                  <p className="bord-sent"><span className="chip ok">Part shipped</span> {qty(sent)} of {qty(ordered)} pcs sent · {qty(ordered - sent)} to follow</p>
+                )}
                 {!shipped && total > 0 && (
                   <div className="bord-prog">
                     <div className="meter" role="progressbar" aria-valuemin={0} aria-valuemax={total} aria-valuenow={done} aria-label="Steps done">
@@ -116,7 +122,7 @@ export default async function BuyerPage() {
                             </span>
                             <span className="bstyle-id">
                               <b className="code">{l.style}</b>
-                              <span>{[l.colour, l.description, `${qty(l.qty)} pcs`].filter(Boolean).join(" · ")}</span>
+                              <span>{[l.colour, l.description, `${qty(l.qty)} pcs`, !shipped && l.shipped ? `${qty(l.shipped)} shipped` : ""].filter(Boolean).join(" · ")}</span>
                             </span>
                             <span className="bstyle-prog">
                               <span className="stepper" aria-label={`${w.done} of ${w.total} steps done`}>
