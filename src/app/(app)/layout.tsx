@@ -2,7 +2,8 @@ import { redirect } from "next/navigation";
 import { HelpChat } from "@/components/help/help-chat";
 import { Sidebar, type NavGroup } from "@/components/nav";
 import { Toaster } from "@/components/toast";
-import { canEditOrders, getMe, roleLabel } from "@/lib/auth";
+import { OrderSheet } from "@/components/order-sheet";
+import { canEditOrders, canEnterDone, getMe, roleLabel } from "@/lib/auth";
 import { todayIST } from "@/lib/format";
 import { heldSince } from "@/lib/goods";
 import { createClient } from "@/lib/supabase/server";
@@ -74,6 +75,7 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
       {me.role && me.companyId && (
         <HelpChat who="staff" role={me.role} name={me.fullName ?? ""} userId={me.id} companyId={me.companyId} ownerName={me.role === "owner" ? "Claude" : help.owner || "the owner"} unseen={help.unseen ?? 0} />
       )}
+      {canEnterDone(me.role) && <OrderSheet />}
       <Toaster />
     </div>
   );

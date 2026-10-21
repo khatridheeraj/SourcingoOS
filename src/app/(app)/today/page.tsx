@@ -11,6 +11,8 @@ import { HOLD_HOURS, heldHours, heldText } from "@/lib/goods";
 import { createClient } from "@/lib/supabase/server";
 import { loadShipProgress, orderShip, partText } from "@/lib/shipments";
 import { Icon, type IconName } from "@/components/nav";
+import { ChaseLink, SheetButton } from "@/components/order-sheet";
+import { chaseText, waLink, type QStyle } from "@/lib/quick";
 import { MarkShipped } from "../orders/mark-shipped";
 import { sampleLabel, type SampleStatus } from "@/lib/samples";
 import { isFinance } from "../payments/load";
@@ -22,6 +24,10 @@ type Sev = "bad" | "warn" | "ok" | "";
 type Item = {
   key: string; href: string; sev: Sev; code?: string; title: string; detail: string;
   chip?: { text: string; cls: Sev }; action: string; links?: { href: string; text: string }[]; sort: string;
+  // The action opens the order's quick sheet instead of the order page.
+  sheet?: { orderId: string; mode: "update" | "start"; factoryId?: string };
+  // A WhatsApp chase to the factory, with the message written.
+  chase?: { href: string; factoryId: string; orderId: string; chased: boolean };
 };
 
 const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;
@@ -79,7 +85,7 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
   const [{ data: orders }, buyers, factories] = await Promise.all([
     fetchAll((a, z) => supabase
       .from("orders")
-      .select("id, order_no, buyer_id, buyer_po, ship_date, revised_ship_date, merchandiser_id, stage, order_lines(id, style, qty, factory_id)")
+      .select("id, order_no, buyer_id, buyer_po, ship_date, revised_ship_date, merchandiser_id, stage, order_lines(id, style, colour, qty, factory_id)")
       .eq("company_id", companyId)
       .eq("status", "open")
       .is("order_lines.removed_at", null)
@@ -113,6 +119,15 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
   const stepLabel = (k: string) => TNA_STEPS.find((s) => s.key === k)?.label ?? extraLabel.get(k) ?? k;
   const stepIndex = (k: string) => { const i = TNA_STEPS.findIndex((s) => s.key === k); return i < 0 ? TNA_STEPS.length : i; };
   const stageOf = new Map((stages ?? []).map((s) => [`${s.line_id}:${s.stage}`, s]));
+  // A style's steps as the quick sheet and the factory chase read them.
+  const qStyle = (l: { id: string; style: string; colour: string | null; qty: number; factory_id: string | null }): QStyle => ({
+    id: l.id, style: l.style, colour: l.colour ?? "", qty: l.qty, hasRate: true, factoryId: l.factory_id,
+    steps: [
+      ...TNA_STEPS.map((t) => { const r = stageOf.get(`${l.id}:${t.key}`); return { key: t.key, label: t.label, planned_on: r?.planned_on ?? "", done_on: r?.done_on ?? "", not_needed: !!r?.not_needed, extra: false }; }),
+      ...(stages ?? []).filter((s) => s.line_id === l.id && s.stage.startsWith("extra_"))
+        .map((s) => ({ key: s.stage, label: String(s.label ?? ""), planned_on: s.planned_on ?? "", done_on: s.done_on ?? "", not_needed: !!s.not_needed, extra: true })),
+    ],
+  });
   const liveLine = new Set(open.flatMap((o) => (o.order_lines ?? []).map((l) => l.id)));
   // Steps that count: on a style still on the order and not marked not needed.
   const live = (stages ?? []).filter((s) => liveLine.has(s.line_id) && !s.not_needed);
@@ -141,6 +156,33 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
     ? keep(await fetchAll<LinePrice>((a, z) => supabase.rpc("line_prices", { p_orders: ids }).order("id").range(a, z)))
     : { data: [] };
   const priceOf = new Map(((rates ?? []) as LinePrice[]).map((r) => [r.id, r]));
+  // Factories chased on WhatsApp today, and what each step done today by this person adds up to.
+  const dayStart = new Date(`${today}T00:00:00+05:30`).toISOString();
+  const [{ data: chases }, { count: doneToday }] = team
+    ? await Promise.all([
+        supabase.from("factory_chases").select("factory_id, order_id").gte("chased_at", dayStart),
+        // Steps this person marked done today, read from the activity log: a done date that wasn't there before.
+        supabase.from("history").select("id", { count: "exact", head: true }).eq("table_name", "line_stages").eq("actor", me?.id ?? NO_COMPANY)
+          .gte("at", dayStart).not("after->>done_on", "is", null).is("before->>done_on", null),
+      ])
+    : [{ data: [] }, { count: 0 }];
+  const chasedToday = new Set((chases ?? []).map((c) => `${c.factory_id}:${c.order_id}`));
+  const factoryPhone = new Map(factories.map((f) => [f.id, f.phone]));
+  const lateSteps = (o: (typeof open)[number], f: string) => live.filter((s) => s.order_id === o.id && !s.done_on && s.planned_on && s.planned_on < today
+    && (o.order_lines ?? []).some((l) => l.id === s.line_id && l.factory_id === f)).length;
+  // A WhatsApp chase to the order's factory with the most late steps (or the one given), its message written from the plan.
+  const chaseFor = (o: (typeof open)[number], only?: string, text?: string): Item["chase"] => {
+    const lines = o.order_lines ?? [];
+    const facs = only ? [only] : ([...new Set(lines.map((l) => l.factory_id).filter(Boolean))] as string[]).sort((a, b) => lateSteps(o, b) - lateSteps(o, a));
+    const f = facs[0];
+    if (!f || !team) return undefined;
+    const po = (pos ?? []).find((p) => p.order_id === o.id && p.factory_id === f);
+    const due = dueDate(o);
+    const target = due && po?.buffer_days != null ? addDays(due, -po.buffer_days) : "";
+    const msg = text ?? chaseText(o.order_no, o.buyer_po ?? "", factoryName.get(f) ?? "", lines.filter((l) => l.factory_id === f).map(qStyle), today, target);
+    return { href: waLink(factoryPhone.get(f), msg), factoryId: f, orderId: o.id, chased: chasedToday.has(`${f}:${o.id}`) };
+  };
+  const releasedFor = (o: { id: string }) => (pos ?? []).some((p) => p.order_id === o.id && p.released_at);
   const now_: Item[] = [];
   const soon: Item[] = [];
   const waiting: Item[] = [];
@@ -165,9 +207,13 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
         if (untracked) noTargets.push({ o, n: untracked });
         continue;
       }
-      // Nothing planned yet for this factory: gathered into one line below.
+      // Nothing planned yet for this factory: one line that starts its production from a sheet.
       if (noTarget === rows.length && !po?.plan_requested_at && !po?.plan_requested_on) {
-        noTargets.push({ o, n: noTarget });
+        const due = dueDate(o);
+        now_.push({ key: `start:${o.id}:${f}`, href, ...base(o), sev: "warn", sheet: { orderId: o.id, mode: "start", factoryId: f },
+          detail: `${fname} · ${plural(fl.length, "style")} · not started yet. Set the whole plan in one go.`,
+          chip: due ? { text: `Ships ${dm(due)}`, cls: due < addDays(today, 30) ? "warn" : "" } : { text: "No ship date", cls: "bad" },
+          action: "Start production", sort: `1${due ?? "9999"}` });
         continue;
       }
       // The PO target date: delivery less the buffer. Targets after it block the release, as on the order page.
@@ -179,31 +225,33 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
       const dueAt = po?.plan_requested_at ? planDueAt(po.plan_requested_at) : null;
       // A plan sent before the team asked again doesn't answer the new request.
       const sent = !!po?.factory_sent_at && (!po.plan_requested_at || po.factory_sent_at >= po.plan_requested_at);
-      const item = { key: `po:${o.id}:${f}`, href, ...base(o), sort: o.order_no };
+      const item = { key: `po:${o.id}:${f}`, href, ...base(o), sort: o.order_no, sheet: { orderId: o.id, mode: "start" as const, factoryId: f } };
       if (dueAt && !sent && dueAt.getTime() < now) {
         const hours = Math.floor((now - dueAt.getTime()) / 3_600_000);
-        now_.push({ ...item, sev: "bad", detail: `${fname} hasn't sent its TNA within ${PLAN_HOURS} hours. Chase them, or move the styles to another factory.`,
-          chip: { text: hours ? `${plural(hours, "hour")} past deadline` : "Just past deadline", cls: "bad" }, action: "Chase factory", sort: dueAt.toISOString() });
+        now_.push({ ...item, sev: "bad", detail: `${fname} hasn't sent its dates within ${PLAN_HOURS} hours. Chase them, or tap Factory agreed if they said yes on the phone.`,
+          chip: { text: hours ? `${plural(hours, "hour")} past deadline` : "Just past deadline", cls: "bad" }, action: "Factory agreed", sort: dueAt.toISOString(),
+          chase: chaseFor(o, f, `*${o.order_no}${o.buyer_po ? ` · PO ${o.buyer_po}` : ""} · ${fname}*\nPlease send your dates for these styles today, or tell us you agree to ours: ${fl.map((l) => l.style).join(", ")}.`) });
       } else if (!gaps && po?.lock_requested_at) {
         // Every factory PO waits for the owner's lock (Dheeraj, 20 Oct 2026); the owner sees these first.
         if (me?.role === "owner") now_.push({ ...item, sev: "bad", detail: `${fname} · plan sent for your lock ${at.format(new Date(po.lock_requested_at))}. The factory gets the PO once you lock it.`,
           chip: { text: "Waiting for your lock", cls: "bad" }, action: "Check and lock", sort: `0${po.lock_requested_at}` });
-        else waiting.push({ ...item, sev: "", detail: `${fname} · sent for the owner's lock ${at.format(new Date(po.lock_requested_at))}`, action: "Open" });
+        else waiting.push({ ...item, sev: "", detail: `${fname} · sent for the owner's lock ${at.format(new Date(po.lock_requested_at))}`, action: "See plan" });
       } else if (!gaps && po?.lock_note && me?.role !== "owner") {
         now_.push({ ...item, sev: "bad", detail: `${fname} · the owner sent the plan back: ${po.lock_note}`, action: "Fix and send again" });
       } else if (!gaps) {
         soon.push({ ...item, sev: "ok", detail: `${fname} · plan is complete`, action: me?.role === "owner" ? "Lock and release" : "Send for lock" });
       } else if (!po?.plan_requested_at && !po?.plan_requested_on) {
-        now_.push({ ...item, sev: "bad", detail: `${fname} · ${plural(gaps, "item")} missing before the PO can be released`, action: noTarget ? `Set ${plural(noTarget, "target")}` : "Ask the factory" });
+        now_.push({ ...item, sev: "warn", detail: `${fname} · part planned. Finish the plan and start production in one go.`, action: "Start production" });
       } else if (sent) {
-        soon.push({ ...item, sev: "warn", detail: `${fname} sent its TNA · ${plural(gaps, "item")} to sort before release`, action: "Review TNA" });
+        soon.push({ ...item, sheet: undefined, sev: "warn", detail: `${fname} sent its TNA · ${plural(gaps, "item")} to sort before release`, action: "Review TNA" });
       } else {
         waiting.push({ ...item, sev: "", detail: `${fname} asked for its TNA${po?.plan_requested_at ? ` ${at.format(new Date(po.plan_requested_at))}` : ` on ${day(po?.plan_requested_on)}`}`,
-          chip: dueAt ? { text: `Due ${at.format(dueAt)}`, cls: "warn" } : undefined, action: "Open" });
+          chip: dueAt ? { text: `Due ${at.format(dueAt)}`, cls: "warn" } : undefined, action: "Factory agreed" });
       }
     }
     if (lines.some((l) => !l.factory_id)) {
-      now_.push({ key: `nof:${o.id}`, href: `/orders/${o.id}#details`, sev: "bad", ...base(o), detail: "Some styles have no factory yet", action: "Choose factory", sort: o.order_no });
+      now_.push({ key: `nof:${o.id}`, href: `/orders/${o.id}#details`, sev: "warn", ...base(o), sheet: { orderId: o.id, mode: "start", factoryId: "" },
+        detail: `${plural(lines.filter((l) => !l.factory_id).length, "style")} with no factory yet. Pick it and start production.`, action: "Start production", sort: `1${dueDate(o) ?? "9999"}` });
     }
   }
   // Steps without a target date can't show as late: one line for every order that has them.
@@ -226,6 +274,8 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
   for (const o of active) {
     const late = overdueBy.get(o.id);
     if (!late) continue;
+    // Targets past on a plan that isn't locked yet: the Start production line above covers them.
+    if (team && !releasedFor(o)) continue;
     const due = dueDate(o);
     const labels = [...new Set(late.sort((a, b) => stepIndex(a.stage) - stepIndex(b.stage)).map((s) => stepLabel(s.stage)))];
     const styles = new Set(late.map((s) => s.line_id)).size;
@@ -236,7 +286,8 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
         + `${lines > 1 ? ` · ${styles === lines ? `all ${lines} styles` : `${styles} of ${lines} styles`}` : ""}${due ? ` · ships ${dm(due)}` : ""}`,
       chip: !due ? { text: "No ship date", cls: "bad" } : due < today ? { text: `${plural(daysBetween(due, today), "day")} late`, cls: "bad" }
         : riskDays(o) ? { text: `At risk · ${riskDays(o)}d late`, cls: "bad" } : { text: "Behind plan", cls: "bad" },
-      action: !team ? "Enter done dates" : due ? "Update TNA" : "Set ship date", sort: due ?? "",
+      action: due ? "Update" : "Set ship date", sort: due ?? "",
+      ...(due ? { sheet: { orderId: o.id, mode: "update" as const } } : {}), chase: chaseFor(o),
     });
   }
 
@@ -259,7 +310,8 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
       key: `week:${o.id}`, href: me?.role === "quality" ? `/orders/${o.id}#qc` : `/orders/${o.id}#tna`, sev: chip.cls, ...base(o),
       detail: me?.role === "quality" ? `${qcDue.join(", ")} QC · planned ${dm(first)}`
         : steps.slice(0, 4).map(([k, d]) => `${stepLabel(k)} ${dm(d)}`).join(", ") + (steps.length > 4 ? ` and ${steps.length - 4} more` : "") + (qcDue.length ? " · QC needed" : ""),
-      chip, action: me?.role === "quality" ? "Record QC" : "Open TNA", sort: first + o.order_no,
+      chip, action: me?.role === "quality" ? "Record QC" : "Update", sort: first + o.order_no,
+      ...(me?.role === "quality" ? {} : { sheet: { orderId: o.id, mode: "update" as const } }),
     });
   }
 
@@ -518,6 +570,7 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
             {nowCount ? <b className="text-bad">{plural(nowCount, "thing")} {nowCount === 1 ? "needs" : "need"} you now</b> : <b className="text-ok">Nothing urgent</b>}
             {shipSoon.length > 0 && ` · ${plural(shipSoon.length, "order")} ${shipSoon.length === 1 ? "ships" : "ship"} in the next two weeks`}
           </p>
+          {!!doneToday && <p className="done-today"><span aria-hidden>✓</span>{plural(doneToday, "step")} done today</p>}
         </div>
         {mineCount > 0 && (
           <nav className="seg" aria-label="Whose orders">
@@ -531,25 +584,6 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
         <div className="errbox">Some lists couldn&apos;t load, so this page may be missing work. Reload to try again. ({[...new Set(errors)].join("; ")})</div>
       )}
 
-      <nav className="quick" aria-label="Shortcuts">
-        {quick.map((q) => (
-          <Link key={q.label} href={q.href} className={q.tone}>
-            <span className="quick-ic"><Icon name={q.icon} size={22} />{!!q.count && <span className="tab-badge">{q.count}</span>}</span>
-            {q.label}
-          </Link>
-        ))}
-      </nav>
-
-      <div className="kpis">
-        {kpis.map((k) => (
-          <Link key={k.key} href={k.href} className={`kpi ${k.sev}`}>
-            <span className="kpi-label"><i aria-hidden />{k.label}</span>
-            <b className="num">{k.value}</b>
-            <small>{k.sub}</small>
-          </Link>
-        ))}
-      </div>
-
       <section className="card" aria-labelledby="todo-h">
         <header className="card-h">
           <div className="min-w-0">
@@ -562,7 +596,13 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
             ))}
           </nav>
         </header>
-        {lists[tab].length === 0 ? (
+        {lists[tab].length === 0 && tab === "now" && !errors.length ? (
+          <div className="all-clear">
+            <span className="all-clear-ic" aria-hidden><Icon name="check" size={28} /></span>
+            <b>All caught up</b>
+            <p>{doneToday ? `${plural(doneToday, "step")} done today. ` : ""}Nothing is late or waiting on you{lists.soon.length ? `. ${plural(lists.soon.length, "thing")} coming up this week.` : "."}</p>
+          </div>
+        ) : lists[tab].length === 0 ? (
           <p className="card-empty">
             {errors.length ? "Couldn't load this list. Reload to try again." : tab === "now" ? "Nothing is late or blocked." : tab === "soon" ? "Nothing due in the next 7 days." : "Not waiting on any factory or buyer."}
           </p>
@@ -589,12 +629,36 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
                   )}
                 </div>
                 <div className="todo-chip">{i.chip && <span className={`chip ${i.chip.cls}`}>{i.chip.text}</span>}</div>
-                <Link href={i.href} className="btn sm todo-act">{i.action}</Link>
+                <div className="todo-acts">
+                  {i.chase && <ChaseLink {...i.chase} />}
+                  {i.sheet
+                    ? <SheetButton {...i.sheet} className={`btn sm todo-act ${i.sev === "bad" || i.sheet.mode === "start" ? "primary" : ""}`}>{i.action}</SheetButton>
+                    : <Link href={i.href} className="btn sm todo-act">{i.action}</Link>}
+                </div>
               </li>
             ))}
           </ul>
         )}
       </section>
+
+      <nav className="quick" aria-label="Shortcuts">
+        {quick.map((q) => (
+          <Link key={q.label} href={q.href} className={q.tone}>
+            <span className="quick-ic"><Icon name={q.icon} size={22} />{!!q.count && <span className="tab-badge">{q.count}</span>}</span>
+            {q.label}
+          </Link>
+        ))}
+      </nav>
+
+      <div className="kpis">
+        {kpis.map((k) => (
+          <Link key={k.key} href={k.href} className={`kpi ${k.sev}`}>
+            <span className="kpi-label"><i aria-hidden />{k.label}</span>
+            <b className="num">{k.value}</b>
+            <small>{k.sub}</small>
+          </Link>
+        ))}
+      </div>
 
       {payT && (payT.overdue > 0 || payT.week > 0) && (
         <section className="card money-card" aria-labelledby="pay-h">
@@ -689,7 +753,7 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
                       <span className="todo-title"><span className="code">{o.order_no}</span>{buyerOf.get(o.buyer_id)}</span>
                       <span className="todo-detail block">Ship date {dm(dueDate(o)!)} · {qty(pcs([o]))} pcs</span>
                     </Link>
-                    <MarkShipped orderId={o.id} orderNo={o.order_no} blocked={staleBlocker.get(o.id)} />
+                    <MarkShipped orderId={o.id} orderNo={o.order_no} blocked={staleBlocker.get(o.id)} old={!!staleBlocker.get(o.id)?.startsWith("Nothing is in Dispatch")} />
                   </li>
                 ))}
               </ul>
