@@ -3,7 +3,7 @@ import Link from "next/link";
 import { canEditOrders, canRecordQc, getMe } from "@/lib/auth";
 import { fetchAll } from "@/lib/fetch-all";
 import { buyerName, loadBuyers, loadFactories } from "@/lib/data";
-import { day, daysBetween, dueDate, nowMs, planDueAt, PLAN_HOURS, qcKindLabel, qty, SHIP_QC, stageReached, TNA_STEPS, todayIST } from "@/lib/format";
+import { day, daysBetween, money, dueDate, nowMs, planDueAt, PLAN_HOURS, qcKindLabel, qty, SHIP_QC, stageReached, TNA_STEPS, todayIST } from "@/lib/format";
 import { NO_COMPANY } from "@/lib/names";
 import { poWaitDays, PO_WAIT_DAYS } from "@/lib/order-checks";
 import { project, shipRisk } from "@/lib/tna-plan";
@@ -20,7 +20,8 @@ import { QcButton } from "@/components/qc-sheet";
 import { WhatsNew } from "@/components/whats-new";
 import { MarkShipped } from "../orders/mark-shipped";
 import { sampleLabel, type SampleStatus } from "@/lib/samples";
-import { isFinance } from "../payments/load";
+import { isFinance, loadBooks } from "../payments/load";
+import { paymentTodos } from "@/lib/payments";
 import { loadPayables } from "../payables/load";
 import { bySupplier, dueOf, lakh as rupees, totals } from "@/lib/payables";
 
@@ -82,6 +83,8 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
   const team = canEditOrders(me?.role);
   // Bills to pay, for the owner and Accounts: read alongside everything else.
   const payP = isFinance(me?.role) ? loadPayables(supabase) : null;
+  // Money to collect from buyers (cheques to deposit, Tally settlements, overdue invoices), for the same people.
+  const booksP = isFinance(me?.role) ? loadBooks() : null;
 
   // Every read's error is kept: a list that failed to load must not show as "nothing to do".
   const errors: string[] = [];
@@ -542,11 +545,16 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
   if (pay?.error) errors.push(pay.error.message);
   const payT = pay ? totals(pay.bills, today) : null;
   // Suppliers with bills overdue or due this week, the most overdue first.
+  const books = booksP ? await booksP : null;
+  if (books?.error) errors.push(books.error.message);
+  const collect = books ? paymentTodos(books.books, books.buyerLabel, money, day, books.advice) : [];
   const payDue = pay ? bySupplier(pay.bills.filter((b) => ["overdue", "week"].includes(dueOf(b, today).key)), today).slice(0, 4) : [];
 
   const hour = Number(hourIST.format(new Date()));
   const first = (me?.fullName ?? me?.email.split("@")[0] ?? "").split(" ")[0];
   const nowCount = lists.now.length;
+  // The greeting counts money jobs that can't wait too, for the owner and Accounts.
+  const headCount = nowCount + collect.filter((a) => a.sev === "bad").length;
 
   const state = (o: (typeof open)[number]) => {
     const d = dueDate(o);
@@ -584,6 +592,66 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
         { href: "/?find=1", label: "Find order", icon: "search", tone: "ok" },
       ];
 
+  const urgent = collect.filter((a) => a.sev === "bad").length;
+  // Money is Accounts' daily work, so it leads their Home; for the owner it leads only when something can't wait.
+  const moneyFirst = me?.role === "accounts" || urgent > 0;
+  const moneyCards = (
+    <>
+      {collect.length > 0 && (
+        <section className="card money-card" aria-labelledby="collect-h">
+          <header className="card-h">
+            <div className="min-w-0">
+              <h2 id="collect-h">Money to collect</h2>
+              <p>{urgent ? <b className="text-bad">{plural(urgent, "urgent job")}</b> : "Nothing urgent"}{collect.length > 4 && ` · ${collect.length} jobs in all, the first 4 here`}</p>
+            </div>
+            <Link href="/payments" className="btn sm">Payments</Link>
+          </header>
+          <ul className="todo">
+            {collect.slice(0, 4).map((a) => (
+              <li key={a.title}>
+                <span className={`sev ${a.sev === "info" ? "" : a.sev}`} aria-hidden />
+                <div className="min-w-0">
+                  <Link href={a.href} className="todo-title">{a.title}</Link>
+                  <div className="todo-detail">{a.detail}</div>
+                </div>
+                <Link href={a.href} className="btn sm todo-act">{a.href.endsWith("#tally-settle") ? "Check and mark" : "Open"}</Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+      {payT && (payT.overdue > 0 || payT.week > 0) && (
+        <section className="card money-card" aria-labelledby="pay-h">
+          <header className="card-h">
+            <div className="min-w-0">
+              <h2 id="pay-h">Factory bills to pay</h2>
+              <p>
+                {payT.overdue > 0 ? <b className="text-bad">{rupees(payT.overdue)} overdue</b> : "Nothing overdue"}
+                {payT.week > 0 && ` · ${rupees(payT.week)} due in 7 days`}
+                {payT.msmeLate > 0 && <> · <b className="text-bad">{payT.msmeLate} MSME {payT.msmeLate === 1 ? "bill" : "bills"} past 45 days</b></>}
+              </p>
+            </div>
+            <Link href="/payables" className="btn sm">Plan payments</Link>
+          </header>
+          <ul className="todo">
+            {payDue.map((s) => (
+              <li key={s.ledger}>
+                <span className={`sev ${s.overdue ? "bad" : "warn"}`} aria-hidden />
+                <div className="min-w-0">
+                  <Link href={`/payables?s=${encodeURIComponent(s.ledger)}`} className="todo-title">{s.name}</Link>
+                  <div className="todo-detail">{s.bills.length} {s.bills.length === 1 ? "bill" : "bills"} · {rupees(s.bills.reduce((a, b) => a + b.open, 0))}</div>
+                </div>
+                <div className="todo-chip"><span className={`chip ${s.worst.tone}`}>{s.worst.text}</span></div>
+                <Link href={`/payables?s=${encodeURIComponent(s.ledger)}`} className="btn sm todo-act">See bills</Link>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+    </>
+  );
+
   return (
     <>
       <div className="head">
@@ -591,7 +659,7 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
           <h1>Good {hour < 12 ? "morning" : hour < 17 ? "afternoon" : "evening"}{first && `, ${first}`}</h1>
           <p>
             {longDay.format(ist(today))} ·{" "}
-            {nowCount ? <b className="text-bad">{plural(nowCount, "thing")} {nowCount === 1 ? "needs" : "need"} you now</b> : <b className="text-ok">Nothing urgent</b>}
+            {headCount ? <b className="text-bad">{plural(headCount, "thing")} {headCount === 1 ? "needs" : "need"} you now</b> : <b className="text-ok">Nothing urgent</b>}
             {shipSoon.length > 0 && ` · ${plural(shipSoon.length, "order")} ${shipSoon.length === 1 ? "ships" : "ship"} in the next two weeks`}
           </p>
           {!!doneToday && <p className="done-today"><span aria-hidden>✓</span>{plural(doneToday, "step")} done today</p>}
@@ -605,6 +673,8 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
       </div>
 
       {me?.role && <WhatsNew role={me.role} />}
+
+      {moneyFirst && moneyCards}
 
       {errors.length > 0 && (
         <div className="errbox">Some lists couldn&apos;t load, so this page may be missing work. Reload to try again. ({[...new Set(errors)].join("; ")})</div>
@@ -714,34 +784,7 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
         ))}
       </div>
 
-      {payT && (payT.overdue > 0 || payT.week > 0) && (
-        <section className="card money-card" aria-labelledby="pay-h">
-          <header className="card-h">
-            <div className="min-w-0">
-              <h2 id="pay-h">Factory bills to pay</h2>
-              <p>
-                {payT.overdue > 0 ? <b className="text-bad">{rupees(payT.overdue)} overdue</b> : "Nothing overdue"}
-                {payT.week > 0 && ` · ${rupees(payT.week)} due in 7 days`}
-                {payT.msmeLate > 0 && <> · <b className="text-bad">{payT.msmeLate} MSME {payT.msmeLate === 1 ? "bill" : "bills"} past 45 days</b></>}
-              </p>
-            </div>
-            <Link href="/payables" className="btn sm">Plan payments</Link>
-          </header>
-          <ul className="todo">
-            {payDue.map((s) => (
-              <li key={s.ledger}>
-                <span className={`sev ${s.overdue ? "bad" : "warn"}`} aria-hidden />
-                <div className="min-w-0">
-                  <Link href={`/payables?s=${encodeURIComponent(s.ledger)}`} className="todo-title">{s.name}</Link>
-                  <div className="todo-detail">{s.bills.length} {s.bills.length === 1 ? "bill" : "bills"} · {rupees(s.bills.reduce((a, b) => a + b.open, 0))}</div>
-                </div>
-                <div className="todo-chip"><span className={`chip ${s.worst.tone}`}>{s.worst.text}</span></div>
-                <Link href={`/payables?s=${encodeURIComponent(s.ledger)}`} className="btn sm todo-act">See bills</Link>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
+      {!moneyFirst && moneyCards}
 
       <div className="home">
           <section className="card" aria-labelledby="ship-h">

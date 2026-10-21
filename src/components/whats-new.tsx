@@ -21,16 +21,21 @@ const FOR: Record<string, Item[]> = {
     { icon: "search", title: "Find anything", text: "The search at the top finds any order, PO or style." },
   ],
   owner: [
+    { icon: "payments", title: "Money to collect on Home", text: "Cheques to deposit, overdue invoices and cheques Tally shows settled are on Home, with a tap to each." },
     { icon: "check", title: "Lock plans from Home", text: "Plans sent for your lock are at the top of Home. Check and lock in one sheet." },
     { icon: "share", title: "Factories chased, buyers updated", text: "Updates shows every factory behind plan and a ready message for each buyer." },
     { icon: "search", title: "Find anything", text: "Press Ctrl K (or tap the search icon) to jump to any order, PO, style, buyer or factory." },
+  ],
+  accounts: [
+    { icon: "payments", title: "Your day starts with money", text: "Home now opens with cheques to deposit, overdue invoices and cheques Tally shows settled. Tap one to act on it." },
+    { icon: "search", title: "Find anything", text: "The search at the top finds any order, PO, style, buyer or factory." },
   ],
 };
 
 const read = () => { try { return localStorage.getItem(KEY); } catch { return VERSION; } };
 
 export function WhatsNew({ role }: { role: string }) {
-  const items = FOR[role === "owner" ? "owner" : role === "quality" ? "quality" : role === "merchandiser" || role === "manager" ? "orders" : ""];
+  const items = FOR[role === "owner" || role === "accounts" ? role : role === "quality" ? "quality" : role === "merchandiser" || role === "manager" ? "orders" : ""];
   const seen = useSyncExternalStore(() => () => {}, read, () => VERSION);
   const [closed, setClosed] = useState(false);
   if (closed || seen === VERSION || !items) return null;
