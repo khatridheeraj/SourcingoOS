@@ -1,5 +1,6 @@
 // The morning brief: what is at risk, late or waiting, worked out from brief_data() in the database.
 // One source for the Brief page, its WhatsApp text and the 9 am email.
+import { tidyLedger } from "./payables";
 import { project, shipRisk } from "./tna-plan";
 
 type Step = { stage: string; label: string; planned_on: string | null; done_on: string | null };
@@ -26,6 +27,8 @@ export type BriefData = {
   samples?: { order_id: string; order_no: string; style: string; stage: string; round: number; status: "with_team" | "with_buyer" | "changes" | "returned";
     factory: string; at: string; courier: string | null; awb: string | null; note: string | null }[];
   closed_short?: { order_id: string; order_no: string; reason: string; at: string; by: string | null; ordered: number; billed: number }[];
+  // The owner and Accounts: suppliers with bills overdue or due in the next 7 days, from Tally.
+  payables?: { ledger: string; name: string; overdue: number; soon: number; bills: number; first_due: string; msme_late: boolean }[];
 };
 
 export type BriefItem = { text: string; sub?: string; href: string };
@@ -157,6 +160,21 @@ export function buildBrief(d: BriefData): Brief {
     sections.push({ key: "money", title: "Money", tone: "warn", items: money });
   }
 
+  if (d.payables?.length) {
+    const late = d.payables.reduce((a, p) => a + Number(p.overdue), 0);
+    const soon = d.payables.reduce((a, p) => a + Number(p.soon), 0);
+    sections.push({ key: "payables", title: "Factory bills to pay", tone: late ? "bad" : "warn", items: [
+      { text: [late ? `₹${inr.format(late)} overdue` : "", soon ? `₹${inr.format(soon)} due in 7 days` : ""].filter(Boolean).join(", "),
+        sub: "Tick the bills to pay and share the list.", href: "/payables" },
+      ...d.payables.slice(0, 6).map((p) => ({
+        text: `${tidyLedger(p.name)}: ₹${inr.format(Number(p.overdue) + Number(p.soon))} on ${p.bills} ${p.bills === 1 ? "bill" : "bills"}`,
+        sub: p.msme_late ? "Micro or small enterprise past the 45-day legal limit" : p.first_due < today ? `Oldest was due ${dm(p.first_due)}, ${days(diff(p.first_due, today))} ago` : p.first_due === today ? "Due today" : `Due ${dm(p.first_due)}`,
+        href: `/payables?s=${encodeURIComponent(p.ledger)}`,
+      })),
+      ...(d.payables.length > 6 ? [{ text: `${d.payables.length - 6} more suppliers`, href: "/payables" }] : []),
+    ] });
+  }
+
   if (d.team_notes?.length) {
     const kind: Record<string, string> = { problem: "not working", wrong_data: "wrong data", idea: "idea", question: "question" };
     sections.push({ key: "team", title: "From the team, for your call", tone: "info", items: d.team_notes.map((n) => ({
@@ -176,9 +194,9 @@ export function buildBrief(d: BriefData): Brief {
   return { title: `${WEEKDAYS[date.getUTCDay()]} ${dm(today)}`, headline, sections };
 }
 
-// The brief to share with a group: everything but money, which stays with the owner and Accounts,
+// The brief to share with a group: everything but money and bills to pay, which stay with the owner and Accounts,
 // and the team's notes, which are for the owner.
-export const teamCopy = (b: Brief): Brief => ({ ...b, sections: b.sections.filter((s) => s.key !== "money" && s.key !== "team") });
+export const teamCopy = (b: Brief): Brief => ({ ...b, sections: b.sections.filter((s) => s.key !== "money" && s.key !== "team" && s.key !== "payables") });
 
 // Plain text for WhatsApp: bold titles with asterisks, one line per item.
 export function briefText(b: Brief, company: string): string {
