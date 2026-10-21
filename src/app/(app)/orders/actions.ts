@@ -18,6 +18,8 @@ export type OrderInput = {
   status: string;
   merchandiser_id: string;
   notes: string;
+  // The buyer's terms: inspection window, penalty clauses. Left out by forms that don't show it.
+  buyer_terms?: string;
 };
 export type LineInput = {
   id?: string;
@@ -48,7 +50,8 @@ export async function checkOrder(order: Pick<OrderInput, "id" | "buyer_id" | "bu
 // existing: the order that already holds this buyer PO, so the form can link to it.
 // confirmed: the person saw that a very similar PO number is already an order and chose Save anyway.
 // confirm: returned instead of saving when that choice is still needed.
-export async function saveOrder(order: OrderInput, lines: LineInput[], incomingId?: string, confirmed = false): Promise<{
+// inquiryId: the buyer inquiry this order was made from, marked converted once the order is saved.
+export async function saveOrder(order: OrderInput, lines: LineInput[], incomingId?: string, confirmed = false, inquiryId?: string): Promise<{
   error?: string; id?: string; existing?: { id: string; orderNo: string }; confirm?: OrderWarnings;
 }> {
   const me = await getMe();
@@ -79,8 +82,10 @@ export async function saveOrder(order: OrderInput, lines: LineInput[], incomingI
   };
   if (warnings?.similar_po.length && !confirmed) return { confirm: warnings };
 
+  if ((order.buyer_terms ?? "").length > 2000) return { error: "Keep the buyer's terms under 2000 letters." };
+  const { buyer_terms, ...head } = order;
   const { data, error } = await supabase.rpc("save_order", {
-    p_order: { ...order, buyer_po: order.buyer_po.trim() },
+    p_order: { ...head, buyer_po: order.buyer_po.trim() },
     p_lines: filled.map((l) => ({
       ...l,
       qty: num(l.qty),
@@ -104,6 +109,16 @@ export async function saveOrder(order: OrderInput, lines: LineInput[], incomingI
     const { error: link } = await supabase.rpc("link_incoming_po", { p_id: incomingId, p_order: data });
     if (link) return { error: `The order is saved, but the PO list didn't update: ${friendly(link)}`, id: data as string };
     revalidatePath("/pos");
+  }
+  if (buyer_terms !== undefined) {
+    const { error: terms } = await supabase.from("orders").update({ buyer_terms: buyer_terms.trim() || null }).eq("id", data as string);
+    if (terms) return { error: `The order is saved, but the buyer's terms didn't save: ${friendly(terms)}`, id: data as string };
+  }
+  if (inquiryId) {
+    const { error: link } = await supabase.from("inquiries").update({ status: "converted", order_id: data }).eq("id", inquiryId).in("status", ["new", "quoted"]);
+    if (link) return { error: `The order is saved, but the inquiry didn't update: ${friendly(link)}`, id: data as string };
+    revalidatePath("/inquiries");
+    revalidatePath(`/inquiries/${inquiryId}`);
   }
   revalidatePath("/");
   return { id: data as string };
@@ -220,15 +235,42 @@ export async function acceptTargetsForFactory(orderId: string, factoryId: string
   return {};
 }
 
-// Releases the factory's PO. The database refuses it until every style has a rate and a plan for every TNA step.
+// The owner locks and releases the factory's PO. The database refuses it until every style has a rate and a plan for every TNA step.
 export async function releaseFactoryPo(orderId: string, factoryId: string): Promise<{ error?: string }> {
   const me = await getMe();
   if (!me?.role) return { error: "Your account is not switched on yet." };
-  if (!canEditOrders(me.role)) return { error: "Only the orders team can change orders." };
+  if (me.role !== "owner") return { error: "Only the owner locks and releases a factory PO. Send the plan for the lock." };
   const supabase = await createClient();
   const { error } = await supabase.rpc("release_factory_po", { p_order: orderId, p_factory: factoryId });
   if (error) return { error: friendly(error) };
   revalidatePath("/");
+  revalidatePath("/today");
+  revalidatePath(`/orders/${orderId}`);
+  return {};
+}
+
+// The orders team sends a complete plan for the owner's lock. The same checks as the release run first.
+export async function requestPoLock(orderId: string, factoryId: string): Promise<{ error?: string }> {
+  const me = await getMe();
+  if (!me?.role) return { error: "Your account is not switched on yet." };
+  if (!canEditOrders(me.role)) return { error: "Only the orders team can change orders." };
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("request_po_lock", { p_order: orderId, p_factory: factoryId });
+  if (error) return { error: friendly(error) };
+  revalidatePath("/today");
+  revalidatePath(`/orders/${orderId}`);
+  return {};
+}
+
+// The owner sends a plan back to the team with what to change.
+export async function sendBackPoLock(orderId: string, factoryId: string, note: string): Promise<{ error?: string }> {
+  const me = await getMe();
+  if (me?.role !== "owner") return { error: "Only the owner can send a plan back." };
+  if (!note.trim()) return { error: "Say what to change, so the team knows." };
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("send_back_po_lock", { p_order: orderId, p_factory: factoryId, p_note: note.trim().slice(0, 300) });
+  if (error) return { error: friendly(error) };
+  revalidatePath("/today");
   revalidatePath(`/orders/${orderId}`);
   return {};
 }
@@ -243,6 +285,45 @@ export async function setStylePhoto(orderId: string, lineId: string, path: strin
   const { data, error } = await supabase.from("order_lines").update({ photo_path: path }).eq("id", lineId).eq("order_id", orderId).select("id");
   if (error) return { error: friendly(error) };
   if (!data?.length) return { error: "That style is no longer on this order. Reload the page." };
+  revalidatePath(`/orders/${orderId}`);
+  return {};
+}
+
+export type LineFileKind = "tech_pack" | "cutting" | "other";
+
+// A style's fabric and its pieces per size. The database checks the sizes add up to the style's quantity.
+export async function saveStyleDetails(orderId: string, lineId: string, fabric: string, sizes: { size: string; qty: string }[]): Promise<{ error?: string }> {
+  const me = await getMe();
+  if (!canEditOrders(me?.role)) return { error: "Only the orders team can change orders." };
+  const rows = sizes.map((r) => ({ size: r.size.trim(), qty: r.qty.trim() })).filter((r) => r.size || r.qty);
+  if (rows.some((r) => !r.size)) return { error: "Every size needs a name, like S or 32." };
+  if (rows.some((r) => !/^\d+$/.test(r.qty))) return { error: "Enter whole pieces for every size." };
+  if (new Set(rows.map((r) => r.size.toUpperCase())).size !== rows.length) return { error: "A size is entered twice." };
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("save_style_details", {
+    p_line: lineId, p_fabric: fabric.trim(), p_sizes: rows.length ? Object.fromEntries(rows.map((r) => [r.size, Number(r.qty)])) : null,
+  });
+  if (error) return { error: friendly(error) };
+  revalidatePath(`/orders/${orderId}`);
+  return {};
+}
+
+// Files already uploaded to <company>/<order>/files/<style>/ are added to the style: tech pack, cutting program or other.
+export async function addLineFiles(orderId: string, lineId: string, kind: LineFileKind, files: { path: string; file_name: string }[]): Promise<{ error?: string }> {
+  const me = await getMe();
+  if (!me?.companyId || !canEditOrders(me.role)) return { error: "Only the orders team can change orders." };
+  if (!files.every((f) => f.path.startsWith(`${me.companyId}/${orderId}/files/${lineId}/`) && !f.path.includes(".."))) return { error: "Those files didn't upload properly. Try again." };
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("add_line_files", { p_line: lineId, p_kind: kind, p_files: files });
+  if (error) return { error: friendly(error) };
+  revalidatePath(`/orders/${orderId}`);
+  return {};
+}
+
+export async function removeLineFile(orderId: string, fileId: string): Promise<{ error?: string }> {
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("remove_line_file", { p_id: fileId });
+  if (error) return { error: friendly(error) };
   revalidatePath(`/orders/${orderId}`);
   return {};
 }

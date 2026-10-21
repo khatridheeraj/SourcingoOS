@@ -20,6 +20,7 @@ import { MarkShipped } from "../mark-shipped";
 import { OrderSections, type SectionTab } from "./order-sections";
 import { ShareUpdate, type ShareOption } from "./share-update";
 import { formOptions } from "../options";
+import type { LineFileKind } from "../actions";
 
 const str = (v: unknown) => (v == null ? "" : String(v));
 
@@ -30,7 +31,7 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
   const supabase = await createClient();
   const { data: o } = await supabase
     .from("orders")
-    .select("id, company_id, order_no, edit_no, buyer_id, buyer_po, po_date, ship_date, status, merchandiser_id, notes, stage, stage_at, revised_ship_date, delay_reason, created_at, updated_at, order_lines(id, style, description, colour, qty, factory_id, position, photo_path)")
+    .select("id, company_id, order_no, edit_no, buyer_id, buyer_po, po_date, ship_date, status, merchandiser_id, notes, buyer_terms, stage, stage_at, revised_ship_date, delay_reason, created_at, updated_at, order_lines(id, style, description, colour, qty, factory_id, position, photo_path, fabric, sizes)")
     .eq("id", id)
     .is("order_lines.removed_at", null)
     .maybeSingle();
@@ -41,7 +42,7 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
   const priceOf = new Map(((prices ?? []) as LinePrice[]).map((p) => [p.id, p]));
   const lines = [...(o.order_lines ?? [])].sort((a, b) => a.position - b.position)
     .map((l) => ({ ...l, buyer_rate: priceOf.get(l.id)?.buyer_rate ?? null, factory_rate: priceOf.get(l.id)?.factory_rate ?? null }));
-  const [{ data: qc }, team, me, { data: lineStages }, { data: factoryPos }, { data: stepUps }] = await Promise.all([
+  const [{ data: qc }, team, me, { data: lineStages }, { data: factoryPos }, { data: stepUps }, { data: lineFiles }] = await Promise.all([
     supabase
       .from("qc_checks")
       .select("id, line_id, kind, checked_on, result, pieces_checked, defects, notes, checked_by, cancelled_at, cancel_reason")
@@ -53,9 +54,11 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
     // Every style has 15 or more steps, so an order with many styles passes the 1,000 rows one read returns.
     fetchAll((a, z) => supabase.from("line_stages").select("line_id, stage, planned_on, done_on, not_needed, factory_on, label, added_at, updated_at, baseline_on, target_note")
       .eq("order_id", id).order("added_at").order("id").range(a, z)),
-    supabase.from("factory_pos").select("factory_id, plan_requested_on, plan_requested_at, buffer_days, factory_sent_at, released_at, plan_entered_by").eq("order_id", id),
+    supabase.from("factory_pos").select("factory_id, plan_requested_on, plan_requested_at, buffer_days, factory_sent_at, released_at, plan_entered_by, lock_requested_at, lock_requested_by, lock_note, lock_note_at").eq("order_id", id),
     // Steps factories marked done in their panel, waiting for the team to confirm.
     supabase.from("step_updates").select("id, line_id, factory_id, stage, done_on, note, photos, created_at").eq("order_id", id).eq("status", "pending").order("created_at"),
+    // Each style's tech pack, cutting program and other files.
+    supabase.from("line_files").select("id, line_id, kind, path, file_name").eq("order_id", id).is("removed_at", null).order("created_at"),
   ]);
   const canEdit = canEditOrders(me?.role);
   // Dispatches (purchase to GRN) are for the orders team only.
@@ -86,7 +89,7 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
     : [{ data: [] }, { data: [] }];
   const stylePaths = lines.map((l) => l.photo_path).filter(Boolean) as string[];
   const dispatchPaths = [...(dRows ?? []).flatMap((d) => [d.bill_path, d.invoice_path, d.eway_path, d.lr_path, d.grn_path]), ...dispatchPhotos.map((p) => p.path)].filter(Boolean) as string[];
-  const allPaths = [...(photoRows ?? []).map((p) => p.path), ...stylePaths, ...dispatchPaths, ...(stepUps ?? []).flatMap((u) => u.photos as string[])];
+  const allPaths = [...(photoRows ?? []).map((p) => p.path), ...stylePaths, ...dispatchPaths, ...(stepUps ?? []).flatMap((u) => u.photos as string[]), ...(lineFiles ?? []).map((f) => f.path)];
   const { data: signed } = allPaths.length
     ? await supabase.storage.from(PHOTO_BUCKET).createSignedUrls(allPaths, 3600)
     : { data: [] };
@@ -124,11 +127,19 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
         factorySentAt: str(po?.factory_sent_at),
         planEnteredBy: po?.plan_entered_by ? people.get(po.plan_entered_by) ?? "the orders team" : "",
         releasedAt: str(po?.released_at),
+        lockRequestedAt: str(po?.lock_requested_at),
+        lockRequestedBy: po?.lock_requested_by ? people.get(po.lock_requested_by) ?? "the orders team" : "",
+        lockNote: str(po?.lock_note),
+        lockNoteAt: str(po?.lock_note_at),
         lines: [],
       };
       groups.push(g);
     }
-    g.lines.push({ id: l.id, style: l.style, colour: str(l.colour), qty: l.qty, photoUrl: (l.photo_path && urlByPath.get(l.photo_path)) || null, hasRate: l.factory_rate != null });
+    g.lines.push({ id: l.id, style: l.style, colour: str(l.colour), qty: l.qty, photoUrl: (l.photo_path && urlByPath.get(l.photo_path)) || null, hasRate: l.factory_rate != null,
+      detail: {
+        fabric: str(l.fabric), sizes: (l.sizes ?? {}) as Record<string, number>,
+        files: (lineFiles ?? []).filter((f) => f.line_id === l.id).map((f) => ({ id: f.id, kind: f.kind as LineFileKind, name: f.file_name || "File", url: urlByPath.get(f.path) ?? null })),
+      } });
   }
   const factoryLabel = (fid: string) => opts.factories.find((f) => f.id === fid)?.label ?? "Factory";
   const pendingUpdates: PendingUpdate[] = (stepUps ?? []).map((u) => {
@@ -318,7 +329,7 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
         key={o.updated_at}
         initial={{
           id: o.id, edit_no: o.edit_no, buyer_id: o.buyer_id, buyer_po: o.buyer_po, po_date: str(o.po_date), ship_date: str(o.ship_date),
-          status: o.status, merchandiser_id: str(o.merchandiser_id), notes: str(o.notes),
+          status: o.status, merchandiser_id: str(o.merchandiser_id), notes: str(o.notes), buyer_terms: str(o.buyer_terms),
         }}
         initialLines={lines.map((l) => ({
           id: l.id, style: l.style, description: str(l.description), colour: str(l.colour), qty: str(l.qty),
@@ -345,6 +356,7 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
             </table>
           </div>
           {o.ship_date && <p className="muted mt-3 text-[13px]">Buyer&apos;s ship date {day(o.ship_date)}{o.revised_ship_date && `, now ${day(o.revised_ship_date)}`}.</p>}
+          {o.buyer_terms && <p className="mt-3 whitespace-pre-line text-[13px]"><b>Buyer&apos;s terms:</b> {o.buyer_terms}</p>}
         </section>
       )}</div>
       <div data-sec="history"><OrderHistory orderId={o.id} /></div>

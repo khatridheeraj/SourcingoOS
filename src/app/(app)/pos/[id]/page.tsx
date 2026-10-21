@@ -178,7 +178,7 @@ export default async function IncomingPoPage({ params, searchParams }: PageProps
             incomingId={po.id}
             initial={{
               buyer_id: buyerId, buyer_po: po.buyer_po ?? "", po_date: read.po_date ?? "", ship_date: read.ship_date ?? "",
-              status: "open", merchandiser_id: o.meId, notes: read.notes ?? "",
+              status: "open", merchandiser_id: o.meId, notes: read.notes ?? "", buyer_terms: "",
             }}
             initialLines={initialLines}
             buyers={o.buyers}

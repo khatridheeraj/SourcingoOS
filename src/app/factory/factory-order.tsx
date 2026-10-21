@@ -5,6 +5,7 @@ import { useState, useTransition } from "react";
 import { day, dayAt, PLAN_HOURS, qty, TNA_STEPS } from "@/lib/format";
 import { saveFactoryTna, type FactoryDateInput } from "./actions";
 import { stepName, words, type Lang } from "./i18n";
+import { sizeEntries } from "@/lib/sizes";
 import { FactoryProgress, type FactoryUpdate } from "./step-update";
 
 type Stage = { stage: string; label: string | null; factory_on: string | null; planned_on: string | null; done_on: string | null };
@@ -20,11 +21,33 @@ export type PanelOrder = {
   lines: { id: string; style: string; colour: string | null; qty: number; rate: number | null; stages: Stage[] }[];
 };
 
+// What the orders team entered for a style: its fabric, pieces per size, tech pack and cutting program.
+export type StyleInfo = { fabric: string; sizes: Record<string, number>; files: { kind: string; name: string; url: string }[] };
+
 const key = (lineId: string, stage: string) => `${lineId}:${stage}`;
+
+function Info({ info, lang }: { info?: StyleInfo; lang: Lang }) {
+  const w = words(lang);
+  if (!info) return null;
+  const sizes = sizeEntries(info.sizes);
+  return (
+    <div className="finfo">
+      {info.fabric && <span><b>{w.fabric}</b> {info.fabric}</span>}
+      {sizes.length > 0 && <span><b>{w.sizes}</b> {sizes.map(([s, n]) => `${s} ${qty(n)}`).join(" · ")}</span>}
+      {info.files.map((f) => (
+        <a key={f.url} href={f.url} target="_blank" rel="noreferrer" className="chip info">
+          {f.kind === "cutting" ? w.cuttingProgram : w.techPack}: {f.name}
+        </a>
+      ))}
+    </div>
+  );
+}
 const at = new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit", timeZone: "Asia/Kolkata" });
 
 // One order in the factory's panel: its styles, and the factory's date for every TNA step.
-export function FactoryOrder({ order, now, companyId, updates, lang }: { order: PanelOrder; now: string; companyId: string; updates: FactoryUpdate[]; lang: Lang }) {
+export function FactoryOrder({ order, now, companyId, updates, lang, info }: {
+  order: PanelOrder; now: string; companyId: string; updates: FactoryUpdate[]; lang: Lang; info: Record<string, StyleInfo>;
+}) {
   const router = useRouter();
   const w = words(lang);
   const label = (stage: string, own: string | null | undefined) => stepName(lang, stage, own, TNA_STEPS.find((t) => t.key === stage)?.label ?? stage);
@@ -110,6 +133,7 @@ export function FactoryOrder({ order, now, companyId, updates, lang }: { order: 
             <header>
               <b className="code">{l.style}</b>
               <span className="muted text-[13px]">{[l.colour, `${qty(l.qty)} ${w.pcs}`, l.rate != null ? `₹${qty(l.rate)}` : ""].filter(Boolean).join(" · ")}</span>
+              <Info info={info[l.id]} lang={lang} />
             </header>
             <ul>
               {[...TNA_STEPS.map((s) => ({ label: label(s.key, null), st: stageOf(l.id, s.key) })), ...extrasOf(l).map((st) => ({ label: st.label ?? "", st }))].map(({ label, st }) => (
@@ -141,6 +165,7 @@ export function FactoryOrder({ order, now, companyId, updates, lang }: { order: 
                   <b className="code">{l.style}</b>
                   <div className="muted text-xs">{[l.colour, `${qty(l.qty)} ${w.pcs}`].filter(Boolean).join(" · ")}</div>
                   {l.rate != null && <div className="muted text-xs">{w.rate} ₹{qty(l.rate)}</div>}
+                  <Info info={info[l.id]} lang={lang} />
                 </td>
                 {TNA_STEPS.map((s) => {
                   const st = stageOf(l.id, s.key);

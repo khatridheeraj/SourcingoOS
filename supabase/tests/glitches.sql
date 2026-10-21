@@ -1,6 +1,15 @@
 -- Tests for the glitch fixes of 18 Oct 2026 (0039). Every block either passes quietly or raises.
 \set ON_ERROR_STOP 1
 \set QUIET 1
+-- Only the owner locks and releases a factory PO (0048): the team's release steps below run as the owner.
+create function pg_temp.owner_release(p_order uuid, p_factory uuid) returns void language plpgsql as $$
+declare
+  v_was text := current_setting('request.jwt.claim.sub', true);
+begin
+  perform set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-00000000000a', false);
+  perform public.release_factory_po(p_order, p_factory);
+  perform set_config('request.jwt.claim.sub', coalesce(v_was, ''), false);
+end $$;
 
 create function pg_temp.as_user(p uuid) returns void language sql as $$
   select set_config('request.jwt.claim.sub', coalesce(p::text, ''), false);
@@ -24,7 +33,7 @@ create function pg_temp.release(p_order uuid, p_factory uuid) returns void langu
          public.order_lines l where l.order_id = p_order and l.factory_id = p_factory and l.removed_at is null));
   select public.request_factory_plan(p_order, p_factory, 7);
   select public.accept_targets_for_factory(p_order, p_factory);
-  select public.release_factory_po(p_order, p_factory);
+  select pg_temp.owner_release(p_order, p_factory);
 $$;
 create function pg_temp.lines(p_order uuid) returns jsonb language sql as $$
   select jsonb_agg(jsonb_build_object('id', id, 'style', style, 'colour', colour, 'qty', qty, 'factory_id', factory_id, 'factory_rate', 100)

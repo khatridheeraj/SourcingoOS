@@ -13,13 +13,15 @@ const blankLine = (): LineInput => ({ style: "", description: "", colour: "", qt
 const n = (s: string) => Number(s.replace(/[,₹\s]/g, "")) || 0;
 
 // overdueShown: the buyer whose overdue invoices the page already warns about, so the form doesn't say it twice.
-export function OrderForm({ initial, initialLines, buyers, factories, team, incomingId, overdueShown }: {
+// inquiryId: the buyer inquiry this new order comes from.
+export function OrderForm({ initial, initialLines, buyers, factories, team, incomingId, inquiryId, overdueShown }: {
   initial: OrderInput;
   initialLines: LineInput[];
   buyers: Option[];
   factories: Option[];
   team: Option[];
   incomingId?: string;
+  inquiryId?: string;
   overdueShown?: string;
 }) {
   const router = useRouter();
@@ -73,7 +75,7 @@ export function OrderForm({ initial, initialLines, buyers, factories, team, inco
     setWarning("");
     setExisting(null);
     start(async () => {
-      const res = await saveOrder(order, lines, incomingId, confirmed);
+      const res = await saveOrder(order, lines, incomingId, confirmed, inquiryId);
       if (res.confirm) {
         setChecks({ key: checkKey, warnings: res.confirm, overdue: shown.overdue });
         setConfirming(true);
@@ -149,6 +151,13 @@ export function OrderForm({ initial, initialLines, buyers, factories, team, inco
           <span>Notes</span>
           <textarea className="inp" value={order.notes} onChange={set("notes")} rows={2} />
         </label>
+        {order.buyer_terms !== undefined && (
+          <label className="field mt-3">
+            <span>Buyer&apos;s terms</span>
+            <textarea className="inp" value={order.buyer_terms} onChange={set("buyer_terms")} rows={2} maxLength={2000}
+              placeholder="Inspection 3 days before dispatch, 2% penalty a week late, packing and labelling rules" />
+          </label>
+        )}
       </div>
 
       <div className="panel">

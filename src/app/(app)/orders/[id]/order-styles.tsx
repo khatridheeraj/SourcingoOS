@@ -7,9 +7,11 @@ import { uploadPhotos } from "@/lib/photos";
 import { toast } from "@/components/toast";
 import { project, shipRisk, fillEmptyTargets } from "@/lib/tna-plan";
 import { FactoryLink } from "../../factories/factory-link";
-import { acceptTargetsForFactory, releaseFactoryPo, requestPlan, saveLineStages, setStylePhoto, type LineStageInput } from "../actions";
+import { sizeEntries } from "@/lib/sizes";
+import { StyleDetails, type StyleDetail } from "./style-details";
+import { acceptTargetsForFactory, releaseFactoryPo, requestPlan, requestPoLock, saveLineStages, sendBackPoLock, setStylePhoto, type LineStageInput } from "../actions";
 
-export type StyleRow = { id: string; style: string; colour: string; qty: number; photoUrl: string | null; hasRate: boolean };
+export type StyleRow = { id: string; style: string; colour: string; qty: number; photoUrl: string | null; hasRate: boolean; detail: StyleDetail };
 export type FactoryGroup = {
   factoryId: string | null;
   factoryName: string;
@@ -24,6 +26,11 @@ export type FactoryGroup = {
   // Who in the team entered the factory's dates for it ("" when the factory sent them itself).
   planEnteredBy: string;
   releasedAt: string;
+  // Sent for the owner's lock (and by whom), or sent back by the owner with a note.
+  lockRequestedAt: string;
+  lockRequestedBy: string;
+  lockNote: string;
+  lockNoteAt: string;
   lines: StyleRow[];
 };
 export type StepQc = { result: string; checkedOn: string; kind: string };
@@ -88,9 +95,14 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState("");
   const [reason, setReason] = useState("");
+  // The owner's note when sending a plan back, per factory.
+  const [backNote, setBackNote] = useState<Record<string, string>>({});
+  const [sendingBack, setSendingBack] = useState("");
   const [buffers, setBuffers] = useState<Record<string, string>>(
     Object.fromEntries(groups.filter((g) => g.factoryId).map((g) => [g.factoryId!, String(g.bufferDays ?? DEFAULT_BUFFER_DAYS)])));
   const [pending, start] = useTransition();
+  // Styles whose fabric, sizes and files are open.
+  const [detailShown, setDetailShown] = useState<Set<string>>(new Set());
   const editable = open && canEdit;
   const doneEditable = open && canDone;
   const lines = groups.flatMap((g) => g.lines);
@@ -368,8 +380,9 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
         <p>
           First set your target date for every step of each style (add extra steps if a style needs them), then ask the factory.
           The factory gives its own date for each step in its panel; if it agrees to your targets by phone or WhatsApp instead, press
-          &quot;Factory agreed to targets&quot;. Release the PO once every factory date is in and none is later than its target.
-          After release the targets are locked: only the owner can move one, with a reason, and the step shows where it started. The orders team
+          &quot;Factory agreed to targets&quot;. Once every factory date is in and none is later than its target, send the plan for the
+          owner&apos;s lock. The owner checks it and locks it, which releases the PO to the factory, or sends it back saying what to change.
+          After the lock the targets are locked: only the owner can move one, with a reason, and the step shows where it started. The orders team
           and Quality enter done dates. A late step pushes back the steps after it, so a style shows when it will likely be ready and whether
           that misses the ship date. Quality&apos;s latest result shows next to each step it checks. &quot;Fill empty targets&quot; works every
           empty target back from the target date with the usual days per step.
@@ -389,8 +402,10 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
         const toAsk = targetGaps(g, target);
         const asked = !!(g.planRequestedAt || g.planRequestedOn);
         const status = !g.factoryId ? { text: "No factory chosen", cls: "warn" }
-          : released ? { text: `PO released ${dayAt(g.releasedAt)}`, cls: "ok" }
-          : !gaps.length ? { text: "Plan complete, ready to release", cls: "info" }
+          : released ? { text: `Locked and released ${dayAt(g.releasedAt)}`, cls: "ok" }
+          : !gaps.length && g.lockRequestedAt ? { text: isOwner ? "Waiting for your lock" : `Sent for the owner's lock ${dayAt(g.lockRequestedAt)}`, cls: isOwner ? "bad" : "info" }
+          : !gaps.length && g.lockNote ? { text: "Sent back by the owner", cls: "bad" }
+          : !gaps.length ? { text: isOwner ? "Plan complete, ready to lock" : "Plan complete, send for the owner's lock", cls: "info" }
           : critical ? { text: `Critical: no TNA from the factory, due ${at.format(dueAt!)}`, cls: "bad" }
           : sent ? { text: g.planEnteredBy ? `Factory's TNA entered by ${g.planEnteredBy} ${dayAt(sent)}` : `Factory sent its TNA ${dayAt(sent)}`, cls: "warn" }
           : dueAt ? { text: `Waiting for the factory's TNA, due ${at.format(dueAt)}`, cls: "warn" }
@@ -429,18 +444,58 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
                     <button type="button" className="btn sm" disabled={pending || unsaved(g)}
                       title={unsaved(g) ? "Save the dates first" : `Use when ${g.factoryName} agreed to your targets by phone or WhatsApp`}
                       onClick={() => run(`acc:${g.factoryId}`, () => acceptTargetsForFactory(orderId, g.factoryId!),
-                        `Entered your targets as ${g.factoryName}'s dates. You can release the PO now.`)}>
+                        `Entered your targets as ${g.factoryName}'s dates. ${isOwner ? "You can lock and release the PO now." : "Send the plan for the owner's lock now."}`)}>
                       {busy === `acc:${g.factoryId}` ? "Saving…" : "Factory agreed to targets"}
                     </button>
                   )}
-                  <button type="button" className="btn sm primary" disabled={pending || gaps.length > 0 || unsaved(g)}
-                    title={unsaved(g) ? "Save the dates first" : gaps.length ? "The plan is not complete yet" : undefined}
-                    onClick={() => run(`rel:${g.factoryId}`, () => releaseFactoryPo(orderId, g.factoryId!), `PO released to ${g.factoryName}.`)}>
-                    {busy === `rel:${g.factoryId}` ? "Releasing…" : "Release PO"}
-                  </button>
+                  {/* When the plan was sent for the lock, the owner locks from the box below instead. */}
+                  {isOwner ? !g.lockRequestedAt && (
+                    <button type="button" className="btn sm primary" disabled={pending || gaps.length > 0 || unsaved(g)}
+                      title={unsaved(g) ? "Save the dates first" : gaps.length ? "The plan is not complete yet" : "Locks the targets and releases the PO to the factory"}
+                      onClick={() => run(`rel:${g.factoryId}`, () => releaseFactoryPo(orderId, g.factoryId!), `Locked. PO released to ${g.factoryName}.`)}>
+                      {busy === `rel:${g.factoryId}` ? "Locking…" : "Lock and release PO"}
+                    </button>
+                  ) : (
+                    <button type="button" className="btn sm primary" disabled={pending || gaps.length > 0 || unsaved(g) || !!g.lockRequestedAt}
+                      title={unsaved(g) ? "Save the dates first" : gaps.length ? "The plan is not complete yet" : g.lockRequestedAt ? "Already waiting for the owner" : undefined}
+                      onClick={() => run(`lock:${g.factoryId}`, () => requestPoLock(orderId, g.factoryId!), "Sent for the owner's lock. The PO goes to the factory once it is locked.")}>
+                      {busy === `lock:${g.factoryId}` ? "Sending…" : g.lockRequestedAt ? "Waiting for the lock" : g.lockNote ? "Send for the lock again" : "Send for owner's lock"}
+                    </button>
+                  )}
                 </div>
               )}
             </div>
+            {g.factoryId && !released && open && isOwner && g.lockRequestedAt && (
+              <div className="lock-box" role="status">
+                <div className="grow">
+                  <b>{g.lockRequestedBy || "The orders team"} sent this plan for your lock</b> {dayAt(g.lockRequestedAt)}.{" "}
+                  {gaps.length ? <span className="text-bad">Something changed since and it isn&apos;t complete now: see below.</span>
+                    : "Check the rates, targets and factory dates below, then lock it to release the PO to the factory."}
+                </div>
+                <button type="button" className="btn primary" disabled={pending || gaps.length > 0 || unsaved(g)}
+                  onClick={() => run(`rel:${g.factoryId}`, () => releaseFactoryPo(orderId, g.factoryId!), `Locked. PO released to ${g.factoryName}.`)}>
+                  {busy === `rel:${g.factoryId}` ? "Locking…" : "Lock and release PO"}
+                </button>
+                {sendingBack === g.factoryId ? (
+                  <div className="row w-full">
+                    <input className="inp min-w-[200px] flex-1" value={backNote[g.factoryId] ?? ""} maxLength={300} autoFocus aria-label="What to change"
+                      placeholder="What to change, e.g. rate is high, check with the factory" onChange={(e) => setBackNote((n) => ({ ...n, [g.factoryId!]: e.target.value }))} />
+                    <button type="button" className="btn danger" disabled={pending || !(backNote[g.factoryId] ?? "").trim()}
+                      onClick={() => run(`back:${g.factoryId}`, () => sendBackPoLock(orderId, g.factoryId!, backNote[g.factoryId!] ?? ""), "Sent back to the team.")}>
+                      {busy === `back:${g.factoryId}` ? "Sending…" : "Send back"}
+                    </button>
+                    <button type="button" className="btn" onClick={() => setSendingBack("")}>Cancel</button>
+                  </div>
+                ) : (
+                  <button type="button" className="btn" disabled={pending} onClick={() => setSendingBack(g.factoryId!)}>Send back</button>
+                )}
+              </div>
+            )}
+            {g.factoryId && !released && open && !g.lockRequestedAt && g.lockNote && (
+              <div className="lock-box bad" role="status">
+                <div className="grow"><b>The owner sent this plan back</b> {dayAt(g.lockNoteAt)}: {g.lockNote}</div>
+              </div>
+            )}
             {!g.factoryId && <p className="muted mb-2 text-[13px]">Choose a factory for these styles in Order details below before planning them.</p>}
             {g.factoryId && target && !released && (
               <p className="muted mb-2 text-[13px]">
@@ -464,6 +519,9 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
                 const sm = summary(l);
                 const fin = qc[key(l.id, "final_qc")];
                 const isOpen = shown.has(l.id);
+                const detailOpen = detailShown.has(l.id);
+                const techPack = l.detail.files.some((f) => f.kind === "tech_pack");
+                const sizeCount = sizeEntries(l.detail.sizes).length;
                 const dirty = changed.some((r) => r.line_id === l.id);
                 return (
                   <article key={l.id} id={`style-${l.id}`} className={`style-card ${sm.status.cls === "bad" ? "late" : ""}`}>
@@ -479,6 +537,12 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
                       <div className="style-id">
                         <b className="code text-[13.5px]">{l.style}</b>
                         <span>{[l.colour, `${qty(l.qty)} pcs`].filter(Boolean).join(" · ")}</span>
+                        <button type="button" className="link w-fit text-left text-xs" aria-expanded={detailOpen} aria-controls={`detail-${l.id}`}
+                          onClick={() => setDetailShown((d) => { const n = new Set(d); if (n.has(l.id)) n.delete(l.id); else n.add(l.id); return n; })}>
+                          {[l.detail.fabric ? (l.detail.fabric.length > 22 ? `${l.detail.fabric.slice(0, 21)}…` : l.detail.fabric) : editable ? "Add fabric" : "", sizeCount ? `${sizeCount} sizes` : editable ? "sizes" : "",
+                            techPack ? "tech pack ✓" : editable ? "tech pack" : ""].filter(Boolean).join(" · ") || "Fabric, sizes and files"}
+                          {detailOpen ? " ▴" : " ▾"}
+                        </button>
                         {editable && (
                           <label className={`link w-fit cursor-pointer text-xs ${pending ? "pointer-events-none opacity-50" : ""}`}>
                             {busy === `photo:${l.id}` ? "Uploading…" : l.photoUrl ? "Change photo" : "Add photo"}
@@ -513,6 +577,11 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
                         </button>
                       </div>
                     </div>
+                    {detailOpen && (
+                      <div id={`detail-${l.id}`}>
+                        <StyleDetails orderId={orderId} companyId={companyId} lineId={l.id} style={l.style} styleQty={l.qty} detail={l.detail} editable={editable} />
+                      </div>
+                    )}
                     {isOpen && (
                       <div id={`steps-${l.id}`}>
                         <div className="step-head" aria-hidden><span>Step</span><span>Factory</span><span>Target</span><span>Done</span><span>Status</span></div>

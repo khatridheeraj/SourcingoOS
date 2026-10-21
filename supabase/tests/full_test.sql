@@ -1,6 +1,15 @@
 -- Tests for the fixes from the full test of 16 Oct 2026 (0031). Every block either passes quietly or raises.
 \set ON_ERROR_STOP 1
 \set QUIET 1
+-- Only the owner locks and releases a factory PO (0048): the team's release steps below run as the owner.
+create function pg_temp.owner_release(p_order uuid, p_factory uuid) returns void language plpgsql as $$
+declare
+  v_was text := current_setting('request.jwt.claim.sub', true);
+begin
+  perform set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-00000000000a', false);
+  perform public.release_factory_po(p_order, p_factory);
+  perform set_config('request.jwt.claim.sub', coalesce(v_was, ''), false);
+end $$;
 
 create function pg_temp.as_user(p uuid) returns void language sql as $$
   select set_config('request.jwt.claim.sub', p::text, false);
@@ -48,14 +57,14 @@ select public.save_line_stages(:'ord', (select jsonb_agg(jsonb_build_object('lin
 select public.request_factory_plan(:'ord', '20000000-0000-0000-0000-000000000001', 7);
 -- Staff still can't type a factory date straight in.
 select pg_temp.expect_error(format($$update public.line_stages set factory_on = planned_on where line_id = '%s'$$, :'k1'), 'permission denied%');
-select pg_temp.expect_error(format($$select public.release_factory_po('%s', '20000000-0000-0000-0000-000000000001')$$, :'ord'),
+select pg_temp.expect_error(format($$select pg_temp.owner_release('%s', '20000000-0000-0000-0000-000000000001')$$, :'ord'),
   'The plan is not complete yet. Missing: K-1 (factory dates:%');
 -- The factory agreed on the phone: the merchandiser enters the targets as its dates, then releases.
 select public.accept_targets_for_factory(:'ord', '20000000-0000-0000-0000-000000000001');
 select pg_temp.expect((select count(*) = 15 from public.line_stages where factory_on = planned_on), 'factory dates not entered from the targets');
 select pg_temp.expect((select plan_entered_by = auth.uid() and factory_sent_at is not null from public.factory_pos where order_id = :'ord'),
   'plan not marked as entered by the orders team');
-select public.release_factory_po(:'ord', '20000000-0000-0000-0000-000000000001');
+select pg_temp.owner_release(:'ord', '20000000-0000-0000-0000-000000000001');
 select pg_temp.expect_error(format($$select public.accept_targets_for_factory('%s', '20000000-0000-0000-0000-000000000001')$$, :'ord'),
   'The PO is already released.');
 select pg_temp.as_user('00000000-0000-0000-0000-0000000000a9');

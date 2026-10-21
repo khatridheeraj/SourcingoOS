@@ -16,6 +16,10 @@ export type BriefData = {
   cheques: { to_clear: number; to_clear_amount: number; to_deposit: number; to_deposit_amount: number } | null;
   // The owner only: notes sent from Help still waiting for a decision.
   team_notes?: { no: number; kind: string; body: string; by: string; at: string; suggestion: string | null }[];
+  // The owner: factory POs sent for the lock. The team: plans the owner sent back, with the note.
+  locks?: { order_id: string; order_no: string; factory: string; at: string; note: string | null }[];
+  // Inquiry follow-ups due today or late.
+  inquiries_due?: { id: string; inquiry_no: string; product: string; on: string; who: string | null }[];
 };
 
 export type BriefItem = { text: string; sub?: string; href: string };
@@ -82,6 +86,16 @@ export function buildBrief(d: BriefData): Brief {
   }
 
   const sections: BriefSection[] = [];
+  const owner = d.role === "owner";
+  // Factory POs can't go out until the owner locks them, so they come first.
+  if (d.locks?.length) {
+    sections.push({ key: "locks", title: owner ? "Waiting for your lock" : "Plans the owner sent back", tone: owner ? "warn" : "bad",
+      items: d.locks.map((l) => ({
+        text: owner ? `${l.order_no}: ${l.factory}'s plan is ready to lock and release` : `${l.order_no}: ${l.factory}'s plan was sent back`,
+        sub: owner ? `Sent ${dm(istDay(l.at))}` : l.note ?? undefined,
+        href: `/orders/${l.order_id}#tna`,
+      })) });
+  }
   if (risk.length) sections.push({ key: "risk", title: "Ship dates at risk", tone: "bad", items: risk.sort((a, b) => b.n - a.n) });
   if (overdue.length) sections.push({ key: "overdue", title: "Steps overdue", tone: "bad", items: overdue.sort((a, b) => b.n - a.n) });
   if (soon.length) sections.push({ key: "soon", title: "Due in the next 2 days", tone: "warn", items: soon.sort((a, b) => a.n.localeCompare(b.n)) });
@@ -91,6 +105,13 @@ export function buildBrief(d: BriefData): Brief {
   if (d.pos_to_check) waiting.push({ text: `${d.pos_to_check} new buyer ${d.pos_to_check === 1 ? "PO" : "POs"} to check`, href: "/pos" });
   if (noTarget) waiting.push({ text: `${noTarget} ${noTarget === 1 ? "step has" : "steps have"} no target date`, sub: `${noTargetOrders.slice(0, 4).join(", ")}${noTargetOrders.length > 4 ? ` and ${noTargetOrders.length - 4} more` : ""}. Lateness can't show without one.`, href: "/today" });
   if (waiting.length) sections.push({ key: "waiting", title: "Waiting on you or a factory", tone: "info", items: waiting });
+  if (d.inquiries_due?.length) {
+    sections.push({ key: "inquiries", title: "Inquiry follow-ups due", tone: "warn", items: d.inquiries_due.map((i) => ({
+      text: `${i.inquiry_no} · ${i.who ?? "New buyer"}: ${i.product}`,
+      sub: i.on < today ? `Follow-up was due ${dm(i.on)}, ${days(diff(i.on, today))} late` : "Follow up today",
+      href: `/inquiries/${i.id}`,
+    })) });
+  }
   if (d.cheques && (d.cheques.to_clear || d.cheques.to_deposit)) {
     const money: BriefItem[] = [];
     if (d.cheques.to_deposit) money.push({ text: `${d.cheques.to_deposit} ${d.cheques.to_deposit === 1 ? "cheque" : "cheques"} in hand ready to deposit, ₹${inr.format(d.cheques.to_deposit_amount)}`, href: "/payments" });
@@ -109,9 +130,10 @@ export function buildBrief(d: BriefData): Brief {
 
   const nRisk = risk.length;
   const nLate = overdue.length;
+  const nLocks = owner ? d.locks?.length ?? 0 : 0;
   const headline = !sections.length ? "Nothing is late or waiting. A clear day."
-    : [nRisk ? `${nRisk} ${nRisk === 1 ? "order" : "orders"} at risk` : "", nLate ? `${nLate} more with overdue steps` : "",
-       !nRisk && !nLate ? "Nothing at risk" : ""].filter(Boolean).join(", ") + `, ${d.orders.length} open ${d.orders.length === 1 ? "order" : "orders"}.`;
+    : [nLocks ? `${nLocks} ${nLocks === 1 ? "PO waits" : "POs wait"} for your lock` : "", nRisk ? `${nRisk} ${nRisk === 1 ? "order" : "orders"} at risk` : "", nLate ? `${nLate} more with overdue steps` : "",
+       !nRisk && !nLate ? (nLocks ? "nothing at risk" : "Nothing at risk") : ""].filter(Boolean).join(", ") + `, ${d.orders.length} open ${d.orders.length === 1 ? "order" : "orders"}.`;
   const date = new Date(`${today}T00:00:00Z`);
   return { title: `${WEEKDAYS[date.getUTCDay()]} ${dm(today)}`, headline, sections };
 }

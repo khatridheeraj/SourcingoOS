@@ -1,6 +1,15 @@
 -- Tests for the order lifecycle fixes (0033). Every block either passes quietly or raises.
 \set ON_ERROR_STOP 1
 \set QUIET 1
+-- Only the owner locks and releases a factory PO (0048): the team's release steps below run as the owner.
+create function pg_temp.owner_release(p_order uuid, p_factory uuid) returns void language plpgsql as $$
+declare
+  v_was text := current_setting('request.jwt.claim.sub', true);
+begin
+  perform set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-00000000000a', false);
+  perform public.release_factory_po(p_order, p_factory);
+  perform set_config('request.jwt.claim.sub', coalesce(v_was, ''), false);
+end $$;
 
 create function pg_temp.as_user(p uuid) returns void language sql as $$
   select set_config('request.jwt.claim.sub', p::text, false);
@@ -105,7 +114,7 @@ select public.save_order(pg_temp.head(:'ord'), (select jsonb_agg(case when x ->>
 select pg_temp.expect((select count(*) = 0 from public.line_stages where line_id = :'k2' and factory_on is not null), 'the old factory''s dates moved with K-2');
 select pg_temp.expect((select count(*) = 15 from public.line_stages where line_id = :'k2' and planned_on is not null), 'K-2 lost its targets on the move');
 -- Anya was never asked, so its PO can't be released.
-select pg_temp.expect_error(format($$select public.release_factory_po('%s', '20000000-0000-0000-0000-000000000002')$$, :'ord'),
+select pg_temp.expect_error(format($$select pg_temp.owner_release('%s', '20000000-0000-0000-0000-000000000002')$$, :'ord'),
   'The plan is not complete yet. Missing: K-2 (factory dates:%');
 -- (A data load by the database itself, with no one signed in, gives K-2 factory dates without asking Anya.)
 reset role;
@@ -113,14 +122,14 @@ select set_config('request.jwt.claim.sub', '', false);
 update public.line_stages set factory_on = planned_on where line_id = :'k2';
 set role authenticated;
 select pg_temp.as_user('00000000-0000-0000-0000-00000000000b');
-select pg_temp.expect_error(format($$select public.release_factory_po('%s', '20000000-0000-0000-0000-000000000002')$$, :'ord'),
+select pg_temp.expect_error(format($$select pg_temp.owner_release('%s', '20000000-0000-0000-0000-000000000002')$$, :'ord'),
   'Ask the factory for its plan first.');
 select public.request_factory_plan(:'ord', '20000000-0000-0000-0000-000000000002', 7);
-select pg_temp.expect_error(format($$select public.release_factory_po('%s', '20000000-0000-0000-0000-000000000002')$$, :'ord'),
+select pg_temp.expect_error(format($$select pg_temp.owner_release('%s', '20000000-0000-0000-0000-000000000002')$$, :'ord'),
   'The factory hasn''t sent its plan for your latest request yet.%');
 select public.accept_targets_for_factory(:'ord', '20000000-0000-0000-0000-000000000002');
-select public.release_factory_po(:'ord', '20000000-0000-0000-0000-000000000002');
-select public.release_factory_po(:'ord', '20000000-0000-0000-0000-000000000001');
+select pg_temp.owner_release(:'ord', '20000000-0000-0000-0000-000000000002');
+select pg_temp.owner_release(:'ord', '20000000-0000-0000-0000-000000000001');
 -- Once Kkora's PO is released, only the owner can move K-1 away from it.
 select pg_temp.expect_error(format($$select public.save_order(pg_temp.head('%s'), (select jsonb_agg(case when x ->> 'style' = 'K-1'
   then x || '{"factory_id":"20000000-0000-0000-0000-000000000003"}' else x end) from jsonb_array_elements(pg_temp.lines('%s')) x))$$, :'ord', :'ord'),
@@ -202,7 +211,7 @@ select pg_temp.as_user('00000000-0000-0000-0000-00000000000b');
 select public.save_order(pg_temp.head(:'ord2') || '{"ship_date":""}', pg_temp.lines(:'ord2'));
 select pg_temp.expect_error(format($$select public.accept_targets_for_factory('%s', '20000000-0000-0000-0000-000000000002')$$, :'ord2'),
   'Enter the PO''s ship date first.');
-select pg_temp.expect_error(format($$select public.release_factory_po('%s', '20000000-0000-0000-0000-000000000002')$$, :'ord2'),
+select pg_temp.expect_error(format($$select pg_temp.owner_release('%s', '20000000-0000-0000-0000-000000000002')$$, :'ord2'),
   'Enter the PO''s ship date first.');
 select pg_temp.as_user('00000000-0000-0000-0000-0000000000fb');
 select pg_temp.expect_error(format($$select public.save_factory_tna('%s', jsonb_build_array(jsonb_build_object('line_id', '%s', 'stage', 'fabric',
