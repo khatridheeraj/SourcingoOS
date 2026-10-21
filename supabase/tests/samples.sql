@@ -133,7 +133,7 @@ select pg_temp.as_user('00000000-0000-0000-0000-0000000000b1');
 select public.buyer_samples() as bs \gset
 select pg_temp.expect(jsonb_array_length(:'bs'::jsonb) = 1, 'buyer doesn''t see the sample sent to it');
 select pg_temp.expect((:'bs'::jsonb -> 0 ->> 'awb') = 'D1234567' and (:'bs'::jsonb -> 0 ->> 'note') = 'Fit sample, round 2. Thread colour fixed.', 'buyer misses the AWB or note');
-select pg_temp.expect(position('Kkora' in :'bs') = 0 and position('Thread fixed' in :'bs') = 0 and position('450' in :'bs') = 0,
+select pg_temp.expect(position('Kkora' in :'bs') = 0 and position('Thread fixed' in :'bs') = 0 and position('rate' in :'bs') = 0 and position(': 450' in :'bs') = 0 and position('"450"' in :'bs') = 0,
   'buyer sees the factory, its note or a price');
 select pg_temp.expect(public.buyer_can_read_photo(:kp), 'buyer can''t open the sample photo');
 select pg_temp.expect(public.can_upload_photo(:ks), 'buyer can''t upload an answer photo');
