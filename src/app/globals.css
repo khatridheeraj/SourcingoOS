@@ -841,8 +841,8 @@ h1, h2, h3 { font-family: var(--font-display); text-wrap: balance; font-weight: 
 
     /* Shortcuts: four big buttons, like a banking app. */
     .quick { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-top: -4px; }
-    .quick a { display: flex; flex-direction: column; align-items: center; gap: 7px; font-size: 12px; font-weight: 500; color: var(--foreground); text-align: center; }
-    .quick a:active .quick-ic { transform: scale(0.92); }
+    .quick a, .quick button { display: flex; flex-direction: column; align-items: center; gap: 7px; font-size: 12px; font-weight: 500; color: var(--foreground); text-align: center; }
+    .quick a:active .quick-ic, .quick button:active .quick-ic { transform: scale(0.92); }
     .quick-ic {
       position: relative; display: grid; place-items: center; width: 56px; height: 56px; border-radius: 18px; transition: transform 0.1s;
       color: var(--accent); background: var(--accent-soft); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 12%, transparent);
@@ -1487,3 +1487,92 @@ h1, h2, h3 { font-family: var(--font-display); text-wrap: balance; font-weight: 
     .todo-chip { grid-column: 2 / -1; }
   }
 }
+
+/* Search from anywhere: a command bar near the top on a computer, the whole screen on a phone. */
+@layer components {
+  .side-search {
+    display: flex; align-items: center; gap: 10px; width: 100%; height: 34px; margin: 0 0 10px; padding: 0 8px 0 10px; border-radius: 8px;
+    font-size: 13.5px; color: var(--faint); background: var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow); transition: border-color 0.12s, color 0.12s;
+  }
+  .side-search:hover { border-color: var(--line-strong); color: var(--muted); }
+  .side-search svg { flex: none; }
+  .side-search kbd, .sp-foot kbd {
+    font: 500 11px/1 var(--font-sans); padding: 3px 5px; border-radius: 5px; color: var(--muted); background: var(--surface-2); border: 1px solid var(--line);
+  }
+  .sp { margin: 12vh auto auto; width: min(620px, calc(100vw - 32px)); max-height: 72vh; display: flex; flex-direction: column; overflow: hidden; }
+  .sp:not([open]) { display: none; }
+  .sp[open] { animation: fade-in 0.12s ease-out; }
+  .sp-bar { display: flex; align-items: center; gap: 10px; padding: 0 12px 0 16px; height: 56px; border-bottom: 1px solid var(--line); color: var(--faint); flex: none; }
+  .sp-input { flex: 1; min-width: 0; height: 100%; border: 0; outline: 0; background: none; font-size: 16px; color: var(--foreground); }
+  .sp-input:focus-visible { outline: none; }
+  .sp-input::placeholder { color: var(--faint); }
+  .sp-input::-webkit-search-cancel-button { display: none; }
+  .sp-spin { width: 16px; height: 16px; border-radius: 50%; border: 2px solid var(--line); border-top-color: var(--accent); animation: sp-spin 0.7s linear infinite; flex: none; }
+  @keyframes sp-spin { to { transform: rotate(360deg); } }
+  .sp-cancel { display: none; font-size: 15px; font-weight: 500; color: var(--accent); padding: 8px 4px; }
+  .sp-list { flex: 1; overflow-y: auto; overscroll-behavior: contain; padding: 6px 8px 8px; }
+  .sp-group { padding: 10px 10px 4px; font-size: 11.5px; font-weight: 600; letter-spacing: 0.02em; text-transform: uppercase; color: var(--faint); }
+  .sp-row { display: flex; align-items: center; gap: 12px; width: 100%; padding: 8px 10px; border-radius: 10px; text-align: left; }
+  .sp-row[aria-selected="true"] { background: var(--surface-2); box-shadow: inset 0 0 0 1px var(--line); }
+  .sp-ic { flex: none; display: grid; place-items: center; width: 32px; height: 32px; border-radius: 8px; background: var(--surface-2); color: var(--muted); border: 1px solid var(--line); }
+  .sp-row[aria-selected="true"] .sp-ic { color: var(--accent); background: var(--accent-soft); border-color: transparent; }
+  .sp-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+  .sp-title { font-size: 14px; font-weight: 500; color: var(--foreground); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sp-title .code { margin-right: 8px; color: var(--muted); font-weight: 500; }
+  .sp-sub { font-size: 12.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sp-sub .bad { color: var(--bad); }
+  .sp-sub .ok { color: var(--ok); }
+  .sp-enter { flex: none; font-size: 13px; color: var(--faint); opacity: 0; }
+  .sp-row[aria-selected="true"] .sp-enter { opacity: 1; }
+  .sp-empty { display: flex; flex-direction: column; gap: 4px; align-items: center; padding: 36px 16px; text-align: center; font-size: 13.5px; color: var(--muted); }
+  .sp-empty b { font-size: 15px; font-weight: 600; color: var(--foreground); }
+  .sp-foot { display: flex; gap: 16px; padding: 9px 16px; border-top: 1px solid var(--line); font-size: 12px; color: var(--faint); flex: none; }
+  .sp-foot kbd { margin-right: 3px; }
+  @media (max-width: 760px) {
+    .sp { width: 100%; max-width: none; height: 100%; max-height: none; margin: 0; border-radius: 0; animation: none; padding-top: env(safe-area-inset-top); }
+    .sp[open] { animation: fade-in 0.15s ease-out; }
+    .sp-bar { height: 60px; padding: 0 8px 0 16px; }
+    .sp-cancel { display: block; }
+    .sp-row { padding: 10px; min-height: 56px; }
+    .sp-row[aria-selected="true"] { background: none; box-shadow: none; }
+    .sp-row[aria-selected="true"] .sp-ic { color: var(--muted); background: var(--surface-2); border-color: var(--line); }
+    .sp-row:active { background: var(--surface-2); }
+    .sp-enter { display: none; }
+    .sp-title { font-size: 15px; }
+    .sp-sub { font-size: 13px; }
+  }
+}
+
+/* Updates: one row per factory or buyer, with its message ready. */
+@layer components {
+  .upd-list { list-style: none; margin: 0; padding: 0; }
+  .upd-row { border-top: 1px solid var(--line); padding: 12px 20px; }
+  .upd-main { display: flex; align-items: center; gap: 12px; }
+  .upd-main .sev { flex: none; align-self: flex-start; width: 8px; height: 8px; margin-top: 7px; border-radius: 50%; background: var(--line-strong); }
+  .upd-main .sev.bad { background: var(--bad); box-shadow: 0 0 0 3px var(--bad-soft); }
+  .upd-main .sev.warn { background: var(--warn); box-shadow: 0 0 0 3px var(--warn-soft); }
+  .upd-main .sev.ok { background: var(--ok); box-shadow: 0 0 0 3px var(--ok-soft); }
+  .upd-acts { display: flex; gap: 6px; flex: none; }
+  .upd-row.is-done .todo-title { color: var(--muted); }
+  .upd-msg {
+    margin: 10px 0 2px 20px; padding: 12px 14px; border-radius: 10px; background: var(--surface-2); border: 1px solid var(--line);
+    font: 13px/1.55 var(--font-sans); white-space: pre-wrap; overflow-wrap: anywhere; color: var(--foreground);
+  }
+  .upd-edit { display: flex; flex-direction: column; gap: 6px; margin: 10px 0 2px 20px; }
+  .upd-edit textarea { font-size: 14px; line-height: 1.55; resize: vertical; }
+  .upd-edit small { font-size: 12px; color: var(--muted); }
+  .chase-card .upd-row { padding: 10px 20px; }
+  @media (max-width: 760px) {
+    .upd-row { padding: 14px 16px; }
+    .upd-main { flex-wrap: wrap; }
+    .upd-main .grow { flex-basis: calc(100% - 32px); }
+    .upd-acts { width: 100%; padding-left: 20px; }
+    .upd-acts .btn { flex: 1; height: 40px; }
+    .upd-acts .btn.ghost { flex: 0 0 auto; }
+    .upd-msg, .upd-edit { margin-left: 0; }
+    .chase-card .upd-row { padding: 12px 16px; }
+  }
+}
+
+/* Outside the layers, so it wins over the global focus ring: the search field's box already shows focus. */
+.sp-input:focus-visible { outline: none; }

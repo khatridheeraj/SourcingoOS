@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { useState, useSyncExternalStore } from "react";
 import { openHelp } from "@/components/help/help-chat";
 
 export type IconName = keyof typeof ICONS;
@@ -39,6 +39,9 @@ const ICONS = {
   link: "M8.5 11.5a3 3 0 0 0 4.24 0l2.5-2.5a3 3 0 0 0-4.24-4.24L10 5.76m1.5 2.74a3 3 0 0 0-4.24 0l-2.5 2.5a3 3 0 0 0 4.24 4.24L10 14.24",
 };
 
+// Opens the search (mounted once in the app layout).
+const openSearch = () => window.dispatchEvent(new Event("sourcingo:search"));
+
 export function Icon({ name, size = 18 }: { name: IconName; size?: number }) {
   return (
     <svg viewBox="0 0 20 20" width={size} height={size} fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -53,6 +56,7 @@ export function Icon({ name, size = 18 }: { name: IconName; size?: number }) {
 export function Sidebar({ groups, user, role, company, helpUnseen = 0 }: { groups: NavGroup[]; user: string; role: string; company: string; helpUnseen?: number }) {
   const path = usePathname();
   const [open, setOpen] = useState(false);
+  const mac = useSyncExternalStore(() => () => {}, () => /Mac|iPhone|iPad/.test(navigator.platform), () => true);
   const on = (href: string) => (href === "/" ? path === "/" || path.startsWith("/orders") : path.startsWith(href));
   const initials = user.split(/[\s@.]+/).filter(Boolean).slice(0, 2).map((w) => w[0]?.toUpperCase()).join("");
   // The bottom bar holds the main screens; the rest sit in More.
@@ -64,6 +68,7 @@ export function Sidebar({ groups, user, role, company, helpUnseen = 0 }: { group
       <header className="topbar">
         <Link href="/today" className="brand"><span className="brand-mark" aria-hidden>S</span>Sourcingo</Link>
         <div className="top-acts">
+          <button type="button" className="help-btn" aria-label="Search" onClick={openSearch}><Icon name="search" size={22} /></button>
           <button type="button" className="help-btn" aria-label={helpUnseen ? `Help, ${helpUnseen} new ${helpUnseen === 1 ? "reply" : "replies"}` : "Help"} onClick={() => openHelp(helpUnseen ? "notes" : "ask")}>
             <Icon name="help" size={22} />{helpUnseen > 0 && <span className="tab-badge">{helpUnseen}</span>}
           </button>
@@ -88,6 +93,9 @@ export function Sidebar({ groups, user, role, company, helpUnseen = 0 }: { group
       <aside id="sidebar" className="sidebar" data-open={open || undefined}>
         <span className="grabber" aria-hidden />
         <Link href="/today" className="brand"><span className="brand-mark" aria-hidden>S</span>Sourcingo<small>OS</small></Link>
+        <button type="button" className="side-search hide-phone" onClick={openSearch}>
+          <Icon name="search" /><span className="grow text-left">Search</span><kbd>{mac ? "⌘K" : "Ctrl K"}</kbd>
+        </button>
         <nav aria-label="All screens" className="side-nav">
           {groups.map((g, i) => (
             <div key={g.label ?? i} className="side-group">

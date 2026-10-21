@@ -95,23 +95,66 @@ export function startTargets(styles: QStyle[], target: string, today: string): R
   return out;
 }
 
+// One style's line in a chase: the first late step, or what is next.
+export function styleLine(s: QStyle, today: string) {
+  const st = live(s);
+  const over = st.filter((x) => !x.done_on && x.planned_on && x.planned_on < today);
+  const next = st.find((x) => !x.done_on);
+  return `• ${s.style}${s.colour ? ` (${s.colour})` : ""}, ${s.qty} pcs: `
+    + (over.length ? `${over[0].label} was due ${dm(over[0].planned_on)}${over.length > 1 ? ` (+${over.length - 1} more late)` : ""}`
+      : next ? `next ${next.label}${next.planned_on ? ` by ${dm(next.planned_on)}` : ""}` : "all steps done");
+}
+
+// Blank lines between parts, never two in a row.
+const tidy = (xs: string[]) => xs.filter((x, i, a) => x !== "" || (i > 0 && (a[i - 1] ?? "") !== "")).join("\n").trim();
+
 // The message asking a factory for today's status, listing what is late or next on each of its styles.
 export function chaseText(orderNo: string, buyerPo: string, factoryName: string, styles: QStyle[], today: string, target: string) {
-  const lines = styles.map((s) => {
-    const st = live(s);
-    const over = st.filter((x) => !x.done_on && x.planned_on && x.planned_on < today);
-    const next = st.find((x) => !x.done_on);
-    return `• ${s.style}${s.colour ? ` (${s.colour})` : ""}, ${s.qty} pcs: `
-      + (over.length ? `${over[0].label} was due ${dm(over[0].planned_on)}${over.length > 1 ? ` (+${over.length - 1} more late)` : ""}`
-        : next ? `next ${next.label}${next.planned_on ? ` by ${dm(next.planned_on)}` : ""}` : "all steps done");
-  });
-  return [
+  return tidy([
     `*${orderNo}${buyerPo ? ` · PO ${buyerPo}` : ""} · ${factoryName}*`,
     "Please share today's status and photos for these styles:",
     "",
-    ...lines,
-    target ? `\nEverything must be ready by ${dm(target)}.` : "",
-  ].filter((x, i, a) => x !== "" || (a[i - 1] ?? "") !== "").join("\n");
+    ...styles.map((s) => styleLine(s, today)),
+    "",
+    target ? `Everything must be ready by ${dm(target)}.` : "",
+  ]);
+}
+
+// One message to a factory covering every order it is behind on.
+export function chaseAllText(factoryName: string, orders: { orderNo: string; buyerPo: string; target: string; styles: QStyle[] }[], today: string) {
+  if (orders.length === 1) return chaseText(orders[0].orderNo, orders[0].buyerPo, factoryName, orders[0].styles, today, orders[0].target);
+  return tidy([
+    `*${factoryName} · status needed today*`,
+    "Please share today's status and photos for these orders:",
+    ...orders.flatMap((o) => ["", `*${o.orderNo}${o.buyerPo ? ` · PO ${o.buyerPo}` : ""}*${o.target ? ` (ready by ${dm(o.target)})` : ""}`, ...o.styles.map((s) => styleLine(s, today))]),
+  ]);
+}
+
+// Where a style stands, as a buyer would want it: the last step done and what comes next. No factory names or dates
+// the buyer doesn't need.
+export function buyerStyleLine(s: QStyle, today: string, started: boolean) {
+  const st = live(s);
+  const head = `• ${s.style}${s.colour ? ` (${s.colour})` : ""}, ${s.qty.toLocaleString("en-IN")} pcs: `;
+  if (!started) return `${head}pre-production, plan being set with the factory`;
+  const done = [...st].reverse().find((x) => x.done_on);
+  const next = st.find((x) => !x.done_on);
+  if (!next) return `${head}ready, all steps done`;
+  return `${head}${done ? `${done.label} done` : "production started"} · next ${next.label}${next.planned_on && next.planned_on >= today ? ` (${dm(next.planned_on)})` : ""}`;
+}
+
+// A buyer's update on every open order: where each style is, and whether the order is on time.
+export function buyerUpdateText(buyer: string, orders: { orderNo: string; buyerPo: string; due: string; started: boolean; late: boolean; styles: QStyle[] }[], today: string) {
+  return tidy([
+    `*${buyer} · order update, ${dm(today)}*`,
+    ...orders.flatMap((o) => [
+      "",
+      `*${o.buyerPo ? `PO ${o.buyerPo}` : o.orderNo}*${o.due ? ` · ship date ${dm(o.due)}` : ""}${o.due && o.due < today ? " · delayed, new date to follow" : o.late ? " · a few steps behind, catching up" : o.started ? " · on track" : ""}`,
+      ...(o.started ? o.styles.map((s) => buyerStyleLine(s, today, true))
+        : [`• ${o.styles.map((s) => s.style).join(", ")} (${o.styles.reduce((n, s) => n + s.qty, 0).toLocaleString("en-IN")} pcs): in pre-production`]),
+    ]),
+    "",
+    "Please let us know if you need anything.",
+  ]);
 }
 
 // A WhatsApp link to the factory's number (Indian numbers without the country code get +91), or to any chat.
