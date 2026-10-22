@@ -1,17 +1,15 @@
 "use client";
 
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { LOST_REASONS } from "@/lib/inquiries";
 import { uploadPhotos } from "@/lib/photos";
 import { toast } from "@/components/toast";
-import { addInquiryBuyer, addInquiryNote, setInquiryPhotos, setInquiryStatus } from "../actions";
+import { addInquiryBuyer, setInquiryPhotos, setInquiryStatus } from "../actions";
 
 type Photo = { path: string; url: string };
 
-// What the team does on an inquiry: note a follow-up, send a quote, mark it lost, make it an order, and keep its photos.
-export function InquiryActions({ id, companyId, status, hasBuyer, prospect, newBuyerCode, isOwner, quotedPrice, nextFollowUp, today, photos, allPhotos }: {
+// The rest of what the team does on an inquiry: the owner adds a new buyer, a lost one opens again, and its photos.
+export function InquiryActions({ id, companyId, status, hasBuyer, prospect, newBuyerCode, isOwner, photos, allPhotos }: {
   id: string;
   companyId: string;
   status: string;
@@ -20,20 +18,13 @@ export function InquiryActions({ id, companyId, status, hasBuyer, prospect, newB
   // A code for the new buyer, for the owner to add them here.
   newBuyerCode: string;
   isOwner: boolean;
-  quotedPrice: string;
-  nextFollowUp: string;
-  today: string;
   photos: Photo[];
   allPhotos: string[];
 }) {
   const router = useRouter();
-  const [mode, setMode] = useState<"" | "quote" | "lost" | "buyer">("");
+  const [mode, setMode] = useState<"" | "buyer">("");
   const [buyerNameIn, setBuyerNameIn] = useState(prospect);
   const [buyerCode, setBuyerCode] = useState(newBuyerCode);
-  const [note, setNote] = useState("");
-  const [next, setNext] = useState(nextFollowUp && nextFollowUp >= today ? nextFollowUp : "");
-  const [price, setPrice] = useState(quotedPrice);
-  const [reason, setReason] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState("");
   const [pending, start] = useTransition();
@@ -68,32 +59,21 @@ export function InquiryActions({ id, companyId, status, hasBuyer, prospect, newB
 
   return (
     <>
-      {open && (
+      {open && !hasBuyer && (
         <div className="panel">
-          <div className="inq-acts">
-            {hasBuyer ? (
-              <Link href={`/orders/new?inquiry=${id}`} className="btn primary">Buyer confirmed: make the sales order</Link>
-            ) : (
-              <span className="btn primary pointer-events-none opacity-60" aria-disabled>Make the sales order</span>
-            )}
-            <button type="button" className="btn" aria-expanded={mode === "quote"} onClick={() => setMode(mode === "quote" ? "" : "quote")}>
-              {status === "quoted" ? "Change the quote" : "We sent a quote"}
-            </button>
-            <button type="button" className="btn danger" aria-expanded={mode === "lost"} onClick={() => setMode(mode === "lost" ? "" : "lost")}>Mark lost</button>
-          </div>
-          {!hasBuyer && !isOwner && (
-            <p className="mt-2 text-[13px] text-warn">
-              {prospect} isn&apos;t a buyer in the app yet. Ask the owner to open this inquiry and tap Add as a buyer; then you can make the order.
+          {!isOwner && (
+            <p className="text-[13.5px] text-warn">
+              {prospect} isn&apos;t a buyer in the app yet. Ask the owner to open this inquiry and add them; then you can make the order.
             </p>
           )}
-          {!hasBuyer && isOwner && mode !== "buyer" && (
-            <div className="mt-2 row !gap-2 text-[13px] text-warn">
-              <span>{prospect} isn&apos;t a buyer in the app yet.</span>
+          {isOwner && mode !== "buyer" && (
+            <div className="row !gap-2 text-[13.5px]">
+              <span className="grow">{prospect} isn&apos;t a buyer in the app yet. Add them when they confirm, to make the order.</span>
               <button type="button" className="btn sm" onClick={() => setMode("buyer")}>Add {prospect || "them"} as a buyer</button>
             </div>
           )}
-          {!hasBuyer && isOwner && mode === "buyer" && (
-            <div className="inq-choice">
+          {isOwner && mode === "buyer" && (
+            <div className="inq-choice !mt-0">
               <div className="fgrid">
                 <label className="field">
                   <span>Buyer&apos;s real name <i>*</i></span>
@@ -106,41 +86,8 @@ export function InquiryActions({ id, companyId, status, hasBuyer, prospect, newB
               </div>
               <div className="row">
                 <button type="button" className="btn primary" disabled={pending || !buyerNameIn.trim() || !buyerCode.trim()}
-                  onClick={() => run("buyer", () => addInquiryBuyer(id, buyerCode, buyerNameIn), `${buyerNameIn.trim()} added to Buyers. Make the sales order when they confirm.`, () => setMode(""))}>
+                  onClick={() => run("buyer", () => addInquiryBuyer(id, buyerCode, buyerNameIn), `${buyerNameIn.trim()} added to Buyers. Make the order when they confirm.`, () => setMode(""))}>
                   {busy === "buyer" ? "Adding…" : "Add buyer"}
-                </button>
-                <button type="button" className="btn" onClick={() => setMode("")}>Cancel</button>
-              </div>
-            </div>
-          )}
-          {mode === "quote" && (
-            <div className="inq-choice">
-              <label className="field">
-                <span>Price quoted, ₹ per piece <i>*</i></span>
-                <input className="inp" inputMode="decimal" value={price} onChange={(e) => setPrice(e.target.value)} autoFocus />
-              </label>
-              <div className="row">
-                <button type="button" className="btn primary" disabled={pending}
-                  onClick={() => run("quote", () => setInquiryStatus(id, "quoted", { quoted_price: price }), "Quote saved", () => setMode(""))}>
-                  {busy === "quote" ? "Saving…" : "Save quote"}
-                </button>
-                <button type="button" className="btn" onClick={() => setMode("")}>Cancel</button>
-              </div>
-            </div>
-          )}
-          {mode === "lost" && (
-            <div className="inq-choice">
-              <span className="text-[12.5px] font-medium">Why was it lost? <i className="not-italic text-bad">*</i></span>
-              <div className="row">
-                {LOST_REASONS.map((r) => (
-                  <button key={r} type="button" className={`chip ${reason === r ? "info" : ""}`} aria-pressed={reason === r} onClick={() => setReason(r)}>{r}</button>
-                ))}
-              </div>
-              <input className="inp" value={reason} onChange={(e) => setReason(e.target.value)} maxLength={300} placeholder="Or write the reason" aria-label="Reason it was lost" />
-              <div className="row">
-                <button type="button" className="btn danger" disabled={pending || !reason.trim()}
-                  onClick={() => run("lost", () => setInquiryStatus(id, "lost", { lost_reason: reason }), "Marked lost", () => setMode(""))}>
-                  {busy === "lost" ? "Saving…" : "Mark lost"}
                 </button>
                 <button type="button" className="btn" onClick={() => setMode("")}>Cancel</button>
               </div>
@@ -157,23 +104,6 @@ export function InquiryActions({ id, companyId, status, hasBuyer, prospect, newB
             {busy === "reopen" ? "Saving…" : "Open again"}
           </button>
           {error && <p className="w-full text-[13px] font-semibold text-bad" role="alert">{error}</p>}
-        </div>
-      )}
-
-      {open && (
-        <div className="panel">
-          <h2>Log a follow-up</h2>
-          <textarea className="inp" rows={2} value={note} maxLength={2000} onChange={(e) => setNote(e.target.value)}
-            placeholder="Called Sana, sent the price for 1200 pcs, she replies Friday" aria-label="What happened" />
-          <div className="row mt-3">
-            <label className="row !gap-2 text-[13px] font-medium">Next follow-up
-              <input className="inp !w-auto" type="date" value={next} min={today} onChange={(e) => setNext(e.target.value)} />
-            </label>
-            <button type="button" className="btn primary ml-auto" disabled={pending || (!note.trim() && !next)}
-              onClick={() => run("note", () => addInquiryNote(id, note, next), "Follow-up saved", () => setNote(""))}>
-              {busy === "note" ? "Saving…" : "Save follow-up"}
-            </button>
-          </div>
         </div>
       )}
 

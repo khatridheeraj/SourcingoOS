@@ -1,4 +1,5 @@
-// Buyer inquiries: New, then Quoted, then Converted (a sales order) or Lost.
+// Buyer inquiries: New, then Quoted, then Converted (a sales order) or Lost. A sample sent to the buyer is a step
+// on the way (sample_sent_on), while the inquiry stays open.
 export const INQUIRY_STATUS: Record<string, { label: string; cls: string }> = {
   new: { label: "New", cls: "chip info" },
   quoted: { label: "Quoted", cls: "chip warn" },
@@ -39,9 +40,24 @@ export type Inquiry = {
   notes: string | null;
   photos: string[];
   status_at: string;
+  updated_at: string;
   created_by: string | null;
   created_at: string;
+  sample_sent_on: string | null;
+  sample_note: string | null;
+  incoming_po_id: string | null;
 };
-export const INQUIRY_COLUMNS = "id, inquiry_no, buyer_id, prospect, contact_name, contact, source, product, est_qty, unit, target_price, quoted_price, merchandiser_id, next_follow_up, status, lost_reason, order_id, notes, photos, status_at, created_by, created_at";
+export const INQUIRY_COLUMNS = "id, inquiry_no, buyer_id, prospect, contact_name, contact, source, product, est_qty, unit, target_price, quoted_price, merchandiser_id, next_follow_up, status, lost_reason, order_id, notes, photos, status_at, updated_at, created_by, created_at, sample_sent_on, sample_note, incoming_po_id";
 
 export const isOpenInquiry = (status: string) => status === "new" || status === "quoted";
+
+// Where an inquiry stands on its way to an order, for the steps shown on it.
+export const STAGES = ["Asked", "Quoted", "Sample sent", "Order"] as const;
+export function stageOf(i: Pick<Inquiry, "status" | "sample_sent_on">): number {
+  if (i.status === "converted") return 3;
+  if (i.sample_sent_on) return 2;
+  return i.status === "quoted" ? 1 : 0;
+}
+
+// An open inquiry with no follow-up date and nothing done on it for this many days has gone quiet.
+export const QUIET_DAYS = 30;

@@ -1,30 +1,34 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Icon } from "@/components/nav";
 import { canEditOrders, getMe } from "@/lib/auth";
 import { buyerName, loadBuyers, loadTeam, personName } from "@/lib/data";
 import { fetchAll } from "@/lib/fetch-all";
-import { day, dayAt, daysBetween, money, qty, todayIST } from "@/lib/format";
-import { INQUIRY_COLUMNS, INQUIRY_STATUS, isOpenInquiry, sourceLabel, type Inquiry } from "@/lib/inquiries";
-import { createClient } from "@/lib/supabase/server";
+import { day, daysBetween, money, qty, todayIST } from "@/lib/format";
+import { INQUIRY_COLUMNS, isOpenInquiry, QUIET_DAYS, STAGES, stageOf, type Inquiry } from "@/lib/inquiries";
 import { addDays } from "@/lib/payments";
+import { createClient } from "@/lib/supabase/server";
+import { InquiryButton, InquirySheet, type StepInquiry } from "./inquiry-step";
+import { QuickAdd } from "./quick-add";
+import { CloseQuiet } from "./close-quiet";
 
-const TABS = [
-  { key: "open", label: "Open", hint: "New and quoted inquiries, the ones with a follow-up due first." },
-  { key: "due", label: "Follow-up due", hint: "Open inquiries whose follow-up date is today or has passed." },
-  { key: "converted", label: "Converted", hint: "Inquiries that became sales orders." },
-  { key: "lost", label: "Lost", hint: "Inquiries that didn't become orders, with the reason." },
-  { key: "all", label: "All", hint: "Every inquiry, newest first." },
+const VIEWS = [
+  { key: "open", label: "Open" },
+  { key: "won", label: "Won" },
+  { key: "lost", label: "Lost" },
+  { key: "all", label: "All" },
 ];
 
 const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;
+const lakh = (n: number) => (n >= 100_000 ? `₹${(n / 100_000).toFixed(n >= 1_000_000 ? 0 : 1)} L` : money(Math.round(n)));
 
 export default async function InquiriesPage({ searchParams }: PageProps<"/inquiries">) {
   const me = await getMe();
   if (!canEditOrders(me?.role) || !me?.companyId) redirect("/");
   const sp = await searchParams;
-  const tab = TABS.some((t) => t.key === sp.show) ? String(sp.show) : "open";
+  const view = VIEWS.some((t) => t.key === sp.show) ? String(sp.show) : "open";
   const q = typeof sp.q === "string" ? sp.q.trim().toLowerCase() : "";
+  // Text shared to the app from another app (WhatsApp's Share on Android) lands in the quick add.
+  const shared = [sp.title, sp.text, sp.url].filter((x) => typeof x === "string" && x.trim()).join("\n");
   const supabase = await createClient();
   const [{ data, error }, buyers, team] = await Promise.all([
     fetchAll<Inquiry>((a, z) => supabase.from("inquiries").select(INQUIRY_COLUMNS).eq("company_id", me.companyId!).order("created_at", { ascending: false }).order("id").range(a, z)),
@@ -32,127 +36,159 @@ export default async function InquiriesPage({ searchParams }: PageProps<"/inquir
     loadTeam(),
   ]);
   const all = data ?? [];
+  const openIds = all.filter((i) => isOpenInquiry(i.status)).map((i) => i.id);
   const orderIds = all.map((i) => i.order_id).filter(Boolean) as string[];
-  const { data: linked } = orderIds.length ? await supabase.from("orders").select("id, order_no").in("id", orderIds) : { data: [] };
+  const [{ data: linked }, { data: notes }] = await Promise.all([
+    orderIds.length ? supabase.from("orders").select("id, order_no").in("id", orderIds) : Promise.resolve({ data: [] as { id: string; order_no: string }[] }),
+    openIds.length ? supabase.from("inquiry_notes").select("inquiry_id, created_at").in("inquiry_id", openIds) : Promise.resolve({ data: [] as { inquiry_id: string; created_at: string }[] }),
+  ]);
   const orderNo = new Map((linked ?? []).map((o) => [o.id, o.order_no]));
+  const lastNote = new Map<string, string>();
+  for (const n of notes ?? []) if ((lastNote.get(n.inquiry_id) ?? "") < n.created_at) lastNote.set(n.inquiry_id, n.created_at);
   const buyerOf = new Map(buyers.map((b) => [b.id, buyerName(b)]));
   const people = new Map(team.map((m) => [m.user_id, personName(m)]));
   const today = todayIST();
-  const due = (i: Inquiry) => isOpenInquiry(i.status) && !!i.next_follow_up && i.next_follow_up <= today;
   const who = (i: Inquiry) => (i.buyer_id ? buyerOf.get(i.buyer_id) ?? "Buyer" : i.prospect ?? "");
+  const lastTouch = (i: Inquiry) => [i.updated_at, i.created_at, lastNote.get(i.id) ?? ""].sort().at(-1)!.slice(0, 10);
+  const due = (i: Inquiry) => isOpenInquiry(i.status) && !!i.next_follow_up && i.next_follow_up <= today;
+  const quiet = (i: Inquiry) => isOpenInquiry(i.status) && !i.next_follow_up && daysBetween(lastTouch(i), today) >= QUIET_DAYS;
   const matches = (i: Inquiry) => !q || [i.inquiry_no, who(i), i.product, i.contact_name, i.contact, i.merchandiser_id ? people.get(i.merchandiser_id) : ""]
     .join(" ").toLowerCase().includes(q);
 
-  const inTab = (k: string, i: Inquiry) => k === "all" || (k === "open" ? isOpenInquiry(i.status) : k === "due" ? due(i) : i.status === k);
-  const rows = all.filter((i) => inTab(tab, i) && matches(i));
-  if (tab === "open" || tab === "due") {
-    // Follow-ups due first (oldest first), then the rest by their next follow-up, then newest.
-    rows.sort((a, b) => Number(due(b)) - Number(due(a)) || (a.next_follow_up ?? "9999").localeCompare(b.next_follow_up ?? "9999") || b.created_at.localeCompare(a.created_at));
-  }
-  const count = (k: string) => all.filter((i) => inTab(k, i)).length;
+  const open = all.filter((i) => isOpenInquiry(i.status));
+  const step = (i: Inquiry): StepInquiry => ({
+    id: i.id, no: i.inquiry_no, title: who(i), product: i.product, status: i.status, stage: stageOf(i), hasBuyer: !!i.buyer_id,
+    price: i.quoted_price != null ? String(i.quoted_price) : i.target_price != null ? String(i.target_price) : "", quoted: i.quoted_price,
+    unit: i.unit, estQty: i.est_qty, sampleSentOn: i.sample_sent_on, contactName: i.contact_name ?? "", contact: i.contact ?? "", nextFollowUp: i.next_follow_up ?? "",
+  });
 
-  // The numbers on top: what is open, what needs a call today, and how many inquiries became orders in 90 days.
+  // The open list, by what to do: follow up today, send a price, wait on the buyer, and the ones gone quiet.
+  const byDue = (a: Inquiry, b: Inquiry) => (a.next_follow_up ?? "9999").localeCompare(b.next_follow_up ?? "9999") || b.created_at.localeCompare(a.created_at);
+  const shown = open.filter(matches);
+  const groups = [
+    { key: "due", title: "Follow up today", hint: "Their day has come. Send a message, then pick the next day.", rows: shown.filter(due).sort(byDue) },
+    { key: "price", title: "Needs a price", hint: "Asked, not priced yet.", rows: shown.filter((i) => !due(i) && !quiet(i) && stageOf(i) === 0).sort(byDue) },
+    { key: "wait", title: "Waiting on the buyer", hint: "Price or sample sent. Each comes back on its follow-up day.", rows: shown.filter((i) => !due(i) && !quiet(i) && stageOf(i) > 0).sort(byDue) },
+  ];
+  const quietRows = shown.filter(quiet).sort((a, b) => lastTouch(b).localeCompare(lastTouch(a)));
+  const closed = all.filter((i) => matches(i) && (view === "all" || (view === "won" ? i.status === "converted" : view === "lost" ? i.status === "lost" : false)));
+
+  // One line of numbers instead of a wall of tiles.
   const since = addDays(today, -90);
-  const recent = all.filter((i) => i.created_at >= since);
-  const decided = recent.filter((i) => i.status === "converted" || i.status === "lost");
+  const decided = all.filter((i) => i.status_at.slice(0, 10) >= since && (i.status === "converted" || i.status === "lost"));
   const won = decided.filter((i) => i.status === "converted").length;
-  const quoted = all.filter((i) => i.status === "quoted");
-  const quotedValue = quoted.reduce((s, i) => s + (i.quoted_price ?? 0) * (i.est_qty ?? 0), 0);
-  const t = TABS.find((x) => x.key === tab)!;
+  const quotedValue = open.reduce((s, i) => s + (i.quoted_price ?? 0) * (i.est_qty ?? 0), 0);
+  const dueCount = open.filter(due).length;
+  const summary = [
+    dueCount ? <b key="d" className="text-bad">{plural(dueCount, "follow-up")} due</b> : open.length ? <b key="d" className="text-ok">No follow-ups due</b> : null,
+    open.length ? `${open.length} open` : null,
+    quotedValue ? `${lakh(quotedValue)} quoted` : null,
+    decided.length >= 3 ? `${won} of ${decided.length} won in 90 days` : null,
+  ].filter(Boolean);
   const qs = (k: string) => `/inquiries?${new URLSearchParams({ ...(k !== "open" ? { show: k } : {}), ...(q ? { q } : {}) })}`;
 
-  const kpis = [
-    { key: "open", label: "Open inquiries", value: String(count("open")), sev: "", sub: `${count("open") - quoted.length} new · ${quoted.length} quoted` },
-    { key: "due", label: "Follow-ups due", value: String(count("due")), sev: count("due") ? "bad" : "ok", sub: count("due") ? "Call or write today" : "All followed up" },
-    { key: "quoted", label: "Quoted, waiting", value: quotedValue ? money(Math.round(quotedValue)) : String(quoted.length), sev: "",
-      sub: quotedValue ? plural(quoted.length, "quote") : "Quotes sent" },
-    { key: "converted", label: "Won in 90 days", value: decided.length ? `${Math.round((won / decided.length) * 100)}%` : "–", sev: "",
-      sub: decided.length ? `${won} of ${decided.length} decided became orders` : "None decided yet" },
-  ];
+  function Row({ i }: { i: Inquiry }) {
+    const s = stageOf(i);
+    const isDue = due(i);
+    const late = isDue && i.next_follow_up ? daysBetween(i.next_follow_up, today) : 0;
+    const price = i.quoted_price != null ? `${money(i.quoted_price)} quoted` : i.target_price != null ? `${money(i.target_price)} target` : "";
+    const bits = [i.est_qty ? `${qty(i.est_qty)} ${i.unit}` : "", price, i.merchandiser_id && i.merchandiser_id !== me?.id ? people.get(i.merchandiser_id) : ""].filter(Boolean);
+    const when = i.status === "converted" ? null
+      : i.status === "lost" ? <span key="w" className="!whitespace-normal">Lost: {i.lost_reason}</span>
+      : isDue ? <span key="w" className="text-bad">{late ? `${plural(late, "day")} late` : "Due today"}</span>
+      : i.next_follow_up ? <span key="w">Follow up {day(i.next_follow_up).replace(/ \d{4}$/, "")}</span>
+      : <span key="w">Quiet since {day(lastTouch(i)).replace(/ \d{4}$/, "")}</span>;
+    return (
+      <li className="inq-row">
+        <span className={`sev ${isDue ? "bad" : i.status === "converted" ? "ok" : s > 0 ? "warn" : ""}`} aria-hidden />
+        <Link href={`/inquiries/${i.id}`} className="min-w-0 inq-main">
+          <span className="inq-who">{who(i)}{!i.buyer_id && i.status !== "converted" && <span className="chip ml-1.5 align-middle">New buyer</span>}</span>
+          <span className="inq-what">{i.product}</span>
+          <span className="inq-meta">
+            {[
+              i.status === "converted" ? <span key="st" className="text-ok">Order {orderNo.get(i.order_id ?? "") ?? ""}</span> : i.status !== "lost" ? <span key="st" className="inq-stage">{STAGES[s]}</span> : null,
+              ...bits.map((b) => <span key={b}>{b}</span>),
+              when,
+            ].filter(Boolean).flatMap((x, n) => (n ? [" ", x] : [x]))}
+          </span>
+        </Link>
+        {isOpenInquiry(i.status) && (quiet(i)
+          ? <CloseQuiet id={i.id} />
+          : <InquiryButton i={step(i)} label={isDue ? "Follow up" : "Update"} className={`btn sm ${isDue ? "primary" : ""}`} />)}
+      </li>
+    );
+  }
+
+  const empty = all.length === 0;
 
   return (
     <>
-      <div className="head">
+      <div className="head inq-head">
         <div className="grow">
           <h1>Inquiries</h1>
-          <p>
-            Every buyer inquiry, from the first ask to the order.{" "}
-            {count("due") ? <b className="text-bad">{plural(count("due"), "follow-up")} due</b> : <b className="text-ok">No follow-ups due</b>}
-          </p>
+          {summary.length > 0 && <p className="inq-sum">{summary.map((s, n) => <span key={n}>{s}</span>).flatMap((x, n) => (n ? [" ", x] : [x]))}</p>}
         </div>
-        <Link href="/inquiries/new" className="btn primary"><Icon name="plus" size={16} />New inquiry</Link>
+        <Link href="/inquiries/new" className="btn ghost sm hide-phone">Full form</Link>
       </div>
 
-      <div className="kpis">
-        {kpis.map((k) => (
-          <Link key={k.key} href={qs(k.key === "quoted" ? "open" : k.key)} className={`kpi ${k.sev}`}>
-            <span className="kpi-label"><i aria-hidden />{k.label}</span>
-            <b className="num">{k.value}</b>
-            <small>{k.sub}</small>
-          </Link>
-        ))}
-      </div>
+      <QuickAdd buyers={buyers.filter((b) => b.active).map((b) => ({ id: b.id, label: buyerName(b), names: [b.realName ?? "", b.code] }))}
+        companyId={me.companyId} meId={me.id} today={today} initial={shared} />
 
-      <section className="card" aria-labelledby="inq-h">
-        <header className="card-h">
-          <div className="min-w-0">
-            <h2 id="inq-h">{t.label}</h2>
-            <p>{t.hint}</p>
+      {error && <div className="errbox">{error.message}</div>}
+
+      {empty ? (
+        <div className="inq-empty">
+          <b>Every buyer ask, in one place</b>
+          <p>When a buyer asks for a price on WhatsApp, a call or email, paste it above. It comes back on its follow-up day, so no inquiry is forgotten, and the ones you win become orders in one tap.</p>
+          <p className="muted">Emails the PO pickup catches that aren&apos;t POs can be made inquiries from <Link href="/pos" className="link">Incoming POs</Link>.</p>
+        </div>
+      ) : (
+        <>
+          <div className="inq-bar">
+            <nav className="seg" aria-label="Show">
+              {VIEWS.map((x) => (
+                <Link key={x.key} href={qs(x.key)} aria-current={view === x.key ? "page" : undefined} scroll={false}>{x.label}</Link>
+              ))}
+            </nav>
+            {all.length > 8 && (
+              <form action="/inquiries" className="inq-search">
+                {view !== "open" && <input type="hidden" name="show" value={view} />}
+                <input className="inp" type="search" name="q" defaultValue={q} placeholder="Search" aria-label="Search inquiries" enterKeyHint="search" />
+              </form>
+            )}
           </div>
-          <nav className="seg" aria-label="Show">
-            {TABS.map((x) => (
-              <Link key={x.key} href={qs(x.key)} aria-current={tab === x.key ? "page" : undefined} scroll={false}>
-                {x.label} <span>{count(x.key)}</span>
-              </Link>
-            ))}
-          </nav>
-        </header>
-        <form className="border-b border-line px-4 py-3 sm:px-5" action="/inquiries">
-          {tab !== "open" && <input type="hidden" name="show" value={tab} />}
-          <input className="inp" type="search" name="q" defaultValue={q} placeholder="Search buyer, product, contact or ENQ number" aria-label="Search inquiries" enterKeyHint="search" />
-        </form>
 
-        {error && <div className="errbox m-4">{error.message}</div>}
-
-        {rows.length === 0 ? (
-          <p className="card-empty">
-            {q ? "No inquiries match that search." : tab === "open" ? "No open inquiries. Log each buyer ask with New inquiry, so none is forgotten."
-              : tab === "due" ? "Nothing to follow up today." : "Nothing here yet."}
-          </p>
-        ) : (
-          <ul className="todo">
-            {rows.map((i) => {
-              const s = INQUIRY_STATUS[i.status];
-              const isDue = due(i);
-              const late = isDue && i.next_follow_up ? daysBetween(i.next_follow_up, today) : 0;
-              return (
-                <li key={i.id}>
-                  <span className={`sev ${isDue ? "bad" : i.status === "quoted" ? "warn" : i.status === "converted" ? "ok" : ""}`} aria-hidden />
-                  <div className="min-w-0">
-                    <Link href={`/inquiries/${i.id}`} className="todo-title">
-                      <span className="code">{i.inquiry_no}</span>{who(i)} · {i.product}{!i.buyer_id && <span className="chip ml-2 align-middle">New buyer</span>}
-                    </Link>
-                    <div className="todo-detail">
-                      {[i.est_qty ? `${qty(i.est_qty)} ${i.unit}` : "", i.quoted_price != null ? `quoted ${money(i.quoted_price)}` : i.target_price != null ? `target ${money(i.target_price)}` : "",
-                        i.merchandiser_id ? people.get(i.merchandiser_id) : "Not assigned", `${sourceLabel(i.source)} ${dayAt(i.created_at)}`].filter(Boolean).join(" · ")}
-                      {i.status === "lost" && i.lost_reason && <> · {i.lost_reason}</>}
-                    </div>
-                    {(isDue || (i.next_follow_up && isOpenInquiry(i.status)) || i.order_id) && (
-                      <div className="todo-links">
-                        {isDue && <span className="chip bad">{late ? `Follow-up ${plural(late, "day")} late` : "Follow up today"}</span>}
-                        {!isDue && i.next_follow_up && isOpenInquiry(i.status) && <span className="chip">Follow up {day(i.next_follow_up)}</span>}
-                        {i.order_id && <Link href={`/orders/${i.order_id}`} className="chip ok code">{orderNo.get(i.order_id) ?? "Order"}</Link>}
-                      </div>
-                    )}
-                  </div>
-                  <div className="todo-chip"><span className={s?.cls}>{s?.label}</span></div>
-                  <Link href={`/inquiries/${i.id}`} className="btn sm todo-act">{isDue ? "Follow up" : "Open"}</Link>
-                </li>
-              );
-            })}
-          </ul>
-        )}
-      </section>
+          {view === "open" ? (
+            <>
+              {groups.filter((g) => g.rows.length).map((g) => (
+                <section key={g.key} className="card inq-group" aria-labelledby={`g-${g.key}`}>
+                  <header className="inq-gh">
+                    <h2 id={`g-${g.key}`}>{g.title} <span>{g.rows.length}</span></h2>
+                    <p>{g.hint}</p>
+                  </header>
+                  <ul className="inq-list">{g.rows.map((i) => <Row key={i.id} i={i} />)}</ul>
+                </section>
+              ))}
+              {quietRows.length > 0 && (
+                <details className="card inq-group inq-quiet" open={groups.every((g) => !g.rows.length)}>
+                  <summary className="inq-gh">
+                    <h2>Gone quiet <span>{quietRows.length}</span></h2>
+                    <p>No follow-up day and nothing for {QUIET_DAYS}+ days. Close the dead ones in a tap, or open one to pick it up again.</p>
+                  </summary>
+                  <ul className="inq-list">{quietRows.map((i) => <Row key={i.id} i={i} />)}</ul>
+                </details>
+              )}
+              {!shown.length && <p className="inq-none">{q ? "No open inquiries match that search." : "No open inquiries. Log the next buyer ask above."}</p>}
+            </>
+          ) : (
+            <section className="card inq-group">
+              {closed.length ? <ul className="inq-list">{closed.map((i) => <Row key={i.id} i={i} />)}</ul>
+                : <p className="inq-none">{q ? "Nothing matches that search." : view === "won" ? "No inquiry has become an order yet." : view === "lost" ? "None lost." : "Nothing here yet."}</p>}
+            </section>
+          )}
+        </>
+      )}
+      <InquirySheet today={today} />
     </>
   );
 }
