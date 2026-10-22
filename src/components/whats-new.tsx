@@ -4,13 +4,14 @@ import { useState, useSyncExternalStore } from "react";
 import { Icon, type IconName } from "@/components/nav";
 
 const KEY = "sourcingo:whats-new";
-const VERSION = "2026-10-22";
+const VERSION = "2026-10-22b";
 
 type Item = { icon: IconName; title: string; text: string };
 
 // What changed for this person's work, shown once on Home until they close it. Remembered on this phone or computer only.
 const FOR: Record<string, Item[]> = {
   orders: [
+    { icon: "plus", title: "PO PDF on every order", text: "Tap PO PDF next to the ship date to open the buyer's PO. Factory PO PDF in Styles prints our PO for WhatsApp." },
     { icon: "check", title: "Update in one tap", text: "Tap Update on any Home row: tick the styles and the step is done. Catch up marks every earlier step in one go." },
     { icon: "plus", title: "Start production in one go", text: "The plan fills itself from the ship date. Say the factory agreed, and it goes for the lock." },
     { icon: "share", title: "Chase and buyer updates, written for you", text: "Chase sends the factory every late step on WhatsApp. Updates has a ready message for each buyer." },
@@ -21,6 +22,7 @@ const FOR: Record<string, Item[]> = {
     { icon: "search", title: "Find anything", text: "The search at the top finds any order, PO or style." },
   ],
   owner: [
+    { icon: "plus", title: "PO PDF on every order", text: "Tap PO PDF next to the ship date to open the buyer's PO. Factory PO PDF in Styles prints our PO for WhatsApp." },
     { icon: "payments", title: "Money to collect on Home", text: "Cheques to deposit, overdue invoices and cheques Tally shows settled are on Home, with a tap to each." },
     { icon: "check", title: "Lock plans from Home", text: "Plans sent for your lock are at the top of Home. Check and lock in one sheet." },
     { icon: "share", title: "Factories chased, buyers updated", text: "Updates shows every factory behind plan and a ready message for each buyer." },

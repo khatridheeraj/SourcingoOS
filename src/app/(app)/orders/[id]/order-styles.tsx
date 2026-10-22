@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { day, dayAt, daysBetween, DEFAULT_BUFFER_DAYS, planDueAt, PLAN_HOURS, qty, TNA_STEPS } from "@/lib/format";
@@ -419,8 +420,11 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
                 <span className={`chip ${status.cls}`}>{status.text}</span>
                 <span className="muted text-xs">{g.lines.length} {g.lines.length === 1 ? "style" : "styles"}{target && g.factoryId ? ` · target date ${dm(target)}` : ""}</span>
               </div>
-              {editable && g.factoryId && released && (
-                <div className="row"><FactoryLink factoryId={g.factoryId} name={g.factoryShort || g.factoryName} phone={g.factoryPhone} /></div>
+              {canEdit && g.factoryId && released && (
+                <div className="row">
+                  {editable && <FactoryLink factoryId={g.factoryId} name={g.factoryShort || g.factoryName} phone={g.factoryPhone} />}
+                  <Link href={`/orders/${orderId}/factory-po/${g.factoryId}`} className="btn sm" title="Our PO to this factory, to print or save as a PDF">Factory PO PDF</Link>
+                </div>
               )}
               {editable && g.factoryId && !released && (
                 <div className="row">
@@ -429,6 +433,7 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
                     title={!target ? "Enter the PO's ship date first" : "Fills every empty target with the standard days before the target date"}
                     onClick={() => fillTargets(g, target)}>Fill empty targets</button>
                   <button type="button" className="btn sm" disabled={pending} onClick={() => copyRequest(g)}>Copy plan request</button>
+                  <Link href={`/orders/${orderId}/factory-po/${g.factoryId}`} className="btn sm" title="A draft of our PO to this factory, to print or save as a PDF">Draft PO PDF</Link>
                   <label className="row gap-1.5 text-[13px]">Buffer
                     <input className="inp w-14 !py-1" inputMode="numeric" value={buffer} aria-label={`Buffer days for ${g.factoryName}`}
                       onChange={(e) => setBuffers((b) => ({ ...b, [g.factoryId!]: e.target.value.replace(/\D/g, "") }))} />

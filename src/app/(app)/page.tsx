@@ -75,6 +75,9 @@ export default async function OrdersPage({ searchParams }: PageProps<"/">) {
     ? await fetchAll<LinePrice>((a, z) => supabase.rpc("line_prices", { p_orders: data.map((o) => o.id) }).order("id").range(a, z))
     : { data: [], error: null };
   const rateOf = new Map(rates.map((r) => [r.id, r]));
+  // Open orders whose buyer PO is on file, to point out the ones still missing it.
+  const { data: withPo } = prices && openIds.length ? await supabase.rpc("orders_with_po_file", { p_orders: openIds }) : { data: null };
+  const hasPo = new Set((withPo ?? []) as string[]);
   const withRates = (o: { order_lines: { id: string; style: string; qty: number; factory_id: string | null }[] | null }): Line[] =>
     (o.order_lines ?? []).map((l) => ({ ...l, buyer_rate: rateOf.get(l.id)?.buyer_rate ?? null, factory_rate: rateOf.get(l.id)?.factory_rate ?? null }));
 
@@ -87,6 +90,7 @@ export default async function OrdersPage({ searchParams }: PageProps<"/">) {
     const factoryNames = [...new Set(lines.map((l) => (l.factory_id ? factoryById.get(l.factory_id)?.name : null)).filter(Boolean))] as string[];
     const missingFactory = lines.some((l) => !l.factory_id);
     return {
+      noPo: prices && o.status === "open" && withPo != null && !hasPo.has(o.id),
       ...o,
       lines,
       buyer: b ? buyerName(b) : "",
@@ -180,10 +184,11 @@ export default async function OrdersPage({ searchParams }: PageProps<"/">) {
                   PO {r.buyer_po} · {r.styles.length <= 2 ? r.styles.join(", ") : `${r.styles.slice(0, 2).join(", ")} +${r.styles.length - 2}`}
                   {r.factoryNames.length > 0 && ` · ${r.factoryNames.join(", ")}`}
                 </span>
-                {(r.missingFactory || r.needsQc) && (
+                {(r.missingFactory || r.needsQc || r.noPo) && (
                   <span className="mt-1.5 flex gap-1.5">
                     {r.missingFactory && <span className="chip warn">Needs factory</span>}
                     {r.needsQc && <span className="chip warn">Needs final QC</span>}
+                    {r.noPo && <span className="chip" title="Add the buyer's PO file in the order's Details">No PO file</span>}
                   </span>
                 )}
               </span>
