@@ -25,6 +25,8 @@ import type { LineFileKind } from "../actions";
 import { loadShipProgress, orderShip, partText } from "@/lib/shipments";
 import { loadSampleThreads } from "@/lib/samples-server";
 import { SampleThreadCard } from "../../samples/sample-thread";
+import { PO_BUCKET, type StoredFile } from "@/lib/po-files";
+import { BuyerPo, type PoDoc } from "./buyer-po";
 
 const str = (v: unknown) => (v == null ? "" : String(v));
 
@@ -71,6 +73,8 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
   // Each style's fit, strike off, PP and size-set samples, with every round.
   const samples = await loadSampleThreads(id);
   const samplesToAct = samples.threads.filter((t) => t.state === "with_team").length;
+  // The buyer's own PO: the files its email (or Incoming POs) brought, and any the team added by hand.
+  const poDocsP = canEdit ? loadPoDocs(supabase, id, new Map(team.map((m) => [m.user_id, personName(m)]))) : Promise.resolve([]);
   // Dispatches (purchase to GRN) are for the orders team only.
   const [{ data: dRows }, { data: dLines }, { data: tallyRaw }, { data: shipBlocker }] = canEdit
     ? await Promise.all([
@@ -88,6 +92,7 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
     ? await supabase.from("dispatch_photos").select("dispatch_id, path").in("dispatch_id", dRows.map((d) => d.id)).order("created_at")
     : { data: [] };
   const dispatchPhotos = dPhotos ?? [];
+  const poDocs = await poDocsP;
   const people = new Map(team.map((m) => [m.user_id, personName(m)]));
   // Photos come from private storage through links that work for an hour.
   const qcIds = (qc ?? []).map((c) => c.id);
@@ -268,6 +273,10 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
             <span className={STATUS[o.status]?.cls}>{STATUS[o.status]?.label}</span>
             <span>{due ? `Ships ${day(due)}` : "No ship date yet"}{o.status === "open" && due && due < todayIST() && <b className="text-bad"> · {daysBetween(due, todayIST())} days late</b>}</span>
             <span>{lines.length} {lines.length === 1 ? "style" : "styles"} · {qty(lines.reduce((t, l) => t + l.qty, 0))} pcs</span>
+            {canEdit && (poDocs[0]?.url ? <a href={poDocs[0].url} target="_blank" rel="noreferrer" className="chip po-chip" title={`Open ${poDocs[0].name}`}>
+              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" aria-hidden><path d="M4 1.75h5.5L12.25 4.5v9.75H4z" /><path d="M9.25 1.75V4.75h3" /></svg>
+              {poDocs[0].ext === "pdf" ? "PO PDF" : "PO file"}{poDocs.length > 1 ? ` · ${poDocs.length} files` : ""}</a>
+              : <a href="#details-po" className="chip warn">No PO file</a>)}
             {ship.part && o.status === "open" && <a href="#dispatch" className="chip info">Part shipped · {partText(ship)}</a>}
             {o.closed_short_at && <span className="chip warn" title={o.short_reason ?? undefined}>Closed short · {qty(ship.billed)} of {qty(ship.ordered)} pcs</span>}
             {!ship.part && outlook?.level === "risk" && <span className="chip bad" title="A late step pushes back every step after it">Ship date at risk · about {outlook.daysLate} {outlook.daysLate === 1 ? "day" : "days"} late</span>}
@@ -370,7 +379,7 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
         riskDays={outlook?.level === "risk" ? outlook.daysLate : 0}
         initial={{ revised_ship_date: str(o.revised_ship_date), delay_reason: str(o.delay_reason) }}
       /></div>
-      <div data-sec="details">{canEdit ? <OrderForm
+      <div data-sec="details">{canEdit && <BuyerPo orderId={o.id} companyId={o.company_id} docs={poDocs} canEdit={canEdit} />}{canEdit ? <OrderForm
         key={o.updated_at}
         initial={{
           id: o.id, edit_no: o.edit_no, buyer_id: o.buyer_id, buyer_po: o.buyer_po, po_date: str(o.po_date), ship_date: str(o.ship_date),
@@ -408,4 +417,37 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
       </OrderSections>
     </>
   );
+}
+
+const sizeOf = (n: unknown) => (typeof n === "number" ? n : Number(n) || 0);
+
+// The buyer's PO files on an order, newest hand-added first after the ones that came with the PO itself.
+async function loadPoDocs(supabase: Awaited<ReturnType<typeof createClient>>, orderId: string, people: Map<string, string>): Promise<PoDoc[]> {
+  const [{ data: incoming }, { data: added }] = await Promise.all([
+    supabase.from("incoming_pos").select("id, source, email_from, received_at, files").eq("order_id", orderId).order("received_at"),
+    supabase.from("order_po_files").select("id, path, file_name, file_type, size_bytes, created_by, created_at").eq("order_id", orderId).is("removed_at", null).order("created_at"),
+  ]);
+  const docs: (Omit<PoDoc, "url" | "download"> & { path: string })[] = [
+    ...(incoming ?? []).flatMap((i) => ((i.files ?? []) as StoredFile[]).map((f) => ({
+      key: f.path, id: null, path: f.path, name: f.name || "PO", ext: (f.path.split(".").pop() ?? "").toLowerCase(), size: sizeOf(f.size),
+      from: i.source === "email" ? `Came by email${i.email_from ? ` from ${i.email_from.replace(/\s*<.*>$/, "")}` : ""} · ${dayAt(i.received_at)}` : `Added on Incoming POs · ${dayAt(i.received_at)}`,
+    }))),
+    ...(added ?? []).map((f) => ({
+      key: f.id, id: f.id, path: f.path, name: f.file_name, ext: (f.path.split(".").pop() ?? "").toLowerCase(), size: f.size_bytes,
+      from: `Added by ${(f.created_by && people.get(f.created_by)) || "the team"} · ${dayAt(f.created_at)}`,
+    })),
+  ];
+  if (!docs.length) return [];
+  // Links work for an hour: one opens the file in the browser, the other saves it under its own name.
+  const store = supabase.storage.from(PO_BUCKET);
+  const [{ data: views }, downloads] = await Promise.all([
+    store.createSignedUrls(docs.map((d) => d.path), 3600),
+    Promise.all(docs.map((d) => store.createSignedUrl(d.path, 3600, { download: d.name }))),
+  ]);
+  const viewOf = new Map((views ?? []).filter((v) => v.signedUrl).map((v) => [v.path, v.signedUrl]));
+  // PDFs and photos come first: they are what people open to read the PO.
+  const rank = (ext: string) => (ext === "pdf" ? 0 : ["jpg", "jpeg", "png", "webp"].includes(ext) ? 1 : 2);
+  return docs
+    .map(({ path, ...d }, i) => ({ ...d, url: viewOf.get(path) ?? null, download: downloads[i].data?.signedUrl ?? null }))
+    .sort((a, b) => rank(a.ext) - rank(b.ext));
 }

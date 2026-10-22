@@ -5,6 +5,7 @@ import { canEditOrders, canEnterDone, canRecordQc, getMe } from "@/lib/auth";
 import { friendly } from "@/lib/errors";
 import { QC_KINDS, TNA_STEPS, todayIST } from "@/lib/format";
 import { buyerOverdue, NO_WARNINGS, orderWarnings, type OrderWarnings, type Overdue } from "@/lib/order-checks";
+import { PO_FILE_TYPES, PO_MAX_BYTES, type StoredFile } from "@/lib/po-files";
 import { createClient } from "@/lib/supabase/server";
 
 export type OrderInput = {
@@ -339,6 +340,32 @@ export async function addLineFiles(orderId: string, lineId: string, kind: LineFi
 export async function removeLineFile(orderId: string, fileId: string): Promise<{ error?: string }> {
   const supabase = await createClient();
   const { error } = await supabase.rpc("remove_line_file", { p_id: fileId });
+  if (error) return { error: friendly(error) };
+  revalidatePath(`/orders/${orderId}`);
+  return {};
+}
+
+// The buyer's PO files, already uploaded to <company>/<order>/ in the PO files store, are kept on the order.
+export async function addOrderPoFiles(orderId: string, files: StoredFile[]): Promise<{ error?: string }> {
+  const me = await getMe();
+  if (!me?.companyId || !canEditOrders(me.role)) return { error: "Only the orders team can add the buyer's PO." };
+  if (!files.length) return { error: "Pick the PO file first." };
+  for (const f of files) {
+    const ext = f.path.split(".").pop() ?? "";
+    if (!f.path.startsWith(`${me.companyId}/${orderId}/`) || f.path.includes("..") || PO_FILE_TYPES[ext] !== f.type || !(f.size > 0 && f.size <= PO_MAX_BYTES)) {
+      return { error: "That file didn't upload properly. Try again." };
+    }
+  }
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("add_order_po_files", { p_order: orderId, p_files: files.map((f) => ({ ...f, name: f.name.slice(0, 200) })) });
+  if (error) return { error: friendly(error) };
+  revalidatePath(`/orders/${orderId}`);
+  return {};
+}
+
+export async function removeOrderPoFile(orderId: string, fileId: string): Promise<{ error?: string }> {
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("remove_order_po_file", { p_id: fileId });
   if (error) return { error: friendly(error) };
   revalidatePath(`/orders/${orderId}`);
   return {};
