@@ -68,7 +68,7 @@ function verdict(c: Cell, today: string): { text: string; cls: string } | null {
 
 // Every style as its own card with its full TNA, grouped by factory. A factory's plan is asked for and entered first;
 // its PO is released only once nothing is missing, and actual dates are entered after that.
-export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDone, isOwner, today, now, dueDate, groups, initial, initialExtras, factoryDates, baselines, qc }: {
+export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDone, isOwner, today, now, dueDate, groups, initial, initialExtras, factoryDates, baselines, qc, hasBuyerPo }: {
   orderId: string;
   orderNo: string;
   companyId: string;
@@ -87,6 +87,8 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
   baselines: Record<string, Baseline>;
   // Quality's latest result for each style's step, keyed "line:step".
   qc: Record<string, StepQc>;
+  // The buyer's PO is on file: a factory PO is locked and released only against a PO received from the buyer.
+  hasBuyerPo: boolean;
 }) {
   const router = useRouter();
   const [dates, setDates] = useState<Dates>(initial);
@@ -455,14 +457,14 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
                   )}
                   {/* When the plan was sent for the lock, the owner locks from the box below instead. */}
                   {isOwner ? !g.lockRequestedAt && (
-                    <button type="button" className="btn sm primary" disabled={pending || gaps.length > 0 || unsaved(g)}
-                      title={unsaved(g) ? "Save the dates first" : gaps.length ? "The plan is not complete yet" : "Locks the targets and releases the PO to the factory"}
+                    <button type="button" className="btn sm primary" disabled={pending || gaps.length > 0 || unsaved(g) || !hasBuyerPo}
+                      title={!hasBuyerPo ? "Add the buyer's PO first" : unsaved(g) ? "Save the dates first" : gaps.length ? "The plan is not complete yet" : "Locks the targets and releases the PO to the factory"}
                       onClick={() => run(`rel:${g.factoryId}`, () => releaseFactoryPo(orderId, g.factoryId!), `Locked. PO released to ${g.factoryName}.`)}>
                       {busy === `rel:${g.factoryId}` ? "Locking…" : "Lock and release PO"}
                     </button>
                   ) : (
-                    <button type="button" className="btn sm primary" disabled={pending || gaps.length > 0 || unsaved(g) || !!g.lockRequestedAt}
-                      title={unsaved(g) ? "Save the dates first" : gaps.length ? "The plan is not complete yet" : g.lockRequestedAt ? "Already waiting for the owner" : undefined}
+                    <button type="button" className="btn sm primary" disabled={pending || gaps.length > 0 || unsaved(g) || !!g.lockRequestedAt || !hasBuyerPo}
+                      title={!hasBuyerPo ? "Add the buyer's PO first" : unsaved(g) ? "Save the dates first" : gaps.length ? "The plan is not complete yet" : g.lockRequestedAt ? "Already waiting for the owner" : undefined}
                       onClick={() => run(`lock:${g.factoryId}`, () => requestPoLock(orderId, g.factoryId!), "Sent for the owner's lock. The PO goes to the factory once it is locked.")}>
                       {busy === `lock:${g.factoryId}` ? "Sending…" : g.lockRequestedAt ? "Waiting for the lock" : g.lockNote ? "Send for the lock again" : "Send for owner's lock"}
                     </button>
@@ -470,6 +472,12 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
                 </div>
               )}
             </div>
+            {g.factoryId && !released && open && canEdit && !hasBuyerPo && (
+              <div className="warnbox mt-2" role="status">
+                <b>The buyer&apos;s PO isn&apos;t on file.</b> A factory PO is issued only against a PO received from the buyer.
+                Plan and ask the factory now; <a href="#details-po" className="link font-semibold">add the buyer&apos;s PO</a> to lock and release it.
+              </div>
+            )}
             {g.factoryId && !released && open && isOwner && g.lockRequestedAt && (
               <div className="lock-box" role="status">
                 <div className="grow">
@@ -477,7 +485,7 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
                   {gaps.length ? <span className="text-bad">Something changed since and it isn&apos;t complete now: see below.</span>
                     : "Check the rates, targets and factory dates below, then lock it to release the PO to the factory."}
                 </div>
-                <button type="button" className="btn primary" disabled={pending || gaps.length > 0 || unsaved(g)}
+                <button type="button" className="btn primary" disabled={pending || gaps.length > 0 || unsaved(g) || !hasBuyerPo}
                   onClick={() => run(`rel:${g.factoryId}`, () => releaseFactoryPo(orderId, g.factoryId!), `Locked. PO released to ${g.factoryName}.`)}>
                   {busy === `rel:${g.factoryId}` ? "Locking…" : "Lock and release PO"}
                 </button>

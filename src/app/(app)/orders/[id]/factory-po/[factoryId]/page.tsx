@@ -35,6 +35,8 @@ export default async function FactoryPoPage({ params }: PageProps<"/orders/[id]/
     supabase.rpc("line_prices", { p_orders: [id] }),
   ]);
   if (!o || !f) notFound();
+  const { data: withPo } = await supabase.rpc("orders_with_po_file", { p_orders: [id] });
+  const hasBuyerPo = ((withPo ?? []) as string[]).includes(id);
   const lines = ((o.order_lines ?? []) as Line[]).filter((l) => l.factory_id === factoryId).sort((a, b) => a.position - b.position);
   if (!lines.length) notFound();
   const [{ data: stages }, { data: terms }] = await Promise.all([
@@ -70,8 +72,14 @@ export default async function FactoryPoPage({ params }: PageProps<"/orders/[id]/
           <p>{released ? `Released ${dayAt(po!.released_at)}. Print it, or save it as a PDF and send it to the factory on WhatsApp.`
             : "Draft: this PO isn't locked and released yet, so it prints marked as a draft."}</p>
         </div>
-        <PrintPo />
+        {(released || hasBuyerPo) && <PrintPo />}
       </div>
+      {!released && !hasBuyerPo && (
+        <div className="errbox no-print">
+          <b>The buyer&apos;s PO isn&apos;t on file.</b> A factory PO is issued only against a PO received from the buyer.{" "}
+          <Link href={`/orders/${o.id}#details-po`} className="link font-semibold">Add the buyer&apos;s PO</Link> first, then print this.
+        </div>
+      )}
 
       <article className="challan">
         <header className="challan-top">

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
 import { money, qty as fmtQty } from "@/lib/format";
 import { NO_WARNINGS, overdueText, type OrderWarnings, type Overdue } from "@/lib/order-checks";
+import { PO_ACCEPT, poFileProblem, uploadPoFiles } from "@/lib/po-upload";
 import { checkOrder, saveOrder, type LineInput, type OrderInput } from "./actions";
 
 type Option = { id: string; label: string };
@@ -14,7 +15,8 @@ const n = (s: string) => Number(s.replace(/[,₹\s]/g, "")) || 0;
 
 // overdueShown: the buyer whose overdue invoices the page already warns about, so the form doesn't say it twice.
 // inquiryId: the buyer inquiry this new order comes from.
-export function OrderForm({ initial, initialLines, buyers, factories, team, incomingId, inquiryId, overdueShown }: {
+// companyId: given on a new order typed in by hand, so the buyer's PO file can go with it.
+export function OrderForm({ initial, initialLines, buyers, factories, team, incomingId, inquiryId, overdueShown, companyId }: {
   initial: OrderInput;
   initialLines: LineInput[];
   buyers: Option[];
@@ -23,6 +25,7 @@ export function OrderForm({ initial, initialLines, buyers, factories, team, inco
   incomingId?: string;
   inquiryId?: string;
   overdueShown?: string;
+  companyId?: string;
 }) {
   const router = useRouter();
   const [order, setOrder] = useState(initial);
@@ -38,6 +41,10 @@ export function OrderForm({ initial, initialLines, buyers, factories, team, inco
   const [checks, setChecks] = useState<{ key: string; warnings: OrderWarnings; overdue: Overdue | null }>({ key: "", warnings: NO_WARNINGS, overdue: null });
   // A very similar PO number is already an order: the next save needs "Save anyway".
   const [confirming, setConfirming] = useState(false);
+  // The buyer's PO file picked before saving; it is uploaded once the order exists.
+  const [poFiles, setPoFiles] = useState<File[]>([]);
+  const [poError, setPoError] = useState("");
+  const withFile = !!companyId && !initial.id && !incomingId;
 
   const styles = lines.map((l) => l.style.trim()).filter(Boolean);
   const checkKey = JSON.stringify([order.buyer_id, order.buyer_po.trim(), styles]);
@@ -91,6 +98,13 @@ export function OrderForm({ initial, initialLines, buyers, factories, team, inco
         setWarning(res.error);
         if (!order.id && res.id) return setCreated(res.id);
         return router.refresh();
+      }
+      if (!order.id && res.id && withFile && poFiles.length) {
+        const up = await uploadPoFiles(companyId!, res.id, poFiles);
+        if (up.error) {
+          setWarning(`Order saved, but the PO file didn't go with it (${up.error}). Add it in the order's Details.`);
+          return setCreated(res.id);
+        }
       }
       if (!order.id && res.id) router.replace(`/orders/${res.id}?saved=1`);
       else router.refresh();
@@ -152,6 +166,31 @@ export function OrderForm({ initial, initialLines, buyers, factories, team, inco
           <span>Notes</span>
           <textarea className="inp" value={order.notes} onChange={set("notes")} rows={2} />
         </label>
+        {withFile && (
+          <div className="field mt-3">
+            <span>Buyer&apos;s PO file</span>
+            <div className="row">
+              <label className="btn sm">
+                {poFiles.length ? "Change file" : "Attach PO file"}
+                <input type="file" multiple accept={PO_ACCEPT} className="sr-only" aria-label="Buyer's PO file"
+                  onChange={(e) => {
+                    const files = [...(e.target.files ?? [])];
+                    e.target.value = "";
+                    const problem = files.map(poFileProblem).find(Boolean) ?? "";
+                    setPoError(problem);
+                    if (!problem) setPoFiles(files);
+                  }} />
+              </label>
+              {poFiles.length > 0 ? (
+                <>
+                  <span className="min-w-0 truncate text-[13px] font-semibold">{poFiles.map((f) => f.name).join(", ")}</span>
+                  <button type="button" className="btn sm ghost" onClick={() => setPoFiles([])}>Remove</button>
+                </>
+              ) : <span className="muted text-[12.5px]">PDF, Excel, or a photo or screenshot from WhatsApp. Needed before a factory PO is locked; you can add it later too.</span>}
+            </div>
+            {poError && <span className="text-[12.5px] font-semibold text-bad" role="alert">{poError}</span>}
+          </div>
+        )}
         {order.buyer_terms !== undefined && (
           <label className="field mt-3">
             <span>Buyer&apos;s terms</span>

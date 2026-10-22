@@ -13,6 +13,8 @@ export type QGroup = {
 export type QOrder = {
   id: string; orderNo: string; buyer: string; buyerPo: string; due: string; shipDate: string; status: string;
   today: string; isOwner: boolean; ownerName: string; companyId: string;
+  // The buyer's PO is on file (from email or added by hand): a factory PO is issued only against it.
+  hasBuyerPo: boolean;
   factories: { id: string; name: string }[];
   groups: QGroup[];
 };

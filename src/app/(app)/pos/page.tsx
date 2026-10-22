@@ -58,7 +58,10 @@ export default async function IncomingPosPage({ searchParams }: PageProps<"/pos"
             {count("held") > 0 && <> · <Link href="/pos?show=held" className="link font-semibold">{count("held")} from unknown senders</Link></>}
           </p>
         </div>
-        <AddPo companyId={me.companyId} />
+        <div className="row items-start">
+          <Link href="/orders/new" className="btn" title="Type in a PO that has no file: it becomes an order with its own PO PDF">Create PO</Link>
+          <AddPo companyId={me.companyId} />
+        </div>
       </div>
 
       <section className="card" aria-labelledby="po-h">

@@ -71,3 +71,16 @@ values (:'co', 'upload', 'added', jsonb_build_array(jsonb_build_object('path', :
 set role authenticated;
 select pg_temp.as_user('00000000-0000-0000-0000-00000000000a');
 select pg_temp.expect(public.orders_with_po_file(array[:'o1'::uuid, :'o2'::uuid]) = array[:'o2'::uuid], 'the emailed PO does not count');
+
+-- A factory PO is issued only against a PO received from the buyer (0060).
+reset role;
+insert into public.factories (id, company_id, name) values ('20000000-0000-0000-0000-000000000001', :'co', 'Kkora');
+update public.order_lines set factory_id = '20000000-0000-0000-0000-000000000001' where order_id in (:'o1', :'o2');
+\set fac 20000000-0000-0000-0000-000000000001
+set role authenticated;
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000a');
+select pg_temp.expect(public.release_blocker(:'o1', :'fac') like 'The buyer''s PO isn''t on file yet%', 'AH-1 has no PO file but was not blocked');
+select pg_temp.expect_error(format($$select public.release_factory_po('%s', '%s')$$, :'o1', :'fac'), 'The buyer''s PO isn''t on file yet%');
+select pg_temp.expect_error(format($$select public.request_po_lock('%s', '%s')$$, :'o1', :'fac'), 'The buyer''s PO isn''t on file yet%');
+-- With the emailed PO, AH-2 moves on to the usual plan checks.
+select pg_temp.expect(public.release_blocker(:'o2', :'fac') not like 'The buyer''s PO%', 'AH-2 has its emailed PO but was blocked');

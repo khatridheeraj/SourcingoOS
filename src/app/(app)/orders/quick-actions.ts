@@ -18,7 +18,7 @@ export async function loadQuick(orderId: string): Promise<{ error?: string; orde
   if (!canEnterDone(me?.role)) return { error: "Only the orders team and Quality can update production." };
   if (!/^[0-9a-f-]{36}$/i.test(orderId)) return { error: "That order wasn't found." };
   const supabase = await createClient();
-  const [{ data: o, error }, { data: stages }, { data: pos }, { data: prices }, buyers, factories, team] = await Promise.all([
+  const [{ data: o, error }, { data: stages }, { data: pos }, { data: prices }, buyers, factories, team, { data: withPo }] = await Promise.all([
     supabase.from("orders").select("id, order_no, buyer_id, buyer_po, ship_date, revised_ship_date, status, order_lines(id, style, colour, qty, factory_id, position)")
       .eq("id", orderId).is("order_lines.removed_at", null).maybeSingle(),
     supabase.from("line_stages").select("line_id, stage, label, planned_on, done_on, not_needed, added_at").eq("order_id", orderId).order("added_at").order("id"),
@@ -27,6 +27,7 @@ export async function loadQuick(orderId: string): Promise<{ error?: string; orde
     loadBuyers(),
     loadFactories(),
     loadTeam(),
+    supabase.rpc("orders_with_po_file", { p_orders: [orderId] }),
   ]);
   if (error) return { error: friendly(error) };
   if (!o) return { error: "That order wasn't found." };
@@ -67,6 +68,8 @@ export async function loadQuick(orderId: string): Promise<{ error?: string; orde
       status: o.status, today: todayIST(), isOwner: me?.role === "owner", companyId: me?.companyId ?? "", ownerName: owner ? personName(owner).split(" ")[0] : "the owner",
       factories: factories.filter((f) => f.active).map((f) => ({ id: f.id, name: f.name })).sort((a, b) => a.name.localeCompare(b.name)),
       groups,
+      // Quality can't see PO files; it never starts production, so the flag only matters to the orders team.
+      hasBuyerPo: ((withPo ?? []) as string[]).includes(o.id),
     },
   };
 }
@@ -129,6 +132,7 @@ export async function startProduction(orderId: string, input: StartInput): Promi
   if (!order.due) return { error: "Enter the order's ship date first." };
   const target = addDays(order.due, -b);
   if (target < today) return { error: `With ${b} days' buffer the factory would have to finish by ${target}, which has passed. Use a smaller buffer or a new ship date.` };
+  if (input.agreed && !order.hasBuyerPo) return { error: NO_BUYER_PO };
   if (g.styles.some((s) => !s.hasRate)) return { error: `Enter ${g.factoryName}'s rate for ${g.styles.filter((s) => !s.hasRate).map((s) => s.style).join(", ")}.` };
 
   // Targets: fill the empty ones and move the impossible ones, then save them with what was loaded.
@@ -165,6 +169,8 @@ export async function startProduction(orderId: string, input: StartInput): Promi
 }
 
 // The owner locks a plan sent for the lock, from Home or the sheet.
+const NO_BUYER_PO = "The buyer's PO isn't on file yet. A factory PO is issued only against a PO received from the buyer: add the buyer's PO in the order's Details first.";
+
 export async function lockPlan(orderId: string, factoryId: string): Promise<{ error?: string }> {
   const me = await getMe();
   if (me?.role !== "owner") return { error: "Only the owner locks a plan." };

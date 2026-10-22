@@ -330,6 +330,12 @@ function StartView({ order, factoryId, onDone, onChanged }: { order: QOrder; fac
       ) : g.lockNote ? (
         <div className="qs-banner bad"><b>{order.ownerName} sent it back:</b> {g.lockNote}</div>
       ) : null}
+      {!order.hasBuyerPo && (
+        <div className="qs-banner warn">
+          <b>The buyer&apos;s PO isn&apos;t on file.</b> A factory PO is issued only against a PO received from the buyer.
+          You can set targets and ask the factory now; <a href={`/orders/${order.id}#details-po`} className="link font-semibold">add the buyer&apos;s PO</a> before it&apos;s locked.
+        </div>
+      )}
 
       {!waitingLock && (
         <div className="qs-form">
@@ -412,10 +418,10 @@ function StartView({ order, factoryId, onDone, onChanged }: { order: QOrder; fac
       <footer className="qs-foot">
         {error && <p className="qs-err" role="alert">{error}</p>}
         {waitingLock ? (order.isOwner ? (
-          <button type="button" className="btn primary qs-go" disabled={pending} onClick={lock}>{pending ? "Locking…" : "Lock and start production"}</button>
+          <button type="button" className="btn primary qs-go" disabled={pending || !order.hasBuyerPo} onClick={lock}>{pending ? "Locking…" : "Lock and start production"}</button>
         ) : <button type="button" className="btn qs-go" onClick={onDone}>OK</button>) : (
           <button type="button" className="btn primary qs-go" onClick={go}
-            disabled={pending || (!g.factoryId && !pickFactory) || noRate.some((s) => !(rates[s.id] ?? "").trim()) || (pastDue && (!newShip || !reason.trim()))}>
+            disabled={pending || (agreed && !order.hasBuyerPo) || (!g.factoryId && !pickFactory) || noRate.some((s) => !(rates[s.id] ?? "").trim()) || (pastDue && (!newShip || !reason.trim()))}>
             {pending ? "Starting…" : !agreed ? "Set targets and ask the factory" : order.isOwner ? "Lock and start production" : `Send to ${order.ownerName} to lock`}
           </button>
         )}
