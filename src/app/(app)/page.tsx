@@ -188,7 +188,7 @@ export default async function OrdersPage({ searchParams }: PageProps<"/">) {
                   <span className="mt-1.5 flex gap-1.5">
                     {r.missingFactory && <span className="chip warn">Needs factory</span>}
                     {r.needsQc && <span className="chip warn">Needs final QC</span>}
-                    {r.noPo && <span className="chip" title="Add the buyer's PO file in the order's Details">No PO file</span>}
+                    {r.noPo && <span className="chip" title="Add the buyer's PO in the order's Details: factory POs are locked only once it is there">No buyer PO</span>}
                   </span>
                 )}
               </span>

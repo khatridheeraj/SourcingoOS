@@ -276,7 +276,7 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
             {canEdit && (poDocs[0]?.url ? <a href={poDocs[0].url} target="_blank" rel="noreferrer" className="chip po-chip" title={`Open ${poDocs[0].name}`}>
               <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" aria-hidden><path d="M4 1.75h5.5L12.25 4.5v9.75H4z" /><path d="M9.25 1.75V4.75h3" /></svg>
               {poDocs[0].ext === "pdf" ? "PO PDF" : "PO file"}{poDocs.length > 1 ? ` · ${poDocs.length} files` : ""}</a>
-              : <a href="#details-po" className="chip warn">No PO file</a>)}
+              : <a href="#details-po" className="chip warn" title="A factory PO is locked only once the buyer's PO is on file">No buyer PO yet</a>)}
             {ship.part && o.status === "open" && <a href="#dispatch" className="chip info">Part shipped · {partText(ship)}</a>}
             {o.closed_short_at && <span className="chip warn" title={o.short_reason ?? undefined}>Closed short · {qty(ship.billed)} of {qty(ship.ordered)} pcs</span>}
             {!ship.part && outlook?.level === "risk" && <span className="chip bad" title="A late step pushes back every step after it">Ship date at risk · about {outlook.daysLate} {outlook.daysLate === 1 ? "day" : "days"} late</span>}
@@ -326,6 +326,7 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
         initial={Object.fromEntries((lineStages ?? []).map((r) => [`${r.line_id}:${r.stage}`, { planned_on: str(r.planned_on), done_on: str(r.done_on), not_needed: !!r.not_needed }]))}
         baselines={Object.fromEntries((lineStages ?? []).filter((r) => r.baseline_on).map((r): [string, Baseline] => [`${r.line_id}:${r.stage}`, { on: String(r.baseline_on), note: str(r.target_note) }]))}
         qc={stepQc}
+        hasBuyerPo={poDocs.length > 0}
       />
       </div>
       <div data-sec="samples">

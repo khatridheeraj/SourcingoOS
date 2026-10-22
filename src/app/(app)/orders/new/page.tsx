@@ -8,7 +8,8 @@ import { OrderForm } from "../order-form";
 import { formOptions } from "../options";
 
 export default async function NewOrderPage({ searchParams }: PageProps<"/orders/new">) {
-  if (!canEditOrders((await getMe())?.role)) redirect("/");
+  const me = await getMe();
+  if (!canEditOrders(me?.role)) redirect("/");
   const sp = await searchParams;
   // Made from a buyer inquiry: its buyer, merchandiser and what was asked for come in, and the inquiry is marked converted on save.
   const inquiryId = typeof sp.inquiry === "string" && /^[0-9a-f-]{36}$/i.test(sp.inquiry) ? sp.inquiry : "";
@@ -26,7 +27,7 @@ export default async function NewOrderPage({ searchParams }: PageProps<"/orders/
           <h1>New order</h1>
           <p>
             {from ? <>From inquiry <b>{from.inquiry_no}</b> ({from.product}{from.est_qty ? `, ${qty(from.est_qty)} ${from.unit}` : ""}). Enter the buyer&apos;s PO number and its styles.</>
-              : "Enter one buyer PO with all its styles. If the PO is split across factories, pick the factory on each style."}
+              : "Type in a buyer PO that came on WhatsApp, by phone or by hand, with all its styles. Attach the buyer's file if there is one; the order also makes its own PO PDF."}
           </p>
         </div>
       </div>
@@ -44,6 +45,7 @@ export default async function NewOrderPage({ searchParams }: PageProps<"/orders/
           initialLines={from ? [{ style: "", description: from.product.slice(0, 200), colour: "", qty: from.est_qty && from.unit === "pcs" ? String(from.est_qty) : "",
             buyer_rate: from.quoted_price != null ? String(from.quoted_price) : "", factory_id: "", factory_rate: "" }] : []}
           inquiryId={from?.id}
+          companyId={me?.companyId ?? undefined}
           buyers={o.buyers}
           factories={o.factories}
           team={o.team}

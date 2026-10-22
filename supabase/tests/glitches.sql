@@ -1,6 +1,15 @@
 -- Tests for the glitch fixes of 18 Oct 2026 (0039). Every block either passes quietly or raises.
 \set ON_ERROR_STOP 1
 \set QUIET 1
+
+-- Every order here has the buyer's PO on file, which a factory PO needs before it is released (0060).
+create function public.test_order_has_po() returns trigger language plpgsql security definer set search_path = '' as $$
+begin
+  insert into public.order_po_files (company_id, order_id, path, file_name, file_type, size_bytes, created_by)
+  values (new.company_id, new.id, new.company_id || '/' || new.id || '/po.pdf', 'PO.pdf', 'application/pdf', 1000, null);
+  return new;
+end $$;
+create trigger test_order_has_po after insert on public.orders for each row execute function public.test_order_has_po();
 -- Only the owner locks and releases a factory PO (0048): the team's release steps below run as the owner.
 create function pg_temp.owner_release(p_order uuid, p_factory uuid) returns void language plpgsql as $$
 declare
