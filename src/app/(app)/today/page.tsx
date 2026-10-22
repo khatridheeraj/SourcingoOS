@@ -136,7 +136,7 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
         .eq("company_id", companyId).in("status", ["to_check", "failed", "held"]).order("received_at").order("id").range(a, z))
     : none;
   const inqsP = team
-    ? fetchAll((a, z) => supabase.from("inquiries").select("id, inquiry_no, buyer_id, prospect, product, next_follow_up, merchandiser_id, status")
+    ? fetchAll((a, z) => supabase.from("inquiries").select("id, inquiry_no, buyer_id, prospect, product, next_follow_up, merchandiser_id, status, sample_sent_on")
         .eq("company_id", companyId).in("status", ["new", "quoted"]).lte("next_follow_up", today).order("next_follow_up").order("id").range(a, z))
     : none;
   // Dispatches of every order, shipped ones too: an order marked shipped still waits for the buyer's GRN.
@@ -458,7 +458,7 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
     (late ? now_ : soon).push({
       key: `inq:${i.id}`, href: `/inquiries/${i.id}`, sev: late ? "bad" : "warn", code: i.inquiry_no,
       title: `${(i.buyer_id && buyerOf.get(i.buyer_id)) || i.prospect || ""} · ${i.product}`,
-      detail: `${i.status === "quoted" ? "Quote sent; ask the buyer for a decision" : "Inquiry to answer"} · follow-up ${late ? `was due ${dm(i.next_follow_up!)}` : "due today"}`,
+      detail: `${i.sample_sent_on ? "Sample with the buyer; ask for comments" : i.status === "quoted" ? "Price sent; ask the buyer for a decision" : "Inquiry to answer"} · follow-up ${late ? `was due ${dm(i.next_follow_up!)}` : "due today"}`,
       chip: late ? { text: `${plural(daysBetween(i.next_follow_up!, today), "day")} late`, cls: "bad" } : { text: "Today", cls: "warn" },
       action: "Follow up", sort: i.next_follow_up!,
     });

@@ -1629,3 +1629,95 @@ h1, h2, h3 { font-family: var(--font-display); text-wrap: balance; font-weight: 
   .whats-new p { margin-top: 2px; font-size: 13px; color: var(--muted); }
   @media (max-width: 760px) { .whats-new ul { padding: 14px 16px 16px; } }
 }
+
+@layer components {
+  /* Inquiries: quick add on top, then the open ones grouped by what to do. */
+  .inq-head { align-items: center; }
+  .inq-sum { margin-top: 2px; font-size: 13.5px; color: var(--muted); }
+  .inq-sum > span, .inq-meta > span { white-space: nowrap; }
+  .inq-sum > span:not(:last-child)::after, .inq-meta > span:not(:last-child)::after { content: "·"; margin: 0 2px 0 7px; color: var(--faint); font-weight: 400; }
+  .qadd { margin-top: 16px; border-radius: 14px; background: var(--surface); box-shadow: var(--shadow), 0 0 0 1px var(--line); transition: box-shadow 0.15s; }
+  .qadd:focus-within, .qadd.is-open { box-shadow: var(--shadow), 0 0 0 1px var(--accent), 0 0 0 4px color-mix(in srgb, var(--accent) 14%, transparent); }
+  .qadd-box { display: flex; align-items: flex-start; gap: 8px; padding: 8px 8px 8px 14px; }
+  .qadd-text { flex: 1; min-width: 0; min-height: 40px; padding: 9px 0; border: 0; outline: 0; resize: none; background: transparent; font: inherit; font-size: 15px; line-height: 1.45; color: var(--foreground); }
+  .qadd-text::placeholder { color: var(--faint); }
+  .qadd-text:focus, .qadd-text:focus-visible { outline: none; box-shadow: none; }
+  .qadd-read { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--ok); }
+  .qadd-read::before { content: ""; width: 16px; height: 16px; border-radius: 50%; flex: none; background: var(--ok-soft) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='%23157a46' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 10.5 2.5 2.5L14 7.5'/%3E%3C/svg%3E") center / 12px no-repeat; }
+  .qadd .is-found { border-color: var(--ok-line); background: color-mix(in srgb, var(--ok-soft) 45%, var(--surface)); }
+  .inq-other { position: relative; }
+  .inq-other input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
+  .qadd-go { flex: none; height: 40px; }
+  .qadd-go span { font-size: 18px; line-height: 1; margin-top: -1px; }
+  .qadd-hint { padding: 0 14px 10px; margin-top: -4px; font-size: 12.5px; color: var(--faint); }
+  .qadd-body { display: grid; gap: 14px; padding: 14px; border-top: 1px solid var(--line); }
+  .qadd-grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); }
+  .qadd-wide { grid-column: span 2; }
+  .qadd-acts { display: flex; justify-content: flex-end; gap: 8px; }
+  .inq-when { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; font-size: 13px; }
+  .inq-when > span { margin-right: 4px; font-weight: 500; color: var(--muted); }
+  .inq-when .chip { cursor: pointer; height: 30px; padding: 0 12px; font-size: 13px; }
+  .inq-bar { display: flex; align-items: center; gap: 10px; margin: 22px 0 10px; }
+  .inq-search { margin-left: auto; width: min(260px, 45%); }
+  .inq-search .inp { height: 32px; }
+  .inq-group { margin-bottom: 14px; overflow: hidden; }
+  .inq-gh { display: block; padding: 12px 16px 10px; border-bottom: 1px solid var(--line); }
+  .inq-gh h2 { font-size: 14px; font-weight: 600; }
+  .inq-gh h2 span { margin-left: 6px; font-weight: 500; color: var(--faint); font-variant-numeric: tabular-nums; }
+  .inq-gh p { margin-top: 1px; font-size: 12.5px; color: var(--muted); }
+  summary.inq-gh { cursor: pointer; list-style: none; }
+  summary.inq-gh::-webkit-details-marker { display: none; }
+  summary.inq-gh h2::after { content: "Show"; float: right; font-size: 12.5px; font-weight: 500; color: var(--accent); }
+  .inq-quiet[open] summary.inq-gh h2::after { content: "Hide"; }
+  .inq-quiet:not([open]) summary.inq-gh { border-bottom: 0; }
+  .inq-list > li { display: grid; grid-template-columns: 8px minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 12px 16px; border-top: 1px solid var(--line); }
+  .inq-list > li:first-child { border-top: 0; }
+  .inq-row .sev { align-self: start; width: 8px; height: 8px; margin-top: 7px; border-radius: 50%; background: var(--line-strong); }
+  .inq-row .sev.bad { background: var(--bad); box-shadow: 0 0 0 3px var(--bad-soft); }
+  .inq-row .sev.warn { background: var(--warn); box-shadow: 0 0 0 3px var(--warn-soft); }
+  .inq-row .sev.ok { background: var(--ok); box-shadow: 0 0 0 3px var(--ok-soft); }
+  .inq-main { display: flex; flex-direction: column; color: inherit; }
+  .inq-main:hover .inq-what { text-decoration: underline; text-underline-offset: 2px; text-decoration-color: var(--line-strong); }
+  .inq-who { font-size: 12.5px; font-weight: 500; color: var(--muted); }
+  .inq-what { font-size: 15px; font-weight: 600; line-height: 1.35; overflow-wrap: anywhere; }
+  .inq-meta { margin-top: 3px; font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .inq-stage { color: var(--foreground); font-weight: 500; }
+  .inq-none { padding: 18px 16px; font-size: 13.5px; color: var(--muted); }
+  .inq-empty { margin-top: 18px; padding: 22px 20px; border-radius: 14px; border: 1px dashed var(--line-strong); font-size: 14px; color: var(--muted); }
+  .inq-empty b { display: block; margin-bottom: 4px; font-size: 15px; color: var(--foreground); }
+  .inq-empty p + p { margin-top: 8px; }
+
+  /* An inquiry's own page: the steps to an order, and the one next thing to do. */
+  .inq-stages { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin: 14px 0 4px; counter-reset: st; }
+  .inq-stages li { position: relative; padding-top: 10px; font-size: 12.5px; font-weight: 500; color: var(--faint); }
+  .inq-stages li::before { content: ""; position: absolute; top: 0; left: 0; right: 0; height: 4px; border-radius: 4px; background: var(--line); }
+  .inq-stages li.done { color: var(--muted); }
+  .inq-stages li.done::before { background: var(--accent); }
+  .inq-stages li.now { color: var(--foreground); font-weight: 600; }
+  .inq-stages li.now::before { background: linear-gradient(90deg, var(--accent) 50%, var(--line) 50%); }
+  .inq-stages.is-lost li::before { background: var(--line) !important; }
+  .inq-next { display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px; min-width: 0; }
+  .inq-next .inq-acts .btn { min-width: 0; white-space: normal; text-align: center; }
+  .inq-follow { display: grid; gap: 10px; margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--line); }
+  .inq-next .inq-choice .btn { justify-self: start; }
+  .inq-save { justify-self: end; min-width: 160px; justify-content: center; }
+
+  @media (max-width: 900px) {
+    .qadd { margin-top: 12px; }
+    .qadd-grid { grid-template-columns: 1fr 1fr; }
+    .qadd-grid > .field:first-child, .qadd-wide { grid-column: 1 / -1; }
+    .qadd-acts .btn { flex: 1; min-height: 44px; justify-content: center; }
+    .inq-bar { margin-top: 18px; }
+    .inq-list > li { padding: 12px 14px; gap: 10px; }
+    .inq-list .btn.sm { min-height: 36px; }
+    .inq-when > span { flex-basis: 100%; }
+    .inq-when .chip { flex: 1 1 0; height: 36px; justify-content: center; padding: 0 6px; white-space: nowrap; }
+    .inq-next .inq-acts .btn.ghost { grid-column: 1 / -1; min-height: 36px; }
+    .inq-next .inq-choice .btn { justify-self: stretch; min-height: 44px; justify-content: center; }
+    .inq-follow .btn { min-height: 44px; }
+    .inq-save { justify-self: stretch; }
+  }
+}
+
+/* The quick add box shows its focus on the whole card. */
+.qadd-text:focus-visible { outline: none; }

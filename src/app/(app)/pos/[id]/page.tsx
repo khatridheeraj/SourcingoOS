@@ -13,6 +13,7 @@ import { STATE } from "../state";
 import { HeldSender } from "./held-sender";
 import { NewBuyer } from "./new-buyer";
 import { PoActions } from "./po-actions";
+import { ToInquiry } from "./to-inquiry";
 import { suggestBuyerCode } from "@/lib/names";
 
 const when = new Intl.DateTimeFormat("en-IN", { timeZone: "Asia/Kolkata", day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit" });
@@ -30,10 +31,11 @@ export default async function IncomingPoPage({ params, searchParams }: PageProps
 
   const files = (po.files ?? []) as StoredFile[];
   const owner = me?.role === "owner";
-  const [{ data: signed }, o, { data: buyerName }] = await Promise.all([
+  const [{ data: signed }, o, { data: buyerName }, { data: inquiry }] = await Promise.all([
     files.length ? supabase.storage.from(PO_BUCKET).createSignedUrls(files.map((f) => f.path), 3600) : Promise.resolve({ data: [] }),
     formOptions({ buyerId: po.buyer_id ?? undefined }),
     owner ? supabase.rpc("incoming_po_buyer_name", { p_id: id }) : Promise.resolve({ data: null }),
+    supabase.from("inquiries").select("id, inquiry_no").eq("incoming_po_id", id).maybeSingle(),
   ]);
   const newBuyerId = typeof added === "string" && o.buyers.some((b) => b.id === added) ? added : "";
   const buyerId = po.buyer_id ?? newBuyerId;
@@ -88,8 +90,15 @@ export default async function IncomingPoPage({ params, searchParams }: PageProps
             {waited > 0 && <span className="chip bad">Waiting {waited} days</span>}
           </p>
         </div>
-        {po.status !== "held" && <PoActions id={po.id} status={po.status} canReread={canReread} />}
+        <div className="row">
+          {!inquiry && po.source === "email" && po.status !== "added" && (po.status !== "held" || owner) && <ToInquiry id={po.id} />}
+          {po.status !== "held" && <PoActions id={po.id} status={po.status} canReread={canReread} />}
+        </div>
       </div>
+
+      {inquiry && (
+        <div className="okbox">This email is inquiry <Link href={`/inquiries/${inquiry.id}`} className="link code">{inquiry.inquiry_no}</Link>. Follow it up there.</div>
+      )}
 
       {po.status === "held" && (
         <HeldSender id={po.id} from={po.email_from ?? ""} buyers={o.buyers.map((b) => ({ id: b.id, label: b.label }))} />

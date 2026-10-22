@@ -10,6 +10,8 @@ export default function manifest(): MetadataRoute.Manifest {
     display: "standalone",
     background_color: "#f7f7f8",
     theme_color: "#f7f7f8",
+    // On Android, a buyer's WhatsApp message can be shared straight into a new inquiry.
+    share_target: { action: "/inquiries", method: "get", params: { title: "title", text: "text", url: "url" } },
     icons: [
       { src: "/icon-192.png", sizes: "192x192", type: "image/png" },
       { src: "/icon-512.png", sizes: "512x512", type: "image/png" },
