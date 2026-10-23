@@ -13,7 +13,7 @@ const FOR: Record<string, Item[]> = {
   orders: [
     { icon: "plus", title: "PO PDF on every order", text: "Tap PO PDF next to the ship date to open the buyer's PO. Factory PO PDF in Styles prints our PO for WhatsApp." },
     { icon: "check", title: "Update in one tap", text: "Tap Update on any Home row: tick the styles and the step is done. Catch up marks every earlier step in one go." },
-    { icon: "plus", title: "Start production in one go", text: "The plan fills itself from the ship date. Say the factory agreed, and it goes for the lock." },
+    { icon: "plus", title: "Start production in one go", text: "The plan fills itself from the ship date. Say the factory agreed, and the PO goes for approval." },
     { icon: "share", title: "Chase and buyer updates, written for you", text: "Chase sends the factory every late step on WhatsApp. Updates has a ready message for each buyer." },
     { icon: "search", title: "Find anything", text: "The search at the top finds any order, PO, style, buyer or factory." },
   ],

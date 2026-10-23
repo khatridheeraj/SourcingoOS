@@ -294,7 +294,7 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
             <SheetButton orderId={o.id} mode="start" factoryId={groups.find((g) => !g.releasedAt)?.factoryId ?? ""}
               className={`btn ${groups.some((g) => g.releasedAt) || (me?.role !== "owner" && groups.every((g) => g.releasedAt || g.lockRequestedAt)) ? "" : "primary"}`}>
               {groups.some((g) => !g.releasedAt && g.lockRequestedAt) && me?.role === "owner" ? "Check and lock"
-                : groups.every((g) => g.releasedAt || g.lockRequestedAt) ? "Waiting for the lock" : "Start production"}</SheetButton>
+                : groups.every((g) => g.releasedAt || g.lockRequestedAt) ? "Waiting for approval" : "Start production"}</SheetButton>
           )}
           <ShareUpdate key={`${(lineStages ?? []).length}:${(lineStages ?? []).reduce((a, r) => (r.updated_at > a ? r.updated_at : a), "")}`} options={share} />
           {canEdit && o.status === "open" && <MarkShipped orderId={o.id} orderNo={o.order_no} blocked={shipBlocker as string | null} />}

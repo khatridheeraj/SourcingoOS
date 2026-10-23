@@ -274,13 +274,13 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
           chase: chaseFor(o, f, `*${o.order_no}${o.buyer_po ? ` · PO ${o.buyer_po}` : ""} · ${fname}*\nPlease send your dates for these styles today, or tell us you agree to ours: ${fl.map((l) => l.style).join(", ")}.${linkOf.get(f) ? `\n\n${panelLine(linkOf.get(f))}` : ""}`) });
       } else if (!gaps && po?.lock_requested_at) {
         // Every factory PO waits for the owner's lock (Dheeraj, 20 Oct 2026); the owner sees these first.
-        if (me?.role === "owner") now_.push({ ...item, sev: "bad", detail: `${fname} · plan sent for your lock ${at.format(new Date(po.lock_requested_at))}. The factory gets the PO once you lock it.`,
-          chip: { text: "Waiting for your lock", cls: "bad" }, action: "Check and lock", sort: `0${po.lock_requested_at}` });
-        else waiting.push({ ...item, sev: "", detail: `${fname} · sent for the owner's lock ${at.format(new Date(po.lock_requested_at))}`, action: "See plan" });
+        if (me?.role === "owner") now_.push({ ...item, sev: "bad", detail: `${fname} · PO sent for your approval ${at.format(new Date(po.lock_requested_at))}. Approving emails it to the factory.`,
+          chip: { text: "Waiting for your approval", cls: "bad" }, action: "Check and approve", sort: `0${po.lock_requested_at}` });
+        else waiting.push({ ...item, sev: "", detail: `${fname} · sent for approval ${at.format(new Date(po.lock_requested_at))}`, action: "See plan" });
       } else if (!gaps && po?.lock_note && me?.role !== "owner") {
-        now_.push({ ...item, sev: "bad", detail: `${fname} · the owner sent the plan back: ${po.lock_note}`, action: "Fix and send again" });
+        now_.push({ ...item, sev: "bad", detail: `${fname} · the owner sent the PO back: ${po.lock_note}`, action: "Fix and send again" });
       } else if (!gaps) {
-        soon.push({ ...item, sev: "ok", detail: `${fname} · plan is complete`, action: me?.role === "owner" ? "Lock and release" : "Send for lock" });
+        soon.push({ ...item, sev: "ok", detail: `${fname} · plan is complete`, action: me?.role === "owner" ? "Approve and send" : "Send for approval" });
       } else if (!po?.plan_requested_at && !po?.plan_requested_on) {
         now_.push({ ...item, sev: "warn", detail: `${fname} · part planned. Finish the plan and start production in one go.`, action: "Start production" });
       } else if (sent) {

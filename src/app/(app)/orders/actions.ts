@@ -256,7 +256,7 @@ export async function acceptTargetsForFactory(orderId: string, factoryId: string
 export async function releaseFactoryPo(orderId: string, factoryId: string): Promise<{ error?: string }> {
   const me = await getMe();
   if (!me?.role) return { error: "Your account is not switched on yet." };
-  if (me.role !== "owner") return { error: "Only the owner locks and releases a factory PO. Send the plan for the lock." };
+  if (me.role !== "owner") return { error: "Only the owner approves and releases a factory PO. Send the PO for approval." };
   const supabase = await createClient();
   const { error } = await supabase.rpc("release_factory_po", { p_order: orderId, p_factory: factoryId });
   if (error) return { error: friendly(error) };
