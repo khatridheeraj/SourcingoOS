@@ -56,7 +56,7 @@ export async function savePoDetails(d: PoDetails): Promise<{ error?: string }> {
   return {};
 }
 
-// "Email PO to factory": the email goes from the owner's Gmail within half an hour, then a follow-up every 2 hours
+// "Email PO to factory": the email goes from the owner's Gmail within the hour, then a follow-up every 2 hours
 // (9 am to 9 pm, Monday to Saturday) until the factory accepts.
 export async function emailPo(orderId: string, factoryId: string, to: string, cc: string): Promise<{ error?: string }> {
   const me = await getMe();
