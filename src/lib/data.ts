@@ -3,7 +3,7 @@ import { getMe } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 
 export type Buyer = { id: string; code: string; city: string | null; notes: string | null; active: boolean; grn_days: number | null; realName: string | null };
-export type Factory = { id: string; name: string; city: string | null; contact_name: string | null; phone: string | null; notes: string | null; active: boolean };
+export type Factory = { id: string; name: string; city: string | null; contact_name: string | null; phone: string | null; notes: string | null; active: boolean; address: string | null; gstin: string | null; email: string | null };
 export type Member = { user_id: string; role: string; active: boolean; factory_id: string | null; buyer_id: string | null; email: string; full_name: string | null };
 export type Invite = { email: string; role: string; factory_id: string | null; buyer_id: string | null; created_at: string };
 
@@ -30,7 +30,7 @@ export async function loadBuyers(): Promise<Buyer[]> {
 
 export async function loadFactories(): Promise<Factory[]> {
   const { companyId, supabase } = await scope();
-  const { data } = await supabase.from("factories").select("id, name, city, contact_name, phone, notes, active").eq("company_id", companyId).order("name");
+  const { data } = await supabase.from("factories").select("id, name, city, contact_name, phone, notes, active, address, gstin, email").eq("company_id", companyId).order("name");
   return data ?? [];
 }
 
