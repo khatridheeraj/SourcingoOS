@@ -33,7 +33,7 @@ export function PoSend({ orderId, factoryId, released, blocker, factoryEmail, de
     const r = await emailPo(orderId, factoryId, to, cc);
     if (r.error) return setError(r.error);
     setForm(false);
-    toast(testTo ? `Queued: goes to the test inbox ${testTo} within half an hour` : "Queued: the PO goes to the factory within half an hour");
+    toast(testTo ? `Queued: goes to the test inbox ${testTo} within the hour` : "Queued: the PO goes to the factory within the hour");
     router.refresh();
   });
   const accept = () => start(async () => {
@@ -60,7 +60,7 @@ export function PoSend({ orderId, factoryId, released, blocker, factoryEmail, de
   } else if (waitingReply) {
     tone = "warn"; title = `The factory replied ${at(m.replyAt!)}`; body = `“${m.replyText ?? ""}” Follow-ups are paused. Answer them, then send the PO again or mark it accepted.`;
   } else if (sending) {
-    title = m.mailedAt ? "Sending again within half an hour" : "Queued: goes out within half an hour";
+    title = m.mailedAt ? "Sending again within the hour" : "Queued: goes out within the hour";
     body = `To ${m.to}${m.cc ? `, CC ${m.cc}` : ""}.${testTo ? ` Test mode: it goes to ${testTo} instead.` : ""}`;
   } else if (m.mailedAt) {
     tone = "warn"; title = `Waiting for the factory to accept · sent ${at(m.mailedAt)}`;
