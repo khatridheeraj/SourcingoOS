@@ -314,11 +314,16 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
                 <small className="step-moved" title={base.note || undefined}>Was {dm(base.on)}{base.note ? `: ${base.note}` : ""}</small>
               )}
             </label>
-            <label className="step-f"><span>Done</span>
-              <input className="inp" type="date" value={c.done_on} max={today} disabled={!doneEditable || !released}
-                title={!released ? "Release the factory PO first" : undefined} aria-label={`${l.style} ${s.label} done`}
-                onChange={(e) => set(l.id, s.key, { done_on: e.target.value })} />
-            </label>
+            {released ? (
+              <label className="step-f"><span>Done</span>
+                <input className="inp" type="date" value={c.done_on} max={today} disabled={!doneEditable}
+                  aria-label={`${l.style} ${s.label} done`}
+                  onChange={(e) => set(l.id, s.key, { done_on: e.target.value })} />
+              </label>
+            ) : (
+              // A greyed-out date gave no reason on a phone, so the slot says when it opens.
+              <div className="step-f"><span>Done</span><b className="muted font-normal">After PO release</b></div>
+            )}
           </>
         )}
         <div className="step-state">
@@ -510,6 +515,12 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
               </div>
             )}
             {!g.factoryId && <p className="muted mb-2 text-[13px]">Choose a factory for these styles in Order details below before planning them.</p>}
+            {g.factoryId && !released && open && (
+              <p className="mb-2 text-[13px]">
+                <b>Done dates open once {g.factoryShort || "the factory"}&apos;s PO is released.</b>{" "}
+                {isOwner ? "Lock the complete plan to release it." : "Complete the plan below and send it for the owner's lock; the lock releases the PO."}
+              </p>
+            )}
             {g.factoryId && target && !released && (
               <p className="muted mb-2 text-[13px]">
                 Every target and factory date must be on or before <b className="text-foreground">{day(target)}</b>
