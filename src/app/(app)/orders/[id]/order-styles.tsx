@@ -306,10 +306,14 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
               <b data-testid={`${l.style} ${s.label} factory`} className={f && c.planned_on && f > c.planned_on ? "text-bad" : f ? "" : "muted font-normal"}>{f ? dm(f) : "Not given"}</b>
             </div>
             <label className="step-f"><span>Target</span>
-              <input className="inp" type="date" value={c.planned_on} max={released ? undefined : target || undefined} disabled={!editable || locked}
+              {/* No upper limit: when the PO target date has passed, capping the picker left only past dates. A late target is flagged instead. */}
+              <input className="inp" type="date" value={c.planned_on} disabled={!editable || locked}
                 title={locked ? "Locked since the PO was released. Only the owner can move it, with a reason." : undefined}
                 aria-label={`${l.style} ${s.label} target`}
                 onChange={(e) => set(l.id, s.key, { planned_on: e.target.value })} />
+              {!released && target && c.planned_on > target && !c.done_on && (
+                <small className="step-moved text-bad">After the target date {dm(target)}</small>
+              )}
               {base && base.on !== c.planned_on && (
                 <small className="step-moved" title={base.note || undefined}>Was {dm(base.on)}{base.note ? `: ${base.note}` : ""}</small>
               )}
@@ -520,6 +524,12 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
                 <b>Done dates open once {g.factoryShort || "the factory"}&apos;s PO is released.</b>{" "}
                 {isOwner ? "Lock the complete plan to release it." : "Complete the plan below and send it for the owner's lock; the lock releases the PO."}
               </p>
+            )}
+            {g.factoryId && target && !released && open && target < today && (
+              <div className="warnbox mb-2" role="status">
+                <b>The target date {day(target)} has already passed.</b> Plan the real dates ahead anyway; steps after it are marked.
+                {canEdit && <> To lock the plan, <a href="#ship" className="link font-semibold">move the ship date</a> to the new delivery date agreed with the buyer.</>}
+              </div>
             )}
             {g.factoryId && target && !released && (
               <p className="muted mb-2 text-[13px]">

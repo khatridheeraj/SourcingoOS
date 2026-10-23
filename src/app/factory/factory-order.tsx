@@ -119,7 +119,7 @@ export function FactoryOrder({ order, now, companyId, updates, rounds, lang, inf
       <>
         {st.planned_on && <div className="text-[11.5px]"><span className="muted">{w.target} </span><b>{day(st.planned_on)}</b></div>}
         <label><span>{w.yourDate}</span>
-          <input className="inp" type="date" value={v} max={order.target ?? undefined} disabled={released || pending}
+          <input className="inp" type="date" value={v} disabled={released || pending}
             aria-label={`${style} ${label} your date`}
             onChange={(e) => { setDates((d) => ({ ...d, [key(lineId, st.stage)]: e.target.value })); setSent(false); }} />
         </label>
@@ -167,7 +167,7 @@ export function FactoryOrder({ order, now, companyId, updates, rounds, lang, inf
                     {released && st?.done_on && <small className="text-ok">{w.done(day(st.done_on))}</small>}
                   </div>
                   {st && (
-                    <input className="inp" type="date" value={dates[key(l.id, st.stage)] ?? ""} max={order.target ?? undefined} disabled={released || pending}
+                    <input className="inp" type="date" value={dates[key(l.id, st.stage)] ?? ""} disabled={released || pending}
                       aria-label={`${l.style} ${label} your date`}
                       onChange={(e) => { setDates((d) => ({ ...d, [key(l.id, st.stage)]: e.target.value })); setSent(false); }} />
                   )}
