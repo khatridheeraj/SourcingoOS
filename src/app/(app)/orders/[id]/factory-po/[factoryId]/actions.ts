@@ -55,3 +55,28 @@ export async function savePoDetails(d: PoDetails): Promise<{ error?: string }> {
   revalidatePath("/factories");
   return {};
 }
+
+// "Email PO to factory": the email goes from the owner's Gmail within half an hour, then a follow-up every 2 hours
+// (9 am to 9 pm, Monday to Saturday) until the factory accepts.
+export async function emailPo(orderId: string, factoryId: string, to: string, cc: string): Promise<{ error?: string }> {
+  const me = await getMe();
+  if (!canEditOrders(me?.role)) return { error: "Only the orders team can email a factory PO." };
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("request_po_mail", { p_order: orderId, p_factory: factoryId, p_to: to, p_cc: cc });
+  if (error) return { error: friendly(error) };
+  revalidatePath(`/orders/${orderId}/factory-po/${factoryId}`);
+  revalidatePath(`/orders/${orderId}`);
+  return {};
+}
+
+// The factory said yes on the phone or WhatsApp.
+export async function markAccepted(orderId: string, factoryId: string, note: string): Promise<{ error?: string }> {
+  const me = await getMe();
+  if (!canEditOrders(me?.role)) return { error: "Only the orders team can mark a PO accepted." };
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("mark_po_accepted", { p_order: orderId, p_factory: factoryId, p_note: note });
+  if (error) return { error: friendly(error) };
+  revalidatePath(`/orders/${orderId}/factory-po/${factoryId}`);
+  revalidatePath(`/orders/${orderId}`);
+  return {};
+}

@@ -7,6 +7,8 @@ import { readPos, type PoFile } from "./reader.ts";
 //   {action: "ready", key, id}              the script has uploaded the files; reading starts.
 //   {action: "read", id}                    the orders team (signed in) added a file or asked to read again.
 //   {action: "brief", google_token}         the Gmail script's 9 am brief: that person's brief data, for the app to word.
+//   {action: "po_doc", token}               one factory PO for its public link, with photo links (the token is the key).
+//   {action: "po_accept", token, name}      the factory accepts that PO on its link.
 // The Gmail script proves itself with a mailbox key, or with google_token: the mailbox's own Google sign-in,
 // so the script holds no secret. A Google mailbox is registered as the key "google:<address>".
 // Reading runs after the answer is sent and saves its result, or its error, on the incoming PO.
@@ -157,6 +159,37 @@ async function brief(db: SupabaseClient, body: Record<string, unknown>) {
   return json(data);
 }
 
+// A factory PO opened from its link: the PO's random token is the only key, as with a factory's WhatsApp link.
+// Style photos are private, so their links are made here and last a day.
+async function poDoc(db: SupabaseClient, body: Record<string, unknown>) {
+  const token = typeof body.token === "string" && /^[0-9a-f-]{36}$/i.test(body.token) ? body.token : null;
+  if (!token) return json({ error: "Unknown PO." }, 404);
+  const { data, error } = await db.rpc("factory_po_doc", { p_token: token });
+  if (error) return json({ error: error.message }, 400);
+  if (!data) return json({ error: "Unknown PO." }, 404);
+  const lines = (data.lines ?? []) as { photo_path: string | null; photo?: string | null }[];
+  const paths = lines.map((l) => l.photo_path).filter((p): p is string => !!p);
+  if (paths.length) {
+    const { data: signed } = await db.storage.from("order-photos").createSignedUrls(paths, 86_400);
+    const url = new Map((signed ?? []).filter((s) => s.signedUrl).map((s) => [s.path, s.signedUrl]));
+    for (const l of lines) l.photo = (l.photo_path && url.get(l.photo_path)) || null;
+  }
+  for (const l of lines) delete (l as { photo_path?: string | null }).photo_path;
+  delete data.order_id;
+  delete data.factory_id;
+  return json(data);
+}
+
+async function poAccept(db: SupabaseClient, body: Record<string, unknown>) {
+  const token = typeof body.token === "string" && /^[0-9a-f-]{36}$/i.test(body.token) ? body.token : null;
+  if (!token) return json({ error: "Unknown PO." }, 404);
+  const name = typeof body.name === "string" ? body.name.slice(0, 80) : "";
+  const { data, error } = await db.rpc("accept_po_by_token", { p_token: token, p_name: name });
+  if (error) return json({ error: error.message }, 400);
+  if (!data) return json({ error: "Unknown PO." }, 404);
+  return json({ ok: true });
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
   if (req.method !== "POST") return json({ error: "Use POST." }, 405);
@@ -167,5 +200,7 @@ Deno.serve(async (req) => {
   if (body.action === "ready") return ready(db, body);
   if (body.action === "read") return read(db, body, req.headers.get("authorization"));
   if (body.action === "brief") return brief(db, body);
+  if (body.action === "po_doc") return poDoc(db, body);
+  if (body.action === "po_accept") return poAccept(db, body);
   return json({ error: "Unknown action." }, 400);
 });
