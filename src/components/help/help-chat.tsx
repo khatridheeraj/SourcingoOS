@@ -38,6 +38,8 @@ const T = {
       idea: "What would make the app better for you?",
       question: "What do you want to know?",
     } as Record<NoteKind, string>,
+    stagedHint: "Say what's wrong, then send.", stagedPlaceholder: "What's wrong in this screenshot?",
+    stillStuck: (o: string) => `Still stuck? Send it to ${o} with your screenshot.`,
     photo: "Attach", attachTitle: "Attach a screenshot, photo or file", attachHint: "Screenshot, photo, short video, PDF or Excel. Up to 4.", removePhoto: "Remove",
     from: "Sent from", sendTo: (o: string) => `Send to ${o}`, sending: "Sending…", cancel: "Cancel",
     sent: (no: number, o: string) => `Sent to ${o} as note #${no}. The answer will show in My notes.`,
@@ -67,6 +69,8 @@ const T = {
       idea: "ऐप में क्या बेहतर हो सकता है?",
       question: "आप क्या जानना चाहते हैं?",
     } as Record<NoteKind, string>,
+    stagedHint: "क्या गड़बड़ है लिखें, फिर भेजें।", stagedPlaceholder: "इस स्क्रीनशॉट में क्या गड़बड़ है?",
+    stillStuck: () => "फिर भी दिक्कत है? स्क्रीनशॉट के साथ Sourcingo को भेजें।",
     photo: "फोटो / फाइल जोड़ें", attachTitle: "स्क्रीनशॉट, फोटो या फाइल जोड़ें", attachHint: "फोटो, छोटा वीडियो, PDF या Excel. 4 तक.", removePhoto: "हटाएँ",
     from: "पेज", sendTo: () => "Sourcingo को भेजें", sending: "भेज रहे हैं…", cancel: "रहने दें",
     sent: (no: number) => `Sourcingo को भेज दिया (संदेश #${no})। जवाब "मेरे संदेश" में दिखेगा।`,
@@ -99,6 +103,8 @@ export function HelpChat({ who, role, name, userId, companyId, ownerName = "Dhee
   const [tab, setTab] = useState<"ask" | "notes">("ask");
   const [msgs, setMsgs] = useState<Msg[]>([{ id: 0, from: "bot", kind: "hello" }]);
   const [text, setText] = useState("");
+  // Files picked from the bar wait here until a note is opened, so Help can answer first.
+  const [staged, setStaged] = useState<File[]>([]);
   const [notes, setNotes] = useState<TeamNote[] | null>(null);
   const [notesError, setNotesError] = useState("");
   const [vv, setVv] = useState<{ top: number; h: number } | null>(null);
@@ -167,6 +173,7 @@ export function HelpChat({ who, role, name, userId, companyId, ownerName = "Dhee
     }
     const id = next.current;
     push({ from: "bot", kind: "answer", topic: top, others: found.slice(1), askId: null, question: q });
+    if (staged.length) push({ from: "bot", kind: "text", text: w.stillStuck(owner), offer: { kind: "problem", body: q } });
     void logAsk(q, path, top.id).then((askId) => patch(id, { askId }));
   }
 
@@ -181,22 +188,23 @@ export function HelpChat({ who, role, name, userId, companyId, ownerName = "Dhee
   function rate(m: Extract<Msg, { kind: "answer" }>, helpful: boolean) {
     patch(m.id, { rated: true });
     if (m.askId) void rateAsk(m.askId, helpful);
-    if (helpful) push({ from: "bot", kind: "text", text: w.thanks });
+    if (helpful) { setStaged([]); push({ from: "bot", kind: "text", text: w.thanks }); }
     else push({ from: "bot", kind: "text", text: w.notHelped(owner), offer: { kind: "question", body: m.question } });
   }
 
-  function compose(kind: NoteKind, body = "", files?: File[]) {
+  function compose(kind: NoteKind, body = "") {
     // One open note form at a time: an unsent one is replaced, so two forms never stack up.
     setMsgs((all) => all.filter((m) => !("kind" in m && m.kind === "compose" && !m.done)));
-    push({ from: "bot", kind: "compose", note: kind, body, files });
+    push({ from: "bot", kind: "compose", note: kind, body, files: staged.length ? staged : undefined });
+    setStaged([]);
   }
 
-  // A screenshot from the main bar is almost always a problem: open the note form with it already attached.
+  // A screenshot waits on the bar: the typed question still gets Help's answer first,
+  // and the file rides along if it has to go to the owner.
   function attach(files: File[]) {
     if (!files.length) return;
-    const q = text.trim();
-    setText("");
-    compose(guessKind(q) ?? "problem", q, files.slice(0, 4));
+    setStaged((all) => [...all, ...files].slice(0, 4));
+    input.current?.focus({ preventScroll: true });
   }
 
   function showNotes() {
@@ -290,6 +298,16 @@ export function HelpChat({ who, role, name, userId, companyId, ownerName = "Dhee
                   onCancel={() => patch(m.id, { done: true })} />;
               })}
             </div>
+            {staged.length > 0 && (
+              <div className="help-staged">
+                {staged.map((f, i) => (
+                  <button key={i} type="button" className="chip" aria-label={`${w.removePhoto} ${f.name}`} onClick={() => setStaged((all) => all.filter((_, j) => j !== i))}>
+                    {fileIcon(f.type, f.name)} {f.name.length > 16 ? `${f.name.slice(0, 13)}…` : f.name} ✕
+                  </button>
+                ))}
+                <span className="compose-hint">{w.stagedHint}</span>
+              </div>
+            )}
             <form className="help-bar" onSubmit={(e) => { e.preventDefault(); ask(text); }}>
               <label className="btn help-attach" title={w.attachTitle}>
                 <input type="file" accept={ATTACH_ACCEPT} multiple className="sr-only" aria-label={w.attachTitle}
@@ -298,7 +316,7 @@ export function HelpChat({ who, role, name, userId, companyId, ownerName = "Dhee
                   <path d="m16.5 9.5-6.4 6.4a4 4 0 0 1-5.7-5.7l6.7-6.7a2.7 2.7 0 0 1 3.8 3.8l-6.6 6.6a1.3 1.3 0 0 1-1.9-1.9l6-6" />
                 </svg>
               </label>
-              <textarea ref={input} className="inp" rows={1} value={text} placeholder={w.placeholder} aria-label={w.placeholder} maxLength={500}
+              <textarea ref={input} className="inp" rows={1} value={text} placeholder={staged.length ? w.stagedPlaceholder : w.placeholder} aria-label={w.placeholder} maxLength={500}
                 onChange={(e) => setText(e.target.value)}
                 onPaste={(e) => { const f = pastedFiles(e); if (f.length) { e.preventDefault(); attach(f); } }}
                 onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); ask(text); } }} />
