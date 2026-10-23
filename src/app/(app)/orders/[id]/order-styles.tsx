@@ -10,9 +10,10 @@ import { project, shipRisk, fillEmptyTargets } from "@/lib/tna-plan";
 import { FactoryLink } from "../../factories/factory-link";
 import { sizeEntries } from "@/lib/sizes";
 import { StyleDetails, type StyleDetail } from "./style-details";
-import { acceptTargetsForFactory, releaseFactoryPo, requestPlan, requestPoLock, saveLineStages, sendBackPoLock, setStylePhoto, type LineStageInput } from "../actions";
+import { acceptTargetsForFactory, releaseFactoryPo, requestPlan, requestPoLock, saveLineStages, sendBackPoLock, setLineProduct, setStylePhoto, type LineStageInput } from "../actions";
 
-export type StyleRow = { id: string; style: string; colour: string; qty: number; photoUrl: string | null; hasRate: boolean; detail: StyleDetail };
+// fabricOrder: a fabric style, whose TNA skips the garment-making steps.
+export type StyleRow = { id: string; style: string; colour: string; qty: number; photoUrl: string | null; hasRate: boolean; fabricOrder: boolean; detail: StyleDetail };
 export type FactoryGroup = {
   factoryId: string | null;
   factoryName: string;
@@ -279,6 +280,22 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
       } finally {
         setBusy("");
       }
+      router.refresh();
+    });
+  }
+
+  // Garment or fabric: a fabric style skips the garment-making steps. Unsaved dates would be dropped by the reload.
+  function product(l: StyleRow, fabric: boolean) {
+    if (fabric === l.fabricOrder) return;
+    if (changed.length) { setNotice(""); setError("Save or undo the date changes first."); return; }
+    setError("");
+    setBusy(`product:${l.id}`);
+    start(async () => {
+      const res = await setLineProduct(orderId, l.id, fabric ? "fabric" : "garment");
+      setBusy("");
+      if (res.error) return setError(res.error);
+      // The reload starts this screen again from the saved steps, so the message goes in a toast.
+      toast(fabric ? `${l.style} is fabric: the garment-making steps are off its TNA` : `${l.style} is a garment again, with every standard step`);
       router.refresh();
     });
   }
@@ -581,6 +598,12 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
                             techPack ? "tech pack ✓" : editable ? "tech pack" : ""].filter(Boolean).join(" · ") || "Fabric, sizes and files"}
                           {detailOpen ? " ▴" : " ▾"}
                         </button>
+                        {editable && !released ? (
+                          <div className="seg seg-sm w-fit" role="group" aria-label={`What ${l.style} is`}>
+                            <button type="button" aria-pressed={!l.fabricOrder} disabled={pending} onClick={() => product(l, false)}>Garment</button>
+                            <button type="button" aria-pressed={l.fabricOrder} disabled={pending} onClick={() => product(l, true)}>Fabric</button>
+                          </div>
+                        ) : l.fabricOrder && <span className="chip w-fit">Fabric</span>}
                         {editable && (
                           <label className={`link w-fit cursor-pointer text-xs ${pending ? "pointer-events-none opacity-50" : ""}`}>
                             {busy === `photo:${l.id}` ? "Uploading…" : l.photoUrl ? "Change photo" : "Add photo"}
@@ -624,7 +647,7 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
                       <div id={`steps-${l.id}`}>
                         <div className="step-head" aria-hidden><span>Step</span><span>Factory</span><span>Target</span><span>Done</span><span>Status</span></div>
                         <ul className="step-list">
-                          {allSteps(l.id).filter((s) => !s.extra || !get(l.id, s.key).not_needed).map((s) => stepRow(l, s, released, target))}
+                          {allSteps(l.id).filter((s) => !get(l.id, s.key).not_needed || (!s.extra && !l.fabricOrder)).map((s) => stepRow(l, s, released, target))}
                         </ul>
                         {editable && (
                           <div className="step-add">
