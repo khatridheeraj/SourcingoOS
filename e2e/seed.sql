@@ -107,3 +107,19 @@ update public.line_stages set done_on = planned_on where order_id = :'o_qc' and 
 insert into public.qc_checks (company_id, order_id, line_id, kind, checked_on, result, pieces_checked, checked_by)
 select l.company_id, l.order_id, l.id, 'final', current_date - 1, 'pass', 80, '00000000-0000-0000-0000-0000000000a4'
 from public.order_lines l where l.order_id = :'o_over';
+
+-- 9. Buyer POs: one read and waiting past the 2-day flag with a point to check, one just in, one set aside.
+insert into public.incoming_pos (company_id, source, email_id, email_from, email_subject, received_at, status, buyer_id, buyer_po, read)
+select c.id, 'email', 'e2e-po-1', 'orders@areeba.test', 'PO AH-2240 summer dresses', now() - interval '3 days', 'to_check', :'ah', 'AH-2240',
+  '{"buyer_name":"Areeba Test House","buyer_code":"BYR-AH","po_number":"AH-2240","po_date":null,"ship_date":null,"notes":null,
+    "lines":[{"style":"AH-DRESS-07","description":"Tiered dress","colour":"Indigo","sizes":"S-XL","qty":480,"rate":555},
+             {"style":"AH-TOP-08","description":"Smocked top","colour":"White","sizes":"S-XL","qty":320,"rate":310}],
+    "doubts":["Ship date not printed on the PO"]}'::jsonb
+from public.companies c;
+insert into public.incoming_pos (company_id, source, email_id, email_from, email_subject, received_at, status, buyer_id, buyer_po, read)
+select c.id, 'email', 'e2e-po-2', 'buying@mira.test', 'New order MR-118', now() - interval '2 hours', 'to_check', :'mr', 'MR-118',
+  '{"buyer_name":"Mira Test Retail","buyer_code":"BYR-MR","po_number":"MR-118","po_date":null,"ship_date":null,"notes":null,
+    "lines":[{"style":"MR-SHIRT-11","description":"Linen shirt","colour":"Sand","sizes":"M-XXL","qty":900,"rate":395}],"doubts":[]}'::jsonb
+from public.companies c;
+insert into public.incoming_pos (company_id, source, email_id, email_from, email_subject, received_at, status)
+select c.id, 'email', 'e2e-po-3', 'news@mira.test', 'Our autumn lookbook', now() - interval '1 day', 'not_po' from public.companies c;
