@@ -27,7 +27,9 @@ export function OrderSections({ tabs, children }: { tabs: SectionTab[]; children
     if (!window.location.hash && kept.current) window.history.replaceState(window.history.state, "", `#${kept.current}`);
   });
   // Links into a section (a style's QC, a style card) open the section they sit in.
-  const tab = tabs.find((t) => hash === t.id || hash.startsWith(`${t.id}-`))?.id
+  // Sections that now live inside another tab: the ship date sits with the details, the margin with dispatch.
+  const ALIAS: Record<string, string> = { ship: "details", money: "dispatch" };
+  const tab = tabs.find((t) => hash === t.id || hash.startsWith(`${t.id}-`) || ALIAS[hash] === t.id)?.id
     ?? (hash.startsWith("style-") || hash.startsWith("steps-") ? "tna" : tabs[0].id);
   const box = useRef<HTMLDivElement>(null);
   const phone = () => window.matchMedia("(max-width: 760px)").matches;

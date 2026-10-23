@@ -7,7 +7,7 @@ import { toast } from "@/components/toast";
 import { PO_ACCEPT, poFileProblem, uploadPoFiles } from "@/lib/po-upload";
 import { removeOrderPoFile } from "../actions";
 
-// One file of the buyer's PO. Files that came with the email (or from Incoming POs) can't be taken off here.
+// One file of the buyer's PO. Files that came with the email (or from Buyer POs) can't be taken off here.
 export type PoDoc = { key: string; id: string | null; name: string; ext: string; size: number; url: string | null; download: string | null; from: string };
 
 const size = (n: number) => (n >= 1_048_576 ? `${(n / 1_048_576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
