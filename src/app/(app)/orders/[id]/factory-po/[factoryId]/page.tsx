@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { canEditOrders, getMe } from "@/lib/auth";
+import { loadTeam, personName } from "@/lib/data";
 import { FactoryPoDoc } from "@/components/factory-po-doc";
 import { dayAt, todayIST } from "@/lib/format";
 import type { LinePrice } from "@/lib/margin";
@@ -37,7 +38,7 @@ export default async function FactoryPoPage({ params }: PageProps<"/orders/[id]/
     supabase.from("orders").select("id, order_no, buyer_po, ship_date, revised_ship_date, status, order_lines(id, style, description, colour, qty, fabric, sizes, factory_id, position, photo_path)")
       .eq("id", id).is("order_lines.removed_at", null).maybeSingle(),
     supabase.from("factories").select("id, name, city, contact_name, phone, tally_ledger, address, gstin, email").eq("id", factoryId).maybeSingle(),
-    supabase.from("factory_pos").select("factory_id, released_at, buffer_days, created_at, po_no, delivery_note, mail_to, mail_cc, mail_requested_at, mailed_at, last_mailed_at, follow_ups, reply_at, reply_text, accepted_at, accepted_via, accept_note").eq("order_id", id).order("created_at"),
+    supabase.from("factory_pos").select("factory_id, released_at, buffer_days, created_at, po_no, delivery_note, lock_requested_at, lock_requested_by, lock_note, lock_note_at, mail_to, mail_cc, mail_requested_at, mailed_at, last_mailed_at, follow_ups, reply_at, reply_text, accepted_at, accepted_via, accept_note").eq("order_id", id).order("created_at"),
     supabase.from("companies").select("name, legal_name, address, ship_address, gstin, phone, email, po_mail_test_to").eq("id", me.companyId).maybeSingle(),
     supabase.rpc("line_prices", { p_orders: [id] }),
     supabase.rpc("orders_with_po_file", { p_orders: [id] }),
@@ -47,7 +48,7 @@ export default async function FactoryPoPage({ params }: PageProps<"/orders/[id]/
   const lines = ((o.order_lines ?? []) as Line[]).filter((l) => l.factory_id === factoryId).sort((a, b) => a.position - b.position);
   if (!lines.length) notFound();
   const photoPaths = lines.map((l) => l.photo_path).filter(Boolean) as string[];
-  const [{ data: stages }, { data: terms }, { data: signed }, { data: ledger }, { data: poNoRpc }, { data: blocker }, { data: token }] = await Promise.all([
+  const [{ data: stages }, { data: terms }, { data: signed }, { data: ledger }, { data: poNoRpc }, { data: blocker }, { data: token }, { data: relBlock }, { data: sendBlock }, team] = await Promise.all([
     supabase.from("line_stages").select("line_id, stage, planned_on, not_needed").in("line_id", lines.map((l) => l.id)).in("stage", KEY_STEPS.map((s) => s.key)),
     // Payment terms are kept per Tally ledger and only Accounts and the owner can read them; everyone else sees the usual 60 days.
     f.tally_ledger ? supabase.from("supplier_terms").select("days").eq("ledger", f.tally_ledger).maybeSingle() : Promise.resolve({ data: null }),
@@ -57,6 +58,10 @@ export default async function FactoryPoPage({ params }: PageProps<"/orders/[id]/
     supabase.rpc("factory_po_no", { p_order: id, p_factory: factoryId }),
     supabase.rpc("po_mail_blocker", { p_order: id, p_factory: factoryId }),
     supabase.rpc("factory_po_link", { p_order: id, p_factory: factoryId }),
+    // Before release: what stops the owner's approval, and what stops the PO from being emailed once approved.
+    supabase.rpc("release_blocker", { p_order: id, p_factory: factoryId }),
+    supabase.rpc("po_send_blocker", { p_order: id, p_factory: factoryId }),
+    loadTeam(),
   ]);
   const photoOf = new Map((signed ?? []).filter((s) => s.signedUrl).map((s) => [s.path, s.signedUrl]));
 
@@ -78,6 +83,9 @@ export default async function FactoryPoPage({ params }: PageProps<"/orders/[id]/
   const keyDates = (stages ?? []).some((s) => s.planned_on)
     ? lines.map((l) => `${lines.length > 1 ? `${l.style}: ` : ""}${KEY_STEPS.map((s) => `${s.label} ${planned(l.id, s.key)}`).join(" · ")}`).join("; ")
     : null;
+  const owner = team.find((m) => m.role === "owner" && m.active);
+  const nameOf = (uid: string | null | undefined) => (uid && team.find((m) => m.user_id === uid)) || null;
+  const requester = nameOf(po?.lock_requested_by);
   const accepted = po?.accepted_at
     ? `${short(istDay(po.accepted_at))}${po.accepted_via === "email" ? " by email" : po.accepted_via === "link" ? " on the PO link" : ""}`
     : null;
@@ -95,8 +103,8 @@ export default async function FactoryPoPage({ params }: PageProps<"/orders/[id]/
         <div className="grow">
           <nav className="crumbs" aria-label="Breadcrumb"><Link href={`/orders/${o.id}`}>{o.order_no}</Link><span aria-hidden>/</span><span>Factory PO</span></nav>
           <h1>Purchase order to {f.name}</h1>
-          <p>{released ? `Released ${dayAt(po!.released_at)}. Email it to the factory to accept, or print it and save it as a PDF.`
-            : "Draft: this PO isn't locked and released yet, so it prints marked as a draft."}</p>
+          <p>{released ? `Approved ${dayAt(po!.released_at)}. It is emailed to the factory to accept; you can also print it or save it as a PDF.`
+            : "Draft: add any missing photos and details, then send it for approval. Once approved, it is emailed to the factory."}</p>
         </div>
         {(released || hasBuyerPo) && <PrintPo />}
       </div>
@@ -109,13 +117,16 @@ export default async function FactoryPoPage({ params }: PageProps<"/orders/[id]/
       {noPhoto.length > 0 && (
         <div className="warnbox no-print">
           <b>{noPhoto.length === 1 ? `${noPhoto[0].style} has no photo.` : `${noPhoto.length} styles have no photo: ${noPhoto.map((l) => l.style).join(", ")}.`}</b>{" "}
-          The factory works from the picture, so the PO can&apos;t be emailed until every style has one. Tap + Add photo on the style below.
+          The factory works from the picture, so the PO can&apos;t be sent for approval or emailed until every style has one. Tap + Add photo on the style below.
         </div>
       )}
       <PoSend orderId={o.id} factoryId={factoryId} released={released} blocker={(blocker as string | null) ?? null} factoryEmail={f.email ?? ""}
         defaultCc={me.email} link={token ? `/po/${token}` : null} testTo={co?.po_mail_test_to ?? null}
         m={{ to: po?.mail_to ?? null, cc: po?.mail_cc ?? null, requestedAt: po?.mail_requested_at ?? null, mailedAt: po?.mailed_at ?? null, lastMailedAt: po?.last_mailed_at ?? null,
-          followUps: po?.follow_ups ?? 0, replyAt: po?.reply_at ?? null, replyText: po?.reply_text ?? null, acceptedAt: po?.accepted_at ?? null, acceptedVia: po?.accepted_via ?? null, acceptNote: po?.accept_note ?? null }} />
+          followUps: po?.follow_ups ?? 0, replyAt: po?.reply_at ?? null, replyText: po?.reply_text ?? null, acceptedAt: po?.accepted_at ?? null, acceptedVia: po?.accepted_via ?? null, acceptNote: po?.accept_note ?? null }}
+        approval={{ isOwner, ownerName: owner ? personName(owner).split(" ")[0] : "the owner", requestedAt: po?.lock_requested_at ?? null,
+          requestedBy: requester ? personName(requester) : null, note: po?.lock_note ?? null, noteAt: po?.lock_note_at ?? null,
+          releaseBlocker: (relBlock as string | null) ?? null, sendBlocker: (sendBlock as string | null) ?? null }} />
       <PoDetailsForm missing={missing} isOwner={isOwner} initial={{
         orderId: o.id, factoryId, hasPo: !!po, poNo: po?.po_no ?? "", deliveryNote: po?.delivery_note ?? "",
         factory: { address: f.address ?? "", gstin: vendorGstin, phone: f.phone ?? "", email: f.email ?? "" },

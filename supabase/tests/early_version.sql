@@ -102,8 +102,17 @@ select pg_temp.expect_error(format($$select public.request_po_lock('%s', '200000
 select public.accept_targets_for_factory(:'ord', '20000000-0000-0000-0000-000000000001');
 select pg_temp.expect(public.release_blocker(:'ord', '20000000-0000-0000-0000-000000000001') is null, 'a complete plan still shows a blocker');
 -- The merchandiser can't release any more, only send for the lock.
-select pg_temp.expect_error(format($$select public.release_factory_po('%s', '20000000-0000-0000-0000-000000000001')$$, :'ord'), 'Only the owner locks and releases%');
+select pg_temp.expect_error(format($$select public.release_factory_po('%s', '20000000-0000-0000-0000-000000000001')$$, :'ord'), 'Only the owner approves and releases%');
 select pg_temp.expect_error(format($$update public.factory_pos set lock_requested_at = now() where order_id = '%s'$$, :'ord'), 'permission denied%');
+-- Sending for approval needs the style photos and the factory's email too, so approving can send the PO (0063).
+select pg_temp.expect_error(format($$select public.request_po_lock('%s', '20000000-0000-0000-0000-000000000001')$$, :'ord'), 'Add the style photo first: AH-1.%');
+reset role;
+update public.order_lines set photo_path = company_id || '/' || order_id || '/styles/' || id || '/a.jpg' where order_id = :'ord';
+set role authenticated;
+select pg_temp.expect_error(format($$select public.request_po_lock('%s', '20000000-0000-0000-0000-000000000001')$$, :'ord'), 'Add the factory''s email%');
+reset role;
+update public.factories set email = 'Orders@Kkora.in' where id = '20000000-0000-0000-0000-000000000001';
+set role authenticated;
 select public.request_po_lock(:'ord', '20000000-0000-0000-0000-000000000001');
 select pg_temp.expect((select lock_requested_at is not null and lock_requested_by = auth.uid() from public.factory_pos where order_id = :'ord'), 'lock request not saved');
 select pg_temp.expect_error(format($$select public.send_back_po_lock('%s', '20000000-0000-0000-0000-000000000001', 'no')$$, :'ord'), 'Only the owner can send a plan back.');
@@ -129,6 +138,8 @@ select pg_temp.expect((select lock_note is null from public.factory_pos where or
 select pg_temp.as_user('00000000-0000-0000-0000-00000000000a');
 select public.release_factory_po(:'ord', '20000000-0000-0000-0000-000000000001');
 select pg_temp.expect((select released_by = auth.uid() from public.factory_pos where order_id = :'ord'), 'the owner''s lock did not release the PO');
+select pg_temp.expect((select mail_to = 'orders@kkora.in' and mail_cc = (select lower(email) from public.profiles where id = '00000000-0000-0000-0000-00000000000b')
+  and mail_requested_at is not null from public.factory_pos where order_id = :'ord'), 'approving did not queue the PO email to the factory');
 select pg_temp.expect((select count(*) = 15 from public.line_stages where line_id = :'l1' and baseline_on is not null), 'the lock set no baseline');
 select pg_temp.as_user('00000000-0000-0000-0000-00000000000b');
 select pg_temp.expect_error(format($$select public.request_po_lock('%s', '20000000-0000-0000-0000-000000000001')$$, :'ord'), 'The PO is already released.');

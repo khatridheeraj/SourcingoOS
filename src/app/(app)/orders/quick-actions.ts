@@ -161,11 +161,11 @@ export async function startProduction(orderId: string, input: StartInput): Promi
     err = await step("release_factory_po", { p_order: orderId, p_factory: factoryId });
     if (err) return { error: err };
     revalidatePath("/");
-    return { done: `Locked. ${g.factoryName}'s production has started.`, factoryId };
+    return { done: `Approved. ${g.factoryName}'s production has started and the PO is emailed to them.`, factoryId };
   }
   err = await step("request_po_lock", { p_order: orderId, p_factory: factoryId });
   if (err) return { error: err };
-  return { done: `Sent to ${order.ownerName} to lock. You'll see it here once it's locked.`, factoryId };
+  return { done: `Sent to ${order.ownerName} for approval. Once approved, the PO is emailed to ${g.factoryName}.`, factoryId };
 }
 
 // The owner locks a plan sent for the lock, from Home or the sheet.

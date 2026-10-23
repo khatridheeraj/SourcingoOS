@@ -325,7 +325,7 @@ function StartView({ order, factoryId, onDone, onChanged }: { order: QOrder; fac
 
       {waitingLock ? (
         <div className={`qs-banner ${order.isOwner ? "bad" : "info"}`}>
-          {order.isOwner ? <><b>Sent for your lock.</b> Check the dates below, then lock it and the factory starts.</> : <><b>Waiting for {order.ownerName} to lock it.</b> Nothing else to do. It shows on Home when it&apos;s locked.</>}
+          {order.isOwner ? <><b>Sent for your approval.</b> Check the dates below, then approve it: the PO is emailed to the factory.</> : <><b>Waiting for {order.ownerName}&apos;s approval.</b> Nothing else to do. Once approved, the PO is emailed to the factory.</>}
         </div>
       ) : g.lockNote ? (
         <div className="qs-banner bad"><b>{order.ownerName} sent it back:</b> {g.lockNote}</div>
@@ -397,7 +397,7 @@ function StartView({ order, factoryId, onDone, onChanged }: { order: QOrder; fac
       {!waitingLock && (
         <div className="qs-choice" role="radiogroup" aria-label="Factory's dates">
           <button type="button" role="radio" aria-checked={agreed} onClick={() => setAgreed(true)}>
-            <i aria-hidden /><span><b>The factory agreed to these dates</b><small>{order.isOwner ? "It's locked and production starts now." : `Goes to ${order.ownerName} to lock.`}</small></span>
+            <i aria-hidden /><span><b>The factory agreed to these dates</b><small>{order.isOwner ? "It's approved, the PO is emailed and production starts now." : `Goes to ${order.ownerName} for approval.`}</small></span>
           </button>
           <button type="button" role="radio" aria-checked={!agreed} onClick={() => setAgreed(false)}>
             <i aria-hidden /><span><b>Ask the factory for its own dates</b><small>They get 24 hours on their factory link.</small></span>
@@ -422,7 +422,7 @@ function StartView({ order, factoryId, onDone, onChanged }: { order: QOrder; fac
         ) : <button type="button" className="btn qs-go" onClick={onDone}>OK</button>) : (
           <button type="button" className="btn primary qs-go" onClick={go}
             disabled={pending || (agreed && !order.hasBuyerPo) || (!g.factoryId && !pickFactory) || noRate.some((s) => !(rates[s.id] ?? "").trim()) || (pastDue && (!newShip || !reason.trim()))}>
-            {pending ? "Starting…" : !agreed ? "Set targets and ask the factory" : order.isOwner ? "Lock and start production" : `Send to ${order.ownerName} to lock`}
+            {pending ? "Starting…" : !agreed ? "Set targets and ask the factory" : order.isOwner ? "Approve and start production" : `Send to ${order.ownerName} for approval`}
           </button>
         )}
       </footer>

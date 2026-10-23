@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { toast } from "@/components/toast";
 import { uploadPhotos } from "@/lib/photos";
-import { setStylePhoto } from "../../../actions";
+import { releaseFactoryPo, requestPoLock, sendBackPoLock, setStylePhoto } from "../../../actions";
 import { emailPo, markAccepted } from "./actions";
 
 export type PoMailState = {
@@ -15,9 +15,17 @@ export type PoMailState = {
 const at = (ts: string) => new Intl.DateTimeFormat("en-IN", { timeZone: "Asia/Kolkata", day: "numeric", month: "short", hour: "numeric", minute: "2-digit" }).format(new Date(ts));
 const VIA: Record<string, string> = { email: "by email", link: "on the PO link", team: "marked by the team" };
 
-// Where the factory PO stands with the factory, and the one next step: email it, wait, answer its reply, or done.
-export function PoSend({ orderId, factoryId, released, blocker, factoryEmail, defaultCc, link, m, testTo }: {
+// Before release: who has the PO now. The merchandiser sends it for approval; the owner approves (and it is emailed) or sends it back.
+export type PoApproval = {
+  isOwner: boolean; ownerName: string; requestedAt: string | null; requestedBy: string | null; note: string | null; noteAt: string | null;
+  // What stops the release (an incomplete plan, no buyer PO) and what stops the email (photos, factory email).
+  releaseBlocker: string | null; sendBlocker: string | null;
+};
+
+// Where the factory PO stands, and the one next step: send for approval, approve, email it, wait, answer its reply, or done.
+export function PoSend({ orderId, factoryId, released, blocker, factoryEmail, defaultCc, link, m, testTo, approval }: {
   orderId: string; factoryId: string; released: boolean; blocker: string | null; factoryEmail: string; defaultCc: string; link: string | null; m: PoMailState; testTo: string | null;
+  approval: PoApproval;
 }) {
   const router = useRouter();
   const [to, setTo] = useState(m.to ?? factoryEmail);
@@ -26,8 +34,17 @@ export function PoSend({ orderId, factoryId, released, blocker, factoryEmail, de
   const [note, setNote] = useState("");
   const [marking, setMarking] = useState(false);
   const [error, setError] = useState("");
+  const [back, setBack] = useState<string | null>(null);
   const [pending, start] = useTransition();
 
+  const act = (fn: () => Promise<{ error?: string }>, done: string) => start(async () => {
+    setError("");
+    const r = await fn();
+    if (r.error) return setError(r.error);
+    setBack(null);
+    toast(done);
+    router.refresh();
+  });
   const send = () => start(async () => {
     setError("");
     const r = await emailPo(orderId, factoryId, to, cc);
@@ -56,7 +73,21 @@ export function PoSend({ orderId, factoryId, released, blocker, factoryEmail, de
     tone = "ok"; title = `Accepted ${at(m.acceptedAt)}`;
     body = [m.acceptedVia && VIA[m.acceptedVia], m.acceptNote && `“${m.acceptNote}”`].filter(Boolean).join(": ");
   } else if (!released) {
-    title = "Not sent yet"; body = "Lock and release this PO first; then email it to the factory to accept.";
+    const a = approval;
+    const stop = a.releaseBlocker ?? a.sendBlocker;
+    if (a.requestedAt) {
+      tone = "warn";
+      title = a.isOwner ? `Waiting for your approval · sent by ${a.requestedBy || "the orders team"} ${at(a.requestedAt)}` : `Waiting for ${a.ownerName}'s approval · sent ${at(a.requestedAt)}`;
+      body = stop ? `Something changed since it was sent: ${stop}`
+        : a.isOwner ? "Check the PO below. Approving locks the plan and emails the PO to the factory; they accept by replying \"Accepted\"."
+        : "Once approved, the PO is emailed to the factory straight away, and followed up every 2 hours until they accept.";
+    } else if (a.note) {
+      tone = "warn"; title = `${a.isOwner ? "You" : a.ownerName} sent this PO back${a.noteAt ? ` ${at(a.noteAt)}` : ""}`;
+      body = `“${a.note}” ${stop ?? "Fix it, then send it for approval again."}`;
+    } else {
+      title = "Not sent for approval yet";
+      body = stop ?? (a.isOwner ? "Ready. Approving locks the plan and emails the PO to the factory." : `Ready. Send it to ${a.ownerName} for approval; it is emailed to the factory once approved.`);
+    }
   } else if (waitingReply) {
     tone = "warn"; title = `The factory replied ${at(m.replyAt!)}`; body = `“${m.replyText ?? ""}” Follow-ups are paused. Answer them, then send the PO again or mark it accepted.`;
   } else if (sending) {
@@ -81,6 +112,34 @@ export function PoSend({ orderId, factoryId, released, blocker, factoryEmail, de
           {link && <a className="btn sm" href={link} target="_blank" rel="noreferrer">Open as factory</a>}
         </div>
       </div>
+      {!released && (
+        <div className="row mt-3">
+          {approval.isOwner ? (
+            <button type="button" className="btn primary" disabled={pending || !!(approval.releaseBlocker ?? approval.sendBlocker)}
+              onClick={() => act(() => releaseFactoryPo(orderId, factoryId), testTo ? `Approved. The PO goes to the test inbox ${testTo} within the hour` : "Approved. The PO is emailed to the factory within the hour")}>
+              {pending ? "Approving…" : "Approve and send PO"}
+            </button>
+          ) : !approval.requestedAt && (
+            <button type="button" className="btn primary" disabled={pending || !!(approval.releaseBlocker ?? approval.sendBlocker)}
+              onClick={() => act(() => requestPoLock(orderId, factoryId), `Sent to ${approval.ownerName} for approval`)}>
+              {pending ? "Sending…" : approval.note ? "Send for approval again" : "Send PO for approval"}
+            </button>
+          )}
+          {approval.isOwner && approval.requestedAt && back === null && (
+            <button type="button" className="btn" disabled={pending} onClick={() => setBack("")}>Send back</button>
+          )}
+          <a className="btn" href={`/orders/${orderId}`}>Open the plan</a>
+        </div>
+      )}
+      {back !== null && (
+        <div className="row mt-3">
+          <input className="inp grow" value={back} maxLength={300} autoFocus aria-label="What to change" onChange={(e) => setBack(e.target.value)}
+            placeholder="What to change, like: rate is high, check with the factory" />
+          <button type="button" className="btn danger" disabled={pending || !back.trim()}
+            onClick={() => act(() => sendBackPoLock(orderId, factoryId, back), "Sent back to the team")}>{pending ? "Sending…" : "Send back"}</button>
+          <button type="button" className="btn" onClick={() => setBack(null)}>Cancel</button>
+        </div>
+      )}
       {released && !m.acceptedAt && (
         <div className="row mt-3">
           {!form && <button type="button" className="btn primary" disabled={!!blocker || pending} title={blocker ?? undefined}
