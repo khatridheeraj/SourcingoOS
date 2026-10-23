@@ -140,7 +140,7 @@ export default async function InquiriesPage({ searchParams }: PageProps<"/inquir
         <div className="inq-empty">
           <b>Every buyer ask, in one place</b>
           <p>When a buyer asks for a price on WhatsApp, a call or email, paste it above. It comes back on its follow-up day, so no inquiry is forgotten, and the ones you win become orders in one tap.</p>
-          <p className="muted">Emails the PO pickup catches that aren&apos;t POs can be made inquiries from <Link href="/pos" className="link">Incoming POs</Link>.</p>
+          <p className="muted">Emails the PO pickup catches that aren&apos;t POs can be made inquiries from <Link href="/pos" className="link">Buyer POs</Link>.</p>
         </div>
       ) : (
         <>

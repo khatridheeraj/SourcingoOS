@@ -14,7 +14,7 @@ const KIND: Record<Hit["kind"], { label: string; icon: IconName }> = {
   buyer: { label: "Buyers", icon: "buyers" },
   factory: { label: "Factories", icon: "factories" },
   inquiry: { label: "Inquiries", icon: "inquiry" },
-  po: { label: "Incoming POs", icon: "inbox" },
+  po: { label: "Buyer POs", icon: "inbox" },
 };
 
 // Search from anywhere: ⌘K or Ctrl+K, "/", or the search button. With nothing typed it lists the screens to jump to.

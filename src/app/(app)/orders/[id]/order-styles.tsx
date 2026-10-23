@@ -111,9 +111,9 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
   const editable = open && canEdit;
   const doneEditable = open && canDone;
   const lines = groups.flatMap((g) => g.lines);
-  // Styles whose steps are open: a single style, or while planning the first style of each factory (its targets get copied).
-  const [shown, setShown] = useState<Set<string>>(() => new Set(lines.length === 1 ? [lines[0].id]
-    : open && canEdit ? groups.filter((g) => g.factoryId && !g.releasedAt).map((g) => g.lines[0].id) : []));
+  // Styles whose steps are open: a single style in production. Planning happens in Start production, which fills
+  // every date, so the step lists stay closed until someone wants to change one by hand.
+  const [shown, setShown] = useState<Set<string>>(() => new Set(lines.length === 1 && groups[0]?.releasedAt ? [lines[0].id] : []));
 
   const get = (lineId: string, stage: string) => dates[key(lineId, stage)] ?? blank;
   const set = (lineId: string, stage: string, patch: Partial<Cell>) => {
@@ -423,7 +423,7 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
           : critical ? { text: `Critical: no TNA from the factory, due ${at.format(dueAt!)}`, cls: "bad" }
           : sent ? { text: g.planEnteredBy ? `Factory's TNA entered by ${g.planEnteredBy} ${dayAt(sent)}` : `Factory sent its TNA ${dayAt(sent)}`, cls: "warn" }
           : dueAt ? { text: `Waiting for the factory's TNA, due ${at.format(dueAt)}`, cls: "warn" }
-          : toAsk.length ? { text: "Set your targets, then ask the factory", cls: "bad" }
+          : toAsk.length ? { text: asked ? "Plan not complete" : "Plan not set yet", cls: "warn" }
           : { text: "Targets set, ask the factory", cls: "warn" };
         return (
           <div key={g.factoryId ?? "none"} className="fac-group" data-factory={g.factoryName}>
@@ -442,7 +442,15 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
                 </div>
               )}
               {editable && g.factoryId && !released && (
-                <div className="row">
+                <details className="fac-tools">
+                <summary>Plan by hand: targets, buffer, ask the factory</summary>
+                {target && (
+                  <p className="muted mt-2 text-[13px]">
+                    Every target and factory date must be on or before <b className="text-foreground">{day(target)}</b>
+                    {dueDate && ` (PO delivery ${day(dueDate)} less ${!bufferOk ? g.bufferDays ?? 0 : buffer} days buffer)`}.
+                  </p>
+                )}
+                <div className="row mt-2">
                   <FactoryLink factoryId={g.factoryId} name={g.factoryShort || g.factoryName} phone={g.factoryPhone} />
                   <button type="button" className="btn sm" disabled={pending || !target}
                     title={!target ? "Enter the PO's ship date first" : "Fills every empty target with the standard days before the target date"}
@@ -483,14 +491,9 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
                     </button>
                   )}
                 </div>
+                </details>
               )}
             </div>
-            {g.factoryId && !released && open && canEdit && !hasBuyerPo && (
-              <div className="warnbox mt-2" role="status">
-                <b>The buyer&apos;s PO isn&apos;t on file.</b> A factory PO is issued only against a PO received from the buyer.
-                Plan and ask the factory now; <a href="#details-po" className="link font-semibold">add the buyer&apos;s PO</a> to lock and release it.
-              </div>
-            )}
             {g.factoryId && !released && open && isOwner && g.lockRequestedAt && (
               <div className="lock-box" role="status">
                 <div className="grow">
@@ -523,31 +526,16 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
               </div>
             )}
             {!g.factoryId && <p className="muted mb-2 text-[13px]">Choose a factory for these styles in Order details below before planning them.</p>}
-            {g.factoryId && !released && open && (
-              <p className="mb-2 text-[13px]">
-                <b>Done dates open once {g.factoryShort || "the factory"}&apos;s PO is released.</b>{" "}
-                {isOwner ? "Approve the complete plan to send the PO." : "Complete the plan below, add every style's photo, then send the PO for approval; once approved it is emailed to the factory."}
-              </p>
-            )}
             {g.factoryId && target && !released && open && target < today && (
               <div className="warnbox mb-2" role="status">
                 <b>The target date {day(target)} has already passed.</b> Plan the real dates ahead anyway; steps after it are marked.
                 {canEdit && <> To lock the plan, <a href="#ship" className="link font-semibold">move the ship date</a> to the new delivery date agreed with the buyer.</>}
               </div>
             )}
-            {g.factoryId && target && !released && (
-              <p className="muted mb-2 text-[13px]">
-                Every target and factory date must be on or before <b className="text-foreground">{day(target)}</b>
-                {dueDate && ` (PO delivery ${day(dueDate)} less ${!bufferOk ? g.bufferDays ?? 0 : buffer} days buffer)`}.
-              </p>
-            )}
             {critical && (
               <p className="errbox mb-2" role="status">
                 {g.factoryName} hasn&apos;t sent its TNA within {PLAN_HOURS} hours. Chase them now, or move these styles to another factory in Order details.
               </p>
-            )}
-            {g.factoryId && !released && !asked && toAsk.length > 0 && (
-              <p className="mb-2 text-[13px] text-warn"><b>Before asking the factory:</b> {toAsk.join("; ")}</p>
             )}
             {g.factoryId && !released && asked && gaps.length > 0 && (
               <p className="mb-2 text-[13px] text-warn"><b>Missing before release:</b> {gaps.join("; ")}</p>

@@ -14,7 +14,7 @@ export const AREAS: Record<string, { label: string; tables: string[] }> = {
   orders: { label: "Orders and TNA", tables: ["orders", "order_lines", "line_stages", "factory_pos"] },
   quality: { label: "Quality checks", tables: ["qc_checks", "qc_photos", "qc_comments"] },
   dispatch: { label: "Dispatch", tables: ["dispatches", "dispatch_lines", "dispatch_photos"] },
-  pos: { label: "Incoming POs", tables: ["incoming_pos"] },
+  pos: { label: "Buyer POs", tables: ["incoming_pos"] },
   payments: { label: "Payments", tables: ["invoices", "credit_notes", "cheques", "cheque_allocations"] },
   masters: { label: "Buyers and factories", tables: ["buyers", "buyer_names", "factories"] },
   team: { label: "Team and settings", tables: ["companies", "profiles", "members", "invites", "inbound_keys", "ai_keys"] },

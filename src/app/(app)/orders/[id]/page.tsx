@@ -3,7 +3,9 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { canEditOrders, canEnterDone, canRecordQc, getMe } from "@/lib/auth";
 import { fetchAll } from "@/lib/fetch-all";
-import { day, dayAt, daysBetween, qty, SHIP_QC, STATUS, TNA_STEPS, todayIST } from "@/lib/format";
+import { day, dayAt, daysBetween, qty, SHIP_QC, stageReached, STATUS, TNA_STEPS, todayIST } from "@/lib/format";
+import { journey } from "@/lib/journey";
+import { OrderJourney } from "./order-journey";
 import { createClient } from "@/lib/supabase/server";
 import { OrderForm } from "../order-form";
 import { FactoryUpdates, type PendingUpdate } from "./factory-updates";
@@ -16,7 +18,6 @@ import { OrderStyles, type Baseline, type ExtraStep, type FactoryGroup, type Ste
 import { project, shipRisk } from "@/lib/tna-plan";
 import { loadTeam, personName } from "@/lib/data";
 import { PHOTO_BUCKET } from "@/lib/storage";
-import { MarkShipped } from "../mark-shipped";
 import { OrderSections, type SectionTab } from "./order-sections";
 import { ShareUpdate, type ShareOption } from "./share-update";
 import { formOptions } from "../options";
@@ -73,7 +74,7 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
   // Each style's fit, strike off, PP and size-set samples, with every round.
   const samples = await loadSampleThreads(id);
   const samplesToAct = samples.threads.filter((t) => t.state === "with_team").length;
-  // The buyer's own PO: the files its email (or Incoming POs) brought, and any the team added by hand.
+  // The buyer's own PO: the files its email (or Buyer POs) brought, and any the team added by hand.
   const poDocsP = canEdit ? loadPoDocs(supabase, id, new Map(team.map((m) => [m.user_id, personName(m)]))) : Promise.resolve([]);
   // Dispatches (purchase to GRN) are for the orders team only.
   const [{ data: dRows }, { data: dLines }, { data: tallyRaw }, { data: shipBlocker }] = canEdit
@@ -254,12 +255,31 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
   // Where the order is heading: its latest style, with every late step pushing the steps after it back.
   const outlook = o.status === "open" ? lines.map((l) => shipRisk(project(styleSteps(l.id).map((x) => ({ planned_on: x.row?.planned_on, done_on: x.row?.done_on })), today), due))
     .reduce((w, r) => (r.daysLate > w.daysLate || (w.level === "ok" && r.level === "behind") ? r : w), { level: "ok" as "ok" | "behind" | "risk", daysLate: 0 }) : null;
+  // The road from buyer PO to shipped, and the one next step on it.
+  const lineIds = new Set(lines.map((l) => l.id));
+  const j = journey({
+    status: o.status, role: me?.role,
+    lines: lines.map((l) => ({ factoryId: l.factory_id ?? null, hasRate: l.factory_rate != null })),
+    groups: groups.map((g) => ({ factoryId: g.factoryId, released: !!g.releasedAt, lockRequested: !!g.lockRequestedAt })),
+    hasBuyerPo: canEdit ? poDocs.length > 0 : null,
+    steps: stageRows.filter((r) => lineIds.has(r.line_id) && !r.not_needed).map((r) => ({ stage: r.stage, planned: r.planned_on, done: r.done_on })),
+    packedAll: stageReached(o.stage, "packed") || (lines.length > 0 && lines.every((l) => stageRows.some((r) => r.line_id === l.id && r.stage === "packed" && r.done_on))),
+    finalPassed,
+    samplesToAct,
+    pendingUpdates: pendingUpdates.length,
+    dispatch: canEdit ? {
+      count: dispatches.length,
+      uninvoiced: dispatches.filter((d) => !d.invoicedAt).length,
+      unshipped: dispatches.filter((d) => !d.shippedAt).length,
+      billedAll: !!o.closed_short_at || lines.every((l) => (shipRows.find((x) => x.line_id === l.id)?.billed ?? 0) >= l.qty),
+    } : null,
+    today,
+  });
   const tabs: SectionTab[] = [
     { id: "tna", label: "Styles", count: pendingUpdates.length || behind || undefined, tone: pendingUpdates.length ? "info" : "bad" },
     { id: "samples", label: "Samples", count: samplesToAct || undefined, tone: "warn" },
     { id: "qc", label: "QC" },
-    ...(canEdit ? [{ id: "dispatch", label: "Dispatch" }, { id: "money", label: "Margin" }] : []),
-    { id: "ship", label: "Ship date" },
+    ...(canEdit ? [{ id: "dispatch", label: "Dispatch" }] : []),
     { id: "details", label: "Details" },
     { id: "history", label: "History" },
   ];
@@ -285,21 +305,15 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
           <p className="hide-phone text-xs">Entered {dayAt(o.created_at)}{o.updated_at.slice(0, 16) !== o.created_at.slice(0, 16) && `, last changed ${dayAt(o.updated_at)}`}</p>
         </div>
         {/* Closing an order: once every style is bought and billed in Dispatch, and (except for the owner) its final QC has passed. */}
-        <div className="head-acts">
-          {/* Keyed like the styles below, so the message is worded afresh after every save. */}
-          {o.status === "open" && canEnterDone(me?.role) && groups.some((g) => g.releasedAt) && (
-            <SheetButton orderId={o.id} mode="update" className="btn primary">Update progress</SheetButton>
-          )}
-          {o.status === "open" && canEdit && groups.some((g) => !g.releasedAt) && (
-            <SheetButton orderId={o.id} mode="start" factoryId={groups.find((g) => !g.releasedAt)?.factoryId ?? ""}
-              className={`btn ${groups.some((g) => g.releasedAt) || (me?.role !== "owner" && groups.every((g) => g.releasedAt || g.lockRequestedAt)) ? "" : "primary"}`}>
-              {groups.some((g) => !g.releasedAt && g.lockRequestedAt) && me?.role === "owner" ? "Check and lock"
-                : groups.every((g) => g.releasedAt || g.lockRequestedAt) ? "Waiting for approval" : "Start production"}</SheetButton>
-          )}
-          <ShareUpdate key={`${(lineStages ?? []).length}:${(lineStages ?? []).reduce((a, r) => (r.updated_at > a ? r.updated_at : a), "")}`} options={share} />
-          {canEdit && o.status === "open" && <MarkShipped orderId={o.id} orderNo={o.order_no} blocked={shipBlocker as string | null} />}
-        </div>
       </div>
+      <OrderJourney orderId={o.id} orderNo={o.order_no} j={j} canRecordQc={canRecordQc(me?.role)} shipBlocker={shipBlocker as string | null}>
+        {/* The journey card carries the main next step; these stay for any time. */}
+        {o.status === "open" && canEnterDone(me?.role) && groups.some((g) => g.releasedAt) && j.next.action.kind !== "update" && (
+          <SheetButton orderId={o.id} mode="update" className="btn">Update progress</SheetButton>
+        )}
+        {/* Keyed like the styles below, so the message is worded afresh after every save. */}
+        <ShareUpdate key={`${(lineStages ?? []).length}:${(lineStages ?? []).reduce((a, r) => (r.updated_at > a ? r.updated_at : a), "")}`} options={share} />
+      </OrderJourney>
       {saved && <div className="okbox">Order saved as {o.order_no}.</div>}
       <OrderSections tabs={tabs}>
       <div data-sec="tna">
@@ -331,7 +345,7 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
       />
       </div>
       <div data-sec="samples">
-        <section className="panel" aria-labelledby="osmp-h">
+        <section className="panel scroll-mt-20" id="samples" aria-labelledby="osmp-h">
           <div className="row mb-1">
             <h2 id="osmp-h" className="font-bold text-base">Samples</h2>
             {samplesToAct > 0 && <span className="chip warn">{samplesToAct} to check</span>}
@@ -362,7 +376,7 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
           dispatches={dispatches} tally={tallyBills} now={Date.parse(new Date().toISOString())} today={todayIST()} /></div>
       )}
       {canEdit && (
-        <div data-sec="money"><OrderMargin
+        <div data-sec="dispatch"><OrderMargin
           styles={lines.map((l) => ({
             id: l.id, style: l.style, colour: str(l.colour), qty: l.qty,
             buyerRate: l.buyer_rate == null ? null : Number(l.buyer_rate), factoryRate: l.factory_rate == null ? null : Number(l.factory_rate),
@@ -370,17 +384,6 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
           dispatches={dispatches}
         /></div>
       )}
-      <div data-sec="ship"><OrderProduction
-        id={o.id}
-        open={o.status === "open"}
-        canEdit={canEdit}
-        shipDate={str(o.ship_date)}
-        today={todayIST()}
-        stage={o.stage}
-        stageAt={o.stage_at}
-        riskDays={outlook?.level === "risk" ? outlook.daysLate : 0}
-        initial={{ revised_ship_date: str(o.revised_ship_date), delay_reason: str(o.delay_reason) }}
-      /></div>
       <div data-sec="details">{canEdit && <BuyerPo orderId={o.id} companyId={o.company_id} docs={poDocs} canEdit={canEdit} />}{canEdit ? <OrderForm
         key={o.updated_at}
         initial={{
@@ -415,6 +418,17 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
           {o.buyer_terms && <p className="mt-3 whitespace-pre-line text-[13px]"><b>Buyer&apos;s terms:</b> {o.buyer_terms}</p>}
         </section>
       )}</div>
+      <div data-sec="details"><OrderProduction
+        id={o.id}
+        open={o.status === "open"}
+        canEdit={canEdit}
+        shipDate={str(o.ship_date)}
+        today={todayIST()}
+        stage={o.stage}
+        stageAt={o.stage_at}
+        riskDays={outlook?.level === "risk" ? outlook.daysLate : 0}
+        initial={{ revised_ship_date: str(o.revised_ship_date), delay_reason: str(o.delay_reason) }}
+      /></div>
       <div data-sec="history"><OrderHistory orderId={o.id} /></div>
       </OrderSections>
     </>
@@ -432,7 +446,7 @@ async function loadPoDocs(supabase: Awaited<ReturnType<typeof createClient>>, or
   const docs: (Omit<PoDoc, "url" | "download"> & { path: string })[] = [
     ...(incoming ?? []).flatMap((i) => ((i.files ?? []) as StoredFile[]).map((f) => ({
       key: f.path, id: null, path: f.path, name: f.name || "PO", ext: (f.path.split(".").pop() ?? "").toLowerCase(), size: sizeOf(f.size),
-      from: i.source === "email" ? `Came by email${i.email_from ? ` from ${i.email_from.replace(/\s*<.*>$/, "")}` : ""} · ${dayAt(i.received_at)}` : `Added on Incoming POs · ${dayAt(i.received_at)}`,
+      from: i.source === "email" ? `Came by email${i.email_from ? ` from ${i.email_from.replace(/\s*<.*>$/, "")}` : ""} · ${dayAt(i.received_at)}` : `Added on Buyer POs · ${dayAt(i.received_at)}`,
     }))),
     ...(added ?? []).map((f) => ({
       key: f.id, id: f.id, path: f.path, name: f.file_name, ext: (f.path.split(".").pop() ?? "").toLowerCase(), size: f.size_bytes,

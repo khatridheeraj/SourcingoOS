@@ -50,7 +50,7 @@ export default async function IncomingPosPage({ searchParams }: PageProps<"/pos"
     <>
       <div className="head">
         <div className="grow">
-          <h1>Incoming POs</h1>
+          <h1>Buyer POs</h1>
           <p>
             Buyer POs picked up from email or added from a file.{" "}
             {count("to_check") ? <b className="text-warn">{count("to_check")} to check</b> : <b className="text-ok">Nothing to check</b>}

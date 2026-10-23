@@ -45,28 +45,51 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
 
   const edit = canEditOrders(me.role);
   const money = me.role === "owner" || me.role === "accounts";
+  // The menu follows the work: sell (inquiries, buyer POs), make (orders, samples, chasing), ship, money,
+  // then the records everything hangs off. On a phone the first few sit in the tab bar.
+  const home = { href: "/today", label: "Home", icon: "home" as const };
+  const orders = { href: "/", label: "Orders", icon: "orders" as const };
+  const inbox = { href: "/pos", label: "Buyer POs", icon: "inbox" as const, count: toCheck };
+  const samplesItem = { href: "/samples", label: "Samples", icon: "sample" as const, count: samples.count ?? 0 };
   const groups: NavGroup[] = [
-    { items: [
-      { href: "/today", label: "Home", icon: "home" },
-      { href: "/", label: "Orders", icon: "orders" },
-      ...(edit ? [{ href: "/inquiries", label: "Inquiries", icon: "inquiry" as const, count: due.count ?? 0 },
-        { href: "/pos", label: "Incoming POs", icon: "inbox" as const, count: toCheck },
-        { href: "/goods", label: "Goods with us", icon: "box" as const, count: held.count ?? 0 },
-        { href: "/updates", label: "Updates", icon: "share" as const }] : []),
-      { href: "/samples", label: "Samples", icon: "sample" as const, count: samples.count ?? 0 },
-      { href: "/brief", label: "Brief", icon: "sun" as const },
+    { items: [home, orders] },
+    ...(edit ? [{ label: "Sell", items: [
+      { href: "/inquiries", label: "Inquiries", icon: "inquiry" as const, count: due.count ?? 0 },
+      inbox,
+    ] }] : []),
+    { label: "Make", items: [
+      samplesItem,
+      ...(edit ? [{ href: "/updates", label: "Chase and updates", icon: "share" as const }] : []),
     ] },
-    ...(edit ? [{ label: "Partners", items: [{ href: "/buyers", label: "Buyers", icon: "buyers" as const }, { href: "/factories", label: "Factories", icon: "factories" as const }] }] : []),
-    ...(edit ? [{ label: "Tools", items: [{ href: "/styles", label: "Style catalogue", icon: "styles" as const }, { href: "/reports", label: "Reports", icon: "chart" as const },
-      ...(MARKERS_ON ? [{ href: "/markers", label: "Markers", icon: "markers" as const }] : [])] }] : []),
-    ...(money ? [{ label: "Finance", items: [{ href: "/payments", label: "Payments", icon: "payments" as const }, { href: "/payables", label: "Bills to pay", icon: "bills" as const }, { href: "/tally", label: "Tally", icon: "tally" as const }] }] : []),
+    ...(edit ? [{ label: "Ship", items: [{ href: "/goods", label: "Goods with us", icon: "box" as const, count: held.count ?? 0 }] }] : []),
+    ...(money ? [{ label: "Money", items: [{ href: "/payments", label: "Payments", icon: "payments" as const }, { href: "/payables", label: "Bills to pay", icon: "bills" as const }, { href: "/tally", label: "Tally", icon: "tally" as const }] }] : []),
+    { label: "Records", items: [
+      ...(edit ? [{ href: "/buyers", label: "Buyers", icon: "buyers" as const }, { href: "/factories", label: "Factories", icon: "factories" as const },
+        { href: "/styles", label: "Style catalogue", icon: "styles" as const }, { href: "/reports", label: "Reports", icon: "chart" as const },
+        ...(MARKERS_ON ? [{ href: "/markers", label: "Markers", icon: "markers" as const }] : [])] : []),
+      { href: "/brief", label: "Morning brief", icon: "sun" as const },
+    ] },
     ...(me.role === "owner" ? [{ label: "Admin", items: [{ href: "/team", label: "Team", icon: "team" as const }, { href: "/activity", label: "Activity log", icon: "activity" as const },
       { href: "/feedback", label: "Team notes", icon: "notes" as const, count: help.new ?? 0 }] }] : []),
+  ];
+  // Phone tab bar: Home, Orders, New, then the screen each role opens most.
+  const tabs = edit ? [home, orders, inbox] : [home, orders, samplesItem];
+  // Everything that starts a piece of work, in one place.
+  const create = [
+    ...(edit ? [
+      { href: "/orders/new", label: "New order", icon: "orders" as const, hint: "From a buyer PO: styles, quantities, ship date" },
+      { href: "/inquiries/new", label: "Log an inquiry", icon: "inquiry" as const, hint: "A buyer asked for prices or samples" },
+      { href: "/pos", label: "Add a buyer PO", icon: "inbox" as const, hint: "A PO that came on WhatsApp or paper: upload its file" },
+    ] : []),
+    ...(money ? [
+      { href: "/payments/cheques/new", label: "Add a cheque", icon: "payments" as const, hint: "A cheque received from a buyer" },
+      { href: "/payments/invoices/new", label: "Add an invoice", icon: "bills" as const, hint: "Our sales invoice to a buyer" },
+    ] : []),
   ];
 
   return (
     <div className="shell">
-      {me.role && <Sidebar groups={groups} user={me.fullName || me.email} role={roleLabel(me.role)} company={me.companyName ?? ""} helpUnseen={help.unseen ?? 0} />}
+      {me.role && <Sidebar groups={groups} tabs={tabs} create={create} user={me.fullName || me.email} role={roleLabel(me.role)} company={me.companyName ?? ""} helpUnseen={help.unseen ?? 0} />}
       <main className="page">
         {me.role ? children : (
           <div className="empty mt-10">
