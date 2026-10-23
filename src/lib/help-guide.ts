@@ -245,6 +245,12 @@ export const TOPICS: Topic[] = [
   { id: "qc-comment", who: "staff", q: "How do I comment on or cancel a QC check?",
     a: ["Anyone can tap Comment under a check.", "Quality or the owner can tap Cancel check and give a reason (for example: entered on the wrong order). It stays in History."],
     words: "comment qc cancel qc wrong qc delete qc", pages: ["/orders/"] },
+  { id: "qc-redo", who: "staff", roles: ["owner", "quality"], q: "I entered a QC check or report wrong. How do I enter it again?",
+    a: ["Only the file is wrong? Under QC, tap ✕ next to the wrong file on that check, then tap Add report and pick the right one. The check stays as it is.",
+        "Result, date, pieces or style wrong? Tap Cancel check on that check and write why (for example: wrong report). Then tap Record QC and enter it again.",
+        "A saved check is never edited, so the cancelled one stays in History with your reason.",
+        "Hindi: sirf file galat hai to galat file ke aage ✕ dabao, phir Add report se sahi report daalo. Baaki kuch galat hai to Cancel check dabao, wajah likho, phir Record QC se dubara daalo."],
+    words: "qc wrong report again redo re-enter mistake galat dubara phir se report dobara qc cancel change file", pages: ["/orders/"] },
   { id: "qc-block", who: "staff", q: "Why can't I mark shipped or dispatch the goods?",
     a: ["Every style's latest final QC must have passed. If one failed, the factory fixes it and Quality records a re-check.",
         "QC on the order shows which style is missing its passed final."],
@@ -415,6 +421,9 @@ const SAME: Record<string, string> = {
   ewaybill: "eway", "e-way": "eway",
   complete: "done", completed: "done", finish: "done", finished: "done", pura: "done", poora: "done", पूरा: "done",
   styles: "style", orders: "order", steps: "step", targets: "target", invoices: "invoice",
+  riport: "report", riporat: "report", reports: "report", रिपोर्ट: "report",
+  galat: "wrong", galti: "wrong", mistake: "wrong", गलत: "wrong", dubara: "again", dobara: "again", fir: "again", phir: "again", दोबारा: "again",
+  daale: "new", dale: "new", daalna: "new", dalna: "new", daalo: "new",
   naya: "new", nayi: "new", add: "new", create: "new", banana: "new", enter: "new",
 };
 
