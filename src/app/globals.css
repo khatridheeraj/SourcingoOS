@@ -1062,6 +1062,8 @@ h1, h2, h3 { font-family: var(--font-display); text-wrap: balance; font-weight: 
   .help-send { flex: none; width: 44px; height: 44px; padding: 0; border-radius: 50%; }
   .help-attach { flex: none; width: 44px; height: 44px; padding: 0; border-radius: 50%; color: var(--muted); cursor: pointer; }
   .help-attach:hover, .help-attach:focus-within { color: var(--foreground); }
+  .help-staged { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 8px 12px 0; background: var(--surface); border-top: 1px solid var(--line); }
+  .help-staged + .help-bar { border-top: 0; }
   .compose { align-self: stretch; display: flex; flex-direction: column; gap: 10px; padding: 12px; border-radius: 16px; background: var(--surface); border: 1px solid var(--accent); box-shadow: var(--ring); animation: bub-in 0.24s ease; }
   .compose .seg button { padding: 0 6px; font-size: 12.5px; height: 30px; }
   .compose textarea.inp { min-height: 96px; font-size: 15px; }
