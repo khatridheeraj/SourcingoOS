@@ -1,7 +1,7 @@
 // The terms printed on every factory PO: Sourcingo's Vendor Agreement (MoU, agreement and annexures), summed up
 // clause by clause so a factory can read it on one page. Payment days come from the PO itself, not from here.
 export const FACTORY_PO_TERMS: { title: string; text: string }[] = [
-  { title: "Acceptance", text: "Starting production, dispatching or supplying against this PO means the Vendor accepts this PO and these terms in full. This PO is issued under the Sourcingo Vendor Agreement." },
+  { title: "Acceptance", text: "The Vendor accepts this PO by replying \"Accepted\" to the PO email or tapping Accept on the PO link; no signature is needed. Starting production, dispatching or supplying against this PO also means the Vendor accepts this PO and these terms in full. This PO is issued under the Sourcingo Vendor Agreement." },
   { title: "Quality and approvals", text: "Goods must match the approved samples, tech pack, measurements, packing and labelling instructions, the Buyer's standards and the law. The PP sample must be approved before bulk, and the Vendor keeps a golden sample. No azo dyes, formaldehyde or other restricted chemicals." },
   { title: "Inspection", text: "Sourcingo and the Buyer may inspect inline, at any time without notice, and before dispatch (final AQL 2.5 major / 4.0 minor), and may lab-test. The Vendor gives full access." },
   { title: "Rejection", text: "Goods that fail are reworked or replaced at the Vendor's cost, including re-inspection. Sourcingo may instead reduce the price or cancel the balance quantity without any liability." },
@@ -16,5 +16,5 @@ export const FACTORY_PO_TERMS: { title: string; text: string }[] = [
   { title: "Indemnity", text: "The Vendor indemnifies Sourcingo against all losses, claims, recalls, penalties and legal costs arising from defective or non-compliant goods, infringement or breach of these terms." },
   { title: "Force majeure", text: "Neither party is liable for delay caused only by events beyond reasonable control, if the other is told in writing at once and the delay is kept as short as possible." },
   { title: "Law and disputes", text: "Indian law applies. Disputes are first discussed in good faith for 15 days, then settled by a sole arbitrator under the Arbitration and Conciliation Act, 1996, seated at Jaipur, in English. Courts at Jaipur, Rajasthan have exclusive jurisdiction." },
-  { title: "Electronic PO", text: "This PO is valid when sent, signed or accepted electronically. This PO, these terms and the Vendor Agreement are the whole agreement for this order." },
+  { title: "Electronic PO", text: "This PO is valid when sent and accepted electronically, by email or on the PO link, without a signature. This PO, these terms and the Vendor Agreement are the whole agreement for this order." },
 ];

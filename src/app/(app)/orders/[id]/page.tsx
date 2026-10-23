@@ -60,7 +60,7 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
     // Every style has 15 or more steps, so an order with many styles passes the 1,000 rows one read returns.
     fetchAll((a, z) => supabase.from("line_stages").select("line_id, stage, planned_on, done_on, not_needed, factory_on, label, added_at, updated_at, baseline_on, target_note")
       .eq("order_id", id).order("added_at").order("id").range(a, z)),
-    supabase.from("factory_pos").select("factory_id, plan_requested_on, plan_requested_at, buffer_days, factory_sent_at, released_at, plan_entered_by, lock_requested_at, lock_requested_by, lock_note, lock_note_at").eq("order_id", id),
+    supabase.from("factory_pos").select("factory_id, plan_requested_on, plan_requested_at, buffer_days, factory_sent_at, released_at, plan_entered_by, lock_requested_at, lock_requested_by, lock_note, lock_note_at, mailed_at, reply_at, last_mailed_at, accepted_at").eq("order_id", id),
     // Steps factories marked done in their panel, waiting for the team to confirm.
     supabase.from("step_updates").select("id, line_id, factory_id, stage, done_on, note, photos, created_at").eq("order_id", id).eq("status", "pending").order("created_at"),
     // Each style's tech pack, cutting program and other files.
@@ -142,6 +142,7 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
         factorySentAt: str(po?.factory_sent_at),
         planEnteredBy: po?.plan_entered_by ? people.get(po.plan_entered_by) ?? "the orders team" : "",
         releasedAt: str(po?.released_at),
+        poMail: po?.accepted_at ? "accepted" : po?.reply_at && (!po.last_mailed_at || po.reply_at > po.last_mailed_at) ? "replied" : po?.mailed_at ? "waiting" : "",
         lockRequestedAt: str(po?.lock_requested_at),
         lockRequestedBy: po?.lock_requested_by ? people.get(po.lock_requested_by) ?? "the orders team" : "",
         lockNote: str(po?.lock_note),

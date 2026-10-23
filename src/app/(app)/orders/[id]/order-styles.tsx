@@ -27,6 +27,8 @@ export type FactoryGroup = {
   // Who in the team entered the factory's dates for it ("" when the factory sent them itself).
   planEnteredBy: string;
   releasedAt: string;
+  // Where the emailed factory PO stands: accepted, the factory replied, waiting to accept, or not emailed ("").
+  poMail: "accepted" | "replied" | "waiting" | "";
   // Sent for the owner's lock (and by whom), or sent back by the owner with a note.
   lockRequestedAt: string;
   lockRequestedBy: string;
@@ -434,7 +436,9 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
               {canEdit && g.factoryId && released && (
                 <div className="row">
                   {editable && <FactoryLink factoryId={g.factoryId} name={g.factoryShort || g.factoryName} phone={g.factoryPhone} />}
-                  <Link href={`/orders/${orderId}/factory-po/${g.factoryId}`} className="btn sm" title="Our PO to this factory, to print or save as a PDF">Factory PO PDF</Link>
+                  {g.poMail === "accepted" ? <span className="chip ok">PO accepted</span> : g.poMail === "replied" ? <span className="chip warn">Factory replied</span>
+                    : g.poMail === "waiting" ? <span className="chip warn">Waiting to accept</span> : null}
+                  <Link href={`/orders/${orderId}/factory-po/${g.factoryId}`} className="btn sm" title="Our PO to this factory: email it to accept, or print it">Factory PO</Link>
                 </div>
               )}
               {editable && g.factoryId && !released && (
