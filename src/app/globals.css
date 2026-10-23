@@ -634,6 +634,7 @@ h1, h2, h3 { font-family: var(--font-display); text-wrap: balance; font-weight: 
   .sections > [data-sec] { display: flex; flex-direction: column; gap: 20px; }
   .seg button { display: inline-flex; align-items: center; justify-content: center; height: 28px; padding: 0 11px; border-radius: 7px; font-size: 13px; font-weight: 500; color: var(--muted); white-space: nowrap; }
   .seg button[aria-selected="true"], .seg button[aria-pressed="true"], .seg button[aria-checked="true"] { background: var(--surface); color: var(--foreground); box-shadow: var(--shadow), 0 0 0 1px var(--line); }
+  .seg-sm button { height: 24px; padding: 0 9px; font-size: 12px; }
   .seg.w-full button { flex: 1; }
   /* A sheet: a centred card on a computer, sliding up from the bottom on a phone. */
   .sheet { margin: auto; width: min(520px, calc(100vw - 32px)); max-height: calc(100vh - 48px); padding: 0; border: 0; border-radius: 16px; background: var(--surface); color: var(--foreground); box-shadow: var(--shadow-pop); }
