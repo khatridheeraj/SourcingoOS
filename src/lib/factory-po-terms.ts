@@ -1,0 +1,20 @@
+// The terms printed on every factory PO: Sourcingo's Vendor Agreement (MoU, agreement and annexures), summed up
+// clause by clause so a factory can read it on one page. Payment days come from the PO itself, not from here.
+export const FACTORY_PO_TERMS: { title: string; text: string }[] = [
+  { title: "Acceptance", text: "Starting production, dispatching or supplying against this PO means the Vendor accepts this PO and these terms in full. This PO is issued under the Sourcingo Vendor Agreement." },
+  { title: "Quality and approvals", text: "Goods must match the approved samples, tech pack, measurements, packing and labelling instructions, the Buyer's standards and the law. The PP sample must be approved before bulk, and the Vendor keeps a golden sample. No azo dyes, formaldehyde or other restricted chemicals." },
+  { title: "Inspection", text: "Sourcingo and the Buyer may inspect inline, at any time without notice, and before dispatch (final AQL 2.5 major / 4.0 minor), and may lab-test. The Vendor gives full access." },
+  { title: "Rejection", text: "Goods that fail are reworked or replaced at the Vendor's cost, including re-inspection. Sourcingo may instead reduce the price or cancel the balance quantity without any liability." },
+  { title: "Delivery", text: "Time is of the essence. Goods must be ready and delivered by the date on this PO; any change needs Sourcingo's written approval. Short or excess quantity only within the agreed tolerance; excess may be returned at the Vendor's cost." },
+  { title: "Delay penalty", text: "Late dispatch or delivery (except force majeure) costs 1% of the delayed line value for each day of delay, with no cap, without limiting Sourcingo's right to recover higher actual losses." },
+  { title: "Price, tax and payment", text: "Rates are fixed as on this PO. GST is charged as per law and TDS/TCS is deducted where applicable. Payment is as per the payment terms on this PO. Any change to quantity, rate or dates needs a written change order (email is enough)." },
+  { title: "Warranty", text: "Goods are free from defects and as per specification for 60 days from delivery, or for the Buyer's warranty period if longer." },
+  { title: "Compliance and ethics", text: "The Vendor follows all laws (GST, EPF/ESI, minimum wages, Factories Act, POSH, environment) and the Vendor Code of Conduct: no child or forced labour, safe and fair workplace, no gifts or payments to Sourcingo or Buyer staff. Sourcingo, the Buyer or their auditors may audit the factory." },
+  { title: "Subcontracting", text: "No subcontracting of this PO without Sourcingo's written consent. The Vendor stays fully responsible for any subcontractor." },
+  { title: "Designs and confidentiality", text: "Designs, tech packs, patterns, artworks, prices and Buyer details are confidential and remain the property of Sourcingo or the Buyer. They must not be used for anything other than this PO." },
+  { title: "Non-circumvention", text: "For 24 months from introduction, the Vendor will not deal with any Buyer introduced by Sourcingo, directly or indirectly, except through Sourcingo. Breach makes the Vendor liable for 100% of the order value so transacted, plus Sourcingo's commission." },
+  { title: "Indemnity", text: "The Vendor indemnifies Sourcingo against all losses, claims, recalls, penalties and legal costs arising from defective or non-compliant goods, infringement or breach of these terms." },
+  { title: "Force majeure", text: "Neither party is liable for delay caused only by events beyond reasonable control, if the other is told in writing at once and the delay is kept as short as possible." },
+  { title: "Law and disputes", text: "Indian law applies. Disputes are first discussed in good faith for 15 days, then settled by a sole arbitrator under the Arbitration and Conciliation Act, 1996, seated at Jaipur, in English. Courts at Jaipur, Rajasthan have exclusive jurisdiction." },
+  { title: "Electronic PO", text: "This PO is valid when sent, signed or accepted electronically. This PO, these terms and the Vendor Agreement are the whole agreement for this order." },
+];

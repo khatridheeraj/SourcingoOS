@@ -6,13 +6,17 @@ import { canEditOrders, getMe } from "@/lib/auth";
 import { friendly } from "@/lib/errors";
 import { createClient } from "@/lib/supabase/server";
 
-export type FactoryInput = { id?: string; name: string; city: string; contact_name: string; phone: string; notes: string; active: boolean };
+export type FactoryInput = { id?: string; name: string; city: string; contact_name: string; phone: string; notes: string; active: boolean; address: string; gstin: string; email: string };
 
 export async function saveFactory(f: FactoryInput): Promise<{ error?: string }> {
   const me = await getMe();
   if (!me?.role) return { error: "Your account is not switched on yet." };
   if (!canEditOrders(me.role)) return { error: "Only the orders team can change factories." };
   if (!f.name.trim()) return { error: "Enter the factory's name." };
+  const gstin = f.gstin.trim().toUpperCase();
+  if (gstin && !/^[0-9]{2}[A-Z0-9]{13}$/.test(gstin)) return { error: "That GSTIN doesn't look right. It has 15 letters and numbers, like 08ABCDE1234F1Z5." };
+  const email = f.email.trim().toLowerCase();
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return { error: "That email doesn't look right." };
   const row = {
     name: f.name.trim().replace(/\s+/g, " "),
     city: f.city.trim() || null,
@@ -20,6 +24,9 @@ export async function saveFactory(f: FactoryInput): Promise<{ error?: string }> 
     phone: f.phone.trim() || null,
     notes: f.notes.trim() || null,
     active: f.active,
+    address: f.address.trim() || null,
+    gstin: gstin || null,
+    email: email || null,
   };
   const supabase = await createClient();
   const { error } = f.id ? await supabase.from("factories").update(row).eq("id", f.id) : await supabase.from("factories").insert(row);

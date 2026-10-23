@@ -1751,3 +1751,75 @@ h1, h2, h3 { font-family: var(--font-display); text-wrap: balance; font-weight: 
 
 /* The quick add box shows its focus on the whole card. */
 .qadd-text:focus-visible { outline: none; }
+
+/* Factory PO in Sourcingo's own format: a ruled A4 form like the hand-made POs, terms on the page after. */
+@layer components {
+  .fpo-doc { display: grid; gap: 16px; }
+  .fpo, .fpo-terms { border: 1px solid var(--line); border-radius: 14px; background: var(--surface); box-shadow: var(--shadow); font-size: 13px; overflow: hidden; }
+  .fpo { --rule: var(--line-strong); }
+  .fpo > * { min-width: 0; }
+  .fpo-title { margin: 0; padding: 14px 12px 12px; text-align: center; font-size: 22px; font-weight: 800; letter-spacing: 0.02em; text-transform: uppercase; border-bottom: 1px solid var(--rule); }
+  .fpo-title em { font-style: normal; font-weight: 600; font-size: 14px; color: var(--warn, #b45309); text-transform: none; letter-spacing: 0; }
+  .fpo-head { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); grid-template-areas: "bh sh mt" "bc sc vc" "bk bk vk"; }
+  .fpo-cell { margin: 0; padding: 7px 10px; border-bottom: 1px solid var(--rule); border-right: 1px solid var(--rule); min-width: 0; overflow-wrap: anywhere; }
+  .fpo-head > :nth-child(3), .fpo-head > :nth-child(6), .fpo-head > :nth-child(8) { border-right: 0; }
+  .fpo-cell b { display: block; font-weight: 700; }
+  .fpo-cell p { margin: 3px 0 0; font-size: 12px; line-height: 1.4; white-space: pre-line; color: var(--muted); }
+  .fpo-h { font-weight: 700; text-transform: uppercase; font-size: 12px; letter-spacing: 0.04em; }
+  .fpo-kv { display: grid; gap: 2px; padding: 0; }
+  .fpo-kv > div { display: grid; grid-template-columns: 74px minmax(0, 1fr); }
+  .fpo-kv > div + div { border-top: 1px solid var(--line); }
+  .fpo-kv dt { padding: 4px 10px; font-size: 11.5px; font-weight: 700; text-transform: uppercase; border-right: 1px solid var(--line); }
+  .fpo-kv dd { margin: 0; padding: 4px 10px; font-weight: 600; font-size: 12.5px; }
+  .fpo-meta dd { font-family: var(--font-mono-face, ui-monospace), monospace; }
+  .fpo-band { padding: 5px 10px; text-align: center; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; border-bottom: 1px solid var(--rule); background: var(--surface-2); }
+  .fpo-tbl-wrap { overflow-x: auto; }
+  .fpo-swipe { display: none; margin: 0; padding: 6px 10px; font-size: 12px; color: var(--muted); border-bottom: 1px solid var(--line); }
+  .fpo-tbl { width: 100%; min-width: 640px; border-collapse: collapse; font-size: 12.5px; }
+  .fpo-tbl th { padding: 6px; font-size: 11.5px; font-weight: 700; text-transform: uppercase; text-align: center; border-bottom: 1px solid var(--rule); border-right: 1px solid var(--rule); }
+  .fpo-tbl td { padding: 8px 6px; text-align: center; vertical-align: middle; border-bottom: 1px solid var(--rule); border-right: 1px solid var(--rule); }
+  .fpo-tbl th:last-child, .fpo-tbl td:last-child { border-right: 0; }
+  .fpo-tbl td small { display: block; margin-top: 2px; font-size: 11px; color: var(--muted); }
+  .fpo-tbl .nw { white-space: nowrap; }
+  .fpo-qty { max-width: 120px; font-size: 11.5px; line-height: 1.35; }
+  .fpo-qty .nw { display: block; }
+  .fpo-img-h { width: 84px; }
+  .fpo-img { padding: 4px !important; }
+  .fpo-img img { display: block; width: 72px; height: 90px; margin: 0 auto; object-fit: cover; border-radius: 4px; }
+  .fpo-tbl tfoot td { font-weight: 700; text-align: left; }
+  .fpo-tbl tfoot td.num { text-align: center; }
+  .fpo-value { font-weight: 600; }
+  .fpo-foot { display: flex; gap: 16px; justify-content: space-between; padding: 10px 12px 14px; }
+  .fpo-foot p { margin: 0 0 3px; font-size: 12.5px; }
+  .fpo-dates { color: var(--muted); font-size: 11.5px !important; }
+  .fpo-sign, .fpo-accept > div { display: grid; gap: 3px; min-width: 160px; text-align: center; align-content: end; }
+  .fpo-sign i, .fpo-accept i { display: block; height: 44px; border-bottom: 1px solid var(--foreground); }
+  .fpo-sign span, .fpo-accept span { font-weight: 600; font-size: 12.5px; }
+  .fpo-sign small, .fpo-accept small { color: var(--muted); font-size: 11px; }
+  .fpo-terms { padding: 18px 22px 22px; }
+  .fpo-terms h3 { margin: 0; font-size: 14px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em; text-align: center; }
+  .fpo-terms-sub { margin: 4px 0 12px; text-align: center; font-size: 12px; color: var(--muted); }
+  .fpo-terms ol { display: grid; gap: 6px; margin: 0; padding-left: 20px; list-style: decimal; font-size: 12px; line-height: 1.5; }
+  .fpo-terms li { break-inside: avoid; }
+  .fpo-accept { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 28px; margin-top: 22px; }
+  @media (max-width: 640px) {
+    .fpo-head { grid-template-columns: minmax(0, 1fr); grid-template-areas: "mt" "bh" "bc" "bk" "sh" "sc" "vc" "vk"; }
+    .fpo-head > .fpo-cell { border-right: 0; }
+    .fpo-title { font-size: 18px; }
+    .fpo-swipe { display: block; }
+    .fpo-foot { flex-direction: column; }
+    .fpo-terms { padding: 16px; }
+  }
+}
+@media print {
+  .fpo-doc { display: block; }
+  .fpo, .fpo-terms { border-radius: 0; box-shadow: none; color: #000; }
+  .fpo { border: 1px solid #000; --rule: #000; }
+  .fpo * , .fpo-terms * { color: #000 !important; }
+  .fpo-band { background: none; }
+  .fpo-tbl-wrap { overflow: visible; }
+  .fpo-tbl { min-width: 0; font-size: 11px; }
+  .fpo-head { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; grid-template-areas: "bh sh mt" "bc sc vc" "bk bk vk" !important; }
+  .fpo-terms { border: 0; padding: 14px 0 0; }
+  .fpo-tbl tr, .fpo-foot { break-inside: avoid; }
+}
