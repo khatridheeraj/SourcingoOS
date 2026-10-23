@@ -5,15 +5,18 @@ import { useRouter } from "next/navigation";
 import { useRef, useState, useTransition } from "react";
 import { toast } from "@/components/toast";
 import { PO_ACCEPT, poFileProblem, uploadPoFiles } from "@/lib/po-upload";
-import { removeOrderPoFile } from "../actions";
+import { linkEmailPo, removeOrderPoFile } from "../actions";
 
 // One file of the buyer's PO. Files that came with the email (or from Incoming POs) can't be taken off here.
 export type PoDoc = { key: string; id: string | null; name: string; ext: string; size: number; url: string | null; download: string | null; from: string };
 
+// A file from one of the buyer's emails that names a style on this order, offered when no PO is on file yet.
+export type FoundPo = { key: string; incomingId: string; path: string; name: string; ext: string; size: number; url: string | null; from: string };
+
 const size = (n: number) => (n >= 1_048_576 ? `${(n / 1_048_576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
 
 // The buyer's PO as the buyer sent it: open it, download it, or add it when it came on WhatsApp or by hand.
-export function BuyerPo({ orderId, companyId, docs, canEdit }: { orderId: string; companyId: string; docs: PoDoc[]; canEdit: boolean }) {
+export function BuyerPo({ orderId, companyId, docs, found = [], canEdit }: { orderId: string; companyId: string; docs: PoDoc[]; found?: FoundPo[]; canEdit: boolean }) {
   const router = useRouter();
   const input = useRef<HTMLInputElement>(null);
   const [error, setError] = useState("");
@@ -34,6 +37,18 @@ export function BuyerPo({ orderId, companyId, docs, canEdit }: { orderId: string
       setBusy("");
       if (res.error) return setError(res.error);
       toast(res.count === 1 ? "PO added to the order" : `${res.count} PO files added`);
+      router.refresh();
+    });
+  }
+
+  function link(f: FoundPo) {
+    setError("");
+    setBusy(f.key);
+    start(async () => {
+      const res = await linkEmailPo(orderId, f.incomingId, f.path);
+      setBusy("");
+      if (res.error) return setError(res.error);
+      toast("PO added to the order");
       router.refresh();
     });
   }
@@ -102,6 +117,27 @@ export function BuyerPo({ orderId, companyId, docs, canEdit }: { orderId: string
             {canEdit && picker("Add the PO file", true)}
             <Link href={`/orders/${orderId}/po`} className="btn">Make PO PDF</Link>
           </div>
+        </div>
+      )}
+      {canEdit && docs.length === 0 && found.length > 0 && (
+        <div className="mt-3">
+          <p className="mb-2 text-[13px]"><b>Found in the buyer&apos;s emails.</b> These files name a style on this order. Open one to check it&apos;s this PO, then add it.</p>
+          <ul className="po-docs">
+            {found.map((f) => (
+              <li key={f.key}>
+                <span className={`po-doc-ext ${f.ext === "pdf" ? "pdf" : ""}`} aria-hidden>{f.ext.toUpperCase().slice(0, 4)}</span>
+                <div className="min-w-0 grow">
+                  {f.url ? <a href={f.url} target="_blank" rel="noreferrer" className="po-doc-name" title={f.name}>{f.name}</a>
+                    : <span className="po-doc-name muted">{f.name}</span>}
+                  <small>{[f.from, f.size ? size(f.size) : ""].filter(Boolean).join(" · ")}</small>
+                </div>
+                <div className="po-doc-acts">
+                  {f.url && <a href={f.url} target="_blank" rel="noreferrer" className="btn sm">Open</a>}
+                  <button type="button" className="btn sm primary" disabled={pending} onClick={() => link(f)}>{busy === f.key ? "Adding…" : "This is the PO"}</button>
+                </div>
+              </li>
+            ))}
+          </ul>
         </div>
       )}
       {error && <p className="mt-2 text-[13px] font-semibold text-bad" role="alert">{error}</p>}
