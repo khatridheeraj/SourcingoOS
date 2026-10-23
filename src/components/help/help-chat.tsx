@@ -20,7 +20,7 @@ export function openHelp(tab: "ask" | "notes" = "ask") {
 const T = {
   en: {
     help: "Help", ask: "Ask", notes: "My notes", close: "Close",
-    hello: (n: string, owner: string) => `Hi${n ? ` ${n}` : ""}. Ask how to do anything in the app, or tell ${owner} what's wrong or what could be better.`,
+    hello: (n: string, owner: string) => `Hi${n ? ` ${n}` : ""}. Ask how to do anything in the app, or tell ${owner} what's wrong or what could be better. Tap the clip to send a screenshot.`,
     here: (p: string) => (p === "App" ? "Common questions" : `Questions about ${p}`),
     wrong: "Something's wrong", data: "Wrong data", idea: "I have an idea",
     placeholder: "Ask, or describe a problem or idea…", send: "Send",
@@ -38,7 +38,7 @@ const T = {
       idea: "What would make the app better for you?",
       question: "What do you want to know?",
     } as Record<NoteKind, string>,
-    photo: "Attach", attachHint: "Screenshot, photo, short video, PDF or Excel. Up to 4.", removePhoto: "Remove",
+    photo: "Attach", attachTitle: "Attach a screenshot, photo or file", attachHint: "Screenshot, photo, short video, PDF or Excel. Up to 4.", removePhoto: "Remove",
     from: "Sent from", sendTo: (o: string) => `Send to ${o}`, sending: "Sending…", cancel: "Cancel",
     sent: (no: number, o: string) => `Sent to ${o} as note #${no}. The answer will show in My notes.`,
     sendAsNote: (o: string) => `Send to ${o}`,
@@ -49,7 +49,7 @@ const T = {
   },
   hi: {
     help: "मदद", ask: "पूछें", notes: "मेरे संदेश", close: "बंद करें",
-    hello: (n: string) => `नमस्ते${n ? ` ${n}` : ""}। ऐप में कुछ भी कैसे करें, पूछिए। या Sourcingo को बताइए कि क्या गड़बड़ है या क्या बेहतर हो सकता है।`,
+    hello: (n: string) => `नमस्ते${n ? ` ${n}` : ""}। ऐप में कुछ भी कैसे करें, पूछिए। या Sourcingo को बताइए कि क्या गड़बड़ है या क्या बेहतर हो सकता है। स्क्रीनशॉट भेजने के लिए क्लिप दबाएँ।`,
     here: () => "इस पेज के सवाल",
     wrong: "कुछ गड़बड़ है", data: "गलत जानकारी", idea: "एक सुझाव",
     placeholder: "सवाल, दिक्कत या सुझाव लिखें…", send: "भेजें",
@@ -67,7 +67,7 @@ const T = {
       idea: "ऐप में क्या बेहतर हो सकता है?",
       question: "आप क्या जानना चाहते हैं?",
     } as Record<NoteKind, string>,
-    photo: "फोटो / फाइल जोड़ें", attachHint: "फोटो, छोटा वीडियो, PDF या Excel. 4 तक.", removePhoto: "हटाएँ",
+    photo: "फोटो / फाइल जोड़ें", attachTitle: "स्क्रीनशॉट, फोटो या फाइल जोड़ें", attachHint: "फोटो, छोटा वीडियो, PDF या Excel. 4 तक.", removePhoto: "हटाएँ",
     from: "पेज", sendTo: () => "Sourcingo को भेजें", sending: "भेज रहे हैं…", cancel: "रहने दें",
     sent: (no: number) => `Sourcingo को भेज दिया (संदेश #${no})। जवाब "मेरे संदेश" में दिखेगा।`,
     sendAsNote: () => "Sourcingo को भेजें",
@@ -83,7 +83,7 @@ type Msg =
   | { id: number; from: "bot"; kind: "hello" }
   | { id: number; from: "bot"; kind: "answer"; topic: Topic; others: Topic[]; askId: string | null; question: string; rated?: boolean }
   | { id: number; from: "bot"; kind: "text"; text: string; offer?: { kind: NoteKind; body: string } }
-  | { id: number; from: "bot"; kind: "compose"; note: NoteKind; body: string; done?: boolean };
+  | { id: number; from: "bot"; kind: "compose"; note: NoteKind; body: string; files?: File[]; done?: boolean };
 
 type Without<T, K extends PropertyKey> = T extends unknown ? Omit<T, K> : never;
 type NewMsg = Without<Msg, "id">;
@@ -185,10 +185,18 @@ export function HelpChat({ who, role, name, userId, companyId, ownerName = "Dhee
     else push({ from: "bot", kind: "text", text: w.notHelped(owner), offer: { kind: "question", body: m.question } });
   }
 
-  function compose(kind: NoteKind, body = "") {
+  function compose(kind: NoteKind, body = "", files?: File[]) {
     // One open note form at a time: an unsent one is replaced, so two forms never stack up.
     setMsgs((all) => all.filter((m) => !("kind" in m && m.kind === "compose" && !m.done)));
-    push({ from: "bot", kind: "compose", note: kind, body });
+    push({ from: "bot", kind: "compose", note: kind, body, files });
+  }
+
+  // A screenshot from the main bar is almost always a problem: open the note form with it already attached.
+  function attach(files: File[]) {
+    if (!files.length) return;
+    const q = text.trim();
+    setText("");
+    compose(guessKind(q) ?? "problem", q, files.slice(0, 4));
   }
 
   function showNotes() {
@@ -277,14 +285,22 @@ export function HelpChat({ who, role, name, userId, companyId, ownerName = "Dhee
                     )}
                   </div>
                 );
-                return <Compose key={m.id} w={w} owner={owner} lang={lang} kind={m.note} body={m.body} done={!!m.done} page={path} pageName={here} folder={`${companyId}/help/${userId}`}
+                return <Compose key={m.id} w={w} owner={owner} lang={lang} kind={m.note} body={m.body} files={m.files} done={!!m.done} page={path} pageName={here} folder={`${companyId}/help/${userId}`}
                   onSent={(no) => { patch(m.id, { done: true }); push({ from: "bot", kind: "text", text: w.sent(no, owner) }); router.refresh(); }}
                   onCancel={() => patch(m.id, { done: true })} />;
               })}
             </div>
             <form className="help-bar" onSubmit={(e) => { e.preventDefault(); ask(text); }}>
+              <label className="btn help-attach" title={w.attachTitle}>
+                <input type="file" accept={ATTACH_ACCEPT} multiple className="sr-only" aria-label={w.attachTitle}
+                  onChange={(e) => { const picked = Array.from(e.target.files ?? []); e.target.value = ""; attach(picked); }} />
+                <svg viewBox="0 0 20 20" width="19" height="19" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                  <path d="m16.5 9.5-6.4 6.4a4 4 0 0 1-5.7-5.7l6.7-6.7a2.7 2.7 0 0 1 3.8 3.8l-6.6 6.6a1.3 1.3 0 0 1-1.9-1.9l6-6" />
+                </svg>
+              </label>
               <textarea ref={input} className="inp" rows={1} value={text} placeholder={w.placeholder} aria-label={w.placeholder} maxLength={500}
                 onChange={(e) => setText(e.target.value)}
+                onPaste={(e) => { const f = pastedFiles(e); if (f.length) { e.preventDefault(); attach(f); } }}
                 onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && !e.nativeEvent.isComposing) { e.preventDefault(); ask(text); } }} />
               <button className="btn primary help-send" disabled={!text.trim()} aria-label={w.send}>
                 <svg viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
@@ -312,13 +328,13 @@ export function HelpChat({ who, role, name, userId, companyId, ownerName = "Dhee
 type Words = (typeof T)["en"] | (typeof T)["hi"];
 
 // The note form inside the chat: what kind, what happened, attachments, and the screen it came from.
-function Compose({ w, owner, lang, kind: first, body: firstBody, done, page, pageName, folder, onSent, onCancel }: {
-  w: Words; owner: string; lang: Lang; kind: NoteKind; body: string; done: boolean; page: string; pageName: string; folder: string;
+function Compose({ w, owner, lang, kind: first, body: firstBody, files: firstFiles, done, page, pageName, folder, onSent, onCancel }: {
+  w: Words; owner: string; lang: Lang; kind: NoteKind; body: string; files?: File[]; done: boolean; page: string; pageName: string; folder: string;
   onSent: (no: number) => void; onCancel: () => void;
 }) {
   const [kind, setKind] = useState<NoteKind>(first);
   const [body, setBody] = useState(firstBody);
-  const [files, setFiles] = useState<File[]>([]);
+  const [files, setFiles] = useState<File[]>(firstFiles ?? []);
   const [error, setError] = useState("");
   const [pending, start] = useTransition();
   const [where] = useState(() => {
@@ -357,7 +373,8 @@ function Compose({ w, owner, lang, kind: first, body: firstBody, done, page, pag
         ))}
       </div>
       <textarea ref={area} className="inp" rows={4} value={body} maxLength={4000} placeholder={w.prompts[kind]} aria-label={w.prompts[kind]}
-        onChange={(e) => setBody(e.target.value)} />
+        onChange={(e) => setBody(e.target.value)}
+        onPaste={(e) => { const f = pastedFiles(e); if (f.length) { e.preventDefault(); setFiles((all) => [...all, ...f].slice(0, 4)); } }} />
       <div className="compose-meta">
         <label className="btn sm">
           <input type="file" accept={ATTACH_ACCEPT} multiple className="sr-only" disabled={files.length >= 4}
@@ -388,6 +405,11 @@ function Compose({ w, owner, lang, kind: first, body: firstBody, done, page, pag
       </div>
     </div>
   );
+}
+
+// Screenshots pasted with Ctrl+V / long-press arrive as files on the clipboard.
+function pastedFiles(e: React.ClipboardEvent): File[] {
+  return Array.from(e.clipboardData?.files ?? []);
 }
 
 const dm = (t: string, lang: Lang) => new Intl.DateTimeFormat(lang === "hi" ? "hi-IN" : "en-IN", { day: "numeric", month: "short", timeZone: "Asia/Kolkata" }).format(new Date(t));
