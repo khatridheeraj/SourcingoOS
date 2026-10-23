@@ -3,6 +3,9 @@ const date = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" });
 
 export const qty = (n: number | null | undefined) => (n == null ? "" : inr.format(n));
 export const money = (n: number | null | undefined) => (n == null ? "" : `₹${inr.format(n)}`);
+// Rupees the way people say them at a glance: ₹10.7 L, ₹1.2 Cr.
+export const moneyShort = (n: number | null | undefined) =>
+  n == null ? "" : n >= 1e7 ? `₹${+(n / 1e7).toFixed(2)} Cr` : n >= 1e5 ? `₹${+(n / 1e5).toFixed(1)} L` : money(n);
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 // "10 Sep 2026" from YYYY-MM-DD (en-IN would write "Sept"), read straight from the string so no time zone can shift it.
 export const day = (d: string | null | undefined) => (d ? `${Number(d.slice(8, 10))} ${MONTHS[Number(d.slice(5, 7)) - 1]} ${d.slice(0, 4)}` : "");

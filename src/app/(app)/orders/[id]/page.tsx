@@ -3,8 +3,9 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { canEditOrders, canEnterDone, canRecordQc, getMe } from "@/lib/auth";
 import { fetchAll } from "@/lib/fetch-all";
-import { day, dayAt, daysBetween, qty, SHIP_QC, stageReached, STATUS, TNA_STEPS, todayIST } from "@/lib/format";
-import { journey } from "@/lib/journey";
+import { day, dayAt, money, moneyShort, qty, SHIP_QC, stageReached, STATUS, TNA_STEPS, todayIST } from "@/lib/format";
+import { areaOf, journey, shipClock } from "@/lib/journey";
+import { PhotoStack, ShipClock } from "@/components/order-ui";
 import { OrderJourney } from "./order-journey";
 import { createClient } from "@/lib/supabase/server";
 import { OrderForm } from "../order-form";
@@ -286,27 +287,39 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
 
   return (
     <>
-      <div className="head">
-        <div className="grow">
+      <header className="oh">
+        <div className="oh-main">
           <nav className="crumbs" aria-label="Breadcrumb"><Link href="/">Orders</Link><span aria-hidden>/</span><span>{o.order_no}</span></nav>
-          <h1>{opts.buyers.find((b) => b.id === o.buyer_id)?.label ?? "Order"} <span className="font-normal text-muted">PO {o.buyer_po}</span></h1>
-          <p className="row">
-            <span className={STATUS[o.status]?.cls}>{STATUS[o.status]?.label}</span>
-            <span>{due ? `Ships ${day(due)}` : "No ship date yet"}{o.status === "open" && due && due < todayIST() && <b className="text-bad"> · {daysBetween(due, todayIST())} days late</b>}</span>
-            <span>{lines.length} {lines.length === 1 ? "style" : "styles"} · {qty(lines.reduce((t, l) => t + l.qty, 0))} pcs</span>
+          <h1>{buyerLabel || "Order"}</h1>
+          <p className="oh-sub">
+            <span>PO {o.buyer_po}</span>
+            {groups.some((g) => g.factoryId) && <span>{groups.filter((g) => g.factoryId).map((g) => g.factoryShort || g.factoryName).join(", ")}</span>}
+            {o.merchandiser_id && people.get(o.merchandiser_id) && <span className="hide-phone">{people.get(o.merchandiser_id)}</span>}
+          </p>
+          <div className="oh-facts">
+            {lines.some((l) => l.photo_path && urlByPath.get(l.photo_path)) && (
+              <PhotoStack photos={lines.map((l) => ({ url: (l.photo_path && urlByPath.get(l.photo_path)) || null, alt: l.style }))} total={lines.length} />
+            )}
+            <span><b className="num">{lines.length}</b> {lines.length === 1 ? "style" : "styles"}</span>
+            <span><b className="num">{qty(lines.reduce((t, l) => t + l.qty, 0))}</b> pcs</span>
+            {canEdit && lines.length > 0 && lines.every((l) => l.buyer_rate != null) && (
+              <span title={money(lines.reduce((t, l) => t + l.qty * Number(l.buyer_rate), 0))}><b className="num">{moneyShort(lines.reduce((t, l) => t + l.qty * Number(l.buyer_rate), 0))}</b> value</span>
+            )}
+          </div>
+          <p className="oh-chips">
+            {o.status !== "open" && <span className={STATUS[o.status]?.cls}>{STATUS[o.status]?.label}</span>}
             {canEdit && (poDocs[0]?.url ? <a href={poDocs[0].url} target="_blank" rel="noreferrer" className="chip po-chip" title={`Open ${poDocs[0].name}`}>
               <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" aria-hidden><path d="M4 1.75h5.5L12.25 4.5v9.75H4z" /><path d="M9.25 1.75V4.75h3" /></svg>
-              {poDocs[0].ext === "pdf" ? "PO PDF" : "PO file"}{poDocs.length > 1 ? ` · ${poDocs.length} files` : ""}</a>
+              {poDocs[0].ext === "pdf" ? "Buyer PO PDF" : "Buyer PO file"}{poDocs.length > 1 ? ` · ${poDocs.length} files` : ""}</a>
               : <a href="#details-po" className="chip warn" title="A factory PO is locked only once the buyer's PO is on file">No buyer PO yet</a>)}
             {ship.part && o.status === "open" && <a href="#dispatch" className="chip info">Part shipped · {partText(ship)}</a>}
             {o.closed_short_at && <span className="chip warn" title={o.short_reason ?? undefined}>Closed short · {qty(ship.billed)} of {qty(ship.ordered)} pcs</span>}
-            {!ship.part && outlook?.level === "risk" && <span className="chip bad" title="A late step pushes back every step after it">Ship date at risk · about {outlook.daysLate} {outlook.daysLate === 1 ? "day" : "days"} late</span>}
+            {!ship.part && outlook?.level === "risk" && <span className="chip bad" title="A late step pushes back every step after it">At risk · about {outlook.daysLate} {outlook.daysLate === 1 ? "day" : "days"} late</span>}
           </p>
-          <p className="hide-phone text-xs">Entered {dayAt(o.created_at)}{o.updated_at.slice(0, 16) !== o.created_at.slice(0, 16) && `, last changed ${dayAt(o.updated_at)}`}</p>
         </div>
-        {/* Closing an order: once every style is bought and billed in Dispatch, and (except for the owner) its final QC has passed. */}
-      </div>
-      <OrderJourney orderId={o.id} orderNo={o.order_no} j={j} canRecordQc={canRecordQc(me?.role)} shipBlocker={shipBlocker as string | null}>
+        <ShipClock c={shipClock(due ?? null, today, o.status)} date={due ? `${o.revised_ship_date && o.revised_ship_date !== o.ship_date ? "New date " : ""}${day(due)}` : undefined} />
+      </header>
+      <OrderJourney orderId={o.id} orderNo={o.order_no} j={j} canEdit={canEdit} canRecordQc={canRecordQc(me?.role)} shipBlocker={shipBlocker as string | null}>
         {/* The journey card carries the main next step; these stay for any time. */}
         {o.status === "open" && canEnterDone(me?.role) && groups.some((g) => g.releasedAt) && j.next.action.kind !== "update" && (
           <SheetButton orderId={o.id} mode="update" className="btn">Update progress</SheetButton>
@@ -315,7 +328,7 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
         <ShareUpdate key={`${(lineStages ?? []).length}:${(lineStages ?? []).reduce((a, r) => (r.updated_at > a ? r.updated_at : a), "")}`} options={share} />
       </OrderJourney>
       {saved && <div className="okbox">Order saved as {o.order_no}.</div>}
-      <OrderSections tabs={tabs}>
+      <OrderSections tabs={tabs} start={areaOf(j.stage, canEdit)}>
       <div data-sec="tna">
       <FactoryUpdates orderId={o.id} updates={pendingUpdates} canReview={canEnterDone(me?.role) && o.status === "open"} />
       <OrderStyles

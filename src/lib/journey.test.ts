@@ -1,7 +1,7 @@
 // node --experimental-strip-types --test src/lib/journey.test.ts
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { journey, type JourneyInput } from "./journey.ts";
+import { areaOf, journey, shipClock, type JourneyInput } from "./journey.ts";
 
 const today = "2026-10-24";
 const steps = (done: number, planned = "2026-11-10") =>
@@ -53,4 +53,19 @@ test("packed goes to final QC, then dispatch in order", () => {
 });
 test("shipped orders are done", () => {
   assert.equal(j({ status: "shipped" }).stage, "done");
+});
+
+test("the ship clock counts days the way people say them", () => {
+  assert.deepEqual(shipClock("2026-11-03", today, "open"), { n: "10", unit: "days to ship", tone: "calm" });
+  assert.equal(shipClock("2026-10-29", today, "open").tone, "warn");
+  assert.equal(shipClock(today, today, "open").unit, "Ships today");
+  assert.deepEqual(shipClock("2026-10-23", today, "open"), { n: "1", unit: "day late", tone: "bad" });
+  assert.equal(shipClock("2026-10-01", today, "shipped").unit, "Shipped");
+  assert.equal(shipClock(null, today, "open").unit, "No ship date");
+});
+test("each stage opens the part of the order its work is in", () => {
+  assert.equal(areaOf("factory", true), "details");
+  assert.equal(areaOf("make", false), "tna");
+  assert.equal(areaOf("ship", true), "dispatch");
+  assert.equal(areaOf("ship", false), "qc");
 });

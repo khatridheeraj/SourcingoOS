@@ -161,3 +161,23 @@ export function journey(j: JourneyInput): Journey {
 }
 
 export const stageIndex = (k: StageKey) => (k === "done" ? STAGES.length : STAGES.findIndex((s) => s.key === k));
+
+// How long until an order ships, said the way people count it: "12 days to ship", "Ships today", "5 days late".
+export type Clock = { n: string; unit: string; tone: "bad" | "warn" | "ok" | "calm" | "muted" };
+export function shipClock(due: string | null, today: string, status: string): Clock {
+  if (status === "shipped") return { n: "✓", unit: "Shipped", tone: "ok" };
+  if (status === "cancelled") return { n: "–", unit: "Cancelled", tone: "muted" };
+  if (!due) return { n: "–", unit: "No ship date", tone: "muted" };
+  const d = Math.round((Date.parse(due) - Date.parse(today)) / 86_400_000);
+  if (d < 0) return { n: String(-d), unit: -d === 1 ? "day late" : "days late", tone: "bad" };
+  if (d === 0) return { n: "0", unit: "Ships today", tone: "warn" };
+  return { n: String(d), unit: d === 1 ? "day to ship" : "days to ship", tone: d <= 7 ? "warn" : "calm" };
+}
+
+// The part of an order page each stage's work lives in.
+export function areaOf(stage: StageKey, canEdit: boolean): string {
+  if (stage === "factory") return canEdit ? "details" : "tna";
+  if (stage === "qc") return "qc";
+  if (stage === "ship" || stage === "done") return canEdit ? "dispatch" : "qc";
+  return "tna";
+}

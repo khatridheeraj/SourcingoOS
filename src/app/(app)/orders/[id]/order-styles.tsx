@@ -380,28 +380,15 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
 
   return (
     <section className="panel scroll-mt-20" id="tna">
-      <div className="row mb-1">
+      <div className="row mb-3 !flex-nowrap">
         <h2 className="font-bold text-base">Styles and TNA</h2>
-        {late > 0 && <span className="chip bad">{late} {late === 1 ? "style" : "styles"} behind plan</span>}
+        {late > 0 && <span className="chip bad hide-phone">{late} {late === 1 ? "style" : "styles"} behind plan</span>}
         {lines.length > 1 && (
-          <button type="button" className="btn sm ml-auto" onClick={() => setShown(new Set(allShown ? [] : lines.map((l) => l.id)))}>
+          <button type="button" className="btn sm ml-auto shrink-0" onClick={() => setShown(new Set(allShown ? [] : lines.map((l) => l.id)))}>
             {allShown ? "Hide all steps" : "Show all steps"}
           </button>
         )}
       </div>
-      <details className="howto mb-4">
-        <summary>How planning works</summary>
-        <p>
-          First set your target date for every step of each style (add extra steps if a style needs them), then ask the factory.
-          The factory gives its own date for each step in its panel; if it agrees to your targets by phone or WhatsApp instead, press
-          &quot;Factory agreed to targets&quot;. Once every factory date is in and none is later than its target, send the plan for the
-          owner&apos;s lock. The owner checks it and locks it, which releases the PO to the factory, or sends it back saying what to change.
-          After the lock the targets are locked: only the owner can move one, with a reason, and the step shows where it started. The orders team
-          and Quality enter done dates. A late step pushes back the steps after it, so a style shows when it will likely be ready and whether
-          that misses the ship date. Quality&apos;s latest result shows next to each step it checks. &quot;Fill empty targets&quot; works every
-          empty target back from the target date with the usual days per step.
-        </p>
-      </details>
 
       {groups.map((g) => {
         const released = !!g.releasedAt;
@@ -558,7 +545,14 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
                             {/* eslint-disable-next-line @next/next/no-img-element -- short-lived signed links, not for the image optimiser */}
                             <img src={l.photoUrl} alt="" />
                           </a>
-                        ) : <div className="ph">No photo</div>}
+                        ) : editable ? (
+                          // No photo yet: the empty frame itself takes one.
+                          <label className={`ph add ${pending ? "pointer-events-none opacity-50" : ""}`} title={`Add a photo of ${l.style}`}>
+                            {busy === `photo:${l.id}` ? <span className="text-[10px]">Uploading…</span> : <GarmentIcon plus />}
+                            <input type="file" accept="image/*" className="sr-only" aria-label={`Photo for ${l.style}`}
+                              onChange={(e) => { photo(l.id, e.target.files); e.target.value = ""; }} />
+                          </label>
+                        ) : <div className="ph" aria-label="No photo"><GarmentIcon /></div>}
                       </div>
                       <div className="style-id">
                         <b className="code text-[13.5px]">{l.style}</b>
@@ -569,9 +563,9 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
                             techPack ? "tech pack ✓" : editable ? "tech pack" : ""].filter(Boolean).join(" · ") || "Fabric, sizes and files"}
                           {detailOpen ? " ▴" : " ▾"}
                         </button>
-                        {editable && (
+                        {editable && l.photoUrl && (
                           <label className={`link w-fit cursor-pointer text-xs ${pending ? "pointer-events-none opacity-50" : ""}`}>
-                            {busy === `photo:${l.id}` ? "Uploading…" : l.photoUrl ? "Change photo" : "Add photo"}
+                            {busy === `photo:${l.id}` ? "Uploading…" : "Change photo"}
                             <input type="file" accept="image/*" className="sr-only" aria-label={`Photo for ${l.style}`}
                               onChange={(e) => { photo(l.id, e.target.files); e.target.value = ""; }} />
                           </label>
@@ -595,11 +589,14 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
                             {busy === `done:${l.id}` ? "Saving…" : <><span aria-hidden className="done-tick">✓</span>{sm.next.label} done today</>}
                           </button>
                         )}
-                        <a href={`#qc-${l.id}`} className={`chip ${fin ? (fin.result === "pass" ? "ok" : "bad") : ""}`}>
-                          {fin ? `Final QC ${fin.result === "pass" ? "passed" : "failed"}` : "Final QC not done"}
-                        </a>
+                        {/* Final QC only matters once it has happened; before that it is just noise on every style. */}
+                        {fin && (
+                          <a href={`#qc-${l.id}`} className={`chip ${fin.result === "pass" ? "ok" : "bad"}`}>
+                            Final QC {fin.result === "pass" ? "passed" : "failed"}
+                          </a>
+                        )}
                         <button type="button" className="btn sm" aria-expanded={isOpen} aria-controls={`steps-${l.id}`} onClick={() => toggle(l.id)}>
-                          {isOpen ? "Hide steps" : editable || doneEditable ? "Show and edit steps" : "Show steps"}
+                          {isOpen ? "Hide steps" : editable || doneEditable ? "Steps and dates" : "Show steps"}
                         </button>
                       </div>
                     </div>
@@ -656,6 +653,29 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
       )}
       {!doneEditable && error && <p className="mt-3 text-[13px] font-semibold text-bad" role="alert">{error}</p>}
       {!doneEditable && notice && !error && <p className="mt-3 text-[13px] font-semibold text-ok">{notice}</p>}
+      <details className="howto mt-4">
+        <summary>How planning works</summary>
+        <p>
+          First set your target date for every step of each style (add extra steps if a style needs them), then ask the factory.
+          The factory gives its own date for each step in its panel; if it agrees to your targets by phone or WhatsApp instead, press
+          &quot;Factory agreed to targets&quot;. Once every factory date is in and none is later than its target, send the plan for the
+          owner&apos;s lock. The owner checks it and locks it, which releases the PO to the factory, or sends it back saying what to change.
+          After the lock the targets are locked: only the owner can move one, with a reason, and the step shows where it started. The orders team
+          and Quality enter done dates. A late step pushes back the steps after it, so a style shows when it will likely be ready and whether
+          that misses the ship date. Quality&apos;s latest result shows next to each step it checks. &quot;Fill empty targets&quot; works every
+          empty target back from the target date with the usual days per step.
+        </p>
+      </details>
     </section>
+  );
+}
+
+// A simple garment outline for a style with no photo yet.
+function GarmentIcon({ plus }: { plus?: boolean }) {
+  return (
+    <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" aria-hidden>
+      <path d="M8.5 3.5 4 6l1.8 4 1.7-.8V20.5h9V9.2l1.7.8L20 6l-4.5-2.5c-.5 1.4-1.9 2.3-3.5 2.3s-3-.9-3.5-2.3Z" />
+      {plus && <path d="M12 11v5M9.5 13.5h5" />}
+    </svg>
   );
 }

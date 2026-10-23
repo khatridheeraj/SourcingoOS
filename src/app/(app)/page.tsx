@@ -2,14 +2,15 @@ import { NO_COMPANY } from "@/lib/names";
 import Link from "next/link";
 import { canEditOrders, getMe } from "@/lib/auth";
 import { buyerName, loadBuyers, loadFactories } from "@/lib/data";
-import { day, daysBetween, dueDate, money, qty, SHIP_QC, stageReached, STATUS, todayIST } from "@/lib/format";
+import { day, daysBetween, dueDate, money, moneyShort, qty, SHIP_QC, stageReached, STATUS, todayIST } from "@/lib/format";
 import { type LinePrice, marginCls, pct, planMargin } from "@/lib/margin";
 import { fetchAll } from "@/lib/fetch-all";
 import { styleProgress } from "@/lib/progress";
 import { loadShipProgress, orderShip } from "@/lib/shipments";
 import { ProgressCell } from "@/components/progress";
 import { createClient } from "@/lib/supabase/server";
-import { journey, STAGES, type StageKey } from "@/lib/journey";
+import { journey, type Journey, shipClock, STAGES, type StageKey } from "@/lib/journey";
+import { ShipClock, StageMeter } from "@/components/order-ui";
 
 const TABS = [
   { key: "open", label: "Open" },
@@ -26,6 +27,8 @@ export default async function OrdersPage({ searchParams }: PageProps<"/">) {
   const status = TABS.some((t) => t.key === sp.status) ? String(sp.status) : "open";
   const stage = STAGES.some((x) => x.key === sp.stage) ? (String(sp.stage) as StageKey) : null;
   const q = typeof sp.q === "string" ? sp.q.trim().toLowerCase() : "";
+  // Open orders show as a board on a computer, one column per stage; a phone (and "List") shows the list.
+  const board = status === "open" && !stage && sp.view !== "list";
 
   const me = await getMe();
   const companyId = me?.companyId ?? NO_COMPANY;
@@ -184,7 +187,7 @@ export default async function OrdersPage({ searchParams }: PageProps<"/">) {
       )}
 
       {status === "open" && open.length > 0 && (
-        <nav className="opipe" aria-label="Orders by stage">
+        <nav className={`opipe ${board ? "board-alt" : ""}`} aria-label="Orders by stage">
           <Link href="/" aria-current={!stage ? "page" : undefined} className="pipe-all"><b>{open.length}</b><span>All open</span></Link>
           {STAGES.map((x) => {
             const n = open.filter((r) => r.journey?.stage === x.key).length;
@@ -205,7 +208,14 @@ export default async function OrdersPage({ searchParams }: PageProps<"/">) {
             </Link>
           ))}
         </nav>
+        {status === "open" && !stage && (
+          <nav className="seg hide-phone" aria-label="View">
+            <Link href={`/${q ? `?q=${encodeURIComponent(q)}` : ""}`} aria-current={board ? "page" : undefined}>Board</Link>
+            <Link href={`/?view=list${q ? `&q=${encodeURIComponent(q)}` : ""}`} aria-current={!board ? "page" : undefined}>List</Link>
+          </nav>
+        )}
         <form className="ml-auto w-full sm:w-72">
+          {sp.view === "list" && <input type="hidden" name="view" value="list" />}
           {status !== "open" && <input type="hidden" name="status" value={status} />}
           {stage && <input type="hidden" name="stage" value={stage} />}
           <input className="inp" type="search" name="q" defaultValue={q} placeholder="Search PO, style, buyer, factory" aria-label="Search orders"
@@ -215,13 +225,35 @@ export default async function OrdersPage({ searchParams }: PageProps<"/">) {
 
       {loadError && <div className="errbox">Couldn&apos;t load everything, so this list may be incomplete. Reload to try again. ({loadError.message})</div>}
 
+      {board && rows.length > 0 && (
+        <div className="board hide-phone" aria-label="Open orders by stage">
+          {STAGES.map((x) => {
+            const col = rows.filter((r) => r.journey?.stage === x.key);
+            return (
+              <section key={x.key} className="board-col" aria-label={`${x.label}: ${col.length}`}>
+                <header title={x.hint}><b>{x.label}</b><span className="num">{col.length}</span></header>
+                {col.length === 0 ? <p className="board-empty">Nothing here</p> : col.map((r) => (
+                  <Link key={r.id} href={`/orders/${r.id}`} className={`ocard tone-${r.journey!.next.tone}`}>
+                    <span className="ocard-top"><span className="code">{r.order_no}</span>
+                      <ShipClock c={shipClock(r.due, today, r.status)} size="sm" /></span>
+                    <b className="ocard-buyer">{r.buyer}</b>
+                    <span className="ocard-sub">PO {r.buyer_po} · {qty(r.pieces)} pcs{r.value != null ? ` · ${moneyShort(r.value)}` : ""}</span>
+                    <span className="ocard-next">{nextText(r.journey!)}</span>
+                  </Link>
+                ))}
+              </section>
+            );
+          })}
+        </div>
+      )}
+
       {rows.length === 0 ? (
         <div className="empty">
           <b>{loadError ? "Couldn't load the orders" : q ? "Nothing matches that search" : all.length === 0 ? "No orders yet" : status === "late" ? "Nothing is late" : "No orders here"}</b>
           {all.length === 0 && !loadError && "Add the first one with New order, or send the confirmed sheet and Claude will load it."}
         </div>
       ) : (
-        <div className={`olist ${prices ? "" : "noprice"}`} role="table" aria-label="Orders">
+        <div className={`olist ${prices ? "" : "noprice"} ${board ? "board-alt" : ""}`} role="table" aria-label="Orders">
           <div className="olist-h" role="row">
             <span role="columnheader">Order</span><span role="columnheader">Ship date</span><span role="columnheader" className="r">Pieces</span>
             {prices && <><span role="columnheader" className="r">Value</span><span role="columnheader" className="r">Margin</span></>}
@@ -236,21 +268,25 @@ export default async function OrdersPage({ searchParams }: PageProps<"/">) {
                   {r.factoryNames.length > 0 && ` · ${r.factoryNames.join(", ")}`}
                 </span>
                 {r.journey && r.journey.stage !== "done" && (
-                  <span className={`o-next tone-${r.journey.next.tone}`}>
-                    <b>{STAGES.find((x) => x.key === r.journey!.stage)?.label}</b>
-                    <span>{r.journey.next.action.kind === "none" ? `Waiting: ${r.journey.next.title.replace(/^Waiting (for|on) /, "")}` : r.journey.next.title}</span>
+                  <span className="o-next">
+                    <StageMeter stage={r.journey.stage} tone={r.journey.next.tone} />
+                    <span>{nextText(r.journey)}</span>
                   </span>
                 )}
+                <span className="o-facts show-phone">
+                  {qty(r.pieces)} pcs{r.value != null && ` · ${moneyShort(r.value)}`}
+                  {r.margin && r.margin.sale > 0 && <>{" · "}<b className={marginCls(r.margin.pct)}>{pct(r.margin.pct)}</b>{" margin"}</>}
+                </span>
               </span>
               <span className="o-date" role="cell">
                 {r.due ? day(r.due) : <span className="muted">No ship date</span>}
                 {r.late ? <small className="text-bad">{r.lateBy} {r.lateBy === 1 ? "day" : "days"} late</small>
                   : r.revised_ship_date && r.ship_date && r.revised_ship_date !== r.ship_date ? <small title={r.delay_reason ?? undefined}>Buyer date {day(r.ship_date)}</small> : null}
               </span>
-              <span className="r num" role="cell"><span className="o-k">Pieces </span>{qty(r.pieces)}</span>
-              {prices && <span className="r num" role="cell"><span className="o-k">Value </span>{money(r.value)}</span>}
+              <span className="r num hide-phone" role="cell"><span className="o-k">Pieces </span>{qty(r.pieces)}</span>
+              {prices && <span className="r num hide-phone" role="cell"><span className="o-k">Value </span>{money(r.value)}</span>}
               {prices && (
-                <span className="r num" role="cell">
+                <span className="r num hide-phone" role="cell">
                   {r.margin && r.margin.sale > 0 ? <><span className="o-k">Margin </span>{money(r.margin.margin)}<small className={marginCls(r.margin.pct)}>{pct(r.margin.pct)}{r.margin.missing > 0 && " · rate missing"}</small></> : <span className="muted">–</span>}
                 </span>
               )}
@@ -265,4 +301,9 @@ export default async function OrdersPage({ searchParams }: PageProps<"/">) {
       )}
     </>
   );
+}
+
+// The next step in a few words; when it is someone else's move, say who it waits on.
+function nextText(j: Journey) {
+  return j.next.action.kind === "none" ? `Waiting: ${j.next.title.replace(/^Waiting (for|on) /, "")}` : j.next.title;
 }
