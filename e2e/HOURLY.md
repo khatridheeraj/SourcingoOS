@@ -25,12 +25,15 @@ Its job: find glitches and rough edges before the team does, and fix the safe on
 5. **One improvement look**: pick ONE screen in rotation (Home, Orders, an order page, Buyer POs, Inquiries,
    Samples, Goods with us, Payments, Bills to pay, factory panel, buyer page) and screenshot it with
    `node e2e/shot.mjs <role> <path> /tmp/x --screens 3` (and `--desk`). Ask: is the next step obvious? Is
-   anything confusing, cramped, misaligned, wordy, or wrong in dark mode? Write down what you'd change.
+   anything confusing, cramped, misaligned, wordy, or wrong in dark mode? Does it follow `docs/DESIGN.md`?
+   Write down what you'd change.
 
 ## 3. Fixing
 - Fix on your own, in one pull request: crashes, console errors, failed requests, layout breaks, wrong or
   misleading text, broken links, failing tests, and small clear improvements from the screen look.
 - Every fix keeps lint, typecheck, unit tests, database tests and the crawl green. Screenshot what you changed.
+- Every screen change follows `docs/DESIGN.md`: shared blocks from `src/components/order-ui.tsx`, next steps only from
+  `journey()`, colours only from the tokens. Never undo the design to make a fix easier.
 - Open the pull request (title "Hourly check: <what>"), wait for CI, merge it when green, then confirm the Vercel
   production deploy is green.
 - Do NOT on your own: change the live database (no migrations, no writes), change anything in Tally, email or

@@ -486,7 +486,9 @@ h1, h2, h3 { font-family: var(--font-display); text-wrap: balance; font-weight: 
   .style-card.late { box-shadow: inset 3px 0 0 var(--bad); }
   .style-head { display: grid; grid-template-columns: 52px 170px minmax(0, 1fr) 280px; gap: 18px; align-items: center; padding: 12px 14px; }
   .style-photo img, .style-photo .ph { display: block; width: 52px; height: 52px; border-radius: 9px; border: 1px solid var(--line); object-fit: cover; }
-  .style-photo .ph { display: grid; place-items: center; border-style: dashed; font-size: 10px; line-height: 1.2; text-align: center; color: var(--muted); }
+  .style-photo .ph { display: grid; place-items: center; border-style: dashed; font-size: 10px; line-height: 1.2; text-align: center; color: var(--faint); background: var(--surface-2); }
+  .style-photo .ph.add { cursor: pointer; color: var(--accent); border-color: color-mix(in srgb, var(--accent) 40%, var(--line)); background: var(--accent-soft); }
+  .style-photo .ph.add:hover { border-style: solid; }
   .style-id { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
   .style-id span { font-size: 12px; color: var(--muted); }
   .stepper { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 3px; }
@@ -1860,7 +1862,7 @@ h1, h2, h3 { font-family: var(--font-display); text-wrap: balance; font-weight: 
   .jr-label small { font-size: 11px; font-variant-numeric: tabular-nums; color: inherit; opacity: 0.8; }
   .jr-rail li[data-state="done"] .jr-label { color: var(--muted); }
   .jr-rail li[data-state="now"] .jr-label { color: var(--foreground); font-weight: 600; }
-  .jr-next { display: flex; align-items: center; gap: 12px 20px; padding: 14px 16px 16px 20px; border-top: 1px solid var(--line); background: var(--jr-bg, var(--surface)); }
+  .jr-next { display: flex; align-items: center; gap: 12px 20px; padding: 14px 16px 16px 20px; border-top: 1px solid var(--line); background: color-mix(in srgb, var(--jr-bg, var(--surface)) 70%, var(--surface)); box-shadow: inset 3px 0 0 var(--jr-fg, transparent); }
   .jr-text { flex: 1; min-width: 0; }
   .jr-kicker { display: block; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--jr-fg, var(--muted)); }
   .jr-text b { display: block; margin-top: 2px; font-size: 16px; font-weight: 600; letter-spacing: -0.01em; line-height: 1.35; }
@@ -1964,3 +1966,140 @@ h1, h2, h3 { font-family: var(--font-display); text-wrap: balance; font-weight: 
     .new-scrim { z-index: 46; }
   }
 }
+
+/* Order building blocks (src/components/order-ui.tsx): the ship clock, stage meter, photo stack and ring.
+   Every screen that shows an order uses these, so an order reads the same everywhere. */
+@layer components {
+  .clock { display: flex; flex-direction: column; align-items: flex-end; justify-content: center; text-align: right; color: var(--foreground); --c: var(--foreground); }
+  .clock b { font-size: 44px; line-height: 1; font-weight: 650; letter-spacing: -0.04em; color: var(--c); }
+  .clock span { margin-top: 4px; font-size: 13px; font-weight: 600; color: var(--c); }
+  .clock small { margin-top: 1px; font-size: 12.5px; color: var(--muted); }
+  .clock.tone-bad { --c: var(--bad); }
+  .clock.tone-warn { --c: var(--warn); }
+  .clock.tone-ok { --c: var(--ok); }
+  .clock.tone-muted { --c: var(--muted); }
+  .clock-sm { flex-direction: row; align-items: baseline; gap: 4px; }
+  .clock-sm b { font-size: 15px; letter-spacing: -0.01em; }
+  .clock-sm span { margin: 0; font-size: 12px; font-weight: 500; }
+
+  .meter { display: inline-flex; align-items: center; gap: 8px; min-width: 0; --m: var(--accent); }
+  .meter.tone-bad { --m: var(--bad); }
+  .meter.tone-warn { --m: var(--warn); }
+  .meter.tone-ok { --m: var(--ok); }
+  .meter-bars { display: inline-grid; grid-template-columns: repeat(6, 14px); gap: 3px; flex: none; }
+  .meter-bars i { height: 6px; border-radius: 3px; background: var(--surface-3); }
+  .meter-bars i[data-state="done"] { background: color-mix(in srgb, var(--accent) 55%, var(--surface-3)); }
+  .meter-bars i[data-state="now"] { background: var(--m); box-shadow: 0 0 0 2px color-mix(in srgb, var(--m) 18%, transparent); }
+  .meter-l { font-size: 12px; font-weight: 600; color: var(--m); white-space: nowrap; }
+
+  .pstack { display: inline-flex; align-items: center; flex: none; }
+  .pstack > * { width: var(--ps); height: var(--ps); border-radius: 10px; border: 2px solid var(--surface); object-fit: cover; background: var(--surface-2); }
+  .pstack > * + * { margin-left: calc(var(--ps) * -0.28); }
+  .pstack-ph, .pstack-more { display: grid; place-items: center; font-size: 10.5px; font-weight: 600; color: var(--muted); text-transform: uppercase; box-shadow: inset 0 0 0 1px var(--line); }
+  .pstack-more { text-transform: none; background: var(--surface-3); }
+
+  .pring { position: relative; display: inline-grid; place-items: center; flex: none; }
+  .pring svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .pring circle { fill: none; stroke-width: 3.2; }
+  .pring-bg { stroke: var(--surface-3); }
+  .pring-fg { stroke: var(--accent); stroke-linecap: round; transition: stroke-dasharray 0.6s cubic-bezier(.2,.7,.2,1); }
+  .pring-c { position: relative; font-size: 13px; font-weight: 650; font-variant-numeric: tabular-nums; }
+
+  /* Order page hero: who it's for, what it is, and the days to ship, big. */
+  .oh { display: flex; align-items: flex-end; gap: 16px 32px; padding: 4px 0 2px; }
+  .oh-main { flex: 1; min-width: 0; }
+  .oh h1 { font-size: 30px; line-height: 1.15; letter-spacing: -0.03em; font-weight: 650; }
+  .oh-sub { display: flex; flex-wrap: wrap; gap: 4px 0; margin-top: 4px; font-size: 14px; color: var(--muted); }
+  .oh-sub span + span::before { content: "·"; margin: 0 8px; color: var(--faint); }
+  .oh-facts { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 18px; margin-top: 14px; font-size: 13.5px; color: var(--muted); }
+  .oh-facts b { font-size: 15px; font-weight: 650; color: var(--foreground); }
+  .oh-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+  .oh-chips:empty { display: none; }
+  .oh .clock { flex: none; min-width: 150px; padding: 14px 18px; border-radius: 14px; background: var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow); }
+  .oh .clock.tone-bad { background: var(--bad-soft); border-color: var(--bad-line); }
+  .oh .clock.tone-warn { background: var(--warn-soft); border-color: var(--warn-line); }
+  @media (max-width: 760px) {
+    .oh { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: start; gap: 0 12px; }
+    .oh h1 { font-size: 25px; }
+    .oh-sub { font-size: 13.5px; }
+    .oh-facts { gap: 6px 14px; margin-top: 10px; }
+    .oh .clock { min-width: 0; margin-top: 26px; padding: 10px 12px; border-radius: 12px; }
+    .oh .clock b { font-size: 28px; }
+    .oh .clock span { font-size: 11.5px; }
+    .oh .clock small { font-size: 11.5px; }
+  }
+
+  /* The stages on the journey card open their part of the order. */
+  .jr-rail li > a { display: contents; color: inherit; }
+  .jr-rail li > a:hover .jr-label { color: var(--accent); }
+  .jr-rail li > a:hover .jr-dot { box-shadow: inset 0 0 0 1.5px var(--accent); }
+
+  /* The order's parts as a calm segmented bar instead of underlined tabs. */
+  .ws-tabs { gap: 4px; padding: 8px 0; border-bottom: 0; }
+  .ws-tabs a { height: 36px; padding: 0 14px; margin: 0; border: 0; border-radius: 999px; font-weight: 550; }
+  .ws-tabs a:hover { background: var(--surface-2); }
+  .ws-tabs a[aria-current] { color: var(--foreground); background: var(--surface); box-shadow: 0 0 0 1px var(--line), var(--shadow-md); }
+  @media (max-width: 900px) { .ws-tabs { gap: 2px; padding: 6px 16px; } .ws-tabs a { height: 38px; padding: 0 13px; } }
+}
+
+/* Orders board: one column per stage, an order card in each, earliest ship date on top. */
+@layer components {
+  .board { display: grid; grid-template-columns: repeat(6, minmax(180px, 1fr)); gap: 10px; overflow-x: auto; padding-bottom: 4px; align-items: start; }
+  .board-col { display: flex; flex-direction: column; gap: 8px; min-width: 0; padding: 8px; border-radius: 14px; background: var(--surface-2); }
+  .board-col header { display: flex; align-items: center; justify-content: space-between; padding: 4px 6px 2px; font-size: 12.5px; }
+  .board-col header b { font-weight: 600; }
+  .board-col header span { min-width: 22px; height: 20px; padding: 0 6px; border-radius: 10px; font-size: 11.5px; font-weight: 600; line-height: 20px; text-align: center; color: var(--muted); background: var(--surface); }
+  .board-empty { padding: 14px 6px; font-size: 12px; text-align: center; color: var(--faint); }
+  .ocard { position: relative; display: flex; flex-direction: column; gap: 3px; padding: 11px 12px 12px; border-radius: 11px; background: var(--surface); box-shadow: 0 0 0 1px var(--line), var(--shadow); transition: box-shadow 0.15s, transform 0.15s; }
+  .ocard:hover { box-shadow: 0 0 0 1px var(--line-strong), var(--shadow-md); transform: translateY(-1px); }
+  .ocard::before { content: ""; position: absolute; left: 0; top: 12px; bottom: 12px; width: 3px; border-radius: 0 3px 3px 0; background: var(--oc, transparent); }
+  .ocard.tone-bad { --oc: var(--bad); }
+  .ocard.tone-warn { --oc: var(--warn); }
+  .ocard-top { display: flex; align-items: baseline; justify-content: space-between; gap: 6px; font-size: 11.5px; color: var(--muted); }
+  .ocard-buyer { font-size: 14px; font-weight: 600; line-height: 1.3; letter-spacing: -0.01em; }
+  .ocard-sub { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ocard-next { margin-top: 6px; padding-top: 7px; border-top: 1px solid var(--line); font-size: 12.5px; line-height: 1.4; color: var(--foreground); }
+  .ocard.tone-bad .ocard-next { color: var(--bad); }
+  @media (min-width: 901px) { .board-alt { display: none !important; } }
+  .o-next { align-items: center; gap: 10px; }
+  .o-next > span:last-child { color: var(--foreground); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+}
+@layer components {
+  .o-facts { margin-top: 8px; font-size: 13px; color: var(--muted); }
+  .o-facts b { font-weight: 600; }
+  @media (max-width: 900px) {
+    .olist-r .o-prog { display: flex; align-items: center; gap: 10px; }
+    .olist-r .o-prog > span:first-child { flex: none; }
+    .olist-r .o-prog .bar { display: none; }
+    .olist-r .o-prog small { margin: 0; }
+    .olist-r .o-prog small.num { display: none; }
+  }
+  .clock-sm { white-space: nowrap; }
+  .ocard-top .code { white-space: nowrap; }
+}
+
+/* Home: the day at a glance, with a ring that fills as today's work gets done. */
+@layer components {
+  .day { display: flex; align-items: center; gap: 20px 32px; padding: 22px 24px; border-radius: 18px; border: 1px solid var(--line); box-shadow: var(--shadow);
+    background: radial-gradient(120% 140% at 100% 0%, var(--accent-soft) 0%, transparent 55%), var(--surface); }
+  .day-main { flex: 1; min-width: 0; }
+  .day-date { font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--accent); }
+  .day h1 { margin-top: 4px; font-size: 30px; line-height: 1.15; letter-spacing: -0.03em; font-weight: 650; }
+  .day-main > p { margin-top: 6px; font-size: 14px; color: var(--muted); }
+  .day-ring { display: flex; flex-direction: column; align-items: center; gap: 8px; flex: none; }
+  .day-ring > span:last-child { font-size: 12.5px; font-weight: 600; color: var(--muted); }
+  .day-ring .pring-c { display: flex; flex-direction: column; align-items: center; line-height: 1.05; }
+  .day-ring .pring-c b { font-size: 26px; font-weight: 650; letter-spacing: -0.03em; }
+  .day-ring .pring-c small { font-size: 10.5px; font-weight: 500; color: var(--muted); }
+  .day-ring .pring circle { stroke-width: 3; }
+  .day-ring .pring-fg { stroke: var(--ok); }
+  @media (max-width: 760px) {
+    .day { padding: 18px; gap: 16px; border-radius: 16px; }
+    .day h1 { font-size: 24px; }
+    .day-main > p { font-size: 13.5px; }
+    .day-ring .pring { width: 76px !important; height: 76px !important; }
+    .day-ring .pring-c b { font-size: 22px; }
+  }
+}
+@media (max-width: 900px) { .style-side > .btn:not(.done-btn), .style-side > .chip { grid-column: 1 / -1; } }
+@layer components { .sidebar > * { flex-shrink: 0; } }
