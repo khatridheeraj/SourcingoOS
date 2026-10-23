@@ -285,7 +285,7 @@ begin
       || public.inr(v_total) || '</b></td></tr></table><p><b>Payment terms:</b> ' || (d->>'payment_days') || ' days from GRN<br><b>Delivery date:</b> ' || public.html_text(coalesce(d->>'delivery', 'As agreed')) || '</p>'
       || '<p style="margin:18px 0"><a href="' || v_link || '" style="background:#4f46e5;color:#fff;padding:10px 16px;border-radius:6px;text-decoration:none;font-weight:bold">'
       || 'Open the PO with style photos</a></p><p>Please <b>accept this PO by replying "Accepted"</b> to this email, or tap Accept on the PO link. No signature is needed. '
-      || 'The PO link also has our terms and conditions and a Save as PDF button.</p><p>Regards,<br>' || (d->'company'->>'name') || coalesce('<br>' || (d->'company'->>'phone'), '') || '</p></div>'
+      || 'The PO link also has our terms and conditions and a Save as PDF button.</p><p>Regards,<br>' || public.html_text(d->'company'->>'name') || coalesce('<br>' || public.html_text(d->'company'->>'phone'), '') || '</p></div>'
   );
 end $$;
 revoke execute on function public.po_mail_content(uuid, uuid, text) from public, anon, authenticated;
