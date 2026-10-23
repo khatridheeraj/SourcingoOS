@@ -70,7 +70,9 @@ for (const who of roles) {
       current = path;
       const t0 = Date.now();
       try {
-        await page.goto(BASE + path, { waitUntil: "networkidle", timeout: 45000 });
+        // A dev server sometimes aborts a navigation while it recompiles; one retry tells that apart from a real failure.
+        await page.goto(BASE + path, { waitUntil: "networkidle", timeout: 45000 })
+          .catch((e) => (/ERR_ABORTED/.test(e.message) ? page.goto(BASE + path, { waitUntil: "networkidle", timeout: 45000 }) : Promise.reject(e)));
       } catch (e) {
         problems.push({ who, form, dark, url: path, kind: "did not load", text: e.message.split("\n")[0] });
         continue;
