@@ -28,7 +28,7 @@ import { loadShipProgress, orderShip, partText } from "@/lib/shipments";
 import { loadSampleThreads } from "@/lib/samples-server";
 import { SampleThreadCard } from "../../samples/sample-thread";
 import { PO_BUCKET, type StoredFile } from "@/lib/po-files";
-import { BuyerPo, type PoDoc } from "./buyer-po";
+import { BuyerPo, type FoundPo, type PoDoc } from "./buyer-po";
 
 const str = (v: unknown) => (v == null ? "" : String(v));
 
@@ -95,6 +95,7 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
     : { data: [] };
   const dispatchPhotos = dPhotos ?? [];
   const poDocs = await poDocsP;
+  const foundPos = canEdit && !poDocs.length && o.buyer_id ? await loadFoundPos(supabase, o.buyer_id, lines.map((l) => l.style)) : [];
   const people = new Map(team.map((m) => [m.user_id, personName(m)]));
   // Photos come from private storage through links that work for an hour.
   const qcIds = (qc ?? []).map((c) => c.id);
@@ -398,7 +399,7 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
           dispatches={dispatches}
         /></div>
       )}
-      <div data-sec="details">{canEdit && <BuyerPo orderId={o.id} companyId={o.company_id} docs={poDocs} canEdit={canEdit} />}{canEdit ? <OrderForm
+      <div data-sec="details">{canEdit && <BuyerPo orderId={o.id} companyId={o.company_id} docs={poDocs} found={foundPos} canEdit={canEdit} />}{canEdit ? <OrderForm
         key={o.updated_at}
         initial={{
           id: o.id, edit_no: o.edit_no, buyer_id: o.buyer_id, buyer_po: o.buyer_po, po_date: str(o.po_date), ship_date: str(o.ship_date),
@@ -480,4 +481,25 @@ async function loadPoDocs(supabase: Awaited<ReturnType<typeof createClient>>, or
   return docs
     .map(({ path, ...d }, i) => ({ ...d, url: viewOf.get(path) ?? null, download: downloads[i].data?.signedUrl ?? null }))
     .sort((a, b) => rank(a.ext) - rank(b.ext));
+}
+
+const styleKey = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
+
+// With no PO on file, PO files from this buyer's emails that name one of the order's styles: some buyers
+// send one PDF per style, and an order typed in by hand never gets tied to that email on its own.
+async function loadFoundPos(supabase: Awaited<ReturnType<typeof createClient>>, buyerId: string, styles: string[]): Promise<FoundPo[]> {
+  const keys = [...new Set(styles.map(styleKey).filter((k) => k.length >= 3))];
+  if (!keys.length) return [];
+  const { data } = await supabase.from("incoming_pos").select("id, email_from, received_at, files").eq("buyer_id", buyerId)
+    .order("received_at", { ascending: false }).limit(30);
+  const found = (data ?? []).flatMap((i) => ((i.files ?? []) as StoredFile[])
+    .filter((f) => keys.some((k) => styleKey(f.name ?? "").includes(k)))
+    .map((f) => ({
+      key: f.path, incomingId: i.id as string, path: f.path, name: f.name || "PO", ext: (f.path.split(".").pop() ?? "").toLowerCase(), size: sizeOf(f.size),
+      from: `Email${i.email_from ? ` from ${i.email_from.replace(/\s*<.*>$/, "")}` : ""} · ${dayAt(i.received_at)}`,
+    }))).slice(0, 8);
+  if (!found.length) return [];
+  const { data: views } = await supabase.storage.from(PO_BUCKET).createSignedUrls(found.map((f) => f.path), 3600);
+  const viewOf = new Map((views ?? []).filter((v) => v.signedUrl).map((v) => [v.path, v.signedUrl]));
+  return found.map((f) => ({ ...f, url: viewOf.get(f.path) ?? null }));
 }

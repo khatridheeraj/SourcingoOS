@@ -5,6 +5,7 @@ import { attachKind, attachName } from "@/lib/attachments";
 import { getMe } from "@/lib/auth";
 import { friendly } from "@/lib/errors";
 import type { NoteKind } from "@/lib/help-guide";
+import { TNA_STEPS, todayIST } from "@/lib/format";
 import { createClient } from "@/lib/supabase/server";
 
 export type TeamNote = {
@@ -75,4 +76,63 @@ export async function decideNote(id: string, status: TeamNote["status"], reply: 
   revalidatePath("/feedback");
   revalidatePath("/", "layout");
   return {};
+}
+
+export type OrderCheck = { title: string; items: { ok: boolean; text: string }[] };
+
+// Help's live check of one order: what is blocking it right now and the next step, read from the same
+// rules the order screen enforces, so the answer is never a guess.
+export async function checkOrder(orderId: string): Promise<OrderCheck | null> {
+  const me = await getMe();
+  if (!me?.role || !/^[0-9a-f-]{36}$/.test(orderId)) return null;
+  const supabase = await createClient();
+  const { data: o } = await supabase.from("orders")
+    .select("id, order_no, status, order_lines(id, style, factory_id, photo_path)")
+    .eq("id", orderId).is("order_lines.removed_at", null).maybeSingle();
+  if (!o) return null;
+  const title = `Live check of ${o.order_no}`;
+  if (o.status !== "open") return { title, items: [{ ok: false, text: `This order is ${o.status}, so nothing on it can change.` }] };
+  const lines = (o.order_lines ?? []) as { id: string; style: string; factory_id: string | null; photo_path: string | null }[];
+  const items: OrderCheck["items"] = [];
+  const unassigned = lines.filter((l) => !l.factory_id).map((l) => l.style);
+  if (unassigned.length) items.push({ ok: false, text: `No factory picked yet for ${unassigned.join(", ")}. Pick one on the style card.` });
+  const factoryIds = [...new Set(lines.flatMap((l) => (l.factory_id ? [l.factory_id] : [])))];
+  const today = todayIST();
+  const [{ data: facs }, { data: pos }, { data: stages }, { data: pending }] = await Promise.all([
+    factoryIds.length ? supabase.from("factories").select("id, name").in("id", factoryIds) : Promise.resolve({ data: [] as { id: string; name: string }[] }),
+    supabase.from("factory_pos").select("factory_id, released_at, lock_requested_at, lock_note, mailed_at, accepted_at").eq("order_id", orderId),
+    supabase.from("line_stages").select("line_id, stage, planned_on, done_on, not_needed").eq("order_id", orderId).is("done_on", null).eq("not_needed", false).lt("planned_on", today),
+    supabase.from("step_updates").select("id").eq("order_id", orderId).eq("status", "pending"),
+  ]);
+  const name = new Map((facs ?? []).map((f) => [f.id, f.name as string]));
+  for (const fid of factoryIds) {
+    const f = name.get(fid) ?? "the factory";
+    const po = (pos ?? []).find((p) => p.factory_id === fid);
+    if (po?.released_at) {
+      items.push({ ok: true, text: `${f}: PO approved, so Done dates are open.` });
+      if (po.accepted_at) items.push({ ok: true, text: `${f} accepted the PO.` });
+      else if (po.mailed_at) items.push({ ok: false, text: `${f} hasn't accepted the emailed PO yet. Help follows up every 2 hours; you can also call them.` });
+      continue;
+    }
+    const [{ data: block }, { data: send }] = await Promise.all([
+      supabase.rpc("release_blocker", { p_order: orderId, p_factory: fid }),
+      supabase.rpc("po_send_blocker", { p_order: orderId, p_factory: fid }),
+    ]);
+    const why = [block as string | null, send as string | null].filter((x): x is string => !!x);
+    if (why.length) {
+      items.push({ ok: false, text: `${f}: PO not approved yet, so Done dates stay closed. Next: ${why[0]}` });
+      if (why[1]) items.push({ ok: false, text: `${f}: then ${why[1].charAt(0).toLowerCase()}${why[1].slice(1)}` });
+    } else if (po?.lock_requested_at) items.push({ ok: false, text: `${f}: PO sent for approval. Waiting for Dheeraj to approve it; Done dates open after that.` });
+    else if (po?.lock_note) items.push({ ok: false, text: `${f}: Dheeraj sent the PO back: "${po.lock_note}". Fix that, then press Send PO for approval.` });
+    else items.push({ ok: false, text: `${f}: everything is ready. Press Send PO for approval on the factory's PO.` });
+  }
+  const late = stages ?? [];
+  if (late.length) {
+    const style = new Map(lines.map((l) => [l.id, l.style]));
+    const few = late.slice(0, 3).map((s) => `${style.get(s.line_id) ?? "a style"} ${TNA_STEPS.find((t) => t.key === s.stage)?.label ?? "extra step"}`).join(", ");
+    items.push({ ok: false, text: `${late.length} step${late.length > 1 ? "s are" : " is"} past target with no Done date (${few}${late.length > 3 ? ", …" : ""}). Fill the Done date, or move the target with a reason.` });
+  } else if (factoryIds.length) items.push({ ok: true, text: "No step is past its target." });
+  if (pending?.length) items.push({ ok: false, text: `The factory marked ${pending.length} step${pending.length > 1 ? "s" : ""} done. Confirm ${pending.length > 1 ? "them" : "it"} at the top of the order.` });
+  if (!items.length) items.push({ ok: true, text: "Nothing is blocking this order right now." });
+  return { title, items };
 }

@@ -372,6 +372,17 @@ export async function addOrderPoFiles(orderId: string, files: StoredFile[]): Pro
   return {};
 }
 
+// A PO file that came with one of the buyer's emails, linked to this order without uploading it again.
+export async function linkEmailPo(orderId: string, incomingId: string, path: string): Promise<{ error?: string }> {
+  const me = await getMe();
+  if (!me?.companyId || !canEditOrders(me.role)) return { error: "Only the orders team can add the buyer's PO." };
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("link_email_po_file", { p_order: orderId, p_incoming: incomingId, p_path: path });
+  if (error) return { error: friendly(error) };
+  revalidatePath(`/orders/${orderId}`);
+  return {};
+}
+
 export async function removeOrderPoFile(orderId: string, fileId: string): Promise<{ error?: string }> {
   const supabase = await createClient();
   const { error } = await supabase.rpc("remove_order_po_file", { p_id: fileId });
