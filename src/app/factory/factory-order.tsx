@@ -113,16 +113,23 @@ export function FactoryOrder({ order, now, companyId, updates, rounds, lang, inf
     : sentAt && !missing ? { text: w.sentWaiting(dayAt(sentAt)), cls: "info" }
     : { text: missing ? w.toFill(missing) : w.readyToSend, cls: "warn" };
 
+  // After release a step is late when its target has passed and it isn't done yet.
+  const today = now.slice(0, 10);
+  const lateStep = (st: Stage) => released && !st.done_on && !!st.planned_on && st.planned_on < today;
+
   function fields(lineId: string, style: string, label: string, st: Stage) {
     const v = dates[key(lineId, st.stage)] ?? "";
     return (
       <>
         {st.planned_on && <div className="text-[11.5px]"><span className="muted">{w.target} </span><b>{day(st.planned_on)}</b></div>}
-        <label><span>{w.yourDate}</span>
-          <input className="inp" type="date" value={v} disabled={released || pending}
-            aria-label={`${style} ${label} your date`}
-            onChange={(e) => { setDates((d) => ({ ...d, [key(lineId, st.stage)]: e.target.value })); setSent(false); }} />
-        </label>
+        {released ? (v && <div className="text-[11.5px]"><span className="muted">{w.yourDate} </span>{day(v)}</div>) : (
+          <label><span>{w.yourDate}</span>
+            <input className="inp" type="date" value={v} disabled={pending}
+              aria-label={`${style} ${label} your date`}
+              onChange={(e) => { setDates((d) => ({ ...d, [key(lineId, st.stage)]: e.target.value })); setSent(false); }} />
+          </label>
+        )}
+        {lateStep(st) && <small className="block text-bad">{w.lateStep}</small>}
         {!released && st.planned_on && v > st.planned_on && <small className="block text-bad">{w.laterThanTarget}</small>}
         {released && st.done_on && <small className="block text-ok">{w.done(day(st.done_on))}</small>}
       </>
@@ -159,15 +166,16 @@ export function FactoryOrder({ order, now, companyId, updates, rounds, lang, inf
             </header>
             <ul>
               {[...TNA_STEPS.map((s) => ({ label: label(s.key, null), st: stageOf(l.id, s.key) })), ...extrasOf(l).map((st) => ({ label: st.label ?? "", st }))].map(({ label, st }) => (
-                <li key={label} className="fstep">
+                <li key={label} className={released ? "fstep locked" : "fstep"}>
                   <div>
                     <b>{label}</b>
-                    {st?.planned_on ? <small>{w.target} {day(st.planned_on)}</small> : <small className="muted">{st ? w.noTarget : w.notSetYet}</small>}
+                    {st?.planned_on ? <small className={st && lateStep(st) ? "text-bad" : undefined}>{w.target} {day(st.planned_on)}{st && lateStep(st) ? ` · ${w.lateStep}` : ""}</small> : <small className="muted">{st ? w.noTarget : w.notSetYet}</small>}
+                    {released && st?.factory_on && <small>{w.yourDate} {day(st.factory_on)}</small>}
                     {st && !released && st.planned_on && (dates[key(l.id, st.stage)] ?? "") > st.planned_on && <small className="text-bad">{w.laterThanTarget}</small>}
                     {released && st?.done_on && <small className="text-ok">{w.done(day(st.done_on))}</small>}
                   </div>
-                  {st && (
-                    <input className="inp" type="date" value={dates[key(l.id, st.stage)] ?? ""} disabled={released || pending}
+                  {st && !released && (
+                    <input className="inp" type="date" value={dates[key(l.id, st.stage)] ?? ""} disabled={pending}
                       aria-label={`${l.style} ${label} your date`}
                       onChange={(e) => { setDates((d) => ({ ...d, [key(l.id, st.stage)]: e.target.value })); setSent(false); }} />
                   )}
