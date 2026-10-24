@@ -49,7 +49,7 @@ export function who(e: Entry, n: Names) {
 }
 
 // Columns that are bookkeeping, not something a person changed.
-const QUIET = new Set(["id", "company_id", "created_at", "updated_at", "created_by", "seen_at", "agent_seen_at", "agent_info", "snapshot_at", "snapshot_counts", "position"]);
+const QUIET = new Set(["id", "company_id", "created_at", "updated_at", "created_by", "seen_at", "agent_seen_at", "agent_info", "snapshot_at", "snapshot_counts", "position", "removed_status"]);
 
 const FIELD: Record<string, string> = {
   order_no: "order no.", buyer_po: "buyer PO", po_date: "PO date", ship_date: "ship date", revised_ship_date: "new ship date", delay_reason: "reason for delay",
@@ -57,7 +57,7 @@ const FIELD: Record<string, string> = {
   qty: "quantity", buyer_rate: "buyer rate", factory_rate: "factory rate", purchase_rate: "purchase rate", sale_rate: "sale rate",
   real_name: "real name", full_name: "name", current_company_id: "company in use", grn_days: "GRN days", credit_days: "credit days",
   planned_on: "target", done_on: "done", factory_on: "factory date", not_needed: "not needed", removed_at: "removed", cancelled_at: "cancelled",
-  cancel_reason: "reason for cancelling", api_key: "key", key_hash: "key", closed_at: "closed", closed_by: "closed by", set_by: "set by",
+  cancel_reason: "reason for cancelling", removed_reason: "reason for deleting", removed_by: "deleted by", api_key: "key", key_hash: "key", closed_at: "closed", closed_by: "closed by", set_by: "set by",
   email_from: "email from", email_subject: "email subject", email_body: "email text", matched_order_id: "matched order", vdate: "voucher date",
 };
 export const fieldLabel = (k: string) => FIELD[k] ?? k.replace(/_id$/, "").replace(/_/g, " ");
@@ -70,7 +70,7 @@ export function fmtValue(k: string, v: unknown, n: Names): string {
   if (k === "buyer_id") return n.buyers.get(s) ?? "a buyer";
   if (k === "factory_id") return n.factories.get(s) ?? "a factory";
   if (k === "order_id" || k === "matched_order_id") return n.orders.get(s) ?? "an order";
-  if (k === "merchandiser_id" || k === "user_id" || k === "closed_by" || k === "set_by" || k === "actor") return n.people.get(s) ?? "someone";
+  if (k === "merchandiser_id" || k === "user_id" || k === "closed_by" || k === "removed_by" || k === "set_by" || k === "actor") return n.people.get(s) ?? "someone";
   if (/(^|_)(rate|amount|value|balance)$/.test(k) && !isNaN(Number(v))) return money(Number(v));
   if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return day(s);
   if (/^\d{4}-\d{2}-\d{2}T/.test(s)) return when(s);

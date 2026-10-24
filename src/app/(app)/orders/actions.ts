@@ -485,3 +485,25 @@ export async function cancelQc(orderId: string, id: string, reason: string): Pro
   revalidatePath(`/orders/${orderId}`);
   return {};
 }
+
+// The owner deletes a PO entered by mistake. It is hidden everywhere, kept in the activity log, and can be brought back.
+export async function deleteOrder(id: string, reason: string): Promise<{ error?: string }> {
+  const me = await getMe();
+  if (me?.role !== "owner") return { error: "Only the owner can delete a PO." };
+  if (reason.trim().length < 3) return { error: "Say why this PO is being deleted, for example: entered twice." };
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("remove_order", { p_order: id, p_reason: reason.trim() });
+  if (error) return { error: friendly(error) };
+  revalidatePath("/", "layout");
+  return {};
+}
+
+export async function restoreOrder(id: string): Promise<{ error?: string }> {
+  const me = await getMe();
+  if (me?.role !== "owner") return { error: "Only the owner can bring back a deleted PO." };
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("restore_order", { p_order: id });
+  if (error) return { error: friendly(error) };
+  revalidatePath("/", "layout");
+  return {};
+}

@@ -1,8 +1,8 @@
 import { NO_COMPANY } from "@/lib/names";
 import Link from "next/link";
 import { canEditOrders, getMe } from "@/lib/auth";
-import { buyerName, loadBuyers, loadFactories } from "@/lib/data";
-import { day, daysBetween, dueDate, money, moneyShort, qty, SHIP_QC, stageReached, STATUS, todayIST } from "@/lib/format";
+import { buyerName, loadBuyers, loadFactories, loadTeam, personName } from "@/lib/data";
+import { day, dayAt, daysBetween, dueDate, money, moneyShort, qty, SHIP_QC, stageReached, STATUS, todayIST } from "@/lib/format";
 import { type LinePrice, marginCls, pct, planMargin } from "@/lib/margin";
 import { fetchAll } from "@/lib/fetch-all";
 import { styleProgress } from "@/lib/progress";
@@ -11,6 +11,7 @@ import { ProgressCell } from "@/components/progress";
 import { createClient } from "@/lib/supabase/server";
 import { journey, type Journey, shipClock, STAGES, type StageKey } from "@/lib/journey";
 import { ShipClock, StageMeter } from "@/components/order-ui";
+import { type DeletedPo, DeletedPos } from "./orders/deleted-pos";
 
 const TABS = [
   { key: "open", label: "Open" },
@@ -54,6 +55,18 @@ export default async function OrdersPage({ searchParams }: PageProps<"/">) {
     fetchAll((a, z) => supabase.from("qc_checks").select("line_id, result").eq("company_id", companyId).in("kind", SHIP_QC).is("cancelled_at", null)
       .order("checked_on", { ascending: false }).order("created_at", { ascending: false }).order("id").range(a, z)),
   ]);
+  // The owner's deleted POs, under Cancelled, to bring one back.
+  let deleted: DeletedPo[] = [];
+  if (me?.role === "owner" && status === "cancelled") {
+    const [{ data: del }, team] = await Promise.all([supabase.rpc("deleted_orders"), loadTeam()]);
+    const people = new Map(team.map((m) => [m.user_id, personName(m)]));
+    const buyerOf = new Map(buyers.map((b) => [b.id, buyerName(b)]));
+    deleted = ((del ?? []) as { id: string; order_no: string; buyer_id: string; buyer_po: string; removed_at: string; removed_by: string | null; reason: string; pieces: number }[])
+      .map((d) => ({
+        id: d.id, orderNo: d.order_no, buyer: buyerOf.get(d.buyer_id) ?? "Buyer", buyerPo: d.buyer_po, when: dayAt(d.removed_at),
+        by: (d.removed_by && people.get(d.removed_by)) || "the owner", reason: d.reason, pieces: `${qty(d.pieces)} pcs`,
+      }));
+  }
   // TNA steps of the open orders listed, for each style's progress and whether the order is on plan.
   const openIds = (data ?? []).filter((o) => o.status === "open").map((o) => o.id);
   const none = { data: [], error: null };
@@ -299,6 +312,7 @@ export default async function OrdersPage({ searchParams }: PageProps<"/">) {
           ))}
         </div>
       )}
+      {deleted.length > 0 && <DeletedPos rows={deleted} />}
     </>
   );
 }
