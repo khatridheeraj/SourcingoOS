@@ -7,7 +7,7 @@ import { toast } from "@/components/toast";
 import { PO_ACCEPT, poFileProblem, uploadPoFiles } from "@/lib/po-upload";
 import { linkEmailPo, removeOrderPoFile } from "../actions";
 
-// One file of the buyer's PO. Files that came with the email (or from Incoming POs) can't be taken off here.
+// One file of the buyer's PO. Files that came with the email (or from Buyer POs) can't be taken off here.
 export type PoDoc = { key: string; id: string | null; name: string; ext: string; size: number; url: string | null; download: string | null; from: string };
 
 // A file from one of the buyer's emails that names a style on this order, offered when no PO is on file yet.

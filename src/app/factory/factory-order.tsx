@@ -55,6 +55,8 @@ export function FactoryOrder({ order, now, companyId, updates, rounds, lang, inf
   const released = !!order.released_at;
   // Each style's steps as Sourcingo set them: standard steps it goes through, then its extra steps.
   const stageOf = (lineId: string, stage: string) => order.lines.find((l) => l.id === lineId)?.stages.find((s) => s.stage === stage);
+  // A fabric style has no garment-making steps: the table shows only steps some style on the order has.
+  const tableSteps = TNA_STEPS.filter((s) => order.lines.some((l) => stageOf(l.id, s.key)));
   const extrasOf = (l: PanelOrder["lines"][number]) => l.stages.filter((s) => s.stage.startsWith("extra_"));
   const initial = Object.fromEntries(order.lines.flatMap((l) => l.stages.map((s) => [key(l.id, s.stage), s.factory_on ?? ""])));
   const [dates, setDates] = useState<Record<string, string>>(initial);
@@ -113,16 +115,23 @@ export function FactoryOrder({ order, now, companyId, updates, rounds, lang, inf
     : sentAt && !missing ? { text: w.sentWaiting(dayAt(sentAt)), cls: "info" }
     : { text: missing ? w.toFill(missing) : w.readyToSend, cls: "warn" };
 
+  // After release a step is late when its target has passed and it isn't done yet.
+  const today = now.slice(0, 10);
+  const lateStep = (st: Stage) => released && !st.done_on && !!st.planned_on && st.planned_on < today;
+
   function fields(lineId: string, style: string, label: string, st: Stage) {
     const v = dates[key(lineId, st.stage)] ?? "";
     return (
       <>
         {st.planned_on && <div className="text-[11.5px]"><span className="muted">{w.target} </span><b>{day(st.planned_on)}</b></div>}
-        <label><span>{w.yourDate}</span>
-          <input className="inp" type="date" value={v} disabled={released || pending}
-            aria-label={`${style} ${label} your date`}
-            onChange={(e) => { setDates((d) => ({ ...d, [key(lineId, st.stage)]: e.target.value })); setSent(false); }} />
-        </label>
+        {released ? (v && <div className="text-[11.5px]"><span className="muted">{w.yourDate} </span>{day(v)}</div>) : (
+          <label><span>{w.yourDate}</span>
+            <input className="inp" type="date" value={v} disabled={pending}
+              aria-label={`${style} ${label} your date`}
+              onChange={(e) => { setDates((d) => ({ ...d, [key(lineId, st.stage)]: e.target.value })); setSent(false); }} />
+          </label>
+        )}
+        {lateStep(st) && <small className="block text-bad">{w.lateStep}</small>}
         {!released && st.planned_on && v > st.planned_on && <small className="block text-bad">{w.laterThanTarget}</small>}
         {released && st.done_on && <small className="block text-ok">{w.done(day(st.done_on))}</small>}
       </>
@@ -158,16 +167,17 @@ export function FactoryOrder({ order, now, companyId, updates, rounds, lang, inf
               <Info info={info[l.id]} lang={lang} />
             </header>
             <ul>
-              {[...TNA_STEPS.map((s) => ({ label: label(s.key, null), st: stageOf(l.id, s.key) })), ...extrasOf(l).map((st) => ({ label: st.label ?? "", st }))].map(({ label, st }) => (
-                <li key={label} className="fstep">
+              {[...TNA_STEPS.filter((s) => stageOf(l.id, s.key)).map((s) => ({ label: label(s.key, null), st: stageOf(l.id, s.key) })), ...extrasOf(l).map((st) => ({ label: st.label ?? "", st }))].map(({ label, st }) => (
+                <li key={label} className={released ? "fstep locked" : "fstep"}>
                   <div>
                     <b>{label}</b>
-                    {st?.planned_on ? <small>{w.target} {day(st.planned_on)}</small> : <small className="muted">{st ? w.noTarget : w.notSetYet}</small>}
+                    {st?.planned_on ? <small className={st && lateStep(st) ? "text-bad" : undefined}>{w.target} {day(st.planned_on)}{st && lateStep(st) ? ` · ${w.lateStep}` : ""}</small> : <small className="muted">{st ? w.noTarget : w.notSetYet}</small>}
+                    {released && st?.factory_on && <small>{w.yourDate} {day(st.factory_on)}</small>}
                     {st && !released && st.planned_on && (dates[key(l.id, st.stage)] ?? "") > st.planned_on && <small className="text-bad">{w.laterThanTarget}</small>}
                     {released && st?.done_on && <small className="text-ok">{w.done(day(st.done_on))}</small>}
                   </div>
-                  {st && (
-                    <input className="inp" type="date" value={dates[key(l.id, st.stage)] ?? ""} disabled={released || pending}
+                  {st && !released && (
+                    <input className="inp" type="date" value={dates[key(l.id, st.stage)] ?? ""} disabled={pending}
                       aria-label={`${l.style} ${label} your date`}
                       onChange={(e) => { setDates((d) => ({ ...d, [key(l.id, st.stage)]: e.target.value })); setSent(false); }} />
                   )}
@@ -179,7 +189,7 @@ export function FactoryOrder({ order, now, companyId, updates, rounds, lang, inf
       </div>
       <div className="table-wrap hide-phone">
         <table className="tbl tna">
-          <thead><tr><th>{w.style}</th>{TNA_STEPS.map((s) => <th key={s.key}>{label(s.key, null)}</th>)}<th>{w.extraSteps}</th></tr></thead>
+          <thead><tr><th>{w.style}</th>{tableSteps.map((s) => <th key={s.key}>{label(s.key, null)}</th>)}<th>{w.extraSteps}</th></tr></thead>
           <tbody>
             {order.lines.map((l) => (
               <tr key={l.id}>
@@ -189,10 +199,10 @@ export function FactoryOrder({ order, now, companyId, updates, rounds, lang, inf
                   {l.rate != null && <div className="muted text-xs">{w.rate} ₹{qty(l.rate)}</div>}
                   <Info info={info[l.id]} lang={lang} />
                 </td>
-                {TNA_STEPS.map((s) => {
+                {tableSteps.map((s) => {
                   const st = stageOf(l.id, s.key);
                   return st ? <td key={s.key} className="tna-cell">{fields(l.id, l.style, s.label, st)}</td>
-                    : <td key={s.key} className="tna-cell muted text-xs">{w.notSetYet}</td>;
+                    : <td key={s.key} className="tna-cell muted text-xs">—</td>;
                 })}
                 <td className="tna-cell min-w-[160px]">
                   {extrasOf(l).map((st) => (

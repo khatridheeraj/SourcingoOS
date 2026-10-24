@@ -48,6 +48,7 @@ export default async function PaymentsPage({ searchParams }: PageProps<"/payment
   const unpaid = b.invoices.filter((i) => i.state === "open" || i.state === "part" || i.state === "covered");
   const uncovered = unpaid.filter((i) => i.uncovered > 0);
   const overdue = unpaid.filter((i) => i.overdue);
+  const dueSoon = unpaid.filter((i) => i.due && i.due >= t && i.due <= addDays(t, 30));
   const held = b.cheques.filter((c) => (c.status === "in_hand" && !c.stale) || c.status === "deposited");
   const todos = paymentTodos(b, buyerLabel, money, day, advice);
   const settle: SettleRow[] = b.cheques.flatMap((c) => {
@@ -97,7 +98,7 @@ export default async function PaymentsPage({ searchParams }: PageProps<"/payment
       .sort((a, z) => (["unpaid", "open", "overdue"].includes(status) ? (a.due ?? "9").localeCompare(z.due ?? "9") : z.invoice_date.localeCompare(a.invoice_date)));
     body = (
       <>
-        {filters(INV_FILTERS, status, "Invoice or cheque number")}
+        {filters(INV_FILTERS, status, "Search invoices")}
         {!list.length ? (
           <div className="empty"><b>{b.invoices.length ? "No invoices here" : "No invoices yet"}</b>{b.invoices.length ? "Try another filter." : "Add each invoice you raise on a buyer."}</div>
         ) : (
@@ -107,7 +108,7 @@ export default async function PaymentsPage({ searchParams }: PageProps<"/payment
               <tbody>
                 {list.map((i) => (
                   <tr key={i.id} className="click">
-                    <td><Link href={`/payments/invoices/${i.id}`} className="link code">{i.invoice_no}</Link></td>
+                    <td className="whitespace-nowrap"><Link href={`/payments/invoices/${i.id}`} className="link code">{i.invoice_no}</Link></td>
                     <td className="whitespace-nowrap">{buyerLabel(i.buyer_id)}</td>
                     <td className="whitespace-nowrap">{day(i.invoice_date)}</td>
                     <td className={`whitespace-nowrap ${i.overdue ? "font-semibold text-bad" : ""}`}>{i.due ? day(i.due) : <span className="muted">No credit days</span>}</td>
@@ -145,7 +146,7 @@ export default async function PaymentsPage({ searchParams }: PageProps<"/payment
       }));
     body = (
       <>
-        {filters(CHQ_FILTERS, status, "Cheque, bank or invoice")}
+        {filters(CHQ_FILTERS, status, "Search cheques")}
         {!rows.length ? (
           <div className="empty"><b>{b.cheques.length ? "No cheques here" : "No cheques yet"}</b>{b.cheques.length ? "Try another filter." : "Record each cheque a buyer gives you."}</div>
         ) : (
@@ -224,7 +225,7 @@ export default async function PaymentsPage({ searchParams }: PageProps<"/payment
       <section className="panel stack">
         <h2>To do</h2>
         {todos.length ? (
-          <ul className="flex flex-col divide-y divide-line">
+          <ul className="-mt-2.5 flex flex-col divide-y divide-line">
             {todos.slice(0, 60).map((a, k) => (
               <li key={k}>
                 <Link href={a.href} className="flex items-start gap-3 py-2.5 hover:bg-surface-2">
@@ -238,6 +239,10 @@ export default async function PaymentsPage({ searchParams }: PageProps<"/payment
           <p className="muted">Nothing to do on payments today.</p>
         )}
         {next && <p className="text-xs muted">Next post-dated cheque: {next.cheque_no} ({buyerLabel(next.buyer_id)}, {money(next.amount)}) can go to the bank on {day(next.cheque_date)}.</p>}
+        <details className="howto border-t border-line pt-3">
+          <summary>How this list works</summary>
+          <p>Urgent is an invoice past due with no cheque, or a cheque about to expire. Today is a cheque to take to the bank, or one to check against the bank statement or Tally. Set up is a buyer with no credit days yet. Only Accounts and the owner see this page.</p>
+        </details>
       </section>
       </>
     );
@@ -248,7 +253,7 @@ export default async function PaymentsPage({ searchParams }: PageProps<"/payment
       <div className="head">
         <div className="grow">
           <h1>Payments</h1>
-          <p>Invoices raised on buyers and the cheques that pay them. Only Accounts and the owner see this page.</p>
+          <p>Invoices raised on buyers and the cheques that pay them.</p>
         </div>
         <div className="head-acts">
           <Link className="btn" href="/tally">Check Tally</Link>
@@ -260,8 +265,8 @@ export default async function PaymentsPage({ searchParams }: PageProps<"/payment
       <div className="tiles">
         <Link className="tile" href="/payments?tab=invoices"><span>Left to collect</span><b>{rs(unpaid.reduce((a, i) => a + i.outstanding, 0))}</b><small className="muted text-xs">{plural(unpaid.length, "unpaid invoice")}{!uncovered.length ? "" : uncovered.length === unpaid.length && uncovered.every((i) => i.uncovered === i.outstanding) ? " · no cheque yet" : ` · ${rs(uncovered.reduce((a, i) => a + i.uncovered, 0))} without a cheque`}</small></Link>
         <Link className={`tile ${overdue.length ? "alarm" : ""}`} href="/payments?tab=invoices&status=overdue"><span>Overdue</span><b>{rs(overdue.reduce((a, i) => a + i.outstanding, 0))}</b><small className="muted text-xs">{overdue.length ? `${plural(overdue.length, "invoice")} past due` : "Nothing past due"}</small></Link>
-        <Link className="tile" href="/payments?tab=cheques"><span>Cheques held</span><b>{rs(held.reduce((a, c) => a + Number(c.amount), 0))}</b><small className="muted text-xs">{b.toDeposit.length || b.awaitingClear.length ? `${b.toDeposit.length} to deposit · ${b.awaitingClear.length} awaiting clearance` : held.length ? "Post-dated, not due at the bank yet" : "None in hand"}</small></Link>
-        <Link className="tile" href="/payments?tab=invoices"><span>Due in 30 days</span><b>{rs(unpaid.filter((i) => i.due && i.due >= t && i.due <= addDays(t, 30)).reduce((a, i) => a + i.outstanding, 0))}</b><small className="muted text-xs">Not yet due</small></Link>
+        <Link className="tile" href="/payments?tab=cheques"><span>Cheques held</span><b>{rs(held.reduce((a, c) => a + Number(c.amount), 0))}</b><small className="muted text-xs">{b.toDeposit.length || b.awaitingClear.length ? [b.toDeposit.length && `${b.toDeposit.length} to deposit`, b.awaitingClear.length && `${b.awaitingClear.length} awaiting clearance`].filter(Boolean).join(" · ") : held.length ? "Post-dated, not due at the bank yet" : "None in hand"}</small></Link>
+        <Link className="tile" href="/payments?tab=invoices"><span>Due in 30 days</span><b>{rs(dueSoon.reduce((a, i) => a + i.outstanding, 0))}</b><small className="muted text-xs">{dueSoon.length ? `${plural(dueSoon.length, "invoice")} falling due` : "Nothing falls due soon"}</small></Link>
       </div>
       <nav className="filters" aria-label="Payments">
         {TABS.map((x) => (

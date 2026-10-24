@@ -4,33 +4,33 @@ import { useState, useSyncExternalStore } from "react";
 import { Icon, type IconName } from "@/components/nav";
 
 const KEY = "sourcingo:whats-new";
-const VERSION = "2026-10-22b";
+const VERSION = "2026-10-24-redesign";
 
 type Item = { icon: IconName; title: string; text: string };
 
 // What changed for this person's work, shown once on Home until they close it. Remembered on this phone or computer only.
+// Kept to three lines: Home is for today's work, not reading.
+const NEXT: Item = { icon: "check", title: "Every order at a glance", text: "Each order opens with its days to ship, its value and the one next step. Tap a stage on its road to open that work." };
+const DAY: Item = { icon: "home", title: "Your day", text: "Home starts with what needs you now, and its ring fills as you get things done today." };
 const FOR: Record<string, Item[]> = {
   orders: [
-    { icon: "plus", title: "PO PDF on every order", text: "Tap PO PDF next to the ship date to open the buyer's PO. Factory PO PDF in Styles prints our PO for WhatsApp." },
-    { icon: "check", title: "Update in one tap", text: "Tap Update on any Home row: tick the styles and the step is done. Catch up marks every earlier step in one go." },
-    { icon: "plus", title: "Start production in one go", text: "The plan fills itself from the ship date. Say the factory agreed, and the PO goes for approval." },
-    { icon: "share", title: "Chase and buyer updates, written for you", text: "Chase sends the factory every late step on WhatsApp. Updates has a ready message for each buyer." },
-    { icon: "search", title: "Find anything", text: "The search at the top finds any order, PO, style, buyer or factory." },
+    NEXT,
+    { icon: "orders", title: "Orders as a board", text: "On a computer, Orders shows one column per stage. On a phone, each order shows its stage bar and next step." },
+    DAY,
   ],
   quality: [
-    { icon: "check", title: "QC in four taps", text: "Tap Record QC on a Home row: styles are already picked, tap Pass or Fail, take photos, save. A whole shipment saves at once." },
-    { icon: "search", title: "Find anything", text: "The search at the top finds any order, PO or style." },
+    NEXT,
+    DAY,
+    { icon: "check", title: "QC in four taps", text: "Tap Record QC on a Home row or an order: styles are already picked, tap Pass or Fail, take photos, save." },
   ],
   owner: [
-    { icon: "plus", title: "PO PDF on every order", text: "Tap PO PDF next to the ship date to open the buyer's PO. Factory PO PDF in Styles prints our PO for WhatsApp." },
-    { icon: "payments", title: "Money to collect on Home", text: "Cheques to deposit, overdue invoices and cheques Tally shows settled are on Home, with a tap to each." },
-    { icon: "check", title: "Lock plans from Home", text: "Plans sent for your lock are at the top of Home. Check and lock in one sheet." },
-    { icon: "share", title: "Factories chased, buyers updated", text: "Updates shows every factory behind plan and a ready message for each buyer." },
-    { icon: "search", title: "Find anything", text: "Press Ctrl K (or tap the search icon) to jump to any order, PO, style, buyer or factory." },
+    NEXT,
+    { icon: "orders", title: "Orders as a board", text: "On a computer, Orders shows one column per stage, so POs waiting for your approval stand out." },
+    DAY,
   ],
   accounts: [
-    { icon: "payments", title: "Your day starts with money", text: "Home now opens with cheques to deposit, overdue invoices and cheques Tally shows settled. Tap one to act on it." },
-    { icon: "search", title: "Find anything", text: "The search at the top finds any order, PO, style, buyer or factory." },
+    NEXT,
+    { icon: "plus", title: "New, in one place", text: "The + New button adds a cheque or an invoice from any screen." },
   ],
 };
 
@@ -46,8 +46,8 @@ export function WhatsNew({ role }: { role: string }) {
     <section className="card whats-new" aria-labelledby="new-h">
       <header className="card-h">
         <div className="min-w-0">
-          <h2 id="new-h">New: less typing, more done</h2>
-          <p>Your daily work now takes a few taps.</p>
+          <h2 id="new-h">A fresh, calmer Sourcingo</h2>
+          <p>What changed today.</p>
         </div>
         <button type="button" className="btn sm" onClick={close}>Got it</button>
       </header>

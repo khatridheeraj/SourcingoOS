@@ -3,6 +3,9 @@ const date = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" });
 
 export const qty = (n: number | null | undefined) => (n == null ? "" : inr.format(n));
 export const money = (n: number | null | undefined) => (n == null ? "" : `₹${inr.format(n)}`);
+// Rupees the way people say them at a glance: ₹10.7 L, ₹1.2 Cr.
+export const moneyShort = (n: number | null | undefined) =>
+  n == null ? "" : n >= 1e7 ? `₹${+(n / 1e7).toFixed(2)} Cr` : n >= 1e5 ? `₹${+(n / 1e5).toFixed(1)} L` : money(n);
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 // "10 Sep 2026" from YYYY-MM-DD (en-IN would write "Sept"), read straight from the string so no time zone can shift it.
 export const day = (d: string | null | undefined) => (d ? `${Number(d.slice(8, 10))} ${MONTHS[Number(d.slice(5, 7)) - 1]} ${d.slice(0, 4)}` : "");
@@ -52,6 +55,9 @@ export const qcKindLabel = (k: string) => QC_KINDS.find((x) => x.key === k)?.lab
 export const PLAN_HOURS = 24;
 // Days kept between the factory's last date and the PO's delivery date, unless the merchandiser picks another buffer.
 export const DEFAULT_BUFFER_DAYS = 7;
+// Fabric goes from the mill straight to the buyer, with no garment making after it, so it keeps a shorter buffer.
+export const FABRIC_BUFFER_DAYS = 2;
+export const defaultBuffer = (fabric: boolean) => (fabric ? FABRIC_BUFFER_DAYS : DEFAULT_BUFFER_DAYS);
 // The current time, for comparing against deadlines on the server.
 export const nowMs = () => Date.now();
 export const planDueAt = (requestedAt: string) => new Date(Date.parse(requestedAt) + PLAN_HOURS * 3_600_000);

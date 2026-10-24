@@ -17,6 +17,7 @@ import { buildUpdates } from "@/lib/updates";
 import { appOrigin } from "@/lib/origin";
 import { SearchTile } from "@/components/search";
 import { QcButton } from "@/components/qc-sheet";
+import { Ring } from "@/components/order-ui";
 import { WhatsNew } from "@/components/whats-new";
 import { MarkShipped } from "../orders/mark-shipped";
 import { sampleLabel, type SampleStatus } from "@/lib/samples";
@@ -654,23 +655,29 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
 
   return (
     <>
-      <div className="head">
-        <div className="grow">
+      <section className="day" aria-label="Your day">
+        <div className="day-main">
+          <span className="day-date">{longDay.format(ist(today))}</span>
           <h1>Good {hour < 12 ? "morning" : hour < 17 ? "afternoon" : "evening"}{first && `, ${first}`}</h1>
           <p>
-            {longDay.format(ist(today))} ·{" "}
             {headCount ? <b className="text-bad">{plural(headCount, "thing")} {headCount === 1 ? "needs" : "need"} you now</b> : <b className="text-ok">Nothing urgent</b>}
             {shipSoon.length > 0 && ` · ${plural(shipSoon.length, "order")} ${shipSoon.length === 1 ? "ships" : "ship"} in the next two weeks`}
           </p>
-          {!!doneToday && <p className="done-today"><span aria-hidden>✓</span>{plural(doneToday, "step")} done today</p>}
+          {mineCount > 0 && (
+            <nav className="seg mt-3 w-fit" aria-label="Whose orders">
+              <Link href="/today?who=mine" aria-current={who === "mine" ? "page" : undefined}>My orders <span>{mineCount}</span></Link>
+              <Link href="/today?who=all" aria-current={who === "all" ? "page" : undefined}>Everyone&apos;s <span>{(orders ?? []).length}</span></Link>
+            </nav>
+          )}
         </div>
-        {mineCount > 0 && (
-          <nav className="seg" aria-label="Whose orders">
-            <Link href="/today?who=mine" aria-current={who === "mine" ? "page" : undefined}>My orders <span>{mineCount}</span></Link>
-            <Link href="/today?who=all" aria-current={who === "all" ? "page" : undefined}>Everyone&apos;s <span>{(orders ?? []).length}</span></Link>
-          </nav>
-        )}
-      </div>
+        {/* Today's progress: steps done today against what still needs doing now. */}
+        <div className="day-ring">
+          <Ring done={doneToday ?? 0} total={(doneToday ?? 0) + headCount} size={92}>
+            <b>{doneToday ?? 0}</b><small>done today</small>
+          </Ring>
+          <span>{headCount ? `${headCount} to go` : doneToday ? "All caught up" : "A clear day"}</span>
+        </div>
+      </section>
 
       {me?.role && <WhatsNew role={me.role} />}
 

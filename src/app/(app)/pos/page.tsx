@@ -40,17 +40,19 @@ export default async function IncomingPosPage({ searchParams }: PageProps<"/pos"
     ...TABS.map((t) => supabase.from("incoming_pos").select("id", { count: "exact", head: true }).eq("company_id", me.companyId).in("status", statuses(t.key))),
   ]);
   const nameOf = new Map(buyers.map((b) => [b.id, buyerName(b)]));
-  const rows = data ?? [];
+  const now = nowMs();
+  // Red first: on the To check tab a PO waiting past the flag comes before newer mail.
+  const rows = (data ?? []).map((r, i) => ({ r, i, w: tab === "to_check" ? poWaitDays(r.received_at, now) : 0 }))
+    .sort((a, b) => b.w - a.w || a.i - b.i).map((x) => x.r);
   const count = (k: string) => counts[TABS.findIndex((t) => t.key === k)]?.count ?? 0;
   const t = TABS.find((x) => x.key === tab)!;
-  const now = nowMs();
   const late = tab === "to_check" ? rows.filter((r) => poWaitDays(r.received_at, now) > 0).length : 0;
 
   return (
     <>
       <div className="head">
         <div className="grow">
-          <h1>Incoming POs</h1>
+          <h1>Buyer POs</h1>
           <p>
             Buyer POs picked up from email or added from a file.{" "}
             {count("to_check") ? <b className="text-warn">{count("to_check")} to check</b> : <b className="text-ok">Nothing to check</b>}
@@ -58,7 +60,7 @@ export default async function IncomingPosPage({ searchParams }: PageProps<"/pos"
             {count("held") > 0 && <> · <Link href="/pos?show=held" className="link font-semibold">{count("held")} from unknown senders</Link></>}
           </p>
         </div>
-        <div className="row items-start">
+        <div className="head-acts items-start">
           <Link href="/orders/new" className="btn" title="Type in a PO that has no file: it becomes an order with its own PO PDF">Create PO</Link>
           <AddPo companyId={me.companyId} />
         </div>
@@ -66,10 +68,7 @@ export default async function IncomingPosPage({ searchParams }: PageProps<"/pos"
 
       <section className="card" aria-labelledby="po-h">
         <header className="card-h">
-          <div className="min-w-0">
-            <h2 id="po-h">{t.label}</h2>
-            <p>{t.hint}</p>
-          </div>
+          <h2 id="po-h" className="min-w-0">{t.label}</h2>
           <nav className="seg" aria-label="Show">
             {TABS.map((x) => (
               <Link key={x.key} href={x.key === "to_check" ? "/pos" : `/pos?show=${x.key}`} aria-current={tab === x.key ? "page" : undefined} scroll={false}>
@@ -83,7 +82,7 @@ export default async function IncomingPosPage({ searchParams }: PageProps<"/pos"
 
         {rows.length === 0 ? (
           <p className="card-empty">
-            {tab === "to_check" ? "Nothing to check. New buyer POs from email show up here on their own; add one from WhatsApp with Add PO from a file." : "Nothing here yet."}
+            {tab === "to_check" ? "All checked. New buyer POs from email show up here on their own." : "Nothing here yet."}
           </p>
         ) : (
           <ul className="todo">
@@ -121,7 +120,8 @@ export default async function IncomingPosPage({ searchParams }: PageProps<"/pos"
                       </div>
                     )}
                   </div>
-                  <div className="todo-chip"><span className={s?.cls}>{s?.label}</span></div>
+                  {/* On the To check tab "To check" says nothing new; only reading and failed rows need their state shown. */}
+                  <div className="todo-chip">{!(tab === "to_check" && r.status === "to_check") && <span className={s?.cls}>{s?.label}</span>}</div>
                   <Link href={`/pos/${r.id}`} className="btn sm todo-act">
                     {r.status === "to_check" || r.status === "failed" ? "Check and add" : r.status === "held" ? "Accept or ignore" : "Open"}
                   </Link>
@@ -130,6 +130,10 @@ export default async function IncomingPosPage({ searchParams }: PageProps<"/pos"
             })}
           </ul>
         )}
+        <details className="howto border-t border-line px-5 py-3">
+          <summary>How this list works</summary>
+          <p>{t.hint}{tab === "to_check" && " A PO that came on WhatsApp or by hand goes in with Add PO from a file."}</p>
+        </details>
       </section>
 
       <AiKey owner={me.role === "owner"} status={(aiKey ?? { set: false }) as { set: boolean; last4?: string; set_at?: string }} />

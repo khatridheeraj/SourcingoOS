@@ -66,9 +66,9 @@ export default async function InquiriesPage({ searchParams }: PageProps<"/inquir
   const byDue = (a: Inquiry, b: Inquiry) => (a.next_follow_up ?? "9999").localeCompare(b.next_follow_up ?? "9999") || b.created_at.localeCompare(a.created_at);
   const shown = open.filter(matches);
   const groups = [
-    { key: "due", title: "Follow up today", hint: "Their day has come. Send a message, then pick the next day.", rows: shown.filter(due).sort(byDue) },
+    { key: "due", title: "Follow up now", hint: "Send a message, then pick the next day.", rows: shown.filter(due).sort(byDue) },
     { key: "price", title: "Needs a price", hint: "Asked, not priced yet.", rows: shown.filter((i) => !due(i) && !quiet(i) && stageOf(i) === 0).sort(byDue) },
-    { key: "wait", title: "Waiting on the buyer", hint: "Price or sample sent. Each comes back on its follow-up day.", rows: shown.filter((i) => !due(i) && !quiet(i) && stageOf(i) > 0).sort(byDue) },
+    { key: "wait", title: "Waiting on the buyer", hint: "Price or sample sent. Back here on its follow-up day.", rows: shown.filter((i) => !due(i) && !quiet(i) && stageOf(i) > 0).sort(byDue) },
   ];
   const quietRows = shown.filter(quiet).sort((a, b) => lastTouch(b).localeCompare(lastTouch(a)));
   const closed = all.filter((i) => matches(i) && (view === "all" || (view === "won" ? i.status === "converted" : view === "lost" ? i.status === "lost" : false)));
@@ -140,7 +140,7 @@ export default async function InquiriesPage({ searchParams }: PageProps<"/inquir
         <div className="inq-empty">
           <b>Every buyer ask, in one place</b>
           <p>When a buyer asks for a price on WhatsApp, a call or email, paste it above. It comes back on its follow-up day, so no inquiry is forgotten, and the ones you win become orders in one tap.</p>
-          <p className="muted">Emails the PO pickup catches that aren&apos;t POs can be made inquiries from <Link href="/pos" className="link">Incoming POs</Link>.</p>
+          <p className="muted">Emails the PO pickup catches that aren&apos;t POs can be made inquiries from <Link href="/pos" className="link">Buyer POs</Link>.</p>
         </div>
       ) : (
         <>

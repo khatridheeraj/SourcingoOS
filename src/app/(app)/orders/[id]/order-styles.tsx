@@ -3,16 +3,17 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { day, dayAt, daysBetween, DEFAULT_BUFFER_DAYS, planDueAt, PLAN_HOURS, qty, TNA_STEPS } from "@/lib/format";
+import { day, dayAt, daysBetween, defaultBuffer, planDueAt, PLAN_HOURS, qty, TNA_STEPS } from "@/lib/format";
 import { uploadPhotos } from "@/lib/photos";
 import { toast } from "@/components/toast";
-import { project, shipRisk, fillEmptyTargets } from "@/lib/tna-plan";
+import { project, shipRisk, fillEmptyTargets, stepDays } from "@/lib/tna-plan";
 import { FactoryLink } from "../../factories/factory-link";
 import { sizeEntries } from "@/lib/sizes";
 import { StyleDetails, type StyleDetail } from "./style-details";
-import { acceptTargetsForFactory, releaseFactoryPo, requestPlan, requestPoLock, saveLineStages, sendBackPoLock, setStylePhoto, type LineStageInput } from "../actions";
+import { acceptTargetsForFactory, releaseFactoryPo, requestPlan, requestPoLock, saveLineStages, sendBackPoLock, setLineProduct, setStylePhoto, type LineStageInput } from "../actions";
 
-export type StyleRow = { id: string; style: string; colour: string; qty: number; photoUrl: string | null; hasRate: boolean; detail: StyleDetail };
+// fabricOrder: a fabric style, whose TNA skips the garment-making steps.
+export type StyleRow = { id: string; style: string; colour: string; qty: number; photoUrl: string | null; hasRate: boolean; fabricOrder: boolean; detail: StyleDetail };
 export type FactoryGroup = {
   factoryId: string | null;
   factoryName: string;
@@ -104,16 +105,16 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
   const [backNote, setBackNote] = useState<Record<string, string>>({});
   const [sendingBack, setSendingBack] = useState("");
   const [buffers, setBuffers] = useState<Record<string, string>>(
-    Object.fromEntries(groups.filter((g) => g.factoryId).map((g) => [g.factoryId!, String(g.bufferDays ?? DEFAULT_BUFFER_DAYS)])));
+    Object.fromEntries(groups.filter((g) => g.factoryId).map((g) => [g.factoryId!, String(g.bufferDays ?? defaultBuffer(g.lines.length > 0 && g.lines.every((l) => l.fabricOrder)))])));
   const [pending, start] = useTransition();
   // Styles whose fabric, sizes and files are open.
   const [detailShown, setDetailShown] = useState<Set<string>>(new Set());
   const editable = open && canEdit;
   const doneEditable = open && canDone;
   const lines = groups.flatMap((g) => g.lines);
-  // Styles whose steps are open: a single style, or while planning the first style of each factory (its targets get copied).
-  const [shown, setShown] = useState<Set<string>>(() => new Set(lines.length === 1 ? [lines[0].id]
-    : open && canEdit ? groups.filter((g) => g.factoryId && !g.releasedAt).map((g) => g.lines[0].id) : []));
+  // Styles whose steps are open: a single style in production. Planning happens in Start production, which fills
+  // every date, so the step lists stay closed until someone wants to change one by hand.
+  const [shown, setShown] = useState<Set<string>>(() => new Set(lines.length === 1 && groups[0]?.releasedAt ? [lines[0].id] : []));
 
   const get = (lineId: string, stage: string) => dates[key(lineId, stage)] ?? blank;
   const set = (lineId: string, stage: string, patch: Partial<Cell>) => {
@@ -143,7 +144,9 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
   function fillTargets(g: FactoryGroup, target: string) {
     if (target < today) {
       setNotice("");
-      setError("The target date has already passed, so standard targets would all be overdue. Move the ship date, or set the targets by hand.");
+      setError(dueDate && dueDate >= today
+        ? `The target date has already passed. Lower the buffer to ${daysBetween(today, dueDate)} ${daysBetween(today, dueDate) === 1 ? "day" : "days"} or less to keep the ship date, or move the ship date.`
+        : "The target date has already passed, so standard targets would all be overdue. Move the ship date, or set the targets by hand.");
       return;
     }
     setDates((d) => {
@@ -153,7 +156,7 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
           const c = d[key(l.id, s.key)] ?? blank;
           return { stage: s.key, on: c.planned_on || c.done_on || null };
         });
-        const plan = fillEmptyTargets(steps, target, today);
+        const plan = fillEmptyTargets(steps, target, today, stepDays(l.fabricOrder));
         for (const [st, on] of Object.entries(plan)) next[key(l.id, st)] = { ...(d[key(l.id, st)] ?? blank), planned_on: on };
       }
       return next;
@@ -283,6 +286,22 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
     });
   }
 
+  // Garment or fabric: a fabric style skips the garment-making steps. Unsaved dates would be dropped by the reload.
+  function product(l: StyleRow, fabric: boolean) {
+    if (fabric === l.fabricOrder) return;
+    if (changed.length) { setNotice(""); setError("Save or undo the date changes first."); return; }
+    setError("");
+    setBusy(`product:${l.id}`);
+    start(async () => {
+      const res = await setLineProduct(orderId, l.id, fabric ? "fabric" : "garment");
+      setBusy("");
+      if (res.error) return setError(res.error);
+      // The reload starts this screen again from the saved steps, so the message goes in a toast.
+      toast(fabric ? `${l.style} is fabric: the garment-making steps are off its TNA` : `${l.style} is a garment again, with every standard step`);
+      router.refresh();
+    });
+  }
+
   // One step of one style: its name and Quality's latest result, the factory's date, the target, the done date and where it stands.
   function stepRow(l: StyleRow, s: Step, released: boolean, target: string) {
     const c = get(l.id, s.key);
@@ -380,28 +399,15 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
 
   return (
     <section className="panel scroll-mt-20" id="tna">
-      <div className="row mb-1">
+      <div className="row mb-3 !flex-nowrap">
         <h2 className="font-bold text-base">Styles and TNA</h2>
-        {late > 0 && <span className="chip bad">{late} {late === 1 ? "style" : "styles"} behind plan</span>}
+        {late > 0 && <span className="chip bad hide-phone">{late} {late === 1 ? "style" : "styles"} behind plan</span>}
         {lines.length > 1 && (
-          <button type="button" className="btn sm ml-auto" onClick={() => setShown(new Set(allShown ? [] : lines.map((l) => l.id)))}>
+          <button type="button" className="btn sm ml-auto shrink-0" onClick={() => setShown(new Set(allShown ? [] : lines.map((l) => l.id)))}>
             {allShown ? "Hide all steps" : "Show all steps"}
           </button>
         )}
       </div>
-      <details className="howto mb-4">
-        <summary>How planning works</summary>
-        <p>
-          First set your target date for every step of each style (add extra steps if a style needs them), then ask the factory.
-          The factory gives its own date for each step in its panel; if it agrees to your targets by phone or WhatsApp instead, press
-          &quot;Factory agreed to targets&quot;. Once every factory date is in and none is later than its target, send the plan for the
-          owner&apos;s lock. The owner checks it and locks it, which releases the PO to the factory, or sends it back saying what to change.
-          After the lock the targets are locked: only the owner can move one, with a reason, and the step shows where it started. The orders team
-          and Quality enter done dates. A late step pushes back the steps after it, so a style shows when it will likely be ready and whether
-          that misses the ship date. Quality&apos;s latest result shows next to each step it checks. &quot;Fill empty targets&quot; works every
-          empty target back from the target date with the usual days per step.
-        </p>
-      </details>
 
       {groups.map((g) => {
         const released = !!g.releasedAt;
@@ -423,7 +429,7 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
           : critical ? { text: `Critical: no TNA from the factory, due ${at.format(dueAt!)}`, cls: "bad" }
           : sent ? { text: g.planEnteredBy ? `Factory's TNA entered by ${g.planEnteredBy} ${dayAt(sent)}` : `Factory sent its TNA ${dayAt(sent)}`, cls: "warn" }
           : dueAt ? { text: `Waiting for the factory's TNA, due ${at.format(dueAt)}`, cls: "warn" }
-          : toAsk.length ? { text: "Set your targets, then ask the factory", cls: "bad" }
+          : toAsk.length ? { text: asked ? "Plan not complete" : "Plan not set yet", cls: "warn" }
           : { text: "Targets set, ask the factory", cls: "warn" };
         return (
           <div key={g.factoryId ?? "none"} className="fac-group" data-factory={g.factoryName}>
@@ -442,7 +448,15 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
                 </div>
               )}
               {editable && g.factoryId && !released && (
-                <div className="row">
+                <details className="fac-tools">
+                <summary>Plan by hand: targets, buffer, ask the factory</summary>
+                {target && (
+                  <p className="muted mt-2 text-[13px]">
+                    Every target and factory date must be on or before <b className="text-foreground">{day(target)}</b>
+                    {dueDate && ` (PO delivery ${day(dueDate)} less ${!bufferOk ? g.bufferDays ?? 0 : buffer} days buffer)`}.
+                  </p>
+                )}
+                <div className="row mt-2">
                   <FactoryLink factoryId={g.factoryId} name={g.factoryShort || g.factoryName} phone={g.factoryPhone} />
                   <button type="button" className="btn sm" disabled={pending || !target}
                     title={!target ? "Enter the PO's ship date first" : "Fills every empty target with the standard days before the target date"}
@@ -483,14 +497,9 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
                     </button>
                   )}
                 </div>
+                </details>
               )}
             </div>
-            {g.factoryId && !released && open && canEdit && !hasBuyerPo && (
-              <div className="warnbox mt-2" role="status">
-                <b>The buyer&apos;s PO isn&apos;t on file.</b> A factory PO is issued only against a PO received from the buyer.
-                Plan and ask the factory now; <a href="#details-po" className="link font-semibold">add the buyer&apos;s PO</a> to lock and release it.
-              </div>
-            )}
             {g.factoryId && !released && open && isOwner && g.lockRequestedAt && (
               <div className="lock-box" role="status">
                 <div className="grow">
@@ -523,31 +532,18 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
               </div>
             )}
             {!g.factoryId && <p className="muted mb-2 text-[13px]">Choose a factory for these styles in Order details below before planning them.</p>}
-            {g.factoryId && !released && open && (
-              <p className="mb-2 text-[13px]">
-                <b>Done dates open once {g.factoryShort || "the factory"}&apos;s PO is released.</b>{" "}
-                {isOwner ? "Approve the complete plan to send the PO." : "Complete the plan below, add every style's photo, then send the PO for approval; once approved it is emailed to the factory."}
-              </p>
-            )}
             {g.factoryId && target && !released && open && target < today && (
               <div className="warnbox mb-2" role="status">
                 <b>The target date {day(target)} has already passed.</b> Plan the real dates ahead anyway; steps after it are marked.
-                {canEdit && <> To lock the plan, <a href="#ship" className="link font-semibold">move the ship date</a> to the new delivery date agreed with the buyer.</>}
+                {canEdit && (dueDate && dueDate >= today
+                  ? <> The ship date {day(dueDate)} is still ahead: lower the buffer to {daysBetween(today, dueDate)} {daysBetween(today, dueDate) === 1 ? "day" : "days"} in Plan by hand or Start production, or <a href="#ship" className="link font-semibold">move the ship date</a>.</>
+                  : <> To lock the plan, <a href="#ship" className="link font-semibold">move the ship date</a> to the new delivery date agreed with the buyer.</>)}
               </div>
-            )}
-            {g.factoryId && target && !released && (
-              <p className="muted mb-2 text-[13px]">
-                Every target and factory date must be on or before <b className="text-foreground">{day(target)}</b>
-                {dueDate && ` (PO delivery ${day(dueDate)} less ${!bufferOk ? g.bufferDays ?? 0 : buffer} days buffer)`}.
-              </p>
             )}
             {critical && (
               <p className="errbox mb-2" role="status">
                 {g.factoryName} hasn&apos;t sent its TNA within {PLAN_HOURS} hours. Chase them now, or move these styles to another factory in Order details.
               </p>
-            )}
-            {g.factoryId && !released && !asked && toAsk.length > 0 && (
-              <p className="mb-2 text-[13px] text-warn"><b>Before asking the factory:</b> {toAsk.join("; ")}</p>
             )}
             {g.factoryId && !released && asked && gaps.length > 0 && (
               <p className="mb-2 text-[13px] text-warn"><b>Missing before release:</b> {gaps.join("; ")}</p>
@@ -570,20 +566,33 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
                             {/* eslint-disable-next-line @next/next/no-img-element -- short-lived signed links, not for the image optimiser */}
                             <img src={l.photoUrl} alt="" />
                           </a>
-                        ) : <div className="ph">No photo</div>}
+                        ) : editable ? (
+                          // No photo yet: the empty frame itself takes one.
+                          <label className={`ph add ${pending ? "pointer-events-none opacity-50" : ""}`} title={`Add a photo of ${l.style}`}>
+                            {busy === `photo:${l.id}` ? <span className="text-[10px]">Uploading…</span> : <GarmentIcon plus />}
+                            <input type="file" accept="image/*" className="sr-only" aria-label={`Photo for ${l.style}`}
+                              onChange={(e) => { photo(l.id, e.target.files); e.target.value = ""; }} />
+                          </label>
+                        ) : <div className="ph" aria-label="No photo"><GarmentIcon /></div>}
                       </div>
                       <div className="style-id">
                         <b className="code text-[13.5px]">{l.style}</b>
                         <span>{[l.colour, `${qty(l.qty)} pcs`].filter(Boolean).join(" · ")}</span>
                         <button type="button" className="link w-fit text-left text-xs" aria-expanded={detailOpen} aria-controls={`detail-${l.id}`}
                           onClick={() => setDetailShown((d) => { const n = new Set(d); if (n.has(l.id)) n.delete(l.id); else n.add(l.id); return n; })}>
-                          {[l.detail.fabric ? (l.detail.fabric.length > 22 ? `${l.detail.fabric.slice(0, 21)}…` : l.detail.fabric) : editable ? "Add fabric" : "", sizeCount ? `${sizeCount} sizes` : editable ? "sizes" : "",
+                          {[l.detail.fabric ? (l.detail.fabric.length > 22 ? `${l.detail.fabric.slice(0, 21)}…` : l.detail.fabric) : editable ? "Add fabric" : "", sizeCount ? `${sizeCount} sizes` : editable && !l.fabricOrder ? "sizes" : "",
                             techPack ? "tech pack ✓" : editable ? "tech pack" : ""].filter(Boolean).join(" · ") || "Fabric, sizes and files"}
                           {detailOpen ? " ▴" : " ▾"}
                         </button>
-                        {editable && (
+                        {editable && !released ? (
+                          <div className="seg seg-sm w-fit" role="group" aria-label={`What ${l.style} is`}>
+                            <button type="button" aria-pressed={!l.fabricOrder} disabled={pending} onClick={() => product(l, false)}>Garment</button>
+                            <button type="button" aria-pressed={l.fabricOrder} disabled={pending} onClick={() => product(l, true)}>Fabric</button>
+                          </div>
+                        ) : l.fabricOrder && <span className="chip w-fit">Fabric</span>}
+                        {editable && l.photoUrl && (
                           <label className={`link w-fit cursor-pointer text-xs ${pending ? "pointer-events-none opacity-50" : ""}`}>
-                            {busy === `photo:${l.id}` ? "Uploading…" : l.photoUrl ? "Change photo" : "Add photo"}
+                            {busy === `photo:${l.id}` ? "Uploading…" : "Change photo"}
                             <input type="file" accept="image/*" className="sr-only" aria-label={`Photo for ${l.style}`}
                               onChange={(e) => { photo(l.id, e.target.files); e.target.value = ""; }} />
                           </label>
@@ -607,11 +616,14 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
                             {busy === `done:${l.id}` ? "Saving…" : <><span aria-hidden className="done-tick">✓</span>{sm.next.label} done today</>}
                           </button>
                         )}
-                        <a href={`#qc-${l.id}`} className={`chip ${fin ? (fin.result === "pass" ? "ok" : "bad") : ""}`}>
-                          {fin ? `Final QC ${fin.result === "pass" ? "passed" : "failed"}` : "Final QC not done"}
-                        </a>
+                        {/* Final QC only matters once it has happened; before that it is just noise on every style. */}
+                        {fin && (
+                          <a href={`#qc-${l.id}`} className={`chip ${fin.result === "pass" ? "ok" : "bad"}`}>
+                            Final QC {fin.result === "pass" ? "passed" : "failed"}
+                          </a>
+                        )}
                         <button type="button" className="btn sm" aria-expanded={isOpen} aria-controls={`steps-${l.id}`} onClick={() => toggle(l.id)}>
-                          {isOpen ? "Hide steps" : editable || doneEditable ? "Show and edit steps" : "Show steps"}
+                          {isOpen ? "Hide steps" : editable || doneEditable ? "Steps and dates" : "Show steps"}
                         </button>
                       </div>
                     </div>
@@ -624,7 +636,7 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
                       <div id={`steps-${l.id}`}>
                         <div className="step-head" aria-hidden><span>Step</span><span>Factory</span><span>Target</span><span>Done</span><span>Status</span></div>
                         <ul className="step-list">
-                          {allSteps(l.id).filter((s) => !s.extra || !get(l.id, s.key).not_needed).map((s) => stepRow(l, s, released, target))}
+                          {allSteps(l.id).filter((s) => !get(l.id, s.key).not_needed || (!s.extra && !l.fabricOrder)).map((s) => stepRow(l, s, released, target))}
                         </ul>
                         {editable && (
                           <div className="step-add">
@@ -668,6 +680,29 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
       )}
       {!doneEditable && error && <p className="mt-3 text-[13px] font-semibold text-bad" role="alert">{error}</p>}
       {!doneEditable && notice && !error && <p className="mt-3 text-[13px] font-semibold text-ok">{notice}</p>}
+      <details className="howto mt-4">
+        <summary>How planning works</summary>
+        <p>
+          First set your target date for every step of each style (add extra steps if a style needs them), then ask the factory.
+          The factory gives its own date for each step in its panel; if it agrees to your targets by phone or WhatsApp instead, press
+          &quot;Factory agreed to targets&quot;. Once every factory date is in and none is later than its target, send the plan for the
+          owner&apos;s lock. The owner checks it and locks it, which releases the PO to the factory, or sends it back saying what to change.
+          After the lock the targets are locked: only the owner can move one, with a reason, and the step shows where it started. The orders team
+          and Quality enter done dates. A late step pushes back the steps after it, so a style shows when it will likely be ready and whether
+          that misses the ship date. Quality&apos;s latest result shows next to each step it checks. &quot;Fill empty targets&quot; works every
+          empty target back from the target date with the usual days per step.
+        </p>
+      </details>
     </section>
+  );
+}
+
+// A simple garment outline for a style with no photo yet.
+function GarmentIcon({ plus }: { plus?: boolean }) {
+  return (
+    <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" aria-hidden>
+      <path d="M8.5 3.5 4 6l1.8 4 1.7-.8V20.5h9V9.2l1.7.8L20 6l-4.5-2.5c-.5 1.4-1.9 2.3-3.5 2.3s-3-.9-3.5-2.3Z" />
+      {plus && <path d="M12 11v5M9.5 13.5h5" />}
+    </svg>
   );
 }

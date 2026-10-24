@@ -53,15 +53,39 @@ export function Icon({ name, size = 18 }: { name: IconName; size?: number }) {
 // The app's side menu. On a phone it becomes a tab bar along the bottom, like a native app,
 // with everything else in a sheet under More.
 // Help sits in the top bar on a phone and above the account on a computer; its dot counts replies not yet read.
-export function Sidebar({ groups, user, role, company, helpUnseen = 0 }: { groups: NavGroup[]; user: string; role: string; company: string; helpUnseen?: number }) {
+export function Sidebar({ groups, tabs, create = [], user, role, company, helpUnseen = 0 }: {
+  groups: NavGroup[]; tabs: NavItem[]; create?: (NavItem & { hint: string })[]; user: string; role: string; company: string; helpUnseen?: number;
+}) {
   const path = usePathname();
   const [open, setOpen] = useState(false);
+  const [making, setMaking] = useState(false);
   const mac = useSyncExternalStore(() => () => {}, () => /Mac|iPhone|iPad/.test(navigator.platform), () => true);
   const on = (href: string) => (href === "/" ? path === "/" || path.startsWith("/orders") : path.startsWith(href));
   const initials = user.split(/[\s@.]+/).filter(Boolean).slice(0, 2).map((w) => w[0]?.toUpperCase()).join("");
-  // The bottom bar holds the main screens; the rest sit in More.
-  const tabs = groups[0]?.items.slice(0, 4) ?? [];
-  const inMore = groups.flatMap((g) => g.items).some((it) => !tabs.includes(it) && on(it.href));
+  // The bottom bar holds the main screens and New; the rest sit in More, whose dot adds up what waits inside it.
+  const inMore = groups.flatMap((g) => g.items).some((it) => !tabs.some((t) => t.href === it.href) && on(it.href));
+  const moreCount = groups.flatMap((g) => g.items).filter((it) => !tabs.some((t) => t.href === it.href)).reduce((n, it) => n + (it.count ?? 0), 0);
+  const tab = (it: NavItem) => (
+    <Link key={it.href} href={it.href} onClick={() => setOpen(false)} aria-current={on(it.href) && !open ? "page" : undefined}>
+      <span className="tab-ic"><Icon name={it.icon} size={22} />{!!it.count && <span className="tab-badge">{it.count}</span>}</span>
+      {it.label}
+    </Link>
+  );
+  const newSheet = create.length > 0 && (
+    <>
+      {making && <div className="scrim new-scrim" onClick={() => setMaking(false)} aria-hidden />}
+      <div className="new-pop" data-open={making || undefined} role="dialog" aria-label="Start something new" aria-hidden={!making}>
+        <span className="grabber" aria-hidden />
+        <div className="new-title">Start something new</div>
+        {create.map((c) => (
+          <Link key={c.href} href={c.href} onClick={() => setMaking(false)} tabIndex={making ? 0 : -1}>
+            <span className="new-ic"><Icon name={c.icon} size={20} /></span>
+            <span className="grow"><b>{c.label}</b><small>{c.hint}</small></span>
+          </Link>
+        ))}
+      </div>
+    </>
+  );
 
   return (
     <>
@@ -78,21 +102,29 @@ export function Sidebar({ groups, user, role, company, helpUnseen = 0 }: { group
         </div>
       </header>
       <nav className="tabbar" aria-label="Main">
-        {tabs.map((it) => (
-          <Link key={it.href} href={it.href} onClick={() => setOpen(false)} aria-current={on(it.href) && !open ? "page" : undefined}>
-            <span className="tab-ic"><Icon name={it.icon} size={22} />{!!it.count && <span className="tab-badge">{it.count}</span>}</span>
-            {it.label === "Incoming POs" ? "POs" : it.label}
-          </Link>
-        ))}
-        <button type="button" aria-expanded={open} aria-controls="sidebar" aria-current={open || inMore ? "page" : undefined} onClick={() => setOpen(!open)}>
-          <span className="tab-ic"><Icon name="more" size={22} /></span>
+        {tabs.slice(0, 2).map(tab)}
+        {create.length > 0 && (
+          <button type="button" className="tab-new" aria-expanded={making} onClick={() => { setOpen(false); setMaking(!making); }}>
+            <span className="tab-ic"><Icon name="plus" size={24} /></span>
+            New
+          </button>
+        )}
+        {tabs.slice(2, create.length > 0 ? 3 : 4).map(tab)}
+        <button type="button" aria-expanded={open} aria-controls="sidebar" aria-current={open || inMore ? "page" : undefined} onClick={() => { setMaking(false); setOpen(!open); }}>
+          <span className="tab-ic"><Icon name="more" size={22} />{moreCount > 0 && !open && <span className="tab-badge">{moreCount}</span>}</span>
           More
         </button>
       </nav>
+      {newSheet}
       {open && <div className="scrim" onClick={() => setOpen(false)} aria-hidden />}
       <aside id="sidebar" className="sidebar" data-open={open || undefined}>
         <span className="grabber" aria-hidden />
         <Link href="/today" className="brand"><span className="brand-mark" aria-hidden>S</span>Sourcingo<small>OS</small></Link>
+        {create.length > 0 && (
+          <button type="button" className="side-new hide-phone" aria-expanded={making} onClick={() => setMaking(!making)}>
+            <Icon name="plus" /><span className="grow text-left">New</span>
+          </button>
+        )}
         <button type="button" className="side-search hide-phone" onClick={openSearch}>
           <Icon name="search" /><span className="grow text-left">Search</span><kbd>{mac ? "⌘K" : "Ctrl K"}</kbd>
         </button>
