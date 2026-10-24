@@ -140,3 +140,19 @@ select company_id, id, '20000000-0000-0000-0000-000000000003', 'PB-T-102', curre
 from public.orders where id = :'o_over';
 insert into public.dispatch_lines (dispatch_id, line_id, company_id, qty, purchase_rate, sale_rate)
 select d.id, l.id, l.company_id, 150, 700, 980 from public.dispatches d join public.order_lines l on l.order_id = d.order_id where d.order_id = :'o_over';
+
+-- 11. Payments: an older invoice to Mira is past due and its cheque, dated two days ago, is still in hand (to deposit);
+-- Nova has given a post-dated cheque for part of the late order's invoice.
+insert into public.invoices (company_id, invoice_no, buyer_id, invoice_date, amount, due_date)
+select c.id, 'INV-T-090', :'mr', current_date - 40, 98000, current_date - 10 from public.companies c
+returning id as inv90 \gset
+insert into public.cheques (company_id, buyer_id, cheque_no, bank, cheque_date, amount, status, received_on)
+select c.id, :'mr', '004512', 'HDFC Bank', current_date - 2, 98000, 'in_hand', current_date - 3 from public.companies c
+returning id as chq1 \gset
+insert into public.cheque_allocations (company_id, cheque_id, invoice_id, amount)
+select c.id, :'chq1', :'inv90', 98000 from public.companies c;
+insert into public.cheques (company_id, buyer_id, cheque_no, bank, cheque_date, amount, status, received_on)
+select company_id, buyer_id, '118230', 'ICICI Bank', current_date + 20, 80000, 'in_hand', current_date - 1 from public.invoices where id = :'inv'
+returning id as chq2 \gset
+insert into public.cheque_allocations (company_id, cheque_id, invoice_id, amount)
+select company_id, :'chq2', id, 80000 from public.invoices where id = :'inv';
