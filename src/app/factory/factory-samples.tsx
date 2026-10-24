@@ -33,8 +33,13 @@ export function FactorySamples({ companyId, order, rounds, lang }: { companyId: 
   const [pending, start] = useTransition();
   const name = (stage: string) => stepName(lang, stage, null, TNA_STEPS.find((t) => t.key === stage)?.label ?? stage);
   // Only the sample steps each style has.
-  const lines = order.lines.map((l) => ({ l, steps: SAMPLE_STEPS.filter((s) => l.stages.some((x) => x.stage === s.key)) })).filter((x) => x.steps.length);
-  if (!lines.length) return null;
+  const all = order.lines.map((l) => ({ l, steps: SAMPLE_STEPS.filter((s) => l.stages.some((x) => x.stage === s.key)) })).filter((x) => x.steps.length);
+  if (!all.length) return null;
+  // An approved sample needs nothing more from the factory, so only the open ones are listed.
+  const approved = (l: Line, stage: string) => !!l.stages.find((x) => x.stage === stage)?.done_on
+    || rounds.filter((r) => r.line_id === l.id && r.stage === stage).at(-1)?.status === "approved";
+  const lines = all.map(({ l, steps }) => ({ l, steps: steps.filter((s) => !approved(l, s.key)) })).filter((x) => x.steps.length);
+  const approvedCount = all.reduce((n, { l, steps }) => n + steps.filter((s) => approved(l, s.key)).length, 0);
 
   function openFor(line: Line, stage: string, round: number) {
     setPick({ line, stage, round });
@@ -66,9 +71,9 @@ export function FactorySamples({ companyId, order, rounds, lang }: { companyId: 
     <div className="fsmp">
       <div className="row">
         <h3 className="text-[14px] font-semibold">{w.samples}</h3>
-        <span className="muted text-[13px]">{w.samplesHelp}</span>
+        <span className="fsmp-sum">{lines.length ? approvedCount > 0 && w.samplesApproved(approvedCount) : w.allSamplesApproved}</span>
       </div>
-      <ul className="fsmp-styles">
+      {lines.length > 0 && <ul className="fsmp-styles">
         {lines.map(({ l, steps }) => (
           <li key={l.id} className="fsmp-style">
             <b className="code">{l.style}</b>
@@ -114,7 +119,7 @@ export function FactorySamples({ companyId, order, rounds, lang }: { companyId: 
             </ul>
           </li>
         ))}
-      </ul>
+      </ul>}
 
       <dialog ref={box} className="sheet" aria-labelledby={`fsmp-${order.order_id}`} onClick={(e) => { if (e.target === box.current && !pending) box.current?.close(); }}>
         {pick && (

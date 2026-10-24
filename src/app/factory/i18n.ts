@@ -113,6 +113,10 @@ const EN = {
   addSamplePhoto: "Add at least one photo of the sample.",
   sampleSentToast: (style: string, step: string) => `Sent: ${style} ${step}. Sourcingo will check it.`,
   photo: "Photo",
+  allSteps: (a: number, b: number) => `All steps · ${a} of ${b} done`,
+  samplesApproved: (n: number) => `${n} approved`,
+  allSamplesApproved: "Every sample approved",
+  howItWorks: "How this works",
 };
 
 const HI: typeof EN = {
@@ -205,6 +209,10 @@ const HI: typeof EN = {
   addSamplePhoto: "सैंपल की कम से कम एक फोटो लगाएँ।",
   sampleSentToast: (style: string, step: string) => `भेज दिया: ${style} ${step}। Sourcingo देखेगा।`,
   photo: "फोटो",
+  allSteps: (a: number, b: number) => `सारे स्टेप · ${b} में से ${a} पूरे`,
+  samplesApproved: (n: number) => `${n} अप्रूव हुए`,
+  allSamplesApproved: "सारे सैंपल अप्रूव हुए",
+  howItWorks: "यह कैसे काम करता है",
 };
 
 export type Words = typeof EN;

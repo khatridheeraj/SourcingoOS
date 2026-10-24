@@ -117,6 +117,8 @@ export function FactoryOrder({ order, now, companyId, updates, rounds, lang, inf
 
   // After release a step is late when its target has passed and it isn't done yet.
   const today = now.slice(0, 10);
+  const totalSteps = order.lines.reduce((n, l) => n + l.stages.length, 0);
+  const doneSteps = order.lines.reduce((n, l) => n + l.stages.filter((s) => s.done_on).length, 0);
   const lateStep = (st: Stage) => released && !st.done_on && !!st.planned_on && st.planned_on < today;
 
   function fields(lineId: string, style: string, label: string, st: Stage) {
@@ -144,19 +146,22 @@ export function FactoryOrder({ order, now, companyId, updates, rounds, lang, inf
         <h2 className="font-bold text-base"><span className="code">{order.order_no}</span></h2>
         <span className={`chip ${status.cls}`}>{status.text}</span>
       </div>
-      <p className="muted mb-3 text-[13px]">
-        {order.target && <>{w.targetDate} <b className="text-foreground">{day(order.target)}</b>{w.targetRule} </>}
-        {!released && !sentAt && order.plan_due_at && <>{w.sendBy} <b className="text-foreground">{at.format(new Date(order.plan_due_at))}</b>. </>}
-        {released ? w.releasedHelp : w.planHelp}
-      </p>
+      {!released && (
+        <p className="muted mb-3 text-[13px]">
+          {order.target && <>{w.targetDate} <b className="text-foreground">{day(order.target)}</b>{w.targetRule} </>}
+          {!sentAt && order.plan_due_at && <>{w.sendBy} <b className="text-foreground">{at.format(new Date(order.plan_due_at))}</b>.</>}
+        </p>
+      )}
       {!released && fillable > 0 && (
         <div className="fagree">
           <p>{w.useTargetsHelp(missing)}</p>
           <button type="button" className="btn primary" disabled={pending} onClick={agreeTargets}>{w.useTargets}</button>
         </div>
       )}
-      {released && <FactorySamples companyId={companyId} order={order} rounds={rounds} lang={lang} />}
+      {/* After release the work comes first: mark a step done, send a sample. The step list folds away below. */}
       {released && <FactoryProgress companyId={companyId} order={order} updates={updates.filter((u) => u.order_id === order.order_id)} lang={lang} />}
+      {released && <FactorySamples companyId={companyId} order={order} rounds={rounds} lang={lang} />}
+      <Fold released={released} summary={w.allSteps(doneSteps, totalSteps)}>
       {/* On a phone: one card per style, one row per step, big date boxes. */}
       <div className="show-phone fstyles">
         {order.lines.map((l) => (
@@ -218,6 +223,7 @@ export function FactoryOrder({ order, now, companyId, updates, rounds, lang, inf
           </tbody>
         </table>
       </div>
+      </Fold>
       {!released && (
         <div className="row mt-3 fsend">
           <button type="button" className="btn primary" disabled={pending || missing > 0 || beyond || (!changed.length && !!sentAt)} onClick={send}
@@ -232,6 +238,23 @@ export function FactoryOrder({ order, now, companyId, updates, rounds, lang, inf
           {sent && !error && <span className="text-[13px] font-semibold text-ok">{w.sent}</span>}
         </div>
       )}
+      <details className="howto mt-3">
+        <summary>{w.howItWorks}</summary>
+        <p>{released ? w.releasedHelp : w.planHelp}</p>
+        {released && <p>{w.sendProgressHelp}</p>}
+        {released && <p>{w.samplesHelp}</p>}
+      </details>
     </section>
+  );
+}
+
+// Before release the factory fills every date, so the steps stay open; after release they fold away behind one line.
+function Fold({ released, summary, children }: { released: boolean; summary: string; children: React.ReactNode }) {
+  if (!released) return <>{children}</>;
+  return (
+    <details className="fsteps">
+      <summary>{summary}</summary>
+      {children}
+    </details>
   );
 }

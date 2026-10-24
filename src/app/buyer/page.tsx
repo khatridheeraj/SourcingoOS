@@ -66,7 +66,14 @@ export default async function BuyerPage() {
       <div className="head">
         <div className="grow">
           <h1>{buyer ? `${buyer}'s orders` : "Your orders"}</h1>
-          <p>Live from Sourcingo: where every style is, its ship date and its final quality check.</p>
+          {/* The whole picture in one line; each order below says where it is. */}
+          {open.length > 0 && (
+            <p className="num">
+              {open.length} open {open.length === 1 ? "order" : "orders"} · {qty(styles.reduce((n, l) => n + Number(l.qty), 0))} pcs
+              {nextShip && <> · next ship <b className="text-foreground">{dm(nextShip)}</b>, in {daysBetween(today, nextShip)} days</>}
+              {passed > 0 && <> · {passed} of {styles.length} styles passed final QC</>}
+            </p>
+          )}
         </div>
       </div>
       {error && <div className="errbox">{error.message}</div>}
@@ -76,13 +83,6 @@ export default async function BuyerPage() {
         <div className="empty"><b>No open orders right now</b>Orders appear here as soon as Sourcingo enters your PO.</div>
       ) : (
         <>
-          <div className="kpis">
-            <div className="kpi"><span className="kpi-label"><i aria-hidden />Open orders</span><b>{open.length}</b><small>{styles.length} {styles.length === 1 ? "style" : "styles"}</small></div>
-            <div className="kpi"><span className="kpi-label"><i aria-hidden />Pieces</span><b>{qty(styles.reduce((n, l) => n + Number(l.qty), 0))}</b><small>across open orders</small></div>
-            <div className="kpi ok"><span className="kpi-label"><i aria-hidden />Final QC passed</span><b>{passed}<span className="kpi-of"> of {styles.length}</span></b><small>styles ready to pack</small></div>
-            <div className="kpi"><span className="kpi-label"><i aria-hidden />Next ship date</span><b>{nextShip ? dm(nextShip) : "None"}</b><small>{nextShip ? `in ${daysBetween(today, nextShip)} days` : "no open ship date ahead"}</small></div>
-          </div>
-
           {orders.map((o) => {
             const ship = o.revised_ship_date ?? o.ship_date;
             const lines = o.lines.map((l) => ({ l, w: where(l, today), qc: qcChip(l.final_qc) }));

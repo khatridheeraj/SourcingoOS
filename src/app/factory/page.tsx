@@ -45,8 +45,9 @@ export default async function FactoryPage() {
       <div className="head">
         <div className="grow">
           <h1>{panel.factory || w.yourPos}</h1>
-          <p className="show-phone">{w.introPhone}</p>
-          <p className="hide-phone">{w.intro}</p>
+          {/* The dates rule matters only while a PO waits for the factory's dates. */}
+          {waiting.length > 0 && <p className="show-phone">{w.introPhone}</p>}
+          {waiting.length > 0 && <p className="hide-phone">{w.intro}</p>}
         </div>
       </div>
       {error && <div className="errbox">{error.message}</div>}
