@@ -5,9 +5,9 @@ import { fillEmptyTargets, stepDays } from "@/lib/tna-plan";
 
 export type QStep = { key: string; label: string; planned_on: string; done_on: string; not_needed: boolean; extra: boolean };
 // fabric: a fabric style, planned with the fabric standard days.
-export type QStyle = { id: string; style: string; colour: string; qty: number; hasRate: boolean; factoryId: string | null; fabric?: boolean; steps: QStep[] };
+export type QStyle = { id: string; style: string; colour: string; qty: number; hasRate: boolean; hasPhoto?: boolean; factoryId: string | null; fabric?: boolean; steps: QStep[] };
 export type QGroup = {
-  factoryId: string | null; factoryName: string; phone: string | null;
+  factoryId: string | null; factoryName: string; phone: string | null; email: string | null;
   released: boolean; asked: boolean; sent: boolean; lockRequestedAt: string; lockNote: string; bufferDays: number | null;
   styles: QStyle[];
 };
@@ -16,9 +16,12 @@ export type QOrder = {
   today: string; isOwner: boolean; ownerName: string; companyId: string;
   // The buyer's PO is on file (from email or added by hand): a factory PO is issued only against it.
   hasBuyerPo: boolean;
-  factories: { id: string; name: string }[];
+  factories: { id: string; name: string; email: string | null }[];
   groups: QGroup[];
 };
+
+// An email the PO can be sent to.
+export const EMAIL_OK = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 // "10 Sep" from YYYY-MM-DD.

@@ -40,7 +40,7 @@ export function PoDetailsForm({ initial, missing, isOwner }: { initial: PoDetail
     );
   }
   return (
-    <form onSubmit={submit} className="panel stack no-print" aria-label="PO details">
+    <form id="po-details" onSubmit={submit} className="panel stack no-print scroll-mt-20" aria-label="PO details">
       <div>
         <h2 className="font-bold">PO details</h2>
         <p className="muted text-[13px]">{missing.length > 0 ? `Fill in ${missing.join(", ")} so the PO prints complete. ` : ""}The factory&apos;s details are kept for its next POs too.</p>

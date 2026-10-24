@@ -10,6 +10,7 @@ import { project, shipRisk, fillEmptyTargets, stepDays } from "@/lib/tna-plan";
 import { FactoryLink } from "../../factories/factory-link";
 import { sizeEntries } from "@/lib/sizes";
 import { StyleDetails, type StyleDetail } from "./style-details";
+import { ErrorFix } from "@/components/fix-link";
 import { acceptTargetsForFactory, releaseFactoryPo, requestPlan, requestPoLock, saveLineStages, sendBackPoLock, setLineProduct, setStylePhoto, type LineStageInput } from "../actions";
 
 // fabricOrder: a fabric style, whose TNA skips the garment-making steps.
@@ -98,6 +99,8 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
   const [extras, setExtras] = useState<Record<string, ExtraStep[]>>(initialExtras);
   const [newStep, setNewStep] = useState<Record<string, string>>({});
   const [error, setError] = useState("");
+  // Which button the error came from ("lock:<factory id>"), so its fix links to the right factory.
+  const [errAt, setErrAt] = useState("");
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState("");
   const [reason, setReason] = useState("");
@@ -224,6 +227,7 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
 
   function run(label: string, job: () => Promise<{ error?: string }>, done: string) {
     setError("");
+    setErrAt(label);
     setNotice("");
     setBusy(label);
     start(async () => {
@@ -676,11 +680,11 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
             {busy === "save" ? "Saving…" : "Save TNA dates"}
           </button>
           {changed.length > 0 && <span className="text-[13px] font-semibold text-warn">Unsaved changes on {unsavedStyles} {unsavedStyles === 1 ? "style" : "styles"}</span>}
-          {error && <span className="text-[13px] font-semibold text-bad" role="alert">{error}</span>}
+          {error && <ErrorFix error={error} orderId={orderId} factoryId={errAt.split(":")[1] || undefined} />}
           {notice && !error && <span className="text-[13px] font-semibold text-ok">{notice}</span>}
         </div>
       )}
-      {!doneEditable && error && <p className="mt-3 text-[13px] font-semibold text-bad" role="alert">{error}</p>}
+      {!doneEditable && error && <ErrorFix error={error} orderId={orderId} factoryId={errAt.split(":")[1] || undefined} className="mt-3 text-[13px] font-semibold text-bad" />}
       {!doneEditable && notice && !error && <p className="mt-3 text-[13px] font-semibold text-ok">{notice}</p>}
       <details className="howto mt-4">
         <summary>How planning works</summary>
