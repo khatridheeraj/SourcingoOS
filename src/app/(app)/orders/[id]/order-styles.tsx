@@ -625,7 +625,8 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
                 );
               })}
             </div>
-            {editable && g.lines.length > 1 && (
+            {/* Copying targets only makes sense once the first style has some. */}
+            {editable && g.lines.length > 1 && g.lines[0] && Object.entries(dates).some(([k, v]) => k.startsWith(`${g.lines[0].id}:`) && v.planned_on) && (
               <button type="button" className="btn sm mt-2 max-w-full !whitespace-normal text-left" disabled={pending} onClick={() => copyPlan(g)}>
                 Copy {g.lines[0].style}&apos;s targets to {g.factoryName}&apos;s other styles
               </button>
@@ -634,7 +635,8 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
         );
       })}
 
-      {doneEditable && (
+      {/* The save bar only appears once there is something to save (or a message from the last save). */}
+      {doneEditable && (changed.length > 0 || error || notice) && (
         <div className={`savebar ${changed.length ? "dirty" : ""}`}>
           {moved.length > 0 && (
             <input className="inp min-w-[220px] flex-1" value={reason} maxLength={300} aria-label="Why the targets move"

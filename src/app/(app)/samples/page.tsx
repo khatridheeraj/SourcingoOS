@@ -44,16 +44,14 @@ export default async function SamplesPage({ searchParams }: PageProps<"/samples"
       <div className="head">
         <div className="grow">
           <h1>Samples</h1>
-          <p className="hide-phone">Fit, strike off, PP and size-set samples. Factories send them from their panel, you check and courier them, the buyer approves in the app and the TNA step closes by itself.</p>
+          <p>
+            Factories send samples from their panel, you check and courier them, the buyer approves in the app.
+            {lateChase > 0 && <> <b className="text-bad">{lateChase} past target and not sent.</b></>}
+            {oldBuyer > 0 && <> <b className="text-warn">{oldBuyer} with the buyer 5+ days.</b></>}
+          </p>
         </div>
       </div>
 
-      <div className="kpis">
-        <Link href="/samples?tab=check" className={`kpi ${lists.check.length ? "warn" : "ok"}`}><span className="kpi-label"><i aria-hidden />To check and send</span><b className="num">{lists.check.length}</b><small>{lists.check.length ? "Sent by factories" : "Nothing waiting"}</small></Link>
-        <Link href="/samples?tab=buyer" className={`kpi ${oldBuyer ? "warn" : ""}`}><span className="kpi-label"><i aria-hidden />With buyer</span><b className="num">{lists.buyer.length}</b><small>{oldBuyer ? `${oldBuyer} waiting 5+ days` : "Waiting for an answer"}</small></Link>
-        <Link href="/samples?tab=changes" className={`kpi ${lists.changes.length ? "bad" : ""}`}><span className="kpi-label"><i aria-hidden />Changes asked</span><b className="num">{lists.changes.length}</b><small>Factory to send again</small></Link>
-        <Link href="/samples?tab=chase" className={`kpi ${lateChase ? "bad" : ""}`}><span className="kpi-label"><i aria-hidden />Not sent, due soon</span><b className="num">{lists.chase.length}</b><small>{lateChase ? `${lateChase} past target` : `Due in ${CHASE_DAYS} days`}</small></Link>
-      </div>
 
       {error && <div className="errbox">Couldn&apos;t load every sample, so this list may be incomplete. Reload to try again. ({error})</div>}
 
