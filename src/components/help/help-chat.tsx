@@ -17,9 +17,9 @@ const STUCK = /can'?t|cannot|unable|not able|nahi|why|block|lock|stuck|disabled|
 type Lang = "en" | "hi";
 const OPEN = "sourcingo:help";
 
-// Opens Help from anywhere: the menu, the top bar, a page's own link.
-export function openHelp(tab: "ask" | "notes" = "ask") {
-  window.dispatchEvent(new CustomEvent(OPEN, { detail: tab }));
+// Opens Help from anywhere: the menu, the top bar, a page's own link. A draft opens a note to the owner already written.
+export function openHelp(tab: "ask" | "notes" = "ask", draft?: string) {
+  window.dispatchEvent(new CustomEvent(OPEN, { detail: { tab, draft } }));
 }
 
 const T = {
@@ -124,10 +124,11 @@ export function HelpChat({ who, role, name, userId, companyId, ownerName = "Dhee
 
   useEffect(() => {
     const on = (e: Event) => {
-      const t = (e as CustomEvent<"ask" | "notes">).detail ?? "ask";
+      const { tab: t = "ask", draft } = (e as CustomEvent<{ tab?: "ask" | "notes"; draft?: string }>).detail ?? {};
       setTab(t);
       if (!box.current?.open) box.current?.showModal();
       if (t === "notes") showNotes();
+      else if (draft) compose("problem", draft);
       else setTimeout(() => input.current?.focus({ preventScroll: true }), 250);
     };
     window.addEventListener(OPEN, on);
@@ -174,12 +175,15 @@ export function HelpChat({ who, role, name, userId, companyId, ownerName = "Dhee
     if (!q) return;
     setText("");
     push({ from: "me", text: q });
+    const scored = searchScored(q, viewer, path);
     if (orderId && STUCK.test(q)) {
+      // A question the guide clearly answers (why a date won't pick, say) gets that answer first; the live check follows.
+      const strong = scored[0] && scored[0].score >= 10 ? scored[0].t : null;
+      if (strong) push({ from: "bot", kind: "answer", topic: strong, others: [], askId: null, question: q });
       runCheck(orderId);
-      void logAsk(q, path, "order-check");
+      void logAsk(q, path, strong?.id ?? "order-check");
       return;
     }
-    const scored = searchScored(q, viewer, path);
     const found = scored.map((s) => s.t);
     const kind = guessKind(q);
     const top = found[0];
