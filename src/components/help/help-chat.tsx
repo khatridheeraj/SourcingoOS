@@ -7,7 +7,12 @@ import { toast } from "@/components/toast";
 import type { Role } from "@/lib/auth-roles";
 import { guessKind, pageTitle, searchScored, suggestions, type Audience, type NoteKind, type Topic } from "@/lib/help-guide";
 import { ATTACH_ACCEPT, uploadAttachments } from "@/lib/photos";
-import { loadNotes, logAsk, markSeen, rateAsk, sendNote, type NoteFile, type TeamNote } from "./actions";
+import { checkOrder, loadNotes, logAsk, markSeen, rateAsk, sendNote, type NoteFile, type OrderCheck, type TeamNote } from "./actions";
+
+// An order's own page (or a page inside it) gets Help's live check of that order.
+const orderOf = (path: string) => (/^\/orders\/([0-9a-f-]{36})(\/|$)/.exec(path) ?? [])[1] ?? null;
+// Questions that read as "why can't I…" on an order get the live check before anything else.
+const STUCK = /can'?t|cannot|unable|not able|nahi|why|block|lock|stuck|disabled|grey|done date|release|approv|after po/i;
 
 type Lang = "en" | "hi";
 const OPEN = "sourcingo:help";
@@ -40,6 +45,7 @@ const T = {
     } as Record<NoteKind, string>,
     stagedHint: "Say what's wrong, then send.", stagedPlaceholder: "What's wrong in this screenshot?",
     stillStuck: (o: string) => `Still stuck? Send it to ${o} with your screenshot.`,
+    checkChip: "What's blocking this order?", checking: "Checking this order…", checkFail: "Couldn't check this order. Check the internet and try again.",
     photo: "Attach", attachTitle: "Attach a screenshot, photo or file", attachHint: "Screenshot, photo, short video, PDF or Excel. Up to 4.", removePhoto: "Remove",
     from: "Sent from", sendTo: (o: string) => `Send to ${o}`, sending: "Sending…", cancel: "Cancel",
     sent: (no: number, o: string) => `Sent to ${o} as note #${no}. The answer will show in My notes.`,
@@ -71,6 +77,7 @@ const T = {
     } as Record<NoteKind, string>,
     stagedHint: "क्या गड़बड़ है लिखें, फिर भेजें।", stagedPlaceholder: "इस स्क्रीनशॉट में क्या गड़बड़ है?",
     stillStuck: () => "फिर भी दिक्कत है? स्क्रीनशॉट के साथ Sourcingo को भेजें।",
+    checkChip: "यह ऑर्डर कहाँ रुका है?", checking: "ऑर्डर देख रहे हैं…", checkFail: "ऑर्डर नहीं देख पाए। इंटरनेट देखकर फिर कोशिश करें।",
     photo: "फोटो / फाइल जोड़ें", attachTitle: "स्क्रीनशॉट, फोटो या फाइल जोड़ें", attachHint: "फोटो, छोटा वीडियो, PDF या Excel. 4 तक.", removePhoto: "हटाएँ",
     from: "पेज", sendTo: () => "Sourcingo को भेजें", sending: "भेज रहे हैं…", cancel: "रहने दें",
     sent: (no: number) => `Sourcingo को भेज दिया (संदेश #${no})। जवाब "मेरे संदेश" में दिखेगा।`,
@@ -87,6 +94,7 @@ type Msg =
   | { id: number; from: "bot"; kind: "hello" }
   | { id: number; from: "bot"; kind: "answer"; topic: Topic; others: Topic[]; askId: string | null; question: string; rated?: boolean }
   | { id: number; from: "bot"; kind: "text"; text: string; offer?: { kind: NoteKind; body: string } }
+  | { id: number; from: "bot"; kind: "check"; check: OrderCheck | null }
   | { id: number; from: "bot"; kind: "compose"; note: NoteKind; body: string; files?: File[]; done?: boolean };
 
 type Without<T, K extends PropertyKey> = T extends unknown ? Omit<T, K> : never;
@@ -112,6 +120,7 @@ export function HelpChat({ who, role, name, userId, companyId, ownerName = "Dhee
   const viewer = { who, role };
   const owner = who === "staff" ? ownerName : "Sourcingo";
   const here = pageTitle(path);
+  const orderId = who === "staff" ? orderOf(path) : null;
 
   useEffect(() => {
     const on = (e: Event) => {
@@ -150,11 +159,26 @@ export function HelpChat({ who, role, name, userId, companyId, ownerName = "Dhee
   const push = (...m: NewMsg[]) => setMsgs((all) => [...all, ...m.map((x) => ({ ...x, id: next.current++ }) as Msg)]);
   const patch = (id: number, p: Partial<Msg>) => setMsgs((all) => all.map((m) => (m.id === id ? ({ ...m, ...p } as Msg) : m)));
 
+  // Reads the order's live state and says what blocks it, in the same words the order screen's own rules use.
+  function runCheck(id: string) {
+    const at = next.current;
+    push({ from: "bot", kind: "text", text: w.checking });
+    void checkOrder(id).then(
+      (check) => setMsgs((all) => all.map((m) => (m.id === at ? { id: at, from: "bot", kind: "check", check } : m))),
+      () => patch(at, { text: w.checkFail }),
+    );
+  }
+
   function ask(question: string) {
     const q = question.trim();
     if (!q) return;
     setText("");
     push({ from: "me", text: q });
+    if (orderId && STUCK.test(q)) {
+      runCheck(orderId);
+      void logAsk(q, path, "order-check");
+      return;
+    }
     const scored = searchScored(q, viewer, path);
     const found = scored.map((s) => s.t);
     const kind = guessKind(q);
@@ -254,6 +278,9 @@ export function HelpChat({ who, role, name, userId, companyId, ownerName = "Dhee
                     </div>
                     <p className="help-label">{w.here(here)}</p>
                     <div className="help-sugs">
+                      {orderId && (
+                        <button type="button" className="help-sug" onClick={() => { push({ from: "me", text: w.checkChip }); runCheck(orderId); }}>{w.checkChip}<span aria-hidden>›</span></button>
+                      )}
                       {suggestions(viewer, path).map((t) => (
                         <button key={t.id} type="button" className="help-sug" onClick={() => pickTopic(t)}>{ownTopic(t).q}<span aria-hidden>›</span></button>
                       ))}
@@ -285,6 +312,19 @@ export function HelpChat({ who, role, name, userId, companyId, ownerName = "Dhee
                     </div>
                   );
                 }
+                if (m.kind === "check") return (
+                  <div key={m.id} className="bub bot ans">
+                    {m.check ? (
+                      <>
+                        <b>{m.check.title}</b>
+                        <ul className="help-check">
+                          {m.check.items.map((it, i) => <li key={i} className={it.ok ? "ok" : "todo"}>{it.text}</li>)}
+                        </ul>
+                        <div className="mt-1"><button type="button" className="btn sm" onClick={() => compose("problem")}>{w.sendAsNote(owner)}</button></div>
+                      </>
+                    ) : <p>{w.checkFail}</p>}
+                  </div>
+                );
                 if (m.kind === "text") return (
                   <div key={m.id} className="bub bot">
                     {m.text}

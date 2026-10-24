@@ -1063,6 +1063,11 @@ h1, h2, h3 { font-family: var(--font-display); text-wrap: balance; font-weight: 
   .help-attach { flex: none; width: 44px; height: 44px; padding: 0; border-radius: 50%; color: var(--muted); cursor: pointer; }
   .help-attach:hover, .help-attach:focus-within { color: var(--foreground); }
   .help-staged { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 8px 12px 0; background: var(--surface); border-top: 1px solid var(--line); }
+  .help-check { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 6px; }
+  .help-check li { position: relative; padding-left: 20px; }
+  .help-check li::before { position: absolute; left: 0; top: 0; font-weight: 700; }
+  .help-check li.ok::before { content: "✓"; color: var(--ok); }
+  .help-check li.todo::before { content: "!"; color: var(--warn); left: 4px; }
   .help-staged + .help-bar { border-top: 0; }
   .compose { align-self: stretch; display: flex; flex-direction: column; gap: 10px; padding: 12px; border-radius: 16px; background: var(--surface); border: 1px solid var(--accent); box-shadow: var(--ring); animation: bub-in 0.24s ease; }
   .compose .seg button { padding: 0 6px; font-size: 12.5px; height: 30px; }
