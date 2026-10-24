@@ -726,7 +726,7 @@ h1, h2, h3 { font-family: var(--font-display); text-wrap: balance; font-weight: 
   .bqc-photos img { display: block; width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 8px; border: 1px solid var(--line); }
 
   /* Factory panel: progress per style on a released PO, and the step-done sheet. */
-  .fprog { display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px; padding: 12px 14px; border: 1px solid var(--ok-line); border-radius: 12px; background: color-mix(in srgb, var(--ok-soft) 45%, var(--surface)); }
+  .fprog { display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-2); }
   .fprog ul { display: flex; flex-direction: column; }
   .fprog-row { display: grid; grid-template-columns: 200px minmax(0, 1fr) auto; gap: 8px 16px; align-items: center; padding: 10px 0; border-top: 1px solid var(--line); }
   .fprog-id { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
