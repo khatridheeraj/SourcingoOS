@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { toast } from "@/components/toast";
 import { uploadPhotos } from "@/lib/photos";
+import { ErrorFix } from "@/components/fix-link";
 import { releaseFactoryPo, requestPoLock, sendBackPoLock, setStylePhoto } from "../../../actions";
 import { emailPo, markAccepted } from "./actions";
 
@@ -165,7 +166,7 @@ export function PoSend({ orderId, factoryId, released, blocker, factoryEmail, de
           <button type="button" className="btn" onClick={() => setMarking(false)}>Cancel</button>
         </div>
       )}
-      {error && <p className="mt-2 text-[13px] font-semibold text-bad" role="alert">{error}</p>}
+      {error && <ErrorFix error={error} orderId={orderId} factoryId={factoryId} className="mt-2 text-[13px] font-semibold text-bad" />}
     </section>
   );
 }

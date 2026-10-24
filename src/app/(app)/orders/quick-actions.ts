@@ -5,7 +5,7 @@ import { canEditOrders, canEnterDone, getMe } from "@/lib/auth";
 import { buyerName, loadBuyers, loadFactories, loadTeam, personName } from "@/lib/data";
 import { friendly } from "@/lib/errors";
 import { TNA_STEPS, todayIST } from "@/lib/format";
-import { addDays, startTargets, type QGroup, type QOrder, type QStyle } from "@/lib/quick";
+import { addDays, EMAIL_OK, startTargets, type QGroup, type QOrder, type QStyle } from "@/lib/quick";
 import { createClient } from "@/lib/supabase/server";
 import { saveLineStages, type LineStageInput } from "./actions";
 
@@ -19,7 +19,7 @@ export async function loadQuick(orderId: string): Promise<{ error?: string; orde
   if (!/^[0-9a-f-]{36}$/i.test(orderId)) return { error: "That order wasn't found." };
   const supabase = await createClient();
   const [{ data: o, error }, { data: stages }, { data: pos }, { data: prices }, buyers, factories, team, { data: withPo }] = await Promise.all([
-    supabase.from("orders").select("id, order_no, buyer_id, buyer_po, ship_date, revised_ship_date, status, order_lines(id, style, colour, qty, factory_id, position, product)")
+    supabase.from("orders").select("id, order_no, buyer_id, buyer_po, ship_date, revised_ship_date, status, order_lines(id, style, colour, qty, factory_id, position, product, photo_path)")
       .eq("id", orderId).is("order_lines.removed_at", null).maybeSingle(),
     supabase.from("line_stages").select("line_id, stage, label, planned_on, done_on, not_needed, added_at").eq("order_id", orderId).order("added_at").order("id"),
     supabase.from("factory_pos").select("factory_id, plan_requested_at, plan_requested_on, factory_sent_at, released_at, lock_requested_at, lock_note, buffer_days").eq("order_id", orderId),
@@ -40,7 +40,7 @@ export async function loadQuick(orderId: string): Promise<{ error?: string; orde
       return { key, label, planned_on: str(r?.planned_on), done_on: str(r?.done_on), not_needed: !!r?.not_needed, extra };
     };
     return {
-      id: l.id, style: l.style, colour: str(l.colour), qty: l.qty, hasRate: rate.get(l.id) != null, factoryId: l.factory_id, fabric: l.product === "fabric",
+      id: l.id, style: l.style, colour: str(l.colour), qty: l.qty, hasRate: rate.get(l.id) != null, hasPhoto: !!l.photo_path, factoryId: l.factory_id, fabric: l.product === "fabric",
       steps: [...TNA_STEPS.map((t) => step(t.key, t.label, false)), ...rows.filter((s) => s.stage.startsWith("extra_")).map((s) => step(s.stage, str(s.label), true))],
     };
   };
@@ -51,7 +51,7 @@ export async function loadQuick(orderId: string): Promise<{ error?: string; orde
       const po = (pos ?? []).find((p) => p.factory_id === l.factory_id);
       const f = factories.find((x) => x.id === l.factory_id);
       g = {
-        factoryId: l.factory_id ?? null, factoryName: f?.name ?? "No factory yet", phone: f?.phone ?? null,
+        factoryId: l.factory_id ?? null, factoryName: f?.name ?? "No factory yet", phone: f?.phone ?? null, email: f?.email ?? null,
         released: !!po?.released_at, asked: !!(po?.plan_requested_at || po?.plan_requested_on),
         sent: !!po?.factory_sent_at && (!po.plan_requested_at || po.factory_sent_at >= po.plan_requested_at),
         lockRequestedAt: str(po?.lock_requested_at), lockNote: str(po?.lock_note), bufferDays: po?.buffer_days ?? null, styles: [],
@@ -66,7 +66,7 @@ export async function loadQuick(orderId: string): Promise<{ error?: string; orde
     order: {
       id: o.id, orderNo: o.order_no, buyer: b ? buyerName(b) : "", buyerPo: str(o.buyer_po), due: str(o.revised_ship_date || o.ship_date), shipDate: str(o.ship_date),
       status: o.status, today: todayIST(), isOwner: me?.role === "owner", companyId: me?.companyId ?? "", ownerName: owner ? personName(owner).split(" ")[0] : "the owner",
-      factories: factories.filter((f) => f.active).map((f) => ({ id: f.id, name: f.name })).sort((a, b) => a.name.localeCompare(b.name)),
+      factories: factories.filter((f) => f.active).map((f) => ({ id: f.id, name: f.name, email: f.email ?? null })).sort((a, b) => a.name.localeCompare(b.name)),
       groups,
       // Quality can't see PO files; it never starts production, so the flag only matters to the orders team.
       hasBuyerPo: ((withPo ?? []) as string[]).includes(o.id),
@@ -92,6 +92,8 @@ export type StartInput = {
   // A new ship date when the old one has passed, and why.
   newShipDate?: string;
   reason?: string;
+  // The factory's email, typed in the sheet when it has none: the approved PO is emailed there.
+  factoryEmail?: string;
 };
 
 // Starts a factory's production in one go: missing factory and rates, targets for every step, the request to the
@@ -123,6 +125,13 @@ export async function startProduction(orderId: string, input: StartInput): Promi
     if (!factoryId) factoryId = rows.find((s) => s.factory_id)?.factory_id ?? "";
   }
   if (!factoryId) return { error: "Pick the factory making these styles." };
+  const email = input.factoryEmail?.trim().toLowerCase();
+  if (email) {
+    if (!EMAIL_OK.test(email)) return { error: "The factory's email doesn't look right." };
+    const { error } = await supabase.from("factories").update({ email }).eq("id", factoryId);
+    if (error) return { error: friendly(error) };
+    revalidatePath("/factories");
+  }
 
   const { order, error: loadError } = await loadQuick(orderId);
   if (!order) return { error: loadError ?? "That order wasn't found." };
@@ -134,6 +143,11 @@ export async function startProduction(orderId: string, input: StartInput): Promi
   if (target < today) return { error: `With ${b} days' buffer the factory would have to finish by ${target}, which has passed. Use a smaller buffer or a new ship date.` };
   if (input.agreed && !order.hasBuyerPo) return { error: NO_BUYER_PO };
   if (g.styles.some((s) => !s.hasRate)) return { error: `Enter ${g.factoryName}'s rate for ${g.styles.filter((s) => !s.hasRate).map((s) => s.style).join(", ")}.` };
+  // What would stop the PO going for approval is checked before anything is saved, so nothing is left half done.
+  if (input.agreed && me?.role !== "owner") {
+    const { data: block } = await supabase.rpc("po_send_blocker", { p_order: orderId, p_factory: factoryId });
+    if (block) return { error: block as string };
+  }
 
   // Targets: fill the empty ones and move the impossible ones, then save them with what was loaded.
   const plan = startTargets(g.styles, target, today);

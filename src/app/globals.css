@@ -1468,6 +1468,8 @@ h1, h2, h3 { font-family: var(--font-display); text-wrap: balance; font-weight: 
   .qs-banner { margin-top: 12px; padding: 12px 14px; border-radius: 12px; font-size: 13.5px; line-height: 1.45; background: var(--surface-2); }
   .qs-banner.info { background: var(--info-soft); color: var(--foreground); }
   .qs-banner.bad { background: var(--bad-soft); }
+  .qs-photos { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+  .qs-photos .btn { background: var(--surface); }
   .qs-banner.warn { background: var(--warn-soft); }
   .qs-form { display: flex; flex-direction: column; gap: 14px; margin-top: 14px; }
   .qs-rates { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; }

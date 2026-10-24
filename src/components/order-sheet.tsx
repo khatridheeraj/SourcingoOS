@@ -4,8 +4,11 @@ import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { closeOldOrder, loadQuick, lockPlan, logChase, markStepsDone, startProduction } from "@/app/(app)/orders/quick-actions";
 import { daysBetween, defaultBuffer, TNA_STEPS } from "@/lib/format";
-import { addDays, byNextStep, catchUpRows, dm, live, sharedSteps, startTargets, when, type QOrder, type QStyle } from "@/lib/quick";
+import { ErrorFix } from "@/components/fix-link";
+import { addDays, byNextStep, catchUpRows, dm, EMAIL_OK, live, sharedSteps, startTargets, when, type QOrder, type QStyle } from "@/lib/quick";
 import { toast } from "@/components/toast";
+import { uploadPhotos } from "@/lib/photos";
+import { setStylePhoto } from "@/app/(app)/orders/actions";
 
 type Mode = "update" | "start";
 type Open = { orderId: string; mode: Mode; factoryId?: string };
@@ -265,6 +268,9 @@ function StartView({ order, factoryId, onDone, onChanged }: { order: QOrder; fac
   const [error, setError] = useState("");
   const [pending, start] = useTransition();
   const [oldNote, setOldNote] = useState("");
+  const [email, setEmail] = useState("");
+  // Photos added in this sheet, so the style counts as having one without reloading.
+  const [added, setAdded] = useState<string[]>([]);
 
   if (!g) return <p className="qs-note mt-3">Production has started for every factory on this order. Use Update to mark steps done.</p>;
   const due = newShip || order.due;
@@ -277,6 +283,11 @@ function StartView({ order, factoryId, onDone, onChanged }: { order: QOrder; fac
   const same = g.styles.every((s) => live(s).every((x) => dateOf(s, x.key) === dateOf(first, x.key)));
   const waitingLock = !!g.lockRequestedAt;
   const old = order.due && order.due < addDays(today, -14);
+  // The approved PO is emailed to the factory with every style's photo, so both are asked for right here.
+  const onFile = g.factoryId ? g.email : order.factories.find((f) => f.id === pickFactory)?.email;
+  const needEmail = agreed && !EMAIL_OK.test(onFile?.trim() ?? "") && (!!g.factoryId || !!pickFactory);
+  const noPhoto = agreed ? g.styles.filter((s) => s.hasPhoto === false && !added.includes(s.id)) : [];
+  const blocked = !order.isOwner && ((needEmail && !EMAIL_OK.test(email.trim())) || noPhoto.length > 0);
 
   function go() {
     setError("");
@@ -285,6 +296,7 @@ function StartView({ order, factoryId, onDone, onChanged }: { order: QOrder; fac
         factoryId: g.factoryId ?? "", bufferDays: buffer, agreed,
         styles: g.styles.map((s) => ({ line_id: s.id, ...(g.factoryId ? {} : { factory_id: pickFactory }), ...(rates[s.id] ? { factory_rate: rates[s.id] } : {}) })),
         ...(pastDue && newShip ? { newShipDate: newShip, reason } : {}),
+        ...(needEmail && email.trim() ? { factoryEmail: email } : {}),
       });
       if (res.error) { setError(res.error); return; }
       toast(res.done ?? "Done");
@@ -411,6 +423,22 @@ function StartView({ order, factoryId, onDone, onChanged }: { order: QOrder; fac
         </div>
       )}
 
+      {!waitingLock && needEmail && (
+        <label className="field qs-email mt-3"><span>{g.factoryId ? g.factoryName : "The factory"}&apos;s email</span>
+          <input className="inp" type="email" inputMode="email" autoComplete="off" value={email} placeholder="factory@example.com"
+            onChange={(e) => setEmail(e.target.value)} />
+          <small className="muted">The approved PO is emailed here. It&apos;s saved with the factory for next time.</small>
+        </label>
+      )}
+      {!waitingLock && noPhoto.length > 0 && (
+        <div className="qs-banner warn">
+          <b>Add a photo of {noPhoto.length === 1 ? noPhoto[0].style : `each style`}.</b> The PO goes to the factory with each style&apos;s picture.
+          <div className="qs-photos">
+            {noPhoto.map((s) => <SheetPhoto key={s.id} orderId={order.id} companyId={order.companyId} lineId={s.id} style={s.style} onAdded={() => setAdded((a) => [...a, s.id])} />)}
+          </div>
+        </div>
+      )}
+
       {old && !waitingLock && (
         <details className="qs-old">
           <summary>Already shipped before we used the app?</summary>
@@ -422,12 +450,12 @@ function StartView({ order, factoryId, onDone, onChanged }: { order: QOrder; fac
       )}
 
       <footer className="qs-foot">
-        {error && <p className="qs-err" role="alert">{error}</p>}
+        {error && <ErrorFix error={error} orderId={order.id} factoryId={g.factoryId ?? (pickFactory || undefined)} className="qs-err" />}
         {waitingLock ? (order.isOwner ? (
           <button type="button" className="btn primary qs-go" disabled={pending || !order.hasBuyerPo} onClick={lock}>{pending ? "Locking…" : "Lock and start production"}</button>
         ) : <button type="button" className="btn qs-go" onClick={onDone}>OK</button>) : (
           <button type="button" className="btn primary qs-go" onClick={go}
-            disabled={pending || (agreed && !order.hasBuyerPo) || (!g.factoryId && !pickFactory) || noRate.some((s) => !(rates[s.id] ?? "").trim()) || (pastDue && (!newShip || !reason.trim()))}>
+            disabled={pending || blocked || (agreed && !order.hasBuyerPo) || (!g.factoryId && !pickFactory) || noRate.some((s) => !(rates[s.id] ?? "").trim()) || (pastDue && (!newShip || !reason.trim()))}>
             {pending ? "Starting…" : !agreed ? "Set targets and ask the factory" : order.isOwner ? "Approve and start production" : `Send to ${order.ownerName} for approval`}
           </button>
         )}
@@ -436,3 +464,31 @@ function StartView({ order, factoryId, onDone, onChanged }: { order: QOrder; fac
   );
 }
 
+
+// A style's photo taken or picked right in the sheet.
+function SheetPhoto({ orderId, companyId, lineId, style, onAdded }: { orderId: string; companyId: string; lineId: string; style: string; onAdded: () => void }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  return (
+    <label className={`btn sm ${busy ? "pointer-events-none opacity-60" : ""}`} title={error || undefined}>
+      {busy ? "Uploading…" : error ? `${style}: try again` : `+ ${style} photo`}
+      <input type="file" accept="image/*" className="sr-only" aria-label={`Photo for ${style}`} onChange={async (e) => {
+        const file = e.target.files?.[0];
+        e.target.value = "";
+        if (!file) return;
+        setBusy(true);
+        setError("");
+        try {
+          const [path] = await uploadPhotos(`${companyId}/${orderId}/styles/${lineId}`, [file]);
+          const r = await setStylePhoto(orderId, lineId, path);
+          if (r.error) setError(r.error);
+          else { toast(`${style}'s photo added`); onAdded(); }
+        } catch (err) {
+          setError(err instanceof Error ? err.message : "The photo didn't upload.");
+        } finally {
+          setBusy(false);
+        }
+      }} />
+    </label>
+  );
+}
