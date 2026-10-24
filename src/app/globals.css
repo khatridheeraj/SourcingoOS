@@ -557,8 +557,9 @@ h1, h2, h3 { font-family: var(--font-display); text-wrap: balance; font-weight: 
   .page-loading i:nth-child(3) { height: 260px; }
   @keyframes page-pulse { 50% { opacity: 0.45; } }
   @media (prefers-reduced-motion: reduce) { .page-loading i { animation: none; } }
-  .errbox, .okbox, .warnbox { border-radius: 10px; padding: 12px 14px; font-size: 13.5px; border: 1px solid; }
-  .errbox { background: var(--bad-soft); color: var(--bad); border-color: var(--bad-line); }
+  .errbox, .latebox, .okbox, .warnbox { border-radius: 10px; padding: 12px 14px; font-size: 13.5px; border: 1px solid; }
+  /* errbox: something failed. latebox: the same red, for work that is late (not a failure). */
+  .errbox, .latebox { background: var(--bad-soft); color: var(--bad); border-color: var(--bad-line); }
   .okbox { background: var(--ok-soft); color: var(--ok); border-color: var(--ok-line); }
   .warnbox { background: var(--warn-soft); color: var(--warn); border-color: var(--warn-line); }
   .sticky-actions {

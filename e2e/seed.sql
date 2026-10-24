@@ -156,3 +156,17 @@ select company_id, buyer_id, '118230', 'ICICI Bank', current_date + 20, 80000, '
 returning id as chq2 \gset
 insert into public.cheque_allocations (company_id, cheque_id, invoice_id, amount)
 select company_id, :'chq2', id, 80000 from public.invoices where id = :'inv';
+
+-- 12. Bills to pay, as read from Tally: Flavia has an old bill part paid and now overdue, and a newer one not due yet
+-- (together they match its ledger balance); Jaipur Test Trims, a micro enterprise and not a factory, is past 45 days.
+update public.factories set tally_ledger = 'Flavia Test Creation' where id = '20000000-0000-0000-0000-000000000003';
+insert into public.tally_ledgers (company_id, name, parent, balance)
+select c.id, v.name, 'Sundry Creditors', v.balance from public.companies c,
+  (values ('Flavia Test Creation', -210000), ('Jaipur Test Trims', -18500)) v (name, balance);
+insert into public.tally_vouchers (company_id, guid, vtype, kind, number, vdate, party, amount, bills)
+select c.id, v.guid, v.vtype, v.kind, v.number, current_date - v.ago, v.party, v.amount, v.bills::jsonb from public.companies c,
+  (values ('e2e-pur-1', 'Purchase', 'purchase', 'PB-T-090', 75, 'Flavia Test Creation', 120000, '[{"name":"PB-T-090","amount":120000}]'),
+          ('e2e-pur-2', 'Purchase', 'purchase', 'PB-T-101', 12, 'Flavia Test Creation', 110250, '[{"name":"PB-T-101","amount":110250}]'),
+          ('e2e-pay-1', 'Payment', 'payment', '41', 5, 'Flavia Test Creation', 20250, '[{"name":"PB-T-090","amount":20250}]'),
+          ('e2e-pur-3', 'Purchase', 'purchase', 'JTT-44', 50, 'Jaipur Test Trims', 18500, '[{"name":"JTT-44","amount":18500}]')) v (guid, vtype, kind, number, ago, party, amount, bills);
+insert into public.supplier_terms (company_id, ledger, msme) select c.id, 'Jaipur Test Trims', 'micro' from public.companies c;
