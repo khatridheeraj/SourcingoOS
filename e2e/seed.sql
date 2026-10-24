@@ -121,6 +121,12 @@ select c.id, 'email', 'e2e-po-2', 'buying@mira.test', 'New order MR-118', now() 
   '{"buyer_name":"Mira Test Retail","buyer_code":"BYR-MR","po_number":"MR-118","po_date":null,"ship_date":null,"notes":null,
     "lines":[{"style":"MR-SHIRT-11","description":"Linen shirt","colour":"Sand","sizes":"M-XXL","qty":900,"rate":395}],"doubts":[]}'::jsonb
 from public.companies c;
+-- A PO whose number is already on an order but for another style (Flavia PO 101, 24 Oct 2026): not the same PO.
+insert into public.incoming_pos (company_id, source, received_at, status, buyer_id, buyer_po, matched_order_id, files, read)
+select o.company_id, 'upload', now() - interval '1 hour', 'to_check', o.buyer_id, 'NV-5600', o.id, '[]'::jsonb,
+  '{"buyer_code":"BYR-NV","po_number":"NV-5600","po_date":null,"ship_date":null,"notes":null,
+    "lines":[{"style":"NV-COAT-R","description":"Wool coat","colour":null,"sizes":null,"qty":500,"rate":485}],"doubts":[]}'::jsonb
+from public.orders o where o.buyer_po = 'NV-5600';
 insert into public.incoming_pos (company_id, source, email_id, email_from, email_subject, received_at, status)
 select c.id, 'email', 'e2e-po-3', 'news@mira.test', 'Our autumn lookbook', now() - interval '1 day', 'not_po' from public.companies c;
 

@@ -15,6 +15,8 @@ import { NewBuyer } from "./new-buyer";
 import { PoActions } from "./po-actions";
 import { ToInquiry } from "./to-inquiry";
 import { suggestBuyerCode } from "@/lib/names";
+import { comparePo, poNoKey } from "@/lib/po-match";
+import { PoCompare, type CompareSide } from "./po-compare";
 
 const when = new Intl.DateTimeFormat("en-IN", { timeZone: "Asia/Kolkata", day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit" });
 
@@ -25,7 +27,7 @@ export default async function IncomingPoPage({ params, searchParams }: PageProps
   if (!canEditOrders(me?.role)) redirect("/");
   const supabase = await createClient();
   const { data: po } = await supabase.from("incoming_pos")
-    .select("id, source, email_from, email_subject, email_body, received_at, files, status, read, read_error, read_at, updated_at, buyer_id, buyer_po, matched_order_id, order_id, orders!incoming_pos_order_fkey(order_no), matched:orders!incoming_pos_matched_fkey(order_no)")
+    .select("id, source, email_from, email_subject, email_body, received_at, files, status, read, read_error, read_at, updated_at, buyer_id, buyer_po, order_id, orders!incoming_pos_order_fkey(order_no)")
     .eq("id", id).maybeSingle();
   if (!po) notFound();
 
@@ -43,7 +45,6 @@ export default async function IncomingPoPage({ params, searchParams }: PageProps
   const read = (po.read ?? {}) as Partial<PoReading>;
   const lines = read.lines ?? [];
   const order = (Array.isArray(po.orders) ? po.orders[0] : po.orders) as { order_no: string } | null;
-  const matched = (Array.isArray(po.matched) ? po.matched[0] : po.matched) as { order_no: string } | null;
   const s = STATE[po.status];
   const stuck = (po.status === "reading" || po.status === "receiving") && nowMs() - Date.parse(po.updated_at) > 5 * 60_000;
   const canReread = po.status === "failed" || po.status === "to_check" || po.status === "not_po" || stuck;
@@ -60,12 +61,20 @@ export default async function IncomingPoPage({ params, searchParams }: PageProps
   }));
 
   const buyerLabel = buyerId ? o.buyers.find((b) => b.id === buyerId)?.label ?? "" : "";
+  // The order that already has this buyer's PO number, looked up now (not when the PO was read), so fixing that
+  // order's number clears it here. Its styles are compared with the PO's: the number alone can't say they are one PO.
+  const clash = checking && buyerId && po.buyer_po ? await sameNumberOrder(supabase, buyerId, po.buyer_po) : null;
+  const verdict = clash ? comparePo(lines.map((l) => l.style), clash.lines.map((l) => l.style)) : null;
+  const thisSide: CompareSide = {
+    title: "This PO file", po: po.buyer_po ?? "", poDate: read.po_date ?? null, shipDate: read.ship_date ?? null,
+    lines: lines.map((l) => ({ style: l.style, description: l.description ?? "", qty: Number(l.qty) || 0, rate: l.rate ?? null })),
+  };
   const overdue = checking && buyerId ? await buyerOverdue(supabase, buyerId) : null;
   const waited = checking || po.status === "reading" || po.status === "receiving" ? poWaitDays(po.received_at, nowMs()) : 0;
   const size = (n: number) => (n >= 1_048_576 ? `${(n / 1_048_576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
   const points = checking ? [
     ...(overdue ? [{ cls: "warn", body: <>{overdueText(buyerLabel, overdue)}</> }] : []),
-    ...(matched ? [{ cls: "bad", body: <>This PO number is already order <Link href={`/orders/${po.matched_order_id}`} className="link code">{matched.order_no}</Link>. If this is a revision, update that order, then set this one aside.</> }] : []),
+    ...(clash && verdict ? [{ cls: "bad", body: <>{clashText(po.buyer_po ?? "", clash, verdict)}</> }] : []),
     ...(!buyerId && po.status === "to_check" ? [{
       cls: "bad", body: <>
         Buyer not recognised{owner && buyerName ? `: the PO says "${buyerName}"` : ""}. {owner ? "Pick the right one in the form, or add it as a new buyer." : "Pick the buyer in the form, or ask the owner to add a new buyer."}
@@ -111,7 +120,7 @@ export default async function IncomingPoPage({ params, searchParams }: PageProps
       {po.status === "not_po" && <div className="empty"><b>Set aside</b>No new buyer PO was found here, or someone set it aside. Put it back below if it is one.</div>}
 
       {/* The PO file beside the form, so each line can be checked against it without switching screens. */}
-      <div className={`po-review ${checking && !matched ? "" : "solo"}`}>
+      <div className={`po-review ${checking ? "" : "solo"}`}>
         <div className="po-review-main">
           {points.length > 0 && (
             <section className="panel po-points" aria-label="Check before creating the order">
@@ -121,7 +130,16 @@ export default async function IncomingPoPage({ params, searchParams }: PageProps
               </ul>
             </section>
           )}
-          {checking && !matched && (
+          {clash && verdict && (
+            <PoCompare
+              verdict={verdict}
+              left={thisSide}
+              right={{ title: `Order ${clash.order_no}`, href: `/orders/${clash.id}`, po: clash.buyer_po, poDate: clash.po_date, shipDate: clash.ship_date, lines: clash.lines }}
+              orderId={clash.id}
+              orderNo={clash.order_no}
+            />
+          )}
+          {checking && !clash && (
             o.buyers.length === 0 ? (
               <div className="empty"><b>No buyers yet</b>Add buyers first in <Link href="/buyers" className="link">Buyers</Link>.</div>
             ) : (
@@ -181,4 +199,38 @@ export default async function IncomingPoPage({ params, searchParams }: PageProps
       )}
     </>
   );
+}
+
+type Clash = { id: string; order_no: string; buyer_po: string; po_date: string | null; ship_date: string | null; lines: CompareSide["lines"] };
+
+// The buyer's order with exactly this PO number (the one orders_buyer_po_key would refuse a second of), with its styles.
+async function sameNumberOrder(supabase: Awaited<ReturnType<typeof createClient>>, buyerId: string, buyerPo: string): Promise<Clash | null> {
+  const key = poNoKey(buyerPo);
+  if (!key) return null;
+  const { data } = await supabase.from("orders")
+    .select("id, order_no, buyer_po, po_date, ship_date, order_lines(style, description, qty, removed_at, position)")
+    .eq("buyer_id", buyerId).ilike("buyer_po", `%${key.replace(/[\\%_]/g, "\\$&")}%`);
+  const hit = (data ?? []).find((r) => poNoKey(r.buyer_po) === key);
+  if (!hit) return null;
+  // Buyer rates stay out: order_lines.buyer_rate is not readable column by column.
+  const rows = ((hit.order_lines ?? []) as { style: string; description: string | null; qty: number; removed_at: string | null; position: number }[])
+    .filter((l) => !l.removed_at).sort((a, b) => a.position - b.position);
+  return {
+    id: hit.id, order_no: hit.order_no, buyer_po: hit.buyer_po, po_date: hit.po_date, ship_date: hit.ship_date,
+    lines: rows.map((l) => ({ style: l.style, description: l.description ?? "", qty: Number(l.qty) || 0, rate: null })),
+  };
+}
+
+// What the PO number clash means, in words: a different style is another PO, a shared style is the same one.
+function clashText(buyerPo: string, c: Clash, v: ReturnType<typeof comparePo>) {
+  const link = <Link href={`/orders/${c.id}`} className="link code">{c.order_no}</Link>;
+  const list = (s: string[]) => s.join(", ");
+  if (v.verdict === "different") return <>
+    PO number {buyerPo} is also on order {link}, but the styles don&apos;t match: this file is {list(v.onlyPo)}, {c.order_no} is {list(v.onlyOrder)}.
+    So this is not the same PO. Compare the two below and choose what to do.
+  </>;
+  if (v.verdict === "same") return <>
+    This is the same PO as order {link} ({list(v.shared)} on both). If the buyer revised it, update {c.order_no}, then set this one aside.
+  </>;
+  return <>PO number {buyerPo} is already on order {link}, and no styles were read from this file. Compare the two below before doing anything.</>;
 }

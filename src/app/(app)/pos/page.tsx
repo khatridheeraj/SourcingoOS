@@ -5,6 +5,7 @@ import { buyerName, loadBuyers } from "@/lib/data";
 import { nowMs, qty } from "@/lib/format";
 import { poWaitDays, PO_WAIT_DAYS } from "@/lib/order-checks";
 import type { PoReading } from "@/lib/po-inbox";
+import { comparePo, poNoKey } from "@/lib/po-match";
 import { createClient } from "@/lib/supabase/server";
 import { AddPo } from "./add-po";
 import { AiKey } from "./ai-key";
@@ -35,7 +36,7 @@ export default async function IncomingPosPage({ searchParams }: PageProps<"/pos"
   const statuses = (k: string) => ALL_TABS.find((t) => t.key === k)!.statuses;
   const [{ data, error }, buyers, { data: aiKey }, ...counts] = await Promise.all([
     supabase.from("incoming_pos")
-      .select("id, source, email_from, email_subject, received_at, files, status, read, read_error, buyer_id, buyer_po, matched_order_id, order_id, created_by, orders!incoming_pos_order_fkey(order_no), matched:orders!incoming_pos_matched_fkey(order_no)")
+      .select("id, source, email_from, email_subject, received_at, files, status, read, read_error, buyer_id, buyer_po, matched_order_id, order_id, created_by, orders!incoming_pos_order_fkey(order_no), matched:orders!incoming_pos_matched_fkey(order_no, buyer_po, order_lines(style, removed_at))")
       .eq("company_id", me.companyId).in("status", statuses(tab)).order("received_at", { ascending: false }).limit(300),
     loadBuyers(),
     supabase.rpc("ai_key_status"),
@@ -90,7 +91,12 @@ export default async function IncomingPosPage({ searchParams }: PageProps<"/pos"
               const read = (r.read ?? {}) as Partial<PoReading>;
               const lines = read.lines ?? [];
               const order = (Array.isArray(r.orders) ? r.orders[0] : r.orders) as { order_no: string } | null;
-              const matched = (Array.isArray(r.matched) ? r.matched[0] : r.matched) as { order_no: string } | null;
+              const m = (Array.isArray(r.matched) ? r.matched[0] : r.matched) as { order_no: string; buyer_po: string; order_lines: { style: string; removed_at: string | null }[] | null } | null;
+              // The order with this PO number when it was read, if it still has it. Only a shared style makes it the same PO.
+              const matched = m && poNoKey(m.buyer_po) === poNoKey(r.buyer_po) ? {
+                order_no: m.order_no,
+                verdict: comparePo(lines.map((l) => l.style), (m.order_lines ?? []).filter((l) => !l.removed_at).map((l) => l.style)).verdict,
+              } : null;
               const s = STATE[r.status];
               const busy = r.status === "reading" || r.status === "receiving";
               const waited = r.status !== "added" && r.status !== "not_po" && r.status !== "held" ? poWaitDays(r.received_at, now) : 0;
@@ -115,7 +121,9 @@ export default async function IncomingPosPage({ searchParams }: PageProps<"/pos"
                       <div className="todo-links">
                         {waited > 0 && <span className="chip bad">Waiting {waited} days</span>}
                         {order && <span className="chip ok code">Order {order.order_no}</span>}
-                        {matched && r.status === "to_check" && <span className="chip bad">Already order {matched.order_no}</span>}
+                        {matched && r.status === "to_check" && (matched.verdict === "same"
+                          ? <span className="chip bad">Already order {matched.order_no}</span>
+                          : <span className="chip warn">PO no. also on {matched.order_no}{matched.verdict === "different" ? ", other style" : ""}</span>)}
                         {doubts > 0 && <span className="chip warn">{doubts} {doubts === 1 ? "point" : "points"} to check</span>}
                         {r.status === "failed" && <span className="text-[12.5px] text-bad">{r.read_error}</span>}
                       </div>
