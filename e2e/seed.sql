@@ -123,3 +123,20 @@ select c.id, 'email', 'e2e-po-2', 'buying@mira.test', 'New order MR-118', now() 
 from public.companies c;
 insert into public.incoming_pos (company_id, source, email_id, email_from, email_subject, received_at, status)
 select c.id, 'email', 'e2e-po-3', 'news@mira.test', 'Our autumn lookbook', now() - interval '1 day', 'not_po' from public.companies c;
+
+-- 10. Goods with us: the late order shipped in part. Its first lot went 10 days ago and its GRN is late; its second
+-- was bought 30 hours ago and is not invoiced yet (held over 24 hours).
+insert into public.invoices (company_id, invoice_no, buyer_id, invoice_date, amount, due_date, order_id)
+select company_id, 'INV-T-101', buyer_id, current_date - 11, 154350, current_date + 49, id from public.orders where id = :'o_over'
+returning id as inv \gset
+insert into public.dispatches (company_id, order_id, factory_id, purchase_bill_no, purchase_bill_date, purchase_taxable, purchase_gst,
+  purchased_at, invoice_due_at, invoice_id, invoice_no, invoiced_at, eway_bill_no, eway_at, transporter, lr_no, lr_path, cartons, shipped_at, grn_due_on)
+select company_id, id, '20000000-0000-0000-0000-000000000003', 'PB-T-101', current_date - 12, 105000, 5250,
+  now() - interval '12 days', now() - interval '11 days', :'inv', 'INV-T-101', now() - interval '11 days', 'EWB-T-101', now() - interval '11 days',
+  'Test Roadways', '55021', 'e2e/lr-55021.pdf', 12, now() - interval '10 days', current_date - 2
+from public.orders where id = :'o_over';
+insert into public.dispatches (company_id, order_id, factory_id, purchase_bill_no, purchase_bill_date, purchase_taxable, purchase_gst, purchased_at, invoice_due_at)
+select company_id, id, '20000000-0000-0000-0000-000000000003', 'PB-T-102', current_date - 1, 105000, 5250, now() - interval '30 hours', now() - interval '6 hours'
+from public.orders where id = :'o_over';
+insert into public.dispatch_lines (dispatch_id, line_id, company_id, qty, purchase_rate, sale_rate)
+select d.id, l.id, l.company_id, 150, 700, 980 from public.dispatches d join public.order_lines l on l.order_id = d.order_id where d.order_id = :'o_over';
