@@ -6,6 +6,8 @@
   late, needs attention and done. Type is one family (Inter) on a 12 / 13 / 14 / 16 / 20 / 24 scale; space is a 4px grid.
 */
 :root {
+  /* Native controls (checkboxes, date pickers, scrollbars) follow the theme too. */
+  color-scheme: light dark;
   --background: #f7f7f8;
   --foreground: #111216;
   --surface: #ffffff;
