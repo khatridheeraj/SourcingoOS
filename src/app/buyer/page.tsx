@@ -95,6 +95,9 @@ export default async function BuyerPage() {
             const left = ship ? daysBetween(today, ship) : null;
             // Hiding just one style saves nothing, so a PO is cut only when two or more would be hidden.
             const cut = lines.length > SHOWN + 1 ? SHOWN : lines.length;
+            // Photos only when this PO has at least one; a column of empty boxes tells the buyer nothing.
+            const photos = o.lines.some((l) => l.photo_path && url.get(l.photo_path));
+            const list = photos ? "bstyles" : "bstyles no-photo";
             const item = ({ l, w, qc }: (typeof lines)[number]) => {
               const photo = l.photo_path ? url.get(l.photo_path) : undefined;
               const qcPhotos = (l.final_qc?.photos ?? []).map((p) => url.get(p)).filter((u): u is string => !!u);
@@ -102,10 +105,12 @@ export default async function BuyerPage() {
                 <li key={l.id}>
                   <details className="bstyle">
                     <summary>
-                      <span className="style-photo">
-                        {/* eslint-disable-next-line @next/next/no-img-element -- short-lived signed links, not for the image optimiser */}
-                        {photo ? <img src={photo} alt="" /> : <span className="ph">No photo</span>}
-                      </span>
+                      {photos && (
+                        <span className="style-photo">
+                          {/* eslint-disable-next-line @next/next/no-img-element -- short-lived signed links, not for the image optimiser */}
+                          {photo ? <img src={photo} alt="" /> : <span className="ph">No photo</span>}
+                        </span>
+                      )}
                       <span className="bstyle-id">
                         <b className="code">{l.style}</b>
                         <span>{[l.colour, l.description, `${qty(l.qty)} pcs`, !shipped && l.shipped ? `${qty(l.shipped)} shipped` : ""].filter(Boolean).join(" · ")}</span>
@@ -193,11 +198,11 @@ export default async function BuyerPage() {
                     <span>{Math.round((done / total) * 100)}% done</span>
                   </div>
                 )}
-                <ul className="bstyles">{lines.slice(0, cut).map(item)}</ul>
+                <ul className={list}>{lines.slice(0, cut).map(item)}</ul>
                 {lines.length > cut && (
                   <details className="bmore">
                     <summary>Show {lines.length - cut} more styles</summary>
-                    <ul className="bstyles">{lines.slice(cut).map(item)}</ul>
+                    <ul className={list}>{lines.slice(cut).map(item)}</ul>
                   </details>
                 )}
               </section>
