@@ -15,6 +15,7 @@ type Mode = "forward" | "return" | "answer" | "add";
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const dm = (d: string) => `${Number(d.slice(8, 10))} ${MONTHS[Number(d.slice(5, 7)) - 1]}`;
 const addDays = (d: string, n: number) => new Date(Date.parse(d) + n * 86_400_000).toISOString().slice(0, 10);
+const lateBy = (target: string, today: string) => { const n = Math.round((Date.parse(today) - Date.parse(target)) / 86_400_000); return `${n} ${n === 1 ? "day" : "days"}`; };
 
 function Photos({ urls, label }: { urls: string[]; label: string }) {
   if (!urls.length) return null;
@@ -163,7 +164,7 @@ export function SampleThreadCard({ t, today, showOrder = true, readOnly = false 
       <div className="smp-meta">
         <span className={`chip ${state.cls}`}>{state.text}</span>
         {t.doneOn ? <span className="text-ok">Done {day(t.doneOn)}</span>
-          : t.target ? <span className={late ? "text-bad" : "muted"}>Target {dm(t.target)}{late ? `, ${Math.round((Date.parse(today) - Date.parse(t.target)) / 86_400_000)} days late` : ""}</span>
+          : t.target ? <span className={late ? "text-bad" : "muted"}>Target {dm(t.target)}{late ? `, ${lateBy(t.target, today)} late` : ""}</span>
           : <span className="muted">No target date</span>}
         {waiting > 0 && <span className={waiting >= 5 ? "text-warn" : "muted"}>With buyer {waiting} {waiting === 1 ? "day" : "days"}</span>}
       </div>

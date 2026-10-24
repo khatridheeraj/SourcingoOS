@@ -66,7 +66,7 @@ export default async function InquiryPage({ params }: PageProps<"/inquiries/[id]
             {!open && <span className={s?.cls}>{s?.label}</span>}
             {[i.est_qty ? `${qty(i.est_qty)} ${i.unit}` : "", i.quoted_price != null ? `${money(i.quoted_price)} a ${unit} quoted` : i.target_price != null ? `${money(i.target_price)} a ${unit} target` : ""]
               .filter(Boolean).map((t) => <span key={t}>{t}</span>)}
-            {due && <span className="chip bad">{i.next_follow_up! < today ? `Follow-up ${daysBetween(i.next_follow_up!, today)} days late` : "Follow up today"}</span>}
+            {due && <span className="chip bad">{i.next_follow_up! < today ? (() => { const n = daysBetween(i.next_follow_up!, today); return `Follow-up ${n} ${n === 1 ? "day" : "days"} late`; })() : "Follow up today"}</span>}
             {open && !due && i.next_follow_up && <span className="chip">Follow up {day(i.next_follow_up).replace(/ \d{4}$/, "")}</span>}
           </p>
         </div>
