@@ -134,6 +134,11 @@ export default async function GoodsPage({ searchParams }: PageProps<"/goods">) {
                       {[factoryOf.get(d.factory_id), `bill ${d.purchase_bill_no}`, `${qty(pcsOf(d.id))} pcs`, styles.join(", "),
                         d.cartons ? `${d.cartons} cartons` : "", d.invoice_no ? `invoice ${d.invoice_no}` : ""].filter(Boolean).join(" · ")}
                     </div>
+                    {d.shipped_at && (
+                      <div className="todo-detail">
+                        Shipped {at.format(new Date(d.shipped_at))}{d.transporter ? ` by ${d.transporter}` : ""}{d.lr_no ? `, LR ${d.lr_no}` : ""}
+                      </div>
+                    )}
                     <div className="todo-links">
                       {held ? (
                         <>
@@ -141,10 +146,7 @@ export default async function GoodsPage({ searchParams }: PageProps<"/goods">) {
                           <span className={`chip ${step.cls}`}>{step.text}</span>
                         </>
                       ) : (
-                        <>
-                          <span className="chip">Shipped {at.format(new Date(d.shipped_at!))}{d.transporter ? ` by ${d.transporter}` : ""}{d.lr_no ? `, LR ${d.lr_no}` : ""}</span>
-                          {d.grn_due_on && <span className={`chip ${grnLateHere ? "bad" : ""}`}>{grnLateHere ? `GRN was due ${day(d.grn_due_on)}` : `GRN due ${day(d.grn_due_on)}`}</span>}
-                        </>
+                        d.grn_due_on && <span className={`chip ${grnLateHere ? "bad" : ""}`}>{grnLateHere ? `GRN was due ${day(d.grn_due_on)}` : `GRN due ${day(d.grn_due_on)}`}</span>
                       )}
                       <Link href={`/goods/${d.id}/challan`} prefetch={false} className="chip info">{d.challan_no ? `Challan ${d.challan_no}` : "Delivery challan"}</Link>
                     </div>
