@@ -2107,3 +2107,42 @@ h1, h2, h3 { font-family: var(--font-display); text-wrap: balance; font-weight: 
 }
 @media (max-width: 900px) { .style-side > .btn:not(.done-btn), .style-side > .chip { grid-column: 1 / -1; } }
 @layer components { .sidebar > * { flex-shrink: 0; } }
+
+/* Buyer PO check: the form, with the PO file beside it to check each line against. */
+@layer components {
+  .po-review { display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 20px; align-items: start; }
+  .po-review.solo { grid-template-columns: minmax(0, 1fr); }
+  .po-review.solo .po-review-main:empty { display: none; }
+  .po-review-main { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+  .po-file { position: sticky; top: 16px; min-width: 0; }
+  .po-file h2 { font-size: 15px; font-weight: 600; }
+  .po-frame { width: 100%; height: 520px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-2); }
+  .po-img { width: 100%; max-height: 520px; object-fit: contain; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-2); }
+  .po-files { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+  .po-files li { display: flex; align-items: center; gap: 10px; justify-content: space-between; font-size: 13px; }
+  .po-files small { font-size: 12px; color: var(--muted); }
+  .po-points h2 { font-size: 15px; font-weight: 600; margin-bottom: 8px; }
+  .po-points ul { display: flex; flex-direction: column; gap: 6px; }
+  .po-points li { position: relative; padding-left: 16px; font-size: 13.5px; line-height: 1.5; }
+  .po-points li::before { content: ""; position: absolute; left: 2px; top: 7px; width: 7px; height: 7px; border-radius: 50%; background: var(--faint); }
+  .po-points li.warn::before { background: var(--warn); }
+  .po-points li.bad { color: var(--bad); }
+  .po-points li.bad::before { background: var(--bad); }
+  .po-other { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 10px; padding: 14px 0 0; border-top: 1px solid var(--line); font-size: 13px; color: var(--muted); }
+  @media (max-width: 1100px) {
+    .po-review { grid-template-columns: minmax(0, 1fr); }
+    .po-file { position: static; order: -1; }
+  }
+}
+/* Order form styles on a phone: each style is a small card of labelled boxes, no sideways scrolling. */
+@media (max-width: 760px) {
+  .lines-tbl, .lines-tbl tbody { display: block; min-width: 0 !important; }
+  .lines-tbl thead { display: none; }
+  .lines-tbl tr { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 10px; padding: 12px; border-bottom: 1px solid var(--line); }
+  .lines-tbl td { display: flex; flex-direction: column; gap: 3px; padding: 0 !important; border: 0 !important; min-width: 0; }
+  .lines-tbl td[data-label]::before { content: attr(data-label); font-size: 11.5px; font-weight: 500; color: var(--muted); }
+  .lines-tbl td:first-child, .lines-tbl td:nth-child(2) { grid-column: 1 / -1; }
+  .lines-tbl td .inp { width: 100% !important; min-width: 0 !important; }
+  .lines-tbl td:last-child { grid-column: 1 / -1; align-items: flex-end; }
+  .lines-tbl td:last-child .btn::after { content: " Remove"; }
+}

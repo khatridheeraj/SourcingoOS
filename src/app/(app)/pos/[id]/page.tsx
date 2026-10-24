@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { canEditOrders, getMe } from "@/lib/auth";
-import { day, money, nowMs, qty } from "@/lib/format";
+import { nowMs } from "@/lib/format";
 import { buyerOverdue, overdueText, poWaitDays } from "@/lib/order-checks";
 import { PO_BUCKET, type StoredFile } from "@/lib/po-files";
 import type { PoReading } from "@/lib/po-inbox";
@@ -59,8 +59,6 @@ export default async function IncomingPoPage({ params, searchParams }: PageProps
     factory_rate: "",
   }));
 
-  const pcs = lines.reduce((t, l) => t + (l.qty || 0), 0);
-  const priced = lines.length > 0 && lines.every((l) => l.rate != null);
   const buyerLabel = buyerId ? o.buyers.find((b) => b.id === buyerId)?.label ?? "" : "";
   const overdue = checking && buyerId ? await buyerOverdue(supabase, buyerId) : null;
   const waited = checking || po.status === "reading" || po.status === "receiving" ? poWaitDays(po.received_at, nowMs()) : 0;
@@ -78,21 +76,20 @@ export default async function IncomingPoPage({ params, searchParams }: PageProps
     ...(read.notes ? [{ cls: "", body: <>Notes on the PO: {read.notes}</> }] : []),
   ] : [];
 
+  const preview = files.find((f) => /pdf|image/.test(f.type));
+  const notNew = po.status !== "added" && po.status !== "held";
+
   return (
     <>
       <div className="head">
         <div className="grow">
           <nav className="crumbs" aria-label="Breadcrumb"><Link href="/pos">Buyer POs</Link></nav>
-          <h1>{po.buyer_po ? <>PO {po.buyer_po}</> : po.email_subject ?? "Incoming PO"}{buyerLabel && <span className="muted font-normal"> · {buyerLabel}</span>}</h1>
+          <h1>{po.buyer_po ? <>PO {po.buyer_po}</> : po.email_subject ?? "Buyer PO"}{buyerLabel && <span className="muted font-normal"> · {buyerLabel}</span>}</h1>
           <p className="row">
-            <span className={s?.cls}>{s?.label}</span>
-            <span>{po.source === "email" ? `Email from ${po.email_from ?? "unknown"}` : "Added from a file"} · {when.format(new Date(po.received_at))}</span>
+            {!checking && <span className={s?.cls}>{s?.label}</span>}
+            <span>{po.source === "email" ? `Email from ${po.email_from ?? "unknown"}` : "Added from a file"}, {when.format(new Date(po.received_at))}</span>
             {waited > 0 && <span className="chip bad">Waiting {waited} days</span>}
           </p>
-        </div>
-        <div className="row">
-          {!inquiry && po.source === "email" && po.status !== "added" && (po.status !== "held" || owner) && <ToInquiry id={po.id} />}
-          {po.status !== "held" && <PoActions id={po.id} status={po.status} canReread={canReread} />}
         </div>
       </div>
 
@@ -104,92 +101,83 @@ export default async function IncomingPoPage({ params, searchParams }: PageProps
         <HeldSender id={po.id} from={po.email_from ?? ""} buyers={o.buyers.map((b) => ({ id: b.id, label: b.label }))} />
       )}
 
-      {lines.length > 0 && (
-        <div className="kpis">
-          <div className="kpi"><span className="kpi-label"><i aria-hidden />Styles read</span><b className="num">{lines.length}</b><small>Check each line against the file</small></div>
-          <div className="kpi"><span className="kpi-label"><i aria-hidden />Pieces</span><b className="num">{qty(pcs)}</b><small>{priced ? "Every line has a rate" : "Some lines have no rate"}</small></div>
-          <div className="kpi"><span className="kpi-label"><i aria-hidden />Value</span><b className="num">{priced ? money(lines.reduce((t, l) => t + l.qty * (l.rate ?? 0), 0)) : "–"}</b><small>At the buyer&apos;s rates</small></div>
-          <div className="kpi"><span className="kpi-label"><i aria-hidden />Ships</span><b className="num">{read.ship_date ? day(read.ship_date).replace(/ \d{4}$/, "") : "–"}</b>
-            <small>{[read.ship_date?.slice(0, 4), read.po_date ? `PO dated ${day(read.po_date)}` : "No PO date found"].filter(Boolean).join(" · ")}</small></div>
-        </div>
-      )}
-
       {(po.status === "reading" || po.status === "receiving") && (
-        <div className="empty"><b>Reading this PO</b>{stuck ? "This is taking too long. Use Read again." : "Reload in a minute."}</div>
+        <div className="empty"><b>Reading this PO</b>{stuck ? "This is taking too long. Use Read again below." : "Reload in a minute."}</div>
       )}
-      {po.status === "failed" && <div className="errbox">Couldn&apos;t read this PO: {po.read_error} You can still type it in below, or use Read again.</div>}
+      {po.status === "failed" && <div className="errbox">Couldn&apos;t read this PO: {po.read_error} Type it in below from the file, or use Read again.</div>}
       {po.status === "added" && order && (
-        <div className="okbox"><b>Added as order <Link href={`/orders/${po.order_id}`} className="link code">{order.order_no}</Link>.</b></div>
+        <div className="okbox"><b>Done: this PO is order <Link href={`/orders/${po.order_id}`} className="link code">{order.order_no}</Link>.</b></div>
       )}
-      {po.status === "not_po" && <div className="empty"><b>Set aside</b>No new buyer PO was found here, or someone set it aside. Put it back if it is one.</div>}
+      {po.status === "not_po" && <div className="empty"><b>Set aside</b>No new buyer PO was found here, or someone set it aside. Put it back below if it is one.</div>}
 
-      <div className={points.length ? "home" : ""}>
-        {points.length > 0 && (
-          <section className="card" aria-labelledby="check-h">
-            <header className="card-h">
-              <div className="min-w-0">
-                <h2 id="check-h">Check before adding</h2>
-                <p>Sort these out in the form below, then add the order.</p>
-              </div>
-              <span className="chip warn">{points.length} {points.length === 1 ? "point" : "points"}</span>
-            </header>
-            <ul className="todo">
-              {points.map((pt, i) => (
-                <li key={i} className="!grid-cols-[3px_minmax(0,1fr)]">
-                  <span className={`sev ${pt.cls}`} aria-hidden />
-                  <div className={`text-[13.5px] ${pt.cls === "bad" ? "text-bad" : ""}`}>{pt.body}</div>
+      {/* The PO file beside the form, so each line can be checked against it without switching screens. */}
+      <div className={`po-review ${checking && !matched ? "" : "solo"}`}>
+        <div className="po-review-main">
+          {points.length > 0 && (
+            <section className="panel po-points" aria-label="Check before creating the order">
+              <h2>Check before creating the order</h2>
+              <ul>
+                {points.map((pt, i) => <li key={i} className={pt.cls}>{pt.body}</li>)}
+              </ul>
+            </section>
+          )}
+          {checking && !matched && (
+            o.buyers.length === 0 ? (
+              <div className="empty"><b>No buyers yet</b>Add buyers first in <Link href="/buyers" className="link">Buyers</Link>.</div>
+            ) : (
+              <OrderForm
+                key={buyerId}
+                incomingId={po.id}
+                initial={{
+                  buyer_id: buyerId, buyer_po: po.buyer_po ?? "", po_date: read.po_date ?? "", ship_date: read.ship_date ?? "",
+                  status: "open", merchandiser_id: o.meId, notes: read.notes ?? "", buyer_terms: "",
+                }}
+                initialLines={initialLines}
+                buyers={o.buyers}
+                factories={o.factories}
+                team={o.team}
+                overdueShown={overdue ? buyerId : undefined}
+              />
+            )
+          )}
+        </div>
+        <aside className="po-file" aria-labelledby="in-h">
+          <section className="panel">
+            <div className="row mb-2">
+              <h2 id="in-h">The PO</h2>
+              <span className="muted ml-auto text-[12.5px]">{files.length} {files.length === 1 ? "file" : "files"}</span>
+            </div>
+            {preview && urlOf.get(preview.path) && (
+              preview.type.includes("pdf")
+                ? <iframe src={urlOf.get(preview.path)!} title={preview.name} className="po-frame hide-phone" />
+                // eslint-disable-next-line @next/next/no-img-element -- short-lived signed link
+                : <img src={urlOf.get(preview.path)!} alt={preview.name} className="po-img" />
+            )}
+            <ul className="po-files">
+              {files.map((f) => (
+                <li key={f.path}>
+                  <span className="min-w-0"><b className="block truncate">{f.name}</b><small>{f.name.split(".").pop()?.toUpperCase()} · {size(f.size)}</small></span>
+                  <a href={urlOf.get(f.path) ?? "#"} target="_blank" rel="noreferrer" className="btn sm">Open</a>
                 </li>
               ))}
+              {files.length === 0 && <li className="muted text-[13px]">No file came with it.{po.email_body ? " The PO is in the email text." : ""}</li>}
             </ul>
+            {po.email_body && (
+              <details className="mt-3" open={files.length === 0}>
+                <summary className="cursor-pointer text-[12.5px] font-semibold text-accent">Email text</summary>
+                <p className="muted mt-2 whitespace-pre-line text-[13px]">{po.email_body}</p>
+              </details>
+            )}
           </section>
-        )}
-        <section className="card" aria-labelledby="in-h">
-          <header className="card-h">
-            <div className="min-w-0">
-              <h2 id="in-h">What came in</h2>
-              {po.email_subject && <p>{po.email_subject}</p>}
-            </div>
-            <span className="chip">{files.length} {files.length === 1 ? "file" : "files"}</span>
-          </header>
-          <ul className="rows">
-            {files.map((f) => (
-              <li key={f.path} className="tidy-row">
-                <div className="min-w-0">
-                  <div className="truncate font-semibold text-[13.5px]">{f.name}</div>
-                  <div className="muted text-xs">{f.name.split(".").pop()?.toUpperCase()} · {size(f.size)}</div>
-                </div>
-                <a href={urlOf.get(f.path) ?? "#"} target="_blank" rel="noreferrer" className="btn sm">Open file</a>
-              </li>
-            ))}
-            {files.length === 0 && <li className="tidy-row muted text-[13px]">No files.</li>}
-          </ul>
-          {po.email_body && (
-            <details className="border-t border-line px-[18px] py-3">
-              <summary className="cursor-pointer text-[12.5px] font-semibold text-accent">Email text</summary>
-              <p className="muted mt-2 whitespace-pre-line text-[13px]">{po.email_body}</p>
-            </details>
-          )}
-        </section>
+        </aside>
       </div>
 
-      {checking && !matched && (
-        o.buyers.length === 0 ? (
-          <div className="empty"><b>No buyers yet</b>Add buyers first in <Link href="/buyers" className="link">Buyers</Link>.</div>
-        ) : (
-          <OrderForm
-            key={buyerId}
-            incomingId={po.id}
-            initial={{
-              buyer_id: buyerId, buyer_po: po.buyer_po ?? "", po_date: read.po_date ?? "", ship_date: read.ship_date ?? "",
-              status: "open", merchandiser_id: o.meId, notes: read.notes ?? "", buyer_terms: "",
-            }}
-            initialLines={initialLines}
-            buyers={o.buyers}
-            factories={o.factories}
-            team={o.team}
-            overdueShown={overdue ? buyerId : undefined}
-          />
-        )
+      {notNew && (
+        <section className="po-other" aria-label="Not a new order">
+          <span>{po.status === "not_po" ? "It is a PO after all?" : "Not a new order?"}</span>
+          {!inquiry && po.source === "email" && (po.status !== "held" || owner) && <ToInquiry id={po.id} />}
+          <PoActions id={po.id} status={po.status} canReread={canReread} />
+        </section>
       )}
     </>
   );

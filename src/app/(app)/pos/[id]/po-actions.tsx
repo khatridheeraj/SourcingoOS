@@ -18,14 +18,14 @@ export function PoActions({ id, status, canReread }: { id: string; status: strin
   });
 
   return (
-    <div className="row">
+    <div className="row gap-2">
       {canReread && (
         <button type="button" className="btn" disabled={pending} onClick={() => run(() => readAgain(id), "Reading again. Reload in a minute.")}>Read again</button>
       )}
       {status === "not_po" ? (
         <button type="button" className="btn" disabled={pending} onClick={() => run(() => setAside(id, false), "")}>Put back to check</button>
       ) : status !== "added" && (
-        <button type="button" className="btn" disabled={pending} onClick={() => run(() => setAside(id, true), "")}>Set aside, not a new PO</button>
+        <button type="button" className="btn" disabled={pending} onClick={() => run(() => setAside(id, true), "")}>Set aside</button>
       )}
       {note && !error && <span className="text-[13px] font-semibold text-ok">{note}</span>}
       {error && <span className="text-[13px] font-semibold text-bad" role="alert">{error}</span>}
