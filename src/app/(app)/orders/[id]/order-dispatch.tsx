@@ -598,10 +598,10 @@ function ShipSummary({ orderId, orderNo, ship, open, closedShort, pending, start
         <p className="mt-2 text-[13px]">Closed short with {qty(billed)} of {qty(ordered)} pcs by {closedShort.by}, {at.format(new Date(closedShort.at))}: {closedShort.reason}</p>
       )}
       {open && unbilled > 0 && billed > 0 && !closing && (
-        <p className="muted mt-2 text-[13px]">
-          The order stays open until the rest is sent.{" "}
-          <button type="button" className="link font-semibold" onClick={() => setClosing(true)}>The rest won&apos;t go? Close short</button>
-        </p>
+        <div className="row mt-2">
+          <p className="muted grow text-[13px]">The order stays open until the rest is sent. If the rest won&apos;t go, close it short with the quantity shipped.</p>
+          <button type="button" className="btn sm" onClick={() => setClosing(true)}>Close short</button>
+        </div>
       )}
       {open && closing && (
         <form className="mt-3 flex flex-col gap-2 rounded-[10px] bg-surface-2 p-3" onSubmit={close}>

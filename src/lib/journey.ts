@@ -118,8 +118,12 @@ export function journey(j: JourneyInput): Journey {
     } : wait("Waiting for the owner's approval", "The factory PO is with the owner. Once approved, it is emailed to the factory and production starts.", "Owner") };
   }
 
+  // Goods already went out (old orders, part shipments): what's left is shipping the rest or closing short,
+  // not chasing production steps or a final QC nobody will record now.
+  const sent = !!j.dispatch && j.dispatch.count - j.dispatch.unshipped > 0;
+
   // 4. Production, with samples and factory updates first when they are waiting.
-  if (!j.packedAll) {
+  if (!j.packedAll && !sent) {
     if (team && j.pendingUpdates > 0) {
       return { ...base, stage: "make", next: { title: `Confirm ${j.pendingUpdates} ${j.pendingUpdates === 1 ? "update" : "updates"} from the factory`, detail: "The factory marked steps done with photos. Check them and confirm.", action: { kind: "review" }, label: "Review updates", tone: "info" } };
     }
@@ -135,7 +139,7 @@ export function journey(j: JourneyInput): Journey {
   }
 
   // 5. Final QC on every style.
-  if (!j.finalPassed) {
+  if (!j.finalPassed && !sent) {
     return { ...base, stage: "qc", next: qcRole ? {
       title: "Record the final QC", detail: "Every style needs a passed final QC before it ships.", action: { kind: "qc" }, label: "Record QC", tone: "warn",
     } : { title: "Final QC due", detail: "Packed. Quality records the final QC for each style before it ships.", action: { kind: "qc" }, label: "See QC", tone: "warn", who: "Quality" } };
