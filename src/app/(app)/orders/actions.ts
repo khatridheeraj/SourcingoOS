@@ -337,15 +337,6 @@ export async function addLineFiles(orderId: string, lineId: string, kind: LineFi
   return {};
 }
 
-// A style is a garment (every standard step) or fabric (no garment-making steps).
-export async function setLineProduct(orderId: string, lineId: string, product: "garment" | "fabric"): Promise<{ error?: string }> {
-  const supabase = await createClient();
-  const { error } = await supabase.rpc("set_line_product", { p_line: lineId, p_product: product });
-  if (error) return { error: friendly(error) };
-  revalidatePath(`/orders/${orderId}`);
-  return {};
-}
-
 export async function removeLineFile(orderId: string, fileId: string): Promise<{ error?: string }> {
   const supabase = await createClient();
   const { error } = await supabase.rpc("remove_line_file", { p_id: fileId });
