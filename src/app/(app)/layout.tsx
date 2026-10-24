@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import { HelpChat } from "@/components/help/help-chat";
 import { Sidebar, type NavGroup } from "@/components/nav";
@@ -5,6 +6,7 @@ import { Toaster } from "@/components/toast";
 import { OrderSheet } from "@/components/order-sheet";
 import { SearchPalette } from "@/components/search";
 import { QcSheet } from "@/components/qc-sheet";
+import { SegScroll } from "@/components/seg-scroll";
 import { canEditOrders, canEnterDone, canRecordQc, getMe, roleLabel } from "@/lib/auth";
 import { todayIST } from "@/lib/format";
 import { heldSince } from "@/lib/goods";
@@ -105,6 +107,7 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
       <SearchPalette groups={groups} />
       {canRecordQc(me.role) && <QcSheet />}
       <Toaster />
+      <Suspense fallback={null}><SegScroll /></Suspense>
     </div>
   );
 }
