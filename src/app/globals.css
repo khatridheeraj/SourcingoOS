@@ -1330,6 +1330,11 @@ h1, h2, h3 { font-family: var(--font-display); text-wrap: balance; font-weight: 
   .bill-who { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .bill-who .code { color: var(--muted); margin-left: 8px; }
   .bill-sub { font-size: 12.5px; color: var(--muted); }
+  /* Details split by dots. Each detail carries its own dot; the one that starts a wrapped line sits in the clipped margin, so no line ends or starts with a stray dot. */
+  .dots { overflow: hidden; }
+  .dots > span { display: flex; flex-wrap: wrap; margin-left: -15px; }
+  .dots > span > span { white-space: nowrap; }
+  .dots > span > span::before { content: "·"; display: inline-block; width: 15px; text-align: center; color: var(--faint); }
   .bill-sub .code { color: var(--foreground); }
   .bill-tags { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 5px; }
   .bill-note { font-size: 12.5px; color: var(--foreground); font-style: italic; }
