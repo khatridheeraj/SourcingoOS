@@ -10,11 +10,12 @@ import { AddPo } from "./add-po";
 import { AiKey } from "./ai-key";
 import { STATE } from "./state";
 
+// Two lists: what still needs checking, and what is done with (made into an order, or set aside). Mail from
+// unknown senders is the owner's alone and only shows when there is some.
 const ALL_TABS = [
-  { key: "to_check", label: "To check", hint: `Read into drafts. Check each against its file and add it as an order. A PO not added within ${PO_WAIT_DAYS} days is flagged.` },
-  { key: "held", label: "Unknown sender", hint: "Emails from senders no buyer is known by. Only you see these. Accept or ignore each one." },
-  { key: "added", label: "Added", hint: "POs that became orders." },
-  { key: "not_po", label: "Set aside", hint: "Emails with no new buyer PO, or set aside by the team. Put one back if it is a PO." },
+  { key: "to_check", label: "To check", statuses: ["receiving", "reading", "to_check", "failed"] },
+  { key: "held", label: "Unknown sender", statuses: ["held"] },
+  { key: "done", label: "Done", statuses: ["added", "not_po"] },
 ];
 
 const when = new Intl.DateTimeFormat("en-IN", { timeZone: "Asia/Kolkata", day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
@@ -26,26 +27,27 @@ export default async function IncomingPosPage({ searchParams }: PageProps<"/pos"
   if (!canEditOrders(me?.role) || !me?.companyId) redirect("/");
   const sp = await searchParams;
   // Mail from unknown senders is private: only the owner has that tab.
-  const TABS = ALL_TABS.filter((t) => t.key !== "held" || me.role === "owner");
-  const tab = TABS.some((t) => t.key === sp.show) ? String(sp.show) : "to_check";
+  const owner = me.role === "owner";
+  const shown = sp.show === "added" || sp.show === "not_po" ? "done" : sp.show;
+  const tab = ALL_TABS.some((t) => t.key === shown && (t.key !== "held" || owner)) ? String(shown) : "to_check";
   const supabase = await createClient();
   // Each tab reads its own rows and count, so an old PO still to check never drops off behind newer set-aside mail.
-  const statuses = (k: string) => (k === "to_check" ? ["receiving", "reading", "to_check", "failed"] : [k]);
+  const statuses = (k: string) => ALL_TABS.find((t) => t.key === k)!.statuses;
   const [{ data, error }, buyers, { data: aiKey }, ...counts] = await Promise.all([
     supabase.from("incoming_pos")
       .select("id, source, email_from, email_subject, received_at, files, status, read, read_error, buyer_id, buyer_po, matched_order_id, order_id, created_by, orders!incoming_pos_order_fkey(order_no), matched:orders!incoming_pos_matched_fkey(order_no)")
       .eq("company_id", me.companyId).in("status", statuses(tab)).order("received_at", { ascending: false }).limit(300),
     loadBuyers(),
     supabase.rpc("ai_key_status"),
-    ...TABS.map((t) => supabase.from("incoming_pos").select("id", { count: "exact", head: true }).eq("company_id", me.companyId).in("status", statuses(t.key))),
+    ...ALL_TABS.map((t) => supabase.from("incoming_pos").select("id", { count: "exact", head: true }).eq("company_id", me.companyId).in("status", statuses(t.key))),
   ]);
   const nameOf = new Map(buyers.map((b) => [b.id, buyerName(b)]));
   const now = nowMs();
   // Red first: on the To check tab a PO waiting past the flag comes before newer mail.
   const rows = (data ?? []).map((r, i) => ({ r, i, w: tab === "to_check" ? poWaitDays(r.received_at, now) : 0 }))
     .sort((a, b) => b.w - a.w || a.i - b.i).map((x) => x.r);
-  const count = (k: string) => counts[TABS.findIndex((t) => t.key === k)]?.count ?? 0;
-  const t = TABS.find((x) => x.key === tab)!;
+  const count = (k: string) => counts[ALL_TABS.findIndex((t) => t.key === k)]?.count ?? 0;
+  const TABS = ALL_TABS.filter((t) => t.key !== "held" || (owner && (count("held") > 0 || tab === "held")));
   const late = tab === "to_check" ? rows.filter((r) => poWaitDays(r.received_at, now) > 0).length : 0;
 
   return (
@@ -54,21 +56,18 @@ export default async function IncomingPosPage({ searchParams }: PageProps<"/pos"
         <div className="grow">
           <h1>Buyer POs</h1>
           <p>
-            Buyer POs picked up from email or added from a file.{" "}
-            {count("to_check") ? <b className="text-warn">{count("to_check")} to check</b> : <b className="text-ok">Nothing to check</b>}
-            {late > 0 && <> · <b className="text-bad">{late} waiting over {PO_WAIT_DAYS} days</b></>}
-            {count("held") > 0 && <> · <Link href="/pos?show=held" className="link font-semibold">{count("held")} from unknown senders</Link></>}
+            New POs from email land here by themselves. Check each one against its file and it becomes an order.{" "}
+            {late > 0 && <b className="text-bad">{late} waiting over {PO_WAIT_DAYS} days.</b>}
           </p>
         </div>
         <div className="head-acts items-start">
-          <Link href="/orders/new" className="btn" title="Type in a PO that has no file: it becomes an order with its own PO PDF">Create PO</Link>
           <AddPo companyId={me.companyId} />
         </div>
       </div>
 
       <section className="card" aria-labelledby="po-h">
         <header className="card-h">
-          <h2 id="po-h" className="min-w-0">{t.label}</h2>
+          <h2 id="po-h" className="min-w-0">{tab === "to_check" ? (count("to_check") ? `${count("to_check")} to check` : "Nothing to check") : TABS.find((x) => x.key === tab)?.label}</h2>
           <nav className="seg" aria-label="Show">
             {TABS.map((x) => (
               <Link key={x.key} href={x.key === "to_check" ? "/pos" : `/pos?show=${x.key}`} aria-current={tab === x.key ? "page" : undefined} scroll={false}>
@@ -83,6 +82,7 @@ export default async function IncomingPosPage({ searchParams }: PageProps<"/pos"
         {rows.length === 0 ? (
           <p className="card-empty">
             {tab === "to_check" ? "All checked. New buyer POs from email show up here on their own." : "Nothing here yet."}
+            {tab === "to_check" && <> No file for a PO? <Link href="/orders/new" className="link">Type it in as a new order</Link>.</>}
           </p>
         ) : (
           <ul className="todo">
@@ -100,20 +100,21 @@ export default async function IncomingPosPage({ searchParams }: PageProps<"/pos"
                 <li key={r.id}>
                   <span className={`sev ${waited ? "bad" : SEV[r.status] ?? ""}`} aria-hidden />
                   <div className="min-w-0">
-                    <Link href={`/pos/${r.id}`} className="todo-title" aria-label={`Incoming PO ${r.buyer_po ?? r.email_subject ?? ""}`}>
+                    <Link href={`/pos/${r.id}`} className="todo-title" aria-label={`Buyer PO ${r.buyer_po ?? r.email_subject ?? ""}`}>
                       {r.status === "held" ? <span className="muted">Not read yet · </span>
                         : r.buyer_po ? <span className="code">PO {r.buyer_po}</span> : <span className="muted">{busy ? "Reading… " : "PO number not found · "}</span>}
                       {buyer && <span className={r.buyer_id ? "" : "text-bad"}>{buyer}</span>}
                     </Link>
                     <div className="todo-detail truncate">
-                      {r.source === "email" ? `Email from ${r.email_from ?? "unknown"}` : "Added from a file"} · {when.format(new Date(r.received_at))}
-                      {r.email_subject && <> · {r.email_subject}</>}
+                      {[
+                        lines.length > 0 ? `${lines.length} ${lines.length === 1 ? "style" : "styles"} · ${qty(lines.reduce((n, l) => n + (l.qty || 0), 0))} pcs` : "",
+                        `${r.source === "email" ? `Email from ${r.email_from ?? "unknown"}` : "Added from a file"}, ${when.format(new Date(r.received_at))}`,
+                      ].filter(Boolean).join(" · ")}
                     </div>
-                    {(lines.length > 0 || order || matched || doubts > 0 || r.status === "failed" || waited > 0) && (
+                    {(order || matched || doubts > 0 || r.status === "failed" || waited > 0) && (
                       <div className="todo-links">
                         {waited > 0 && <span className="chip bad">Waiting {waited} days</span>}
-                        {lines.length > 0 && <span className="chip">{lines.length} {lines.length === 1 ? "style" : "styles"} · {qty(lines.reduce((n, l) => n + (l.qty || 0), 0))} pcs</span>}
-                        {order && <span className="chip ok code">{order.order_no}</span>}
+                        {order && <span className="chip ok code">Order {order.order_no}</span>}
                         {matched && r.status === "to_check" && <span className="chip bad">Already order {matched.order_no}</span>}
                         {doubts > 0 && <span className="chip warn">{doubts} {doubts === 1 ? "point" : "points"} to check</span>}
                         {r.status === "failed" && <span className="text-[12.5px] text-bad">{r.read_error}</span>}
@@ -121,19 +122,16 @@ export default async function IncomingPosPage({ searchParams }: PageProps<"/pos"
                     )}
                   </div>
                   {/* On the To check tab "To check" says nothing new; only reading and failed rows need their state shown. */}
-                  <div className="todo-chip">{!(tab === "to_check" && r.status === "to_check") && <span className={s?.cls}>{s?.label}</span>}</div>
-                  <Link href={`/pos/${r.id}`} className="btn sm todo-act">
-                    {r.status === "to_check" || r.status === "failed" ? "Check and add" : r.status === "held" ? "Accept or ignore" : "Open"}
+                  {/* Only states worth noticing get a chip: still reading, couldn't read, or set aside. */}
+                  <div className="todo-chip">{["reading", "receiving", "failed", "not_po"].includes(r.status) && <span className={s?.cls}>{s?.label}</span>}</div>
+                  <Link href={`/pos/${r.id}`} className={`btn sm todo-act ${r.status === "to_check" || r.status === "failed" ? "primary" : ""}`}>
+                    {r.status === "to_check" || r.status === "failed" ? "Check" : r.status === "held" ? "Accept or ignore" : "Open"}
                   </Link>
                 </li>
               );
             })}
           </ul>
         )}
-        <details className="howto border-t border-line px-5 py-3">
-          <summary>How this list works</summary>
-          <p>{t.hint}{tab === "to_check" && " A PO that came on WhatsApp or by hand goes in with Add PO from a file."}</p>
-        </details>
       </section>
 
       <AiKey owner={me.role === "owner"} status={(aiKey ?? { set: false }) as { set: boolean; last4?: string; set_at?: string }} />

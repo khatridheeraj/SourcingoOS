@@ -45,6 +45,8 @@ export function OrderForm({ initial, initialLines, buyers, factories, team, inco
   const [poFiles, setPoFiles] = useState<File[]>([]);
   const [poError, setPoError] = useState("");
   const withFile = !!companyId && !initial.id && !incomingId;
+  // A new order is just the buyer's PO: the factory and its rate are picked next, with Start production on the order.
+  const fac = !!initial.id;
 
   const styles = lines.map((l) => l.style.trim()).filter(Boolean);
   const checkKey = JSON.stringify([order.buyer_id, order.buyer_po.trim(), styles]);
@@ -121,6 +123,20 @@ export function OrderForm({ initial, initialLines, buyers, factories, team, inco
   const showOverdue = shown.overdue && order.buyer_id !== overdueShown && !(initial.id && order.buyer_id === initial.buyer_id);
   const hasChecks = showOverdue || w.same_po.length > 0 || w.similar_po.length > 0 || w.same_style.length > 0;
 
+  const notesField = (
+    <label className="field mt-3">
+      <span>Notes</span>
+      <textarea className="inp" value={order.notes} onChange={set("notes")} rows={2} />
+    </label>
+  );
+  const termsField = order.buyer_terms !== undefined && (
+    <label className="field mt-3">
+      <span>Buyer&apos;s terms</span>
+      <textarea className="inp" value={order.buyer_terms} onChange={set("buyer_terms")} rows={2} maxLength={2000}
+        placeholder="Inspection 3 days before dispatch, 2% penalty a week late, packing and labelling rules" />
+    </label>
+  );
+
   return (
     <form onSubmit={submit} className="stack">
       <div className="panel scroll-mt-20" id="details">
@@ -152,7 +168,8 @@ export function OrderForm({ initial, initialLines, buyers, factories, team, inco
               {team.map((t) => <option key={t.id} value={t.id}>{t.label}</option>)}
             </select>
           </label>
-          <label className="field">
+          {/* A new order is always open; Status only matters once it exists. */}
+          {initial.id && <label className="field">
             <span>Status</span>
             <select className="inp" value={order.status} onChange={set("status")}>
               <option value="open">Open</option>
@@ -160,12 +177,8 @@ export function OrderForm({ initial, initialLines, buyers, factories, team, inco
               <option value="shipped" disabled={order.status !== "shipped"}>{order.status === "shipped" ? "Shipped" : "Shipped (use Mark shipped)"}</option>
               <option value="cancelled">Cancelled</option>
             </select>
-          </label>
+          </label>}
         </div>
-        <label className="field mt-3">
-          <span>Notes</span>
-          <textarea className="inp" value={order.notes} onChange={set("notes")} rows={2} />
-        </label>
         {withFile && (
           <div className="field mt-3">
             <span>Buyer&apos;s PO file</span>
@@ -191,40 +204,40 @@ export function OrderForm({ initial, initialLines, buyers, factories, team, inco
             {poError && <span className="text-[12.5px] font-semibold text-bad" role="alert">{poError}</span>}
           </div>
         )}
-        {order.buyer_terms !== undefined && (
-          <label className="field mt-3">
-            <span>Buyer&apos;s terms</span>
-            <textarea className="inp" value={order.buyer_terms} onChange={set("buyer_terms")} rows={2} maxLength={2000}
-              placeholder="Inspection 3 days before dispatch, 2% penalty a week late, packing and labelling rules" />
-          </label>
+        {/* On a new order these are extras: folded away unless the PO already filled them in. */}
+        {initial.id ? <>{notesField}{termsField}</> : (
+          <details className="mt-3" open={!!(initial.notes || initial.buyer_terms)}>
+            <summary className="cursor-pointer text-[13px] font-semibold text-accent">Notes and buyer&apos;s terms</summary>
+            {notesField}{termsField}
+          </details>
         )}
       </div>
 
       <div className="panel">
         <h2>Styles</h2>
         <div className="table-wrap">
-          <table className="tbl">
+          <table className="tbl lines-tbl">
             <thead>
               <tr>
                 <th>Style no. *</th><th>Description</th><th>Colour</th><th>Qty *</th>
-                <th>Buyer rate ₹</th><th>Factory</th><th>Factory rate ₹</th><th></th>
+                <th>Buyer rate ₹</th>{fac && <><th>Factory</th><th>Factory rate ₹</th></>}<th></th>
               </tr>
             </thead>
             <tbody>
               {lines.map((l, i) => (
                 <tr key={i}>
-                  <td><input className="inp min-w-[110px]" value={l.style} onChange={(e) => setLine(i, "style", e.target.value)} aria-label={`Line ${i + 1} style`} /></td>
-                  <td><input className="inp min-w-[140px]" value={l.description} onChange={(e) => setLine(i, "description", e.target.value)} aria-label={`Line ${i + 1} description`} /></td>
-                  <td><input className="inp min-w-[90px]" value={l.colour} onChange={(e) => setLine(i, "colour", e.target.value)} aria-label={`Line ${i + 1} colour`} /></td>
-                  <td><input className="inp w-[90px]" inputMode="numeric" value={l.qty} onChange={(e) => setLine(i, "qty", e.target.value)} aria-label={`Line ${i + 1} quantity`} /></td>
-                  <td><input className="inp w-[90px]" inputMode="decimal" value={l.buyer_rate} onChange={(e) => setLine(i, "buyer_rate", e.target.value)} aria-label={`Line ${i + 1} buyer rate`} /></td>
-                  <td>
+                  <td data-label="Style no."><input className="inp min-w-[110px]" value={l.style} onChange={(e) => setLine(i, "style", e.target.value)} aria-label={`Line ${i + 1} style`} /></td>
+                  <td data-label="Description"><input className="inp min-w-[140px]" value={l.description} onChange={(e) => setLine(i, "description", e.target.value)} aria-label={`Line ${i + 1} description`} /></td>
+                  <td data-label="Colour"><input className="inp min-w-[90px]" value={l.colour} onChange={(e) => setLine(i, "colour", e.target.value)} aria-label={`Line ${i + 1} colour`} /></td>
+                  <td data-label="Qty"><input className="inp w-[90px]" inputMode="numeric" value={l.qty} onChange={(e) => setLine(i, "qty", e.target.value)} aria-label={`Line ${i + 1} quantity`} /></td>
+                  <td data-label="Buyer rate ₹"><input className="inp w-[90px]" inputMode="decimal" value={l.buyer_rate} onChange={(e) => setLine(i, "buyer_rate", e.target.value)} aria-label={`Line ${i + 1} buyer rate`} /></td>
+                  {fac && <><td data-label="Factory">
                     <select className="inp min-w-[150px]" value={l.factory_id} onChange={(e) => setLine(i, "factory_id", e.target.value)} aria-label={`Line ${i + 1} factory`}>
                       <option value="">Not decided</option>
                       {factories.map((f) => <option key={f.id} value={f.id}>{f.label}</option>)}
                     </select>
                   </td>
-                  <td><input className="inp w-[90px]" inputMode="decimal" value={l.factory_rate} onChange={(e) => setLine(i, "factory_rate", e.target.value)} aria-label={`Line ${i + 1} factory rate`} /></td>
+                  <td data-label="Factory rate ₹"><input className="inp w-[90px]" inputMode="decimal" value={l.factory_rate} onChange={(e) => setLine(i, "factory_rate", e.target.value)} aria-label={`Line ${i + 1} factory rate`} /></td></>}
                   <td>
                     <button type="button" className="btn sm danger" disabled={lines.length === 1} onClick={() => setLines(lines.filter((_, j) => j !== i))} aria-label={`Remove line ${i + 1}`}>✕</button>
                   </td>
@@ -235,7 +248,8 @@ export function OrderForm({ initial, initialLines, buyers, factories, team, inco
         </div>
         <div className="row mt-3">
           <button type="button" className="btn sm" onClick={() => setLines([...lines, blankLine()])}>Add style</button>
-          <span className="muted text-xs">Factory missing from the list? <Link href="/factories" className="link">Add it in Factories</Link>.</span>
+          {fac ? <span className="muted text-xs">Factory missing from the list? <Link href="/factories" className="link">Add it in Factories</Link>.</span>
+            : <span className="muted text-xs">The factory and its rate come next, when you start production.</span>}
         </div>
       </div>
 
@@ -284,7 +298,7 @@ export function OrderForm({ initial, initialLines, buyers, factories, team, inco
         {warning && <span className="text-[13px] font-semibold text-warn" role="status">{warning}</span>}
         {created && <Link href={`/orders/${created}`} className="link text-[13px] font-semibold">Open the order</Link>}
         {saved && !error && !warning && <span className="text-[13px] font-semibold text-ok">Saved</span>}
-        <button className="btn primary" disabled={pending || !!created || confirming}>{pending ? "Saving…" : order.id ? "Save changes" : "Save order"}</button>
+        <button className="btn primary" disabled={pending || !!created || confirming}>{pending ? "Saving…" : order.id ? "Save changes" : "Create order"}</button>
       </div>
     </form>
   );
