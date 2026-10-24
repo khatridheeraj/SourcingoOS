@@ -101,9 +101,9 @@ function Bill({ r, picked, onPick }: { r: BillRow; picked: boolean; onPick: (on:
             <span className="bill-who">{r.name}</span>
             <span className="bill-sub">
               {r.bill ? <span className="code">{r.bill}</span> : "No bill in the app"}
-              {r.bill_date && ` · billed ${dm(r.bill_date)}`}
-              {r.due_on && ` · due ${dm(r.due_on)}${r.due_on.slice(0, 4) !== r.bill_date?.slice(0, 4) ? ` ${r.due_on.slice(0, 4)}` : ""}`}
-              {r.amount != null && r.amount !== r.open && ` · ${money(Math.round(r.open))} left of ${money(Math.round(r.amount))}`}
+              {r.bill_date && <> · <span className="whitespace-nowrap">billed {dm(r.bill_date)}</span></>}
+              {r.due_on && <> · <span className="whitespace-nowrap">due {dm(r.due_on)}{r.due_on.slice(0, 4) !== r.bill_date?.slice(0, 4) ? ` ${r.due_on.slice(0, 4)}` : ""}</span></>}
+              {r.amount != null && r.amount !== r.open && <> · <span className="whitespace-nowrap">{money(Math.round(r.open))} left of {money(Math.round(r.amount))}</span></>}
             </span>
             {(msme || r.order_no || r.note) && (
               <span className="bill-tags">
@@ -115,7 +115,7 @@ function Bill({ r, picked, onPick }: { r: BillRow; picked: boolean; onPick: (on:
           </span>
           <span className="bill-amt">
             <b className="num">{money(Math.round(r.open))}</b>
-            <span className={`chip ${r.due.tone}`}>{r.due.text}</span>
+            {r.due.tone ? <span className={`chip ${r.due.tone}`}>{r.due.text}</span> : <span className="text-xs muted">{r.due.text}</span>}
           </span>
         </summary>
         <BillMore r={r} />
