@@ -17,7 +17,7 @@ begin
   if new.not_needed and new.stage not like 'extra\_%'
      and not (public.garment_only_stage(new.stage)
               and exists (select 1 from public.order_lines l where l.id = new.line_id and l.product = 'fabric')) then
-    raise exception 'Every garment style goes through all the standard steps.' using errcode = 'check_violation';
+    raise exception 'Every garment style goes through all the standard steps.';
   end if;
   return new;
 end $$;
