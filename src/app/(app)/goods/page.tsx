@@ -137,18 +137,20 @@ export default async function GoodsPage({ searchParams }: PageProps<"/goods">) {
                     {d.shipped_at && (
                       <div className="todo-detail">
                         Shipped {at.format(new Date(d.shipped_at))}{d.transporter ? ` by ${d.transporter}` : ""}{d.lr_no ? `, LR ${d.lr_no}` : ""}
+                        {d.grn_due_on && !grnLateHere ? ` · GRN due ${day(d.grn_due_on)}` : ""}
                       </div>
                     )}
+                    {held && hours < HOLD_HOURS - 6 && <div className="todo-detail">{heldText(hours)}</div>}
                     <div className="todo-links">
                       {held ? (
                         <>
-                          <span className={`chip ${hours >= HOLD_HOURS ? "bad" : hours >= HOLD_HOURS - 6 ? "warn" : ""}`}>{heldText(hours)}</span>
-                          <span className={`chip ${step.cls}`}>{step.text}</span>
+                          {hours >= HOLD_HOURS - 6 && <span className={`chip ${hours >= HOLD_HOURS ? "bad" : "warn"}`}>{heldText(hours)}</span>}
+                          {step.cls !== "ok" && <span className={`chip ${step.cls}`}>{step.text}</span>}
                         </>
                       ) : (
-                        d.grn_due_on && <span className={`chip ${grnLateHere ? "bad" : ""}`}>{grnLateHere ? `GRN was due ${day(d.grn_due_on)}` : `GRN due ${day(d.grn_due_on)}`}</span>
+                        grnLateHere && <span className="chip bad">GRN was due {day(d.grn_due_on!)}</span>
                       )}
-                      <Link href={`/goods/${d.id}/challan`} prefetch={false} className="chip info">{d.challan_no ? `Challan ${d.challan_no}` : "Delivery challan"}</Link>
+                      <Link href={`/goods/${d.id}/challan`} prefetch={false} className="link text-[13px]">{d.challan_no ? `Challan ${d.challan_no}` : "Delivery challan"}</Link>
                     </div>
                   </div>
                   <div className="todo-chip" />
