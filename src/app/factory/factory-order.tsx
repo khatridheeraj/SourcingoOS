@@ -144,7 +144,8 @@ export function FactoryOrder({ order, now, companyId, updates, rounds, lang, inf
     <section className="panel" data-order={order.order_no}>
       <div className="row mb-1">
         <h2 className="font-bold text-base"><span className="code">{order.order_no}</span></h2>
-        <span className={`chip ${status.cls}`}>{status.text}</span>
+        {/* A released PO needs nothing now, so it reads as a plain detail; only plan states that ask for action get a chip. */}
+        {released ? <span className="muted text-[13px]">{status.text}</span> : <span className={`chip ${status.cls}`}>{status.text}</span>}
       </div>
       {!released && (
         <p className="muted mb-3 text-[13px]">

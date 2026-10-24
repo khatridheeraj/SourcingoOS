@@ -87,7 +87,8 @@ export function FactorySamples({ companyId, order, rounds, lang }: { companyId: 
                 const canSend = !done && (!last || last.status === "changes" || last.status === "returned");
                 const status = done || last?.status === "approved"
                   ? { text: w.sampleApproved(day(last?.approved_on ?? st?.done_on)), cls: "ok" }
-                  : !last ? { text: st?.planned_on ? w.sampleDue(day(st.planned_on)) : w.sampleNotSent, cls: st?.planned_on && st.planned_on < todayIST() ? "bad" : "" }
+                  : !last ? (st?.planned_on && st.planned_on < todayIST() ? { text: w.sampleLate(day(st.planned_on)), cls: "bad" }
+                    : { text: st?.planned_on ? w.sampleDue(day(st.planned_on)) : w.sampleNotSent, cls: "" })
                   : last.status === "with_team" ? { text: w.sampleChecking(dayAt(last.sent_at)), cls: "info" }
                   : last.status === "with_buyer" ? { text: w.sampleWithBuyer(day(last.dispatched_on)), cls: "info" }
                   : last.status === "returned" ? { text: w.sampleReturned, cls: "bad" } : { text: w.sampleChanges, cls: "bad" };
