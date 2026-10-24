@@ -396,7 +396,7 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
     const outlook = risk.level === "risk" && p ? { text: `Likely ready ${dm(p.finish)}, ${plural(risk.daysLate)} after the ship date`, cls: "bad" }
       : risk.level === "behind" && p ? { text: `Running ${plural(p.slip)} behind plan, ready ${dm(p.finish)}`, cls: "warn" }
       : null;
-    return { done, total: cells.length, at: last ? `At ${last.s.label}` : "Not started", status, segs, next: next?.s, outlook };
+    return { done, total: cells.length, at: last ? `${last.s.label} done` : "Not started", status, segs, next: next?.s, outlook };
   }
 
   const toggle = (id: string) => setShown((s) => {
@@ -613,7 +613,7 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
                           {sm.segs.map((x) => <i key={x.key} className={x.cls} title={`${x.label}: ${x.text}`} />)}
                         </div>
                         <div className="style-line">
-                          <span>{sm.at} · {sm.done} of {sm.total} steps done</span>
+                          <span>{sm.at} · {sm.done} of {sm.total} steps</span>
                           <b className={sm.status.cls}>{sm.status.text}</b>
                         </div>
                         {sm.outlook && <p className={`style-outlook ${sm.outlook.cls}`}>{sm.outlook.text}</p>}
