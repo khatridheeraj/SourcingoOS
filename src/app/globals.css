@@ -6,6 +6,8 @@
   late, needs attention and done. Type is one family (Inter) on a 12 / 13 / 14 / 16 / 20 / 24 scale; space is a 4px grid.
 */
 :root {
+  /* Native controls (checkboxes, date pickers, scrollbars) follow the theme too. */
+  color-scheme: light dark;
   --background: #f7f7f8;
   --foreground: #111216;
   --surface: #ffffff;
@@ -724,7 +726,7 @@ h1, h2, h3 { font-family: var(--font-display); text-wrap: balance; font-weight: 
   .bqc-photos img { display: block; width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 8px; border: 1px solid var(--line); }
 
   /* Factory panel: progress per style on a released PO, and the step-done sheet. */
-  .fprog { display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px; padding: 12px 14px; border: 1px solid var(--ok-line); border-radius: 12px; background: color-mix(in srgb, var(--ok-soft) 45%, var(--surface)); }
+  .fprog { display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-2); }
   .fprog ul { display: flex; flex-direction: column; }
   .fprog-row { display: grid; grid-template-columns: 200px minmax(0, 1fr) auto; gap: 8px 16px; align-items: center; padding: 10px 0; border-top: 1px solid var(--line); }
   .fprog-id { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
@@ -2151,6 +2153,14 @@ h1, h2, h3 { font-family: var(--font-display); text-wrap: balance; font-weight: 
   .po-points li.warn::before { background: var(--warn); }
   .po-points li.bad { color: var(--bad); }
   .po-points li.bad::before { background: var(--bad); }
+  .po-compare { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .po-compare-side { border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; min-width: 0; }
+  .po-compare-side h3 { font-size: 14px; font-weight: 600; margin-bottom: 8px; }
+  .po-compare-side dl { display: grid; grid-template-columns: auto 1fr; gap: 2px 12px; font-size: 13px; }
+  .po-compare-side dt { color: var(--muted); }
+  .po-compare-side ul { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line); font-size: 13px; }
+  .po-compare-side li { display: flex; flex-direction: column; min-width: 0; }
+  @media (max-width: 520px) { .po-compare { grid-template-columns: 1fr; } }
   .po-other { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 10px; padding: 14px 0 0; border-top: 1px solid var(--line); font-size: 13px; color: var(--muted); }
   @media (max-width: 1100px) {
     .po-review { grid-template-columns: minmax(0, 1fr); }

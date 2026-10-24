@@ -5,6 +5,7 @@ import { canEditOrders, canEnterDone, canRecordQc, getMe } from "@/lib/auth";
 import { fetchAll } from "@/lib/fetch-all";
 import { day, dayAt, money, moneyShort, qty, SHIP_QC, stageReached, STATUS, TNA_STEPS, todayIST } from "@/lib/format";
 import { areaOf, journey, shipClock } from "@/lib/journey";
+import { fileNamesStyle, styleKey } from "@/lib/po-match";
 import { PhotoStack, ShipClock } from "@/components/order-ui";
 import { OrderJourney } from "./order-journey";
 import { createClient } from "@/lib/supabase/server";
@@ -495,17 +496,15 @@ async function loadPoDocs(supabase: Awaited<ReturnType<typeof createClient>>, or
     .sort((a, b) => rank(a.ext) - rank(b.ext));
 }
 
-const styleKey = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
-
 // With no PO on file, PO files from this buyer's emails that name one of the order's styles: some buyers
 // send one PDF per style, and an order typed in by hand never gets tied to that email on its own.
 async function loadFoundPos(supabase: Awaited<ReturnType<typeof createClient>>, buyerId: string, styles: string[]): Promise<FoundPo[]> {
-  const keys = [...new Set(styles.map(styleKey).filter((k) => k.length >= 3))];
-  if (!keys.length) return [];
+  const named = styles.filter((s) => styleKey(s).length >= 3);
+  if (!named.length) return [];
   const { data } = await supabase.from("incoming_pos").select("id, email_from, received_at, files").eq("buyer_id", buyerId)
     .order("received_at", { ascending: false }).limit(30);
   const found = (data ?? []).flatMap((i) => ((i.files ?? []) as StoredFile[])
-    .filter((f) => keys.some((k) => styleKey(f.name ?? "").includes(k)))
+    .filter((f) => named.some((s) => fileNamesStyle(f.name ?? "", s)))
     .map((f) => ({
       key: f.path, incomingId: i.id as string, path: f.path, name: f.name || "PO", ext: (f.path.split(".").pop() ?? "").toLowerCase(), size: sizeOf(f.size),
       from: `Email${i.email_from ? ` from ${i.email_from.replace(/\s*<.*>$/, "")}` : ""} · ${dayAt(i.received_at)}`,

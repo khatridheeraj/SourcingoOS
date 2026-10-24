@@ -162,7 +162,8 @@ export function SampleThreadCard({ t, today, showOrder = true, readOnly = false 
       </header>
 
       <div className="smp-meta">
-        <span className={`chip ${state.cls}`}>{state.text}</span>
+        {/* "Not sent yet" is a not-done-yet chip; the target line already says whether it is late. */}
+        {t.state !== "not_sent" && <span className={`chip ${state.cls}`}>{state.text}</span>}
         {t.doneOn ? <span className="text-ok">Done {day(t.doneOn)}</span>
           : t.target ? <span className={late ? "text-bad" : "muted"}>Target {dm(t.target)}{late ? `, ${lateBy(t.target, today)} late` : ""}</span>
           : <span className="muted">No target date</span>}

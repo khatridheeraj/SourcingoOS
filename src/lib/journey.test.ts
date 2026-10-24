@@ -44,6 +44,13 @@ test("factory updates and samples come first while making", () => {
   assert.equal(j({ pendingUpdates: 2 }).next.action.kind, "review");
   assert.equal(j({ samplesToAct: 1 }).next.action.kind, "samples");
 });
+test("once a part has shipped, the next step is the rest or close short, not production", () => {
+  const r = j({ steps: steps(10, "2026-10-01"), dispatch: { count: 2, uninvoiced: 0, unshipped: 0, billedAll: false } });
+  assert.equal(r.stage, "ship");
+  assert.equal(r.next.title, "Ship the rest, or close short");
+  assert.equal(r.next.action.kind, "dispatch");
+  assert.equal(j({ dispatch: { count: 1, uninvoiced: 1, unshipped: 1, billedAll: false } }).stage, "make");
+});
 test("packed goes to final QC, then dispatch in order", () => {
   assert.equal(j({ packedAll: true }).stage, "qc");
   assert.equal(j({ packedAll: true, finalPassed: true }).next.title, "Record the factory's bill");

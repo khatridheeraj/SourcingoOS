@@ -79,7 +79,8 @@ for (const who of roles) {
       }
       opened++;
       const ms = Date.now() - t0;
-      const info = await page.evaluate(() => {
+      // A client redirect can swap the document out between "networkidle" and here; read it again once it settles.
+      const read = () => page.evaluate(() => {
         const main = document.querySelector("main") ?? document.body;
         const text = main.innerText;
         const odd = (text.match(/\b(undefined|NaN|null|\[object Object\])\b/g) ?? []).slice(0, 3);
@@ -88,6 +89,14 @@ for (const who of roles) {
         const notFound = /This page could not be found|404/.test(document.title) || !!document.querySelector("[data-next-error]");
         return { odd, err, wide, notFound, title: document.title };
       });
+      let info;
+      try { info = await read(); } catch {
+        await page.waitForLoadState("networkidle", { timeout: 45000 }).catch(() => {});
+        try { info = await read(); } catch (e) {
+          problems.push({ who, form, dark, url: path, kind: "did not render", text: e.message.split("\n")[0] });
+          continue;
+        }
+      }
       if (info.odd.length) problems.push({ who, form, dark, url: path, kind: "odd text", text: info.odd.join(", ") });
       for (const e of info.err) problems.push({ who, form, dark, url: path, kind: "error box", text: e });
       if (info.wide && form === "phone") problems.push({ who, form, dark, url: path, kind: "wider than phone", text: "" });
