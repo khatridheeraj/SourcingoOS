@@ -666,6 +666,7 @@ h1, h2, h3 { font-family: var(--font-display); text-wrap: balance; font-weight: 
   .fstyle header { display: flex; flex-direction: column; gap: 2px; padding: 12px 14px; background: var(--surface-2); border-bottom: 1px solid var(--line); }
   .fstep { display: grid; grid-template-columns: minmax(0, 1fr) 160px; gap: 12px; align-items: center; padding: 10px 14px; border-top: 1px solid var(--line); }
   .fstep:first-child { border-top: 0; }
+  .fstep.locked { grid-template-columns: minmax(0, 1fr); }
   .fstep b { display: block; font-size: 14.5px; font-weight: 500; }
   .fstep small { display: block; font-size: 12.5px; color: var(--muted); }
   .quick { display: none; }
@@ -913,6 +914,7 @@ h1, h2, h3 { font-family: var(--font-display); text-wrap: balance; font-weight: 
     .fsend .btn.primary { width: 100%; min-height: 48px; font-size: 15px; }
     .fsend .btn:not(.primary) { width: 100%; min-height: 34px; border: 0; box-shadow: none; background: none; color: var(--accent); }
     .fstep { grid-template-columns: minmax(0, 1fr) 150px; }
+    .fstep.locked { grid-template-columns: minmax(0, 1fr); }
     .toasts { bottom: calc(84px + env(safe-area-inset-bottom)); }
     .sheet { width: 100%; max-width: none; margin: auto 0 0; max-height: 90vh; border-radius: 20px 20px 0 0; animation: sheet-up 0.3s cubic-bezier(0.2, 0.9, 0.25, 1); }
     .sheet-body { padding: 8px 16px calc(16px + env(safe-area-inset-bottom)); }
