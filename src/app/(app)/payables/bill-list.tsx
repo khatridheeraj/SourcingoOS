@@ -77,7 +77,7 @@ export function BillList({ rows, today }: { rows: BillRow[]; today: string }) {
             <b>{chosen.length} {chosen.length === 1 ? "bill" : "bills"} · <span className="num">{money(Math.round(sum))}</span></b>
             <div className="text-xs muted">{new Set(chosen.map((r) => r.ledger)).size} {new Set(chosen.map((r) => r.ledger)).size === 1 ? "supplier" : "suppliers"}. Share the list with whoever makes the payments.</div>
           </div>
-          <a className="btn wa" href={`https://wa.me/?text=${encodeURIComponent(text)}`} target="_blank" rel="noreferrer">Send on WhatsApp</a>
+          <a className="btn primary" href={`https://wa.me/?text=${encodeURIComponent(text)}`} target="_blank" rel="noreferrer">Send on WhatsApp</a>
           <button type="button" className="btn" onClick={copy}>Copy</button>
           <button type="button" className="btn ghost" onClick={() => setPicked(new Set())}>Clear</button>
         </div>

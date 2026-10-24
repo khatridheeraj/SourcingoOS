@@ -60,7 +60,7 @@ export function ShareUpdate({ options }: { options: ShareOption[] }) {
           <textarea className="inp mt-2 h-56 w-full resize-none font-[inherit] leading-relaxed" value={text} aria-label="Message"
             onChange={(e) => setTexts((t) => ({ ...t, [who]: e.target.value }))} />
           <div className="sheet-acts">
-            <a className="btn wa" href={`https://wa.me/?text=${encodeURIComponent(text)}`} target="_blank" rel="noreferrer">WhatsApp</a>
+            <a className="btn primary" href={`https://wa.me/?text=${encodeURIComponent(text)}`} target="_blank" rel="noreferrer">WhatsApp</a>
             {canShare && <button type="button" className="btn" onClick={share}>More apps</button>}
             <button type="button" className="btn" onClick={copy}>Copy</button>
           </div>

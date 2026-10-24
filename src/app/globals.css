@@ -646,8 +646,6 @@ h1, h2, h3 { font-family: var(--font-display); text-wrap: balance; font-weight: 
   .sheet-body { padding: 18px 20px 20px; }
   .sheet .grabber { display: none; }
   .sheet-acts { display: grid; grid-template-columns: repeat(auto-fit, minmax(0, 1fr)); gap: 8px; margin-top: 12px; }
-  .btn.wa { background: #1fa855; border-color: #1fa855; color: #fff; }
-  .btn.wa:hover { background: #17924a; }
   .toasts { position: fixed; z-index: 60; left: 16px; right: 16px; bottom: 24px; display: flex; flex-direction: column; gap: 8px; align-items: center; pointer-events: none; }
   .toast {
     display: flex; align-items: center; gap: 10px; padding: 11px 16px 11px 12px; border-radius: 14px; font-size: 14px; font-weight: 500;
