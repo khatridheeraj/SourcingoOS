@@ -144,7 +144,7 @@ export function InquiryNext({ i, today, onDone }: { i: StepInquiry; today: strin
             <input type="date" min={today} value={next} onChange={(e) => setNext(e.target.value)} aria-label="Pick another day" />
           </label>
         </div>
-        <button type="button" className="btn primary inq-save" disabled={pending || (!note.trim() && !next)} onClick={() => run(() => addInquiryNote(i.id, note, next), next ? "Saved. It comes back on the day you picked." : "Note saved")}>
+        <button type="button" className="btn inq-save" disabled={pending || (!note.trim() && !next)} onClick={() => run(() => addInquiryNote(i.id, note, next), next ? "Saved. It comes back on the day you picked." : "Note saved")}>
           {pending && !mode ? "Saving…" : "Save follow-up"}
         </button>
       </div>
