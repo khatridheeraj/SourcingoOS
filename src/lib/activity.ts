@@ -57,7 +57,7 @@ const FIELD: Record<string, string> = {
   qty: "quantity", buyer_rate: "buyer rate", factory_rate: "factory rate", purchase_rate: "purchase rate", sale_rate: "sale rate",
   real_name: "real name", full_name: "name", current_company_id: "company in use", grn_days: "GRN days", credit_days: "credit days",
   planned_on: "target", done_on: "done", factory_on: "factory date", not_needed: "not needed", removed_at: "removed", cancelled_at: "cancelled",
-  cancel_reason: "reason for cancelling", removed_reason: "reason for deleting", removed_by: "deleted by", api_key: "key", key_hash: "key", closed_at: "closed", closed_by: "closed by", set_by: "set by",
+  cancel_reason: "reason for cancelling", removed_reason: "reason for deleting", removed_po: "buyer PO before deleting", removed_by: "deleted by", api_key: "key", key_hash: "key", closed_at: "closed", closed_by: "closed by", set_by: "set by",
   email_from: "email from", email_subject: "email subject", email_body: "email text", matched_order_id: "matched order", vdate: "voucher date",
 };
 export const fieldLabel = (k: string) => FIELD[k] ?? k.replace(/_id$/, "").replace(/_/g, " ");

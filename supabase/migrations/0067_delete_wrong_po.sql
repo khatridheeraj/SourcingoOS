@@ -9,15 +9,15 @@ alter table public.orders
   add column removed_at timestamptz,
   add column removed_by uuid references public.profiles (id),
   add column removed_reason text,
-  add column removed_status text;
+  add column removed_status text,
+  add column removed_po text;
 -- Not granted to staff: the owner reads these through deleted_orders() below.
 
 -- Hidden from everyone who reads orders through the app, whatever their role.
 create policy orders_not_removed on public.orders as restrictive for select to authenticated using (removed_at is null);
 
--- The buyer PO number is unique among orders that are not deleted.
-drop index public.orders_buyer_po_key;
-create unique index orders_buyer_po_key on public.orders (company_id, buyer_id, lower(btrim(buyer_po))) where removed_at is null;
+-- A deleted order frees its buyer PO number: the number moves to removed_po and buyer_po gets a marked copy, so
+-- orders_buyer_po_key lets the right PO be entered again. Bringing the order back puts the number back.
 
 -- ---------------------------------------------------------------- delete and bring back
 
@@ -43,7 +43,8 @@ begin
     raise exception 'Goods are already bought on this order, so it can''t be deleted. Cancel its dispatches first, or close the order short.';
   end if;
   update public.orders set removed_at = now(), removed_by = auth.uid(), removed_reason = left(btrim(p_reason), 300),
-    removed_status = o.status, status = 'cancelled'
+    removed_status = o.status, status = 'cancelled',
+    removed_po = o.buyer_po, buyer_po = left(o.buyer_po, 80) || ' (deleted ' || o.order_no || ')'
   where id = p_order;
   -- The buyer's PO it was made from goes back under Set aside on Buyer POs.
   update public.incoming_pos set status = 'not_po', closed_by = auth.uid(), closed_at = now()
@@ -65,12 +66,12 @@ begin
   end if;
   select x.order_no into v_clash from public.orders x
   where x.company_id = o.company_id and x.buyer_id = o.buyer_id and x.removed_at is null
-    and lower(btrim(x.buyer_po)) = lower(btrim(o.buyer_po));
+    and lower(btrim(x.buyer_po)) = lower(btrim(coalesce(o.removed_po, o.buyer_po)));
   if v_clash is not null then
-    raise exception 'PO % of this buyer is on % now. Delete or change that order first.', o.buyer_po, v_clash;
+    raise exception 'PO % of this buyer is on % now. Delete or change that order first.', coalesce(o.removed_po, o.buyer_po), v_clash;
   end if;
   update public.orders set removed_at = null, removed_by = null, removed_reason = null, removed_status = null,
-    status = coalesce(o.removed_status, 'open')
+    status = coalesce(o.removed_status, 'open'), buyer_po = coalesce(o.removed_po, o.buyer_po), removed_po = null
   where id = p_order;
   update public.incoming_pos set status = 'added', closed_by = auth.uid(), closed_at = now()
   where order_id = p_order and status = 'not_po';
@@ -80,7 +81,7 @@ end $$;
 create function public.deleted_orders() returns jsonb
 language sql stable security definer set search_path = '' as $$
   select coalesce(jsonb_agg(jsonb_build_object(
-      'id', o.id, 'order_no', o.order_no, 'buyer_id', o.buyer_id, 'buyer_po', o.buyer_po,
+      'id', o.id, 'order_no', o.order_no, 'buyer_id', o.buyer_id, 'buyer_po', coalesce(o.removed_po, o.buyer_po),
       'removed_at', o.removed_at, 'removed_by', o.removed_by, 'reason', o.removed_reason,
       'styles', (select count(*) from public.order_lines l where l.order_id = o.id and l.removed_at is null),
       'pieces', (select coalesce(sum(l.qty), 0) from public.order_lines l where l.order_id = o.id and l.removed_at is null))

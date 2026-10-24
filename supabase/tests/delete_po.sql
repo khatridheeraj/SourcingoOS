@@ -85,7 +85,7 @@ select pg_temp.expect((select status = 'open' from public.orders where id = :'o'
 select pg_temp.expect_error(format($$select public.restore_order('%s')$$, :'o'), 'This PO is not deleted any more.%');
 reset role;
 select pg_temp.expect((select status = 'added' from public.incoming_pos where order_id = :'o'), 'its buyer PO did not come back as added');
-select pg_temp.expect((select removed_at is null and removed_reason is null from public.orders where id = :'o'), 'the delete marks stayed');
+select pg_temp.expect((select removed_at is null and removed_reason is null and removed_po is null and buyer_po = '101' from public.orders where id = :'o'), 'the delete marks stayed or the PO number did not come back');
 
 -- ================================================================ what can't be deleted
 insert into public.dispatches (company_id, order_id, factory_id, purchase_bill_no, purchase_bill_date, purchase_taxable, invoice_due_at)
