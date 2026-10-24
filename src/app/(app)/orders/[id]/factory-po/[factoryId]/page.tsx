@@ -102,6 +102,8 @@ export default async function FactoryPoPage({ params }: PageProps<"/orders/[id]/
     !f.address && "factory address",
     !vendorGstin && "factory GSTIN",
     !f.phone && "factory mobile",
+    // The PO is emailed once approved, so sending it for approval waits on this one.
+    !f.email && "factory email",
     !(co?.address && co?.gstin) && (isOwner ? "our address and GSTIN" : null),
   ].filter(Boolean) as string[];
 
