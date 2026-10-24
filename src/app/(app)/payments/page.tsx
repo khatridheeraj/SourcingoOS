@@ -222,8 +222,7 @@ export default async function PaymentsPage({ searchParams }: PageProps<"/payment
     body = (
       <>
       {settle.length > 0 && <TallySettle key={settle.map((r) => r.id).join()} rows={settle} />}
-      <section className="panel stack">
-        <h2>To do</h2>
+      <section className="panel stack" aria-label="To do">
         {todos.length ? (
           <ul className="-mt-2.5 flex flex-col divide-y divide-line">
             {todos.slice(0, 60).map((a, k) => (
