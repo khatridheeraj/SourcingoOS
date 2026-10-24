@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { closeOldOrder, loadQuick, lockPlan, logChase, markStepsDone, startProduction } from "@/app/(app)/orders/quick-actions";
-import { daysBetween, DEFAULT_BUFFER_DAYS, TNA_STEPS } from "@/lib/format";
+import { daysBetween, defaultBuffer, TNA_STEPS } from "@/lib/format";
 import { addDays, byNextStep, catchUpRows, dm, live, sharedSteps, startTargets, when, type QOrder, type QStyle } from "@/lib/quick";
 import { toast } from "@/components/toast";
 
@@ -256,7 +256,7 @@ function StartView({ order, factoryId, onDone, onChanged }: { order: QOrder; fac
   const open = order.groups.filter((g) => !g.released);
   const [fid, setFid] = useState<string>(() => (open.find((g) => (g.factoryId ?? "") === (factoryId ?? "")) ?? open[0])?.factoryId ?? "");
   const g = open.find((x) => (x.factoryId ?? "") === fid) ?? open[0];
-  const [buffer, setBuffer] = useState(g?.bufferDays ?? DEFAULT_BUFFER_DAYS);
+  const [buffer, setBuffer] = useState(g?.bufferDays ?? defaultBuffer(!!g?.styles.length && g.styles.every((s) => s.fabric)));
   const [agreed, setAgreed] = useState(true);
   const [pickFactory, setPickFactory] = useState("");
   const [rates, setRates] = useState<Record<string, string>>({});
@@ -366,6 +366,12 @@ function StartView({ order, factoryId, onDone, onChanged }: { order: QOrder; fac
                 <input className="inp" type="date" min={addDays(today, 1)} value={newShip} aria-label="New ship date" onChange={(e) => setNewShip(e.target.value)} />
                 <input className="inp" value={reason} maxLength={300} placeholder="Why it moves" aria-label="Why the ship date moves" onChange={(e) => setReason(e.target.value)} />
               </div>
+              {/* The ship date itself is still ahead: a smaller buffer keeps it, as on a quick fabric order. */}
+              {order.due && order.due >= today && !newShip && (
+                <button type="button" className="link mt-2 text-left" onClick={() => setBuffer(daysBetween(today, order.due))}>
+                  Or keep {dm(order.due)} with {plural(daysBetween(today, order.due), "day")} buffer
+                </button>
+              )}
             </div>
           )}
           <div className="qs-buffer">

@@ -1,10 +1,11 @@
 // Helpers behind the quick sheets: an order's steps per style, what to mark done, the plan to start production with,
 // and the WhatsApp chase for a factory. Pure functions, used on the server and in the browser alike.
 import { daysBetween, TNA_STEPS } from "@/lib/format";
-import { fillEmptyTargets } from "@/lib/tna-plan";
+import { fillEmptyTargets, stepDays } from "@/lib/tna-plan";
 
 export type QStep = { key: string; label: string; planned_on: string; done_on: string; not_needed: boolean; extra: boolean };
-export type QStyle = { id: string; style: string; colour: string; qty: number; hasRate: boolean; factoryId: string | null; steps: QStep[] };
+// fabric: a fabric style, planned with the fabric standard days.
+export type QStyle = { id: string; style: string; colour: string; qty: number; hasRate: boolean; factoryId: string | null; fabric?: boolean; steps: QStep[] };
 export type QGroup = {
   factoryId: string | null; factoryName: string; phone: string | null;
   released: boolean; asked: boolean; sent: boolean; lockRequestedAt: string; lockNote: string; bufferDays: number | null;
@@ -87,7 +88,7 @@ export function startTargets(styles: QStyle[], target: string, today: string): R
     const std = TNA_STEPS.map((t) => s.steps.find((x) => x.key === t.key) ?? { key: t.key, label: t.label, planned_on: "", done_on: "", not_needed: false, extra: false })
       .filter((x) => !x.not_needed);
     const keep = (x: QStep) => !!x.done_on || (!!x.planned_on && x.planned_on >= today && x.planned_on <= target);
-    const plan = fillEmptyTargets(std.map((x) => ({ stage: x.key, on: keep(x) ? x.planned_on || x.done_on : null })), target, today);
+    const plan = fillEmptyTargets(std.map((x) => ({ stage: x.key, on: keep(x) ? x.planned_on || x.done_on : null })), target, today, stepDays(s.fabric));
     const changes: Record<string, string> = {};
     for (const x of std) if (plan[x.key] && plan[x.key] !== x.planned_on) changes[x.key] = plan[x.key];
     // Extra steps have no standard days: one without a usable target goes on the target date.

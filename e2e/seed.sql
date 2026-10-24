@@ -170,3 +170,10 @@ select c.id, v.guid, v.vtype, v.kind, v.number, current_date - v.ago, v.party, v
           ('e2e-pay-1', 'Payment', 'payment', '41', 5, 'Flavia Test Creation', 20250, '[{"name":"PB-T-090","amount":20250}]'),
           ('e2e-pur-3', 'Purchase', 'purchase', 'JTT-44', 50, 'Jaipur Test Trims', 18500, '[{"name":"JTT-44","amount":18500}]')) v (guid, vtype, kind, number, ago, party, amount, bills);
 insert into public.supplier_terms (company_id, ledger, msme) select c.id, 'Jaipur Test Trims', 'micro' from public.companies c;
+
+-- 13. A fabric order, like a mill order for cambric: both styles typed in as Fabric, so they skip the garment steps.
+set role authenticated;
+select pg_temp.as_user('00000000-0000-0000-0000-0000000000a1');
+select public.save_order(jsonb_build_object('buyer_id', :'mr', 'buyer_po', 'MR-FAB-31', 'ship_date', (current_date + 24)::text),
+  '[{"style":"Cotton Cambric Test","description":"Fabric","qty":1500,"buyer_rate":78,"factory_id":"20000000-0000-0000-0000-000000000002","factory_rate":70},{"style":"Printed Cambric Test","description":"Fabric","qty":2500,"buyer_rate":74,"factory_id":"20000000-0000-0000-0000-000000000002","factory_rate":66}]') as o_fab \gset
+reset role;

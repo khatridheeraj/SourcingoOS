@@ -24,17 +24,32 @@ export const STEP_DAYS: Record<string, number> = {
   final_qc: 2,
   ex_factory: 0,
 };
-const LONGEST = Math.max(...Object.values(STEP_DAYS));
+
+// The same for a fabric order of about three weeks: greige from the mill, printing or dyeing, the strike off
+// approved, then finishing, packing in rolls and the fabric check before it leaves. No garment-making steps.
+export const FABRIC_STEP_DAYS: Record<string, number> = {
+  greige: 21,
+  printing: 14,
+  strike_off: 10,
+  finishing: 6,
+  packed: 3,
+  final_qc: 2,
+  ex_factory: 0,
+};
+
+// The standard days for a style: fabric or garment.
+export const stepDays = (fabric: boolean | undefined) => (fabric ? FABRIC_STEP_DAYS : STEP_DAYS);
 
 // Standard targets for the given steps, ending on the target date. When there is less time than usual the
 // steps are squeezed evenly into the days left, never before `from` (today).
-export function standardTargets(stages: string[], target: string, from: string): Record<string, string> {
+export function standardTargets(stages: string[], target: string, from: string, days: Record<string, number> = STEP_DAYS): Record<string, string> {
   const room = Math.max(0, diff(from, target));
-  const scale = room < LONGEST ? room / LONGEST : 1;
+  const longest = Math.max(...Object.values(days));
+  const scale = room < longest ? room / longest : 1;
   const out: Record<string, string> = {};
   for (const s of stages) {
-    if (STEP_DAYS[s] == null) continue;
-    out[s] = addDays(target, -Math.round(STEP_DAYS[s] * scale));
+    if (days[s] == null) continue;
+    out[s] = addDays(target, -Math.round(days[s] * scale));
   }
   return out;
 }
@@ -43,14 +58,16 @@ export function standardTargets(stages: string[], target: string, from: string):
 // are the standard steps in order; `on` is a target or done date already there, or null for an empty step.
 // Each run of empty steps takes its standard date when that fits between the dates around it (never before
 // `from`, today); otherwise the run is spread over the days it has, in the standard proportions.
+// `days` are the standard days to use (garment by default, FABRIC_STEP_DAYS for a fabric style).
 // Returns dates for the empty steps only.
-export function fillEmptyTargets(steps: { stage: string; on: string | null }[], target: string, from: string): Record<string, string> {
-  const standard = standardTargets(steps.map((s) => s.stage), target, from);
+export function fillEmptyTargets(steps: { stage: string; on: string | null }[], target: string, from: string,
+  days: Record<string, number> = STEP_DAYS): Record<string, string> {
+  const standard = standardTargets(steps.map((s) => s.stage), target, from, days);
   const out: Record<string, string> = {};
   for (let i = 0; i < steps.length; ) {
-    if (steps[i].on || STEP_DAYS[steps[i].stage] == null) { i++; continue; }
+    if (steps[i].on || days[steps[i].stage] == null) { i++; continue; }
     let j = i;
-    while (j + 1 < steps.length && !steps[j + 1].on && STEP_DAYS[steps[j + 1].stage] != null) j++;
+    while (j + 1 < steps.length && !steps[j + 1].on && days[steps[j + 1].stage] != null) j++;
     const before = steps.slice(0, i).reverse().find((x) => x.on);
     const after = steps.slice(j + 1).find((x) => x.on);
     const lo = before?.on && before.on > from ? before.on : from;
@@ -62,11 +79,11 @@ export function fillEmptyTargets(steps: { stage: string; on: string | null }[], 
       for (const x of run) out[x.stage] = lo;
     } else {
       // Standard days of the steps around the run, so the run keeps its usual shape inside the room it has.
-      const dFrom = before ? STEP_DAYS[before.stage] ?? STEP_DAYS[run[0].stage] + 5 : STEP_DAYS[run[0].stage] + 5;
-      const dTo = after ? STEP_DAYS[after.stage] ?? 0 : 0;
+      const dFrom = before ? days[before.stage] ?? days[run[0].stage] + 5 : days[run[0].stage] + 5;
+      const dTo = after ? days[after.stage] ?? 0 : 0;
       const span = Math.max(1, dFrom - dTo);
       const room = diff(lo, hi);
-      for (const x of run) out[x.stage] = addDays(lo, Math.round(((dFrom - STEP_DAYS[x.stage]) / span) * room));
+      for (const x of run) out[x.stage] = addDays(lo, Math.round(((dFrom - days[x.stage]) / span) * room));
     }
     i = j + 1;
   }
