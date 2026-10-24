@@ -90,7 +90,6 @@ export function FactoryProgress({ companyId, order, updates, lang }: { companyId
     <div className="fprog">
       <div className="row">
         <h3 className="text-[14px] font-semibold">{w.sendProgress}</h3>
-        <span className="muted text-[13px]">{w.sendProgressHelp}</span>
       </div>
       <ul>
         {order.lines.map((l) => {
