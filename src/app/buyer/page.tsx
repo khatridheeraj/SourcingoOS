@@ -192,7 +192,7 @@ export default async function BuyerPage() {
                 )}
                 {!shipped && total > 0 && (
                   <div className="bord-prog">
-                    <div className="meter" role="progressbar" aria-valuemin={0} aria-valuemax={total} aria-valuenow={done} aria-label="Steps done">
+                    <div className="bmeter" role="progressbar" aria-valuemin={0} aria-valuemax={total} aria-valuenow={done} aria-label="Steps done">
                       <i style={{ width: `${Math.round((done / total) * 100)}%` }} />
                     </div>
                     <span>{Math.round((done / total) * 100)}% done</span>

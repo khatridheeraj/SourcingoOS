@@ -253,8 +253,9 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
       if (noTarget === rows.length && !po?.plan_requested_at && !po?.plan_requested_on) {
         const due = dueDate(o);
         now_.push({ key: `start:${o.id}:${f}`, href, ...base(o), sev: "warn", sheet: { orderId: o.id, mode: "start", factoryId: f },
-          detail: `${fname} · ${plural(fl.length, "style")} · not started yet. Set the whole plan in one go.`,
-          chip: due ? { text: `Ships ${dm(due)}`, cls: due < addDays(today, 30) ? "warn" : "" } : { text: "No ship date", cls: "bad" },
+          // A ship date a month or more away is no reason for a chip; it reads as part of the detail.
+          detail: `${fname} · ${plural(fl.length, "style")} · not started yet${due && due >= addDays(today, 30) ? ` · ships ${dm(due)}` : ""}. Set the whole plan in one go.`,
+          chip: !due ? { text: "No ship date", cls: "bad" } : due < addDays(today, 30) ? { text: `Ships ${dm(due)}`, cls: "warn" } : undefined,
           action: "Start production", sort: `1${due ?? "9999"}` });
         continue;
       }
