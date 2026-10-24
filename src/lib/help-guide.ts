@@ -175,7 +175,7 @@ export const TOPICS: Topic[] = [
     words: "release po factory po issue po lock owner lock send for lock approval approve send po for approval plan complete sent back create factory po merchandiser", pages: ["/orders/", "/today"] },
   { id: "inquiries", who: "staff", roles: ORDERS_TEAM, q: "How do I log a buyer inquiry?",
     a: ["Go to Inquiries and paste the buyer's message (from WhatsApp or email) in the box on top, or type a line like: Uptownie 1200 satin co-ords @450. The buyer, quantity and price fill in by themselves; check them, pick when to follow up, and tap Log inquiry.",
-        "Open inquiries are sorted by what to do: Follow up today, Needs a price, Waiting on the buyer, and Gone quiet. Tap Follow up or Update on one to note what happened and pick the next day (Tomorrow, In 3 days, Next week). On that day it shows on Home.",
+        "Open inquiries are sorted by what to do: Follow up now, Needs a price, Waiting on the buyer, and Gone quiet. Tap Follow up or Update on one to note what happened and pick the next day (Tomorrow, In 3 days, Next week). On that day it shows on Home.",
         "When you send the price, tap We sent the price. When a sample goes, tap Sample sent. Chase on WhatsApp opens a ready message to the buyer.",
         "When the buyer confirms, tap Buyer confirmed: make the order. The order opens with the buyer and the style filled in. If it doesn't happen, tap Lost and pick the reason; Gone quiet ones close in one tap.",
         "An email the PO pickup caught that is really an inquiry: open it in Buyer POs and tap It's an inquiry."],
