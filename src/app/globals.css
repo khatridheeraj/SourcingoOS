@@ -486,7 +486,7 @@ h1, h2, h3 { font-family: var(--font-display); text-wrap: balance; font-weight: 
   .style-list { display: flex; flex-direction: column; gap: 10px; }
   .style-card { border: 1px solid var(--line); border-radius: 12px; background: var(--surface); scroll-margin-top: 80px; overflow: hidden; }
   .style-card.late { box-shadow: inset 3px 0 0 var(--bad); }
-  .style-head { display: grid; grid-template-columns: 52px 170px minmax(0, 1fr) 280px; gap: 18px; align-items: center; padding: 12px 14px; }
+  .style-head { display: grid; grid-template-columns: 52px 190px minmax(0, 1fr) 260px; gap: 18px; align-items: center; padding: 12px 14px; }
   .style-photo img, .style-photo .ph { display: block; width: 52px; height: 52px; border-radius: 9px; border: 1px solid var(--line); object-fit: cover; }
   .style-photo .ph { display: grid; place-items: center; border-style: dashed; font-size: 10px; line-height: 1.2; text-align: center; color: var(--faint); background: var(--surface-2); }
   .style-photo .ph.add { cursor: pointer; color: var(--accent); border-color: color-mix(in srgb, var(--accent) 40%, var(--line)); background: var(--accent-soft); }
