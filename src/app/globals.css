@@ -2092,7 +2092,6 @@ h1, h2, h3 { font-family: var(--font-display); text-wrap: balance; font-weight: 
   .ocard.tone-bad .ocard-next { color: var(--bad); }
   @media (min-width: 901px) { .board-alt { display: none !important; } }
   .o-next { align-items: center; gap: 10px; }
-  .o-next > span:last-child { color: var(--foreground); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 }
 @layer components {
   .o-facts { margin-top: 8px; font-size: 13px; color: var(--muted); }
