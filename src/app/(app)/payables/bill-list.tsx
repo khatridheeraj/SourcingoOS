@@ -99,11 +99,13 @@ function Bill({ r, picked, onPick }: { r: BillRow; picked: boolean; onPick: (on:
         <summary>
           <span className="bill-main">
             <span className="bill-who">{r.name}</span>
-            <span className="bill-sub">
-              {r.bill ? <span className="code">{r.bill}</span> : "No bill in the app"}
-              {r.bill_date && <> · <span className="whitespace-nowrap">billed {dm(r.bill_date)}</span></>}
-              {r.due_on && <> · <span className="whitespace-nowrap">due {dm(r.due_on)}{r.due_on.slice(0, 4) !== r.bill_date?.slice(0, 4) ? ` ${r.due_on.slice(0, 4)}` : ""}</span></>}
-              {r.amount != null && r.amount !== r.open && <> · <span className="whitespace-nowrap">{money(Math.round(r.open))} left of {money(Math.round(r.amount))}</span></>}
+            <span className="bill-sub dots">
+              <span>
+                <span>{r.bill ? <span className="code">{r.bill}</span> : "No bill in the app"}</span>
+                {r.bill_date && <span>billed {dm(r.bill_date)}</span>}
+                {r.due_on && <span>due {dm(r.due_on)}{r.due_on.slice(0, 4) !== r.bill_date?.slice(0, 4) ? ` ${r.due_on.slice(0, 4)}` : ""}</span>}
+                {r.amount != null && r.amount !== r.open && <span>{money(Math.round(r.open))} left of {money(Math.round(r.amount))}</span>}
+              </span>
             </span>
             {(msme || r.order_no || r.note) && (
               <span className="bill-tags">

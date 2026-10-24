@@ -104,10 +104,12 @@ export default async function PayablesPage({ searchParams }: PageProps<"/payable
                     <div className="sup-top">
                       <div className="min-w-0">
                         <Link className="sup-name" href={`/payables?s=${encodeURIComponent(s.ledger)}`}>{s.name}</Link>
-                        <div className="sup-sub">
-                          {s.bills.filter((b) => b.bill).length} {s.bills.filter((b) => b.bill).length === 1 ? "bill" : "bills"}
-                          {s.nextDue && ` · ${s.nextDue < today ? "oldest due" : "next due"} ${day(s.nextDue)}`}
-                          {!s.factoryId && " · not a factory in the app"}
+                        <div className="sup-sub dots">
+                          <span>
+                            <span>{s.bills.filter((b) => b.bill).length} {s.bills.filter((b) => b.bill).length === 1 ? "bill" : "bills"}</span>
+                            {s.nextDue && <span>{s.nextDue < today ? "oldest due" : "next due"} {day(s.nextDue)}</span>}
+                            {!s.factoryId && <span>not a factory in the app</span>}
+                          </span>
                         </div>
                         <div className="bill-tags">
                           {!isMsme45(s.msme) && <span className="chip">{s.days} days</span>}
