@@ -9,6 +9,7 @@ import { BillList, type BillRow } from "./bill-list";
 import { loadPayables } from "./load";
 import { TermsForm } from "./terms-form";
 
+const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 const VIEWS = [{ key: "due", label: "By due date" }, { key: "suppliers", label: "By supplier" }];
 const WHO = [{ key: "all", label: "All" }, { key: "factories", label: "Factories" }, { key: "others", label: "Other suppliers" }];
 
@@ -72,14 +73,13 @@ export default async function PayablesPage({ searchParams }: PageProps<"/payable
               <small>{t.weekBills ? `${t.weekBills} ${t.weekBills === 1 ? "bill" : "bills"}` : "Nothing this week"}</small>
             </Link>
             <div className="kpi"><span className="kpi-label"><i aria-hidden />Due in 30 days</span><b className="num">{lakh(t.month)}</b><small>Overdue included</small></div>
-            <div className="kpi"><span className="kpi-label"><i aria-hidden />Total to pay</span><b className="num">{lakh(t.owed)}</b><small>{new Set(shown.map((b) => b.ledger)).size} suppliers</small></div>
+            <div className="kpi"><span className="kpi-label"><i aria-hidden />Total to pay</span><b className="num">{lakh(t.owed)}</b><small>{plural(new Set(shown.map((b) => b.ledger)).size, "supplier")}</small></div>
           </div>
 
           {t.msmeLate > 0 && (
             <div className="latebox" role="status">
               <b>{t.msmeLate} MSME {t.msmeLate === 1 ? "bill" : "bills"} past {MSME_DAYS} days, {money(Math.round(t.msmeLateAmount))}.</b>{" "}
-              By law (MSMED Act) micro and small enterprises are paid within {MSME_DAYS} days. Late, interest runs at three times the bank rate,
-              and the amount can&apos;t be claimed as an expense until it is paid (income tax 43B(h)).
+              Pay {t.msmeLate === 1 ? "it" : "them"} first: the law sets interest on late MSME bills.
             </div>
           )}
 
@@ -140,6 +140,10 @@ export default async function PayablesPage({ searchParams }: PageProps<"/payable
           A bill is paid when Tally has a payment or debit note against it. Payments made on account, with no bill named, are set against the oldest bills first,
           so the total always matches the supplier&apos;s balance in Tally. Due dates count from the date the bill is booked in Tally:
           the supplier&apos;s payment days (60 unless set), or {MSME_DAYS} days for a micro or small enterprise. Nothing here changes Tally.
+        </p>
+        <p>
+          By law (MSMED Act) micro and small enterprises are paid within {MSME_DAYS} days. Late, interest runs at three times the bank rate,
+          and the amount can&apos;t be claimed as an expense until it is paid (income tax 43B(h)).
         </p>
       </details>
     </>
