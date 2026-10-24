@@ -134,7 +134,7 @@ export default async function BuyerPage() {
                               <span>{stepName(s)}</span>
                               <small>
                                 {s.done_on ? `Done ${dm(s.done_on)}` : now ? (s.planned_on && s.planned_on >= today ? `In progress, by ${dm(s.planned_on)}` : "In progress")
-                                  : s.planned_on && s.planned_on >= today ? `Planned ${dm(s.planned_on)}` : "Coming up"}
+                                  : s.planned_on && s.planned_on >= today ? `Planned ${dm(s.planned_on)}` : null}
                               </small>
                             </li>
                           );
