@@ -3,16 +3,17 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { day, dayAt, daysBetween, DEFAULT_BUFFER_DAYS, planDueAt, PLAN_HOURS, qty, TNA_STEPS } from "@/lib/format";
+import { day, dayAt, daysBetween, defaultBuffer, planDueAt, PLAN_HOURS, qty, TNA_STEPS } from "@/lib/format";
 import { uploadPhotos } from "@/lib/photos";
 import { toast } from "@/components/toast";
-import { project, shipRisk, fillEmptyTargets } from "@/lib/tna-plan";
+import { project, shipRisk, fillEmptyTargets, stepDays } from "@/lib/tna-plan";
 import { FactoryLink } from "../../factories/factory-link";
 import { sizeEntries } from "@/lib/sizes";
 import { StyleDetails, type StyleDetail } from "./style-details";
-import { acceptTargetsForFactory, releaseFactoryPo, requestPlan, requestPoLock, saveLineStages, sendBackPoLock, setStylePhoto, type LineStageInput } from "../actions";
+import { acceptTargetsForFactory, releaseFactoryPo, requestPlan, requestPoLock, saveLineStages, sendBackPoLock, setLineProduct, setStylePhoto, type LineStageInput } from "../actions";
 
-export type StyleRow = { id: string; style: string; colour: string; qty: number; photoUrl: string | null; hasRate: boolean; detail: StyleDetail };
+// fabricOrder: a fabric style, whose TNA skips the garment-making steps.
+export type StyleRow = { id: string; style: string; colour: string; qty: number; photoUrl: string | null; hasRate: boolean; fabricOrder: boolean; detail: StyleDetail };
 export type FactoryGroup = {
   factoryId: string | null;
   factoryName: string;
@@ -104,7 +105,7 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
   const [backNote, setBackNote] = useState<Record<string, string>>({});
   const [sendingBack, setSendingBack] = useState("");
   const [buffers, setBuffers] = useState<Record<string, string>>(
-    Object.fromEntries(groups.filter((g) => g.factoryId).map((g) => [g.factoryId!, String(g.bufferDays ?? DEFAULT_BUFFER_DAYS)])));
+    Object.fromEntries(groups.filter((g) => g.factoryId).map((g) => [g.factoryId!, String(g.bufferDays ?? defaultBuffer(g.lines.length > 0 && g.lines.every((l) => l.fabricOrder)))])));
   const [pending, start] = useTransition();
   // Styles whose fabric, sizes and files are open.
   const [detailShown, setDetailShown] = useState<Set<string>>(new Set());
@@ -143,7 +144,9 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
   function fillTargets(g: FactoryGroup, target: string) {
     if (target < today) {
       setNotice("");
-      setError("The target date has already passed, so standard targets would all be overdue. Move the ship date, or set the targets by hand.");
+      setError(dueDate && dueDate >= today
+        ? `The target date has already passed. Lower the buffer to ${daysBetween(today, dueDate)} ${daysBetween(today, dueDate) === 1 ? "day" : "days"} or less to keep the ship date, or move the ship date.`
+        : "The target date has already passed, so standard targets would all be overdue. Move the ship date, or set the targets by hand.");
       return;
     }
     setDates((d) => {
@@ -153,7 +156,7 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
           const c = d[key(l.id, s.key)] ?? blank;
           return { stage: s.key, on: c.planned_on || c.done_on || null };
         });
-        const plan = fillEmptyTargets(steps, target, today);
+        const plan = fillEmptyTargets(steps, target, today, stepDays(l.fabricOrder));
         for (const [st, on] of Object.entries(plan)) next[key(l.id, st)] = { ...(d[key(l.id, st)] ?? blank), planned_on: on };
       }
       return next;
@@ -279,6 +282,22 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
       } finally {
         setBusy("");
       }
+      router.refresh();
+    });
+  }
+
+  // Garment or fabric: a fabric style skips the garment-making steps. Unsaved dates would be dropped by the reload.
+  function product(l: StyleRow, fabric: boolean) {
+    if (fabric === l.fabricOrder) return;
+    if (changed.length) { setNotice(""); setError("Save or undo the date changes first."); return; }
+    setError("");
+    setBusy(`product:${l.id}`);
+    start(async () => {
+      const res = await setLineProduct(orderId, l.id, fabric ? "fabric" : "garment");
+      setBusy("");
+      if (res.error) return setError(res.error);
+      // The reload starts this screen again from the saved steps, so the message goes in a toast.
+      toast(fabric ? `${l.style} is fabric: the garment-making steps are off its TNA` : `${l.style} is a garment again, with every standard step`);
       router.refresh();
     });
   }
@@ -516,7 +535,9 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
             {g.factoryId && target && !released && open && target < today && (
               <div className="warnbox mb-2" role="status">
                 <b>The target date {day(target)} has already passed.</b> Plan the real dates ahead anyway; steps after it are marked.
-                {canEdit && <> To lock the plan, <a href="#ship" className="link font-semibold">move the ship date</a> to the new delivery date agreed with the buyer.</>}
+                {canEdit && (dueDate && dueDate >= today
+                  ? <> The ship date {day(dueDate)} is still ahead: lower the buffer to {daysBetween(today, dueDate)} {daysBetween(today, dueDate) === 1 ? "day" : "days"} in Plan by hand or Start production, or <a href="#ship" className="link font-semibold">move the ship date</a>.</>
+                  : <> To lock the plan, <a href="#ship" className="link font-semibold">move the ship date</a> to the new delivery date agreed with the buyer.</>)}
               </div>
             )}
             {critical && (
@@ -559,10 +580,16 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
                         <span>{[l.colour, `${qty(l.qty)} pcs`].filter(Boolean).join(" · ")}</span>
                         <button type="button" className="link w-fit text-left text-xs" aria-expanded={detailOpen} aria-controls={`detail-${l.id}`}
                           onClick={() => setDetailShown((d) => { const n = new Set(d); if (n.has(l.id)) n.delete(l.id); else n.add(l.id); return n; })}>
-                          {[l.detail.fabric ? (l.detail.fabric.length > 22 ? `${l.detail.fabric.slice(0, 21)}…` : l.detail.fabric) : editable ? "Add fabric" : "", sizeCount ? `${sizeCount} sizes` : editable ? "sizes" : "",
+                          {[l.detail.fabric ? (l.detail.fabric.length > 22 ? `${l.detail.fabric.slice(0, 21)}…` : l.detail.fabric) : editable ? "Add fabric" : "", sizeCount ? `${sizeCount} sizes` : editable && !l.fabricOrder ? "sizes" : "",
                             techPack ? "tech pack ✓" : editable ? "tech pack" : ""].filter(Boolean).join(" · ") || "Fabric, sizes and files"}
                           {detailOpen ? " ▴" : " ▾"}
                         </button>
+                        {editable && !released ? (
+                          <div className="seg seg-sm w-fit" role="group" aria-label={`What ${l.style} is`}>
+                            <button type="button" aria-pressed={!l.fabricOrder} disabled={pending} onClick={() => product(l, false)}>Garment</button>
+                            <button type="button" aria-pressed={l.fabricOrder} disabled={pending} onClick={() => product(l, true)}>Fabric</button>
+                          </div>
+                        ) : l.fabricOrder && <span className="chip w-fit">Fabric</span>}
                         {editable && l.photoUrl && (
                           <label className={`link w-fit cursor-pointer text-xs ${pending ? "pointer-events-none opacity-50" : ""}`}>
                             {busy === `photo:${l.id}` ? "Uploading…" : "Change photo"}
@@ -609,7 +636,7 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
                       <div id={`steps-${l.id}`}>
                         <div className="step-head" aria-hidden><span>Step</span><span>Factory</span><span>Target</span><span>Done</span><span>Status</span></div>
                         <ul className="step-list">
-                          {allSteps(l.id).filter((s) => !s.extra || !get(l.id, s.key).not_needed).map((s) => stepRow(l, s, released, target))}
+                          {allSteps(l.id).filter((s) => !get(l.id, s.key).not_needed || (!s.extra && !l.fabricOrder)).map((s) => stepRow(l, s, released, target))}
                         </ul>
                         {editable && (
                           <div className="step-add">

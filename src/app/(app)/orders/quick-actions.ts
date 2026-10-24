@@ -19,7 +19,7 @@ export async function loadQuick(orderId: string): Promise<{ error?: string; orde
   if (!/^[0-9a-f-]{36}$/i.test(orderId)) return { error: "That order wasn't found." };
   const supabase = await createClient();
   const [{ data: o, error }, { data: stages }, { data: pos }, { data: prices }, buyers, factories, team, { data: withPo }] = await Promise.all([
-    supabase.from("orders").select("id, order_no, buyer_id, buyer_po, ship_date, revised_ship_date, status, order_lines(id, style, colour, qty, factory_id, position)")
+    supabase.from("orders").select("id, order_no, buyer_id, buyer_po, ship_date, revised_ship_date, status, order_lines(id, style, colour, qty, factory_id, position, product)")
       .eq("id", orderId).is("order_lines.removed_at", null).maybeSingle(),
     supabase.from("line_stages").select("line_id, stage, label, planned_on, done_on, not_needed, added_at").eq("order_id", orderId).order("added_at").order("id"),
     supabase.from("factory_pos").select("factory_id, plan_requested_at, plan_requested_on, factory_sent_at, released_at, lock_requested_at, lock_note, buffer_days").eq("order_id", orderId),
@@ -40,7 +40,7 @@ export async function loadQuick(orderId: string): Promise<{ error?: string; orde
       return { key, label, planned_on: str(r?.planned_on), done_on: str(r?.done_on), not_needed: !!r?.not_needed, extra };
     };
     return {
-      id: l.id, style: l.style, colour: str(l.colour), qty: l.qty, hasRate: rate.get(l.id) != null, factoryId: l.factory_id,
+      id: l.id, style: l.style, colour: str(l.colour), qty: l.qty, hasRate: rate.get(l.id) != null, factoryId: l.factory_id, fabric: l.product === "fabric",
       steps: [...TNA_STEPS.map((t) => step(t.key, t.label, false)), ...rows.filter((s) => s.stage.startsWith("extra_")).map((s) => step(s.stage, str(s.label), true))],
     };
   };

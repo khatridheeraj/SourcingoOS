@@ -55,6 +55,9 @@ export const qcKindLabel = (k: string) => QC_KINDS.find((x) => x.key === k)?.lab
 export const PLAN_HOURS = 24;
 // Days kept between the factory's last date and the PO's delivery date, unless the merchandiser picks another buffer.
 export const DEFAULT_BUFFER_DAYS = 7;
+// Fabric goes from the mill straight to the buyer, with no garment making after it, so it keeps a shorter buffer.
+export const FABRIC_BUFFER_DAYS = 2;
+export const defaultBuffer = (fabric: boolean) => (fabric ? FABRIC_BUFFER_DAYS : DEFAULT_BUFFER_DAYS);
 // The current time, for comparing against deadlines on the server.
 export const nowMs = () => Date.now();
 export const planDueAt = (requestedAt: string) => new Date(Date.parse(requestedAt) + PLAN_HOURS * 3_600_000);

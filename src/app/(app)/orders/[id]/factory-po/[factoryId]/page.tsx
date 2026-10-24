@@ -11,7 +11,7 @@ import { PoDetailsForm } from "./po-details";
 import { PoPhotoSlot, PoSend } from "./po-send";
 import { PrintPo } from "./print-po";
 
-type Line = { id: string; style: string; description: string | null; colour: string | null; qty: number; fabric: string | null; sizes: Record<string, number> | null; factory_id: string | null; position: number; photo_path: string | null };
+type Line = { id: string; style: string; description: string | null; colour: string | null; qty: number; fabric: string | null; sizes: Record<string, number> | null; factory_id: string | null; position: number; photo_path: string | null; product: string };
 
 // The steps a factory is held to, shown on its PO.
 const KEY_STEPS = [
@@ -21,6 +21,14 @@ const KEY_STEPS = [
   { key: "final_qc", label: "Final QC" },
   { key: "ex_factory", label: "Ex-factory" },
 ];
+// A fabric style has no garment samples: the strike off is what the factory is held to before bulk.
+const FABRIC_KEY_STEPS = [
+  { key: "greige", label: "Greige" },
+  { key: "strike_off", label: "Strike off" },
+  { key: "final_qc", label: "Final QC" },
+  { key: "ex_factory", label: "Ex-factory" },
+];
+const keySteps = (l: Line) => (l.product === "fabric" ? FABRIC_KEY_STEPS : KEY_STEPS);
 
 // Dates on the PO read the way the team writes them by hand: 15/11/26.
 const istDay = (ts: string) => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(new Date(ts));
@@ -35,7 +43,7 @@ export default async function FactoryPoPage({ params }: PageProps<"/orders/[id]/
   if (!canEditOrders(me?.role) || !me?.companyId) redirect("/");
   const supabase = await createClient();
   const [{ data: o }, { data: f }, { data: pos }, { data: co }, { data: prices }, { data: withPo }] = await Promise.all([
-    supabase.from("orders").select("id, order_no, buyer_po, ship_date, revised_ship_date, status, order_lines(id, style, description, colour, qty, fabric, sizes, factory_id, position, photo_path)")
+    supabase.from("orders").select("id, order_no, buyer_po, ship_date, revised_ship_date, status, order_lines(id, style, description, colour, qty, fabric, sizes, factory_id, position, photo_path, product)")
       .eq("id", id).is("order_lines.removed_at", null).maybeSingle(),
     supabase.from("factories").select("id, name, city, contact_name, phone, tally_ledger, address, gstin, email").eq("id", factoryId).maybeSingle(),
     supabase.from("factory_pos").select("factory_id, released_at, buffer_days, created_at, po_no, delivery_note, lock_requested_at, lock_requested_by, lock_note, lock_note_at, mail_to, mail_cc, mail_requested_at, mailed_at, last_mailed_at, follow_ups, reply_at, reply_text, accepted_at, accepted_via, accept_note").eq("order_id", id).order("created_at"),
@@ -49,7 +57,7 @@ export default async function FactoryPoPage({ params }: PageProps<"/orders/[id]/
   if (!lines.length) notFound();
   const photoPaths = lines.map((l) => l.photo_path).filter(Boolean) as string[];
   const [{ data: stages }, { data: terms }, { data: signed }, { data: ledger }, { data: poNoRpc }, { data: blocker }, { data: token }, { data: relBlock }, { data: sendBlock }, team] = await Promise.all([
-    supabase.from("line_stages").select("line_id, stage, planned_on, not_needed").in("line_id", lines.map((l) => l.id)).in("stage", KEY_STEPS.map((s) => s.key)),
+    supabase.from("line_stages").select("line_id, stage, planned_on, not_needed").in("line_id", lines.map((l) => l.id)).in("stage", [...new Set([...KEY_STEPS, ...FABRIC_KEY_STEPS].map((s) => s.key))]),
     // Payment terms are kept per Tally ledger and only Accounts and the owner can read them; everyone else sees the usual 60 days.
     f.tally_ledger ? supabase.from("supplier_terms").select("days").eq("ledger", f.tally_ledger).maybeSingle() : Promise.resolve({ data: null }),
     photoPaths.length ? supabase.storage.from(PHOTO_BUCKET).createSignedUrls(photoPaths, 3600) : Promise.resolve({ data: [] }),
@@ -81,7 +89,7 @@ export default async function FactoryPoPage({ params }: PageProps<"/orders/[id]/
   const vendorGstin = f.gstin || ledger?.gstin || "";
   const noPhoto = lines.filter((l) => !l.photo_path || !photoOf.get(l.photo_path));
   const keyDates = (stages ?? []).some((s) => s.planned_on)
-    ? lines.map((l) => `${lines.length > 1 ? `${l.style}: ` : ""}${KEY_STEPS.map((s) => `${s.label} ${planned(l.id, s.key)}`).join(" · ")}`).join("; ")
+    ? lines.map((l) => `${lines.length > 1 ? `${l.style}: ` : ""}${keySteps(l).map((s) => `${s.label} ${planned(l.id, s.key)}`).join(" · ")}`).join("; ")
     : null;
   const owner = team.find((m) => m.role === "owner" && m.active);
   const nameOf = (uid: string | null | undefined) => (uid && team.find((m) => m.user_id === uid)) || null;

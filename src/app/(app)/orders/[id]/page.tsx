@@ -39,7 +39,7 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
   const supabase = await createClient();
   const { data: o } = await supabase
     .from("orders")
-    .select("id, company_id, order_no, edit_no, buyer_id, buyer_po, po_date, ship_date, status, merchandiser_id, notes, buyer_terms, stage, stage_at, revised_ship_date, delay_reason, closed_short_at, closed_short_by, short_reason, created_at, updated_at, order_lines(id, style, description, colour, qty, factory_id, position, photo_path, fabric, sizes)")
+    .select("id, company_id, order_no, edit_no, buyer_id, buyer_po, po_date, ship_date, status, merchandiser_id, notes, buyer_terms, stage, stage_at, revised_ship_date, delay_reason, closed_short_at, closed_short_by, short_reason, created_at, updated_at, order_lines(id, style, description, colour, qty, factory_id, position, photo_path, fabric, sizes, product)")
     .eq("id", id)
     .is("order_lines.removed_at", null)
     .maybeSingle();
@@ -154,6 +154,7 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
       groups.push(g);
     }
     g.lines.push({ id: l.id, style: l.style, colour: str(l.colour), qty: l.qty, photoUrl: (l.photo_path && urlByPath.get(l.photo_path)) || null, hasRate: l.factory_rate != null,
+      fabricOrder: l.product === "fabric",
       detail: {
         fabric: str(l.fabric), sizes: (l.sizes ?? {}) as Record<string, number>,
         files: (lineFiles ?? []).filter((f) => f.line_id === l.id).map((f) => ({ id: f.id, kind: f.kind as LineFileKind, name: f.file_name || "File", url: urlByPath.get(f.path) ?? null })),
