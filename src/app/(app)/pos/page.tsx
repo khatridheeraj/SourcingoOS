@@ -133,9 +133,11 @@ export default async function IncomingPosPage({ searchParams }: PageProps<"/pos"
                   {/* Only states worth noticing get a chip: still reading, couldn't read, or set aside. */}
                   <div className="todo-chip">{["reading", "receiving", "failed", "not_po"].includes(r.status) && <span className={s?.cls}>{s?.label}</span>}</div>
                   {/* Like Home's To do: only red rows (waiting too long, or couldn't be read) get the primary button. */}
-                  <Link href={`/pos/${r.id}`} className={`btn sm todo-act ${(r.status === "to_check" && waited > 0) || r.status === "failed" ? "primary" : ""}`}>
-                    {r.status === "to_check" || r.status === "failed" ? "Check" : r.status === "held" ? "Accept or ignore" : "Open"}
-                  </Link>
+                  <div className="todo-acts">
+                    <Link href={`/pos/${r.id}`} className={`btn sm todo-act ${(r.status === "to_check" && waited > 0) || r.status === "failed" ? "primary" : ""}`}>
+                      {r.status === "to_check" || r.status === "failed" ? "Check" : r.status === "held" ? "Accept or ignore" : "Open"}
+                    </Link>
+                  </div>
                 </li>
               );
             })}
