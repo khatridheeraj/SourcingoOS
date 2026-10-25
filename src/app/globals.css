@@ -712,6 +712,7 @@ h1, h2, h3 { font-family: var(--font-display); text-wrap: balance; font-weight: 
   .no-photo .bstyle-body { padding-left: 18px; }
   .btimeline { display: block; columns: 2; column-gap: 20px; align-self: start; }
   .btimeline li { break-inside: avoid; }
+  .btimeline:only-child { grid-column: 1 / -1; columns: 3; }
   .btimeline li { display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 6px 0; border-bottom: 1px dashed var(--line); font-size: 13px; }
   .btimeline i { display: grid; place-items: center; width: 18px; height: 18px; border-radius: 50%; font-size: 10px; font-style: normal; font-weight: 700; box-shadow: inset 0 0 0 1.5px var(--line-strong); }
   .btimeline li.done i { background: var(--ok); box-shadow: none; color: #fff; }
@@ -978,7 +979,8 @@ h1, h2, h3 { font-family: var(--font-display); text-wrap: balance; font-weight: 
     .bstyle-body { grid-template-columns: minmax(0, 1fr); padding: 0 16px 16px; }
     .ship-lines li { grid-template-columns: minmax(0, 1fr) max-content; gap: 4px 10px; }
     .ship-lines li > .code { grid-column: 1 / -1; }
-    .btimeline { columns: 1; }
+    .btimeline, .btimeline:only-child { columns: 1; }
+    .btimeline li:last-child { border-bottom: 0; }
     .btimeline li { padding: 9px 0; font-size: 14px; }
     .fprog { margin: 0 -4px 12px; padding: 12px; }
     .fprog-row { grid-template-columns: minmax(0, 1fr); gap: 8px; }
