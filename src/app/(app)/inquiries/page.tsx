@@ -10,6 +10,8 @@ import { createClient } from "@/lib/supabase/server";
 import { InquiryButton, InquirySheet, type StepInquiry } from "./inquiry-step";
 import { QuickAdd } from "./quick-add";
 import { CloseQuiet } from "./close-quiet";
+import { PageTabs } from "@/components/page-tabs";
+import { INBOX_TABS } from "@/lib/page-groups";
 
 const VIEWS = [
   { key: "open", label: "Open" },
@@ -123,6 +125,7 @@ export default async function InquiriesPage({ searchParams }: PageProps<"/inquir
 
   return (
     <>
+      <PageTabs tabs={INBOX_TABS} label="Buyer emails" />
       <div className="head inq-head">
         <div className="grow">
           <h1>Inquiries</h1>

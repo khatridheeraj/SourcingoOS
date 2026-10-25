@@ -4,6 +4,8 @@ import { addDays, AGE_BUCKETS, ageing, type Advice, buyerTotals, INVOICE_LABEL, 
 import { type ChequeLine, ChequeTable, CreditDays } from "./forms";
 import { loadBooks } from "./load";
 import { type SettleRow, TallySettle } from "./tally-settle";
+import { PageTabs } from "@/components/page-tabs";
+import { MONEY_TABS } from "@/lib/page-groups";
 
 // "NEFT ₹2,00,000 on 30 Sep, RTGS ₹31,000 on 1 Oct", shortened past three.
 const paidBy = (rs: ReceiptLine[]) => {
@@ -249,6 +251,7 @@ export default async function PaymentsPage({ searchParams }: PageProps<"/payment
 
   return (
     <>
+      <PageTabs tabs={MONEY_TABS} label="Money" />
       <div className="head">
         <div className="grow">
           <h1>Payments</h1>

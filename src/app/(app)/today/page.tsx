@@ -25,6 +25,8 @@ import { isFinance, loadBooks } from "../payments/load";
 import { paymentTodos } from "@/lib/payments";
 import { loadPayables } from "../payables/load";
 import { bySupplier, dueOf, lakh as rupees, totals } from "@/lib/payables";
+import { PageTabs } from "@/components/page-tabs";
+import { HOME_TABS } from "@/lib/page-groups";
 
 type Sev = "bad" | "warn" | "ok" | "";
 // One line of the to-do list: what it is, why, and the one button that deals with it.
@@ -684,6 +686,7 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
 
   return (
     <>
+      {team && <PageTabs tabs={HOME_TABS} label="Home" />}
       <section className="day" aria-label="Your day">
         <div className="day-main">
           <span className="day-date">{longDay.format(ist(today))}</span>

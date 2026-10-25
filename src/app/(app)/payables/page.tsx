@@ -8,6 +8,8 @@ import { isFinance } from "../payments/load";
 import { BillList, type BillRow } from "./bill-list";
 import { loadPayables } from "./load";
 import { TermsForm } from "./terms-form";
+import { PageTabs } from "@/components/page-tabs";
+import { MONEY_TABS } from "@/lib/page-groups";
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 const VIEWS = [{ key: "due", label: "By due date" }, { key: "suppliers", label: "By supplier" }];
@@ -44,6 +46,7 @@ export default async function PayablesPage({ searchParams }: PageProps<"/payable
 
   return (
     <>
+      <PageTabs tabs={MONEY_TABS} label="Money" />
       <div className="head">
         <div className="grow">
           <h1>{oneName ? oneName : "Bills to pay"}</h1>
