@@ -1699,8 +1699,6 @@ h1, h2, h3 { font-family: var(--font-display); text-wrap: balance; font-weight: 
   /* Inquiries: quick add on top, then the open ones grouped by what to do. */
   .inq-head { align-items: center; }
   .inq-sum { margin-top: 2px; font-size: 13.5px; color: var(--muted); }
-  .inq-sum > span, .inq-meta > span { white-space: nowrap; }
-  .inq-sum > span:not(:last-child)::after, .inq-meta > span:not(:last-child)::after { content: "·"; margin: 0 2px 0 7px; color: var(--faint); font-weight: 400; }
   .qadd { margin-top: 16px; border-radius: 14px; background: var(--surface); box-shadow: var(--shadow), 0 0 0 1px var(--line); transition: box-shadow 0.15s; }
   .qadd:focus-within, .qadd.is-open { box-shadow: var(--shadow), 0 0 0 1px var(--accent), 0 0 0 4px color-mix(in srgb, var(--accent) 14%, transparent); }
   .qadd-box { display: flex; align-items: flex-start; gap: 8px; padding: 8px 8px 8px 14px; }

@@ -100,16 +100,16 @@ export default async function InquiriesPage({ searchParams }: PageProps<"/inquir
       : <span key="w">Quiet since {day(lastTouch(i)).replace(/ \d{4}$/, "")}</span>;
     return (
       <li className="inq-row">
-        <span className={`sev ${isDue ? "bad" : i.status === "converted" ? "ok" : s > 0 ? "warn" : ""}`} aria-hidden />
+        <span className={`sev ${isDue ? "bad" : i.status === "converted" ? "ok" : ""}`} aria-hidden />
         <Link href={`/inquiries/${i.id}`} className="min-w-0 inq-main">
           <span className="inq-who">{who(i)}{!i.buyer_id && i.status !== "converted" && <span className="chip ml-1.5 align-middle">New buyer</span>}</span>
           <span className="inq-what">{i.product}</span>
-          <span className="inq-meta">
-            {[
-              i.status === "converted" ? <span key="st" className="text-ok">Order {orderNo.get(i.order_id ?? "") ?? ""}</span> : i.status !== "lost" ? <span key="st" className="inq-stage">{STAGES[s]}</span> : null,
-              ...bits.map((b) => <span key={b}>{b}</span>),
-              when,
-            ].filter(Boolean).flatMap((x, n) => (n ? [" ", x] : [x]))}
+          <span className="inq-meta dots">
+            <span>
+              {i.status === "converted" ? <span className="text-ok">Order {orderNo.get(i.order_id ?? "") ?? ""}</span> : i.status !== "lost" ? <span className="inq-stage">{STAGES[s]}</span> : null}
+              {bits.map((b) => <span key={b}>{b}</span>)}
+              {when}
+            </span>
           </span>
         </Link>
         {isOpenInquiry(i.status) && (quiet(i)
@@ -126,7 +126,7 @@ export default async function InquiriesPage({ searchParams }: PageProps<"/inquir
       <div className="head inq-head">
         <div className="grow">
           <h1>Inquiries</h1>
-          {summary.length > 0 && <p className="inq-sum">{summary.map((s, n) => <span key={n}>{s}</span>).flatMap((x, n) => (n ? [" ", x] : [x]))}</p>}
+          {summary.length > 0 && <div className="inq-sum dots"><span>{summary.map((s, n) => <span key={n}>{s}</span>)}</span></div>}
         </div>
         <Link href="/inquiries/new" className="btn ghost sm hide-phone">Full form</Link>
       </div>
