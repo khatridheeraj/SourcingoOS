@@ -46,6 +46,9 @@ export type JourneyInput = {
   shipBlocker?: string | null;
   // The date the order ships by: the new ship date when it moved, else the buyer's.
   due?: string | null;
+  // Days the latest style will likely miss the ship date by (late steps push later ones back). When it is known
+  // and 0, steps past their target are paperwork to catch up on, not a late order, so they show amber, not red.
+  riskDays?: number;
   today: string;
 };
 
@@ -149,10 +152,16 @@ function route(j: JourneyInput): Journey {
       return { ...base, stage: "make", next: { title: `Check ${j.samplesToAct} ${j.samplesToAct === 1 ? "sample" : "samples"} from the factory`, detail: "Look at the photos, then send it on to the buyer or back to the factory.", action: { kind: "samples" }, label: "Open samples", tone: "info" } };
     }
     const late = overdue > 0;
+    // Past target but the ship date still holds: most likely done and not marked yet, so ask for an update in amber.
+    const catchUp = late && j.riskDays === 0;
+    const risk = j.riskDays ?? 0;
     return { ...base, stage: "make", next: {
-      title: late ? `${overdue} ${overdue === 1 ? "step is" : "steps are"} past target` : nextStep ? `Next: ${nextStep.label}${nextStep.planned ? ` by ${dm(nextStep.planned)}` : ""}` : "In production",
-      detail: late ? `Mark what's done, or chase the factory for the rest. ${done} of ${total} steps done.` : `${done} of ${total} steps done. Mark steps done as the factory finishes them.`,
-      action: { kind: "update" }, label: "Update progress", tone: late ? "bad" : "info",
+      title: catchUp ? `${overdue} ${overdue === 1 ? "step needs" : "steps need"} an update`
+        : late ? `${overdue} ${overdue === 1 ? "step is" : "steps are"} past target` : nextStep ? `Next: ${nextStep.label}${nextStep.planned ? ` by ${dm(nextStep.planned)}` : ""}` : "In production",
+      detail: catchUp ? `Their targets have passed with no Done date. Mark what's done, and give the rest a new target. The ship date still holds. ${done} of ${total} steps done.`
+        : late ? `Mark what's done, or chase the factory for the rest.${risk > 0 ? ` At this pace it ships about ${risk} ${risk === 1 ? "day" : "days"} late.` : ""} ${done} of ${total} steps done.`
+        : `${done} of ${total} steps done. Mark steps done as the factory finishes them.`,
+      action: { kind: "update" }, label: "Update progress", tone: catchUp ? "warn" : late ? "bad" : "info",
     } };
   }
 
