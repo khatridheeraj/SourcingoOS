@@ -232,7 +232,7 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
         // A target already passed isn't a promise to the buyer: say the step is under way instead.
         const by = next?.row?.planned_on && next.row.planned_on >= today ? ` by ${dm(next.row.planned_on)}` : next?.row?.planned_on ? " (in progress)" : "";
         return `• ${l.style}${l.colour ? ` (${l.colour})` : ""}, ${qty(l.qty)} pcs: `
-          + (at < 0 ? `not started${next ? `, first step ${next.label}${by}` : ""}` : `at ${st[at].label}${next ? `, next ${next.label}${by}` : ""}`)
+          + (at < 0 ? `not started${next ? `, first step ${next.label}${by}` : ""}` : `${st[at].label} done${next ? `, next ${next.label}${by}` : ""}`)
           + `${finalOk(l.id) ? " ✅ Final QC passed" : ""}`;
       }),
       "",

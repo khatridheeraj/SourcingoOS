@@ -15,9 +15,10 @@ export function styleProgress(lineIds: string[], rows: StepRow[], due: string | 
   const m = lineIds.length;
   const step = slowest < 0 || !Number.isFinite(slowest) ? "" : TNA_STEPS[slowest].label;
   return {
-    text: !m ? "" : m === 1 ? (step ? `At ${step}` : "No step done yet")
-      : n === m ? (step ? `All ${m} styles at ${step}` : `No step done yet on any of ${m} styles`)
-      : step ? `${n} of ${m} styles still at ${step}` : `${n} of ${m} styles have no step done yet`,
+    // Named by the last step finished ("Cutting done"), never "At Cutting", which reads as if it were still under way.
+    text: !m ? "" : m === 1 ? (step ? `${step} done` : "No step done yet")
+      : n === m ? (step ? `${step} done on all ${m} styles` : `No step done yet on any of ${m} styles`)
+      : step ? `${n} of ${m} styles only up to ${step}` : `${n} of ${m} styles have no step done yet`,
     planned: mine.filter((s) => s.planned_on).length,
     done: mine.filter((s) => s.done_on).length,
     total: mine.filter((s) => s.planned_on || s.done_on).length,
