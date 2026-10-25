@@ -127,8 +127,9 @@ export async function saveOrder(order: OrderInput, lines: LineInput[], incomingI
 
 export type ProgressInput = { revised_ship_date: string; delay_reason: string };
 
-// Updates only the production details, so it never touches the styles or prices.
-export async function saveProgress(id: string, p: ProgressInput): Promise<{ error?: string }> {
+// Sets or clears the new ship date. A later date moves every unfinished step target with it, so the plan
+// follows the order instead of showing it late (move_ship_date in the database).
+export async function saveProgress(id: string, p: ProgressInput): Promise<{ error?: string; moved?: number }> {
   const me = await getMe();
   if (!me?.role) return { error: "Your account is not switched on yet." };
   if (!canEditOrders(me.role)) return { error: "Only the orders team can change orders." };
@@ -136,20 +137,13 @@ export async function saveProgress(id: string, p: ProgressInput): Promise<{ erro
   if (p.revised_ship_date && !p.delay_reason.trim()) return { error: "Say why the ship date moved, so everyone knows." };
 
   const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("orders")
-    .update({
-      revised_ship_date: p.revised_ship_date || null,
-      delay_reason: p.delay_reason.trim() || null,
-    })
-    .eq("id", id)
-    .eq("status", "open")
-    .select("id");
+  const { data, error } = await supabase.rpc("move_ship_date", {
+    p_order: id, p_new: p.revised_ship_date || null, p_reason: p.delay_reason.trim(),
+  });
   if (error) return { error: friendly(error) };
-  if (!data?.length) return { error: "Only open orders can be updated here. Reload the page." };
   revalidatePath("/");
   revalidatePath(`/orders/${id}`);
-  return {};
+  return { moved: Number(data) || 0 };
 }
 
 // Closes an open order as shipped, from the Home screen's tidy-up list. The database still asks for a passed

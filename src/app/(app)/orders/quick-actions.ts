@@ -109,10 +109,9 @@ export async function startProduction(orderId: string, input: StartInput): Promi
   if (input.newShipDate) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(input.newShipDate) || input.newShipDate <= today) return { error: "Pick a new ship date after today." };
     if (!input.reason?.trim()) return { error: "Say why the ship date moves, so everyone knows." };
-    const { data, error } = await supabase.from("orders").update({ revised_ship_date: input.newShipDate, delay_reason: input.reason.trim().slice(0, 300) })
-      .eq("id", orderId).eq("status", "open").select("id");
+    // Moves any targets already set by the same days, like a new date saved on the order page.
+    const { error } = await supabase.rpc("move_ship_date", { p_order: orderId, p_new: input.newShipDate, p_reason: input.reason });
     if (error) return { error: friendly(error) };
-    if (!data?.length) return { error: "Only open orders can be updated. Reload the page." };
   }
   let factoryId = input.factoryId;
   if (input.styles?.length) {

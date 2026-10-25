@@ -21,12 +21,12 @@ export function OrderProduction({ id, open, canEdit, shipDate, today, stage, sta
   const router = useRouter();
   const [p, setP] = useState(initial);
   const [error, setError] = useState("");
-  const [saved, setSaved] = useState(false);
+  const [saved, setSaved] = useState("");
   const [pending, start] = useTransition();
 
   const change = (k: keyof ProgressInput, v: string) => {
     setP({ ...p, [k]: v });
-    setSaved(false);
+    setSaved("");
   };
   const due = p.revised_ship_date || shipDate;
   const lateBy = open && due && due < today ? daysBetween(due, today) : 0;
@@ -40,7 +40,8 @@ export function OrderProduction({ id, open, canEdit, shipDate, today, stage, sta
     start(async () => {
       const res = await saveProgress(id, p);
       if (res.error) return setError(res.error);
-      setSaved(true);
+      const by = daysBetween(initial.revised_ship_date || shipDate, p.revised_ship_date);
+      setSaved(res.moved ? `Saved. ${res.moved} unfinished ${res.moved === 1 ? "target" : "targets"} moved ${by} ${by === 1 ? "day" : "days"} later.` : "Saved");
       router.refresh();
     });
   }
@@ -66,7 +67,7 @@ export function OrderProduction({ id, open, canEdit, shipDate, today, stage, sta
           <span>New ship date</span>
           <input className="inp" type="date" value={p.revised_ship_date} disabled={locked}
             onChange={(e) => change("revised_ship_date", e.target.value)} />
-          <small>{shipDate ? `Buyer's date: ${day(shipDate)}. ` : ""}Leave blank if it hasn&apos;t moved.</small>
+          <small>{shipDate ? `Buyer's date: ${day(shipDate)}. ` : ""}Leave blank if it hasn&apos;t moved. Unfinished step targets move with it.</small>
         </label>
         <label className="field">
           <span>Reason for delay{p.revised_ship_date && <i> *</i>}</span>
@@ -79,7 +80,7 @@ export function OrderProduction({ id, open, canEdit, shipDate, today, stage, sta
         <div className="row mt-3">
           <button className="btn primary" disabled={pending || !dirty}>{pending ? "Saving…" : "Save ship date"}</button>
           {error && <span className="text-[13px] font-semibold text-bad" role="alert">{error}</span>}
-          {saved && !error && !dirty && <span className="text-[13px] font-semibold text-ok">Saved</span>}
+          {saved && !error && !dirty && <span className="text-[13px] font-semibold text-ok" role="status">{saved}</span>}
         </div>
       )}
     </form>
