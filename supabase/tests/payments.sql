@@ -42,8 +42,9 @@ do $$ begin
   if public.invoice_net((select id from public.invoices where invoice_no = 'SPL/001')) <> 90000 then raise exception 'credit note not netted'; end if;
 end $$;
 
--- One cheque pays two invoices.
-select public.save_cheque(jsonb_build_object('buyer_id', :'oz', 'cheque_no', '349892', 'cheque_date', '2026-07-27', 'amount', 140000,
+-- One cheque pays two invoices. Its dates follow today: a cheque held over 90 days stops counting, so a fixed date would go stale.
+select current_date - 30 as chq_date, current_date - 29 as dep_date, current_date - 27 as clr_date \gset
+select public.save_cheque(jsonb_build_object('buyer_id', :'oz', 'cheque_no', '349892', 'cheque_date', :'chq_date', 'amount', 140000,
   'allocations', jsonb_build_array(jsonb_build_object('invoice_id', :'inv1', 'amount', 90000), jsonb_build_object('invoice_id', :'inv2', 'amount', 50000)))) as chq1 \gset
 do $$ begin
   if public.invoice_covered((select id from public.invoices where invoice_no = 'SPL/002')) <> 50000 then raise exception 'cheque not set against invoice'; end if;
@@ -91,26 +92,26 @@ exception when raise_exception then
 end $$;
 
 -- Changing the split takes an invoice off the cheque (kept, marked removed) and adds it back later.
-select public.save_cheque(jsonb_build_object('id', :'chq1', 'buyer_id', :'oz', 'cheque_no', '349892', 'cheque_date', '2026-07-27', 'amount', 140000,
+select public.save_cheque(jsonb_build_object('id', :'chq1', 'buyer_id', :'oz', 'cheque_no', '349892', 'cheque_date', :'chq_date', 'amount', 140000,
   'allocations', jsonb_build_array(jsonb_build_object('invoice_id', :'inv1', 'amount', 90000))));
 do $$ begin
   if public.invoice_covered((select id from public.invoices where invoice_no = 'SPL/002')) <> 0 then raise exception 'invoice not taken off cheque'; end if;
   if (select count(*) from public.cheque_allocations) <> 2 then raise exception 'removed split should be kept, marked removed'; end if;
 end $$;
-select public.save_cheque(jsonb_build_object('id', :'chq1', 'buyer_id', :'oz', 'cheque_no', '349892', 'cheque_date', '2026-07-27', 'amount', 140000,
+select public.save_cheque(jsonb_build_object('id', :'chq1', 'buyer_id', :'oz', 'cheque_no', '349892', 'cheque_date', :'chq_date', 'amount', 140000,
   'allocations', jsonb_build_array(jsonb_build_object('invoice_id', :'inv1', 'amount', 90000), jsonb_build_object('invoice_id', :'inv2', 'amount', 50000))));
 
 -- Status: deposited then cleared; a cheque can't be deposited before its date.
 do $$ begin
-  perform public.set_cheque_status(array[(select id from public.cheques where cheque_no = '349892')], 'deposited', '2026-07-20');
+  perform public.set_cheque_status(array[(select id from public.cheques where cheque_no = '349892')], 'deposited', current_date - 37);
   raise exception 'deposited before the cheque date';
 exception when raise_exception then
   if sqlerrm not like '%can''t be deposited before%' then raise; end if;
 end $$;
-select public.set_cheque_status(array[:'chq1'::uuid], 'deposited', '2026-07-28');
-select public.set_cheque_status(array[:'chq1'::uuid], 'cleared', '2026-07-30');
+select public.set_cheque_status(array[:'chq1'::uuid], 'deposited', :'dep_date');
+select public.set_cheque_status(array[:'chq1'::uuid], 'cleared', :'clr_date');
 do $$ begin
-  if (select deposited_on || ' ' || cleared_on from public.cheques where cheque_no = '349892') <> '2026-07-28 2026-07-30' then
+  if (select deposited_on || ' ' || cleared_on from public.cheques where cheque_no = '349892') <> (current_date - 29) || ' ' || (current_date - 27) then
     raise exception 'status dates not kept';
   end if;
   perform public.set_cheque_status(array[(select id from public.cheques where cheque_no = '349892')], 'in_hand');
