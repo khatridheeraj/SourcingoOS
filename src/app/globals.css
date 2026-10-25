@@ -2065,7 +2065,8 @@ h1, h2, h3 { font-family: var(--font-display); text-wrap: balance; font-weight: 
     .oh .clock { min-width: 0; margin-top: 26px; padding: 10px 12px; border-radius: 12px; }
     .oh .clock b { font-size: 28px; }
     .oh .clock span { font-size: 11.5px; }
-    .oh .clock small { font-size: 11.5px; }
+    /* "New date 15 Nov 2026" wraps under itself instead of widening the clock and squeezing the buyer's name. */
+    .oh .clock small { max-width: 6.6em; font-size: 11.5px; }
   }
 
   /* The stages on the journey card open their part of the order. */
