@@ -237,7 +237,18 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
   const noPoAsked = new Set<string>();
   const shipSoonChip = (due: string | null | undefined): Item["chip"] =>
     !due ? { text: "No ship date", cls: "bad" } : due < addDays(today, 30) ? { text: `Ships ${dm(due)}`, cls: "warn" } : undefined;
+  // Past the ship date and not packed yet: a new date comes first, as on the order page (journey), so the order's
+  // merchandiser sees it at the top of Home. Its plan and step lines wait until the date is real again.
+  const pastDue = new Set<string>();
   for (const o of team ? active : []) {
+    const due = dueDate(o);
+    if (!due || due >= today || stageReached(o.stage, "packed")) continue;
+    pastDue.add(o.id);
+    now_.push({ key: `date:${o.id}`, href: `/orders/${o.id}#ship`, ...base(o), sev: "bad",
+      detail: `Was due ${dm(due)}. Agree a new ship date with the buyer and the factory, and say why it moved.`,
+      chip: { text: `${plural(daysBetween(due, today), "day")} late`, cls: "bad" }, action: "Set new ship date", sort: `0${due}` });
+  }
+  for (const o of team ? active.filter((x) => !pastDue.has(x.id)) : []) {
     const lines = o.order_lines ?? [];
     const href = `/orders/${o.id}#tna`;
     for (const f of [...new Set(lines.map((l) => l.factory_id).filter(Boolean))] as string[]) {
@@ -333,7 +344,7 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
   for (const s of live) if (!s.done_on && s.planned_on && s.planned_on < today) overdueBy.set(s.order_id, [...(overdueBy.get(s.order_id) ?? []), s]);
   for (const o of active) {
     const late = overdueBy.get(o.id);
-    if (!late) continue;
+    if (!late || pastDue.has(o.id)) continue;
     // Targets past on a plan that isn't locked yet: the Start production line above covers them.
     if (team && !releasedFor(o)) continue;
     const due = dueDate(o);
@@ -356,7 +367,7 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
   for (const s of live) if (!s.done_on && s.planned_on && s.planned_on >= today && s.planned_on <= week) weekBy.set(s.order_id, [...(weekBy.get(s.order_id) ?? []), s]);
   for (const o of active) {
     const due = weekBy.get(o.id);
-    if (!due) continue;
+    if (!due || pastDue.has(o.id)) continue;
     const first = due.reduce((m, s) => (s.planned_on! < m ? s.planned_on! : m), due[0].planned_on!);
     const steps = [...new Map(due.sort((a, b) => a.planned_on!.localeCompare(b.planned_on!)).map((s) => [s.stage, s.planned_on!])).entries()];
     const chip = when(first, today);

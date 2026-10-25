@@ -20,6 +20,7 @@ export function OrderJourney({ orderId, orderNo, j, canEdit, canRecordQc, shipBl
     else if (a.kind === "update") openOrderSheet(orderId, "update");
     else if (a.kind === "qc") { if (canRecordQc) openQcSheet(orderId, "final"); else go("qc"); }
     else if (a.kind === "po") go("details-po");
+    else if (a.kind === "date") go("ship");
     else if (a.kind === "review") go("tna");
     else if (a.kind === "samples") go("samples");
     else if (a.kind === "dispatch") go("dispatch");
