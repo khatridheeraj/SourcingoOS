@@ -154,7 +154,8 @@ export default async function GoodsPage({ searchParams }: PageProps<"/goods">) {
                     </div>
                   </div>
                   <div className="todo-chip" />
-                  <Link href={`/orders/${d.order_id}#dispatch`} className="btn sm todo-act">{held ? step.act : "Add GRN"}</Link>
+                  {/* Like Home's To do: only red rows (held too long, invoice overdue, GRN late) get the primary button. */}
+                  <Link href={`/orders/${d.order_id}#dispatch`} className={`btn sm todo-act ${sev === "bad" ? "primary" : ""}`}>{held ? step.act : "Add GRN"}</Link>
                 </li>
               );
             })}
