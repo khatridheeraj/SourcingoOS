@@ -13,14 +13,15 @@ const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "
 const dm = (d: string) => `${Number(d.slice(8, 10))} ${MONTHS[Number(d.slice(5, 7)) - 1]}`;
 const stepName = (s: Step) => s.label ?? TNA_STEPS.find((t) => t.key === s.stage)?.label ?? s.stage;
 
-// Where a style stands, in the buyer's words: the furthest step done and the one after it.
+// Where a style stands, in the buyer's words: the furthest step done ("PP sample done", not "At PP sample",
+// which reads as if it were still being made) and the one after it.
 // Inside targets are not deadlines for the buyer, so a passed target shows as "in progress", never as late.
 function where(l: Line, today: string) {
   const done = l.steps.filter((s) => s.done_on).length;
   let last = -1;
   l.steps.forEach((s, i) => { if (s.done_on) last = i; });
   const next = l.steps.slice(last + 1).find((s) => !s.done_on) ?? l.steps.find((s) => !s.done_on);
-  const at = last < 0 ? "Not started" : `At ${stepName(l.steps[last])}`;
+  const at = last < 0 ? "Not started" : `${stepName(l.steps[last])} done`;
   const then = !next ? "Every step done"
     : next.planned_on && next.planned_on >= today ? `Next: ${stepName(next)} by ${dm(next.planned_on)}` : `Next: ${stepName(next)}`;
   return { done, total: l.steps.length, at, then, next };
@@ -119,7 +120,7 @@ export default async function BuyerPage() {
                         <span className="stepper" aria-label={`${w.done} of ${w.total} steps done`}>
                           {l.steps.map((s) => <i key={s.stage} className={s.done_on ? "ok" : s === w.next ? "now" : ""} />)}
                         </span>
-                        <span className="style-line"><span>{w.at} · {w.done} of {w.total} done</span><b>{w.then}</b></span>
+                        <span className="style-line"><span>{w.at} · {w.done} of {w.total} steps</span><b>{w.then}</b></span>
                       </span>
                       {l.final_qc || !w.next || NEAR_QC.includes(w.next.stage) ? <span className={`chip ${qc.cls}`}>{qc.text}</span> : <span className="bstyle-nochip" aria-hidden />}
                       <svg className="bstyle-chev" viewBox="0 0 16 16" aria-hidden><path d="M4 6l4 4 4-4" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" /></svg>
@@ -134,7 +135,7 @@ export default async function BuyerPage() {
                               <span>{stepName(s)}</span>
                               <small>
                                 {s.done_on ? `Done ${dm(s.done_on)}` : now ? (s.planned_on && s.planned_on >= today ? `In progress, by ${dm(s.planned_on)}` : "In progress")
-                                  : s.planned_on && s.planned_on >= today ? `Planned ${dm(s.planned_on)}` : "Coming up"}
+                                  : s.planned_on && s.planned_on >= today ? `Planned ${dm(s.planned_on)}` : null}
                               </small>
                             </li>
                           );

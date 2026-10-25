@@ -3,7 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { canEditOrders, canEnterDone, canRecordQc, getMe } from "@/lib/auth";
 import { fetchAll } from "@/lib/fetch-all";
-import { day, dayAt, money, moneyShort, qty, SHIP_QC, stageReached, STATUS, TNA_STEPS, todayIST } from "@/lib/format";
+import { day, dayAt, money, moneyShort, qty, riskLate, SHIP_QC, stageReached, STATUS, TNA_STEPS, todayIST } from "@/lib/format";
 import { areaOf, journey, shipClock } from "@/lib/journey";
 import { fileNamesStyle, styleKey } from "@/lib/po-match";
 import { PhotoStack, ShipClock } from "@/components/order-ui";
@@ -25,7 +25,7 @@ import { ShareUpdate, type ShareOption } from "./share-update";
 import { formOptions } from "../options";
 import { SheetButton } from "@/components/order-sheet";
 import type { LineFileKind } from "../actions";
-import { loadShipProgress, orderShip, partText } from "@/lib/shipments";
+import { loadShipProgress, orderShip } from "@/lib/shipments";
 import { loadSampleThreads } from "@/lib/samples-server";
 import { SampleThreadCard } from "../../samples/sample-thread";
 import { PO_BUCKET, type StoredFile } from "@/lib/po-files";
@@ -233,7 +233,7 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
         // A target already passed isn't a promise to the buyer: say the step is under way instead.
         const by = next?.row?.planned_on && next.row.planned_on >= today ? ` by ${dm(next.row.planned_on)}` : next?.row?.planned_on ? " (in progress)" : "";
         return `• ${l.style}${l.colour ? ` (${l.colour})` : ""}, ${qty(l.qty)} pcs: `
-          + (at < 0 ? `not started${next ? `, first step ${next.label}${by}` : ""}` : `at ${st[at].label}${next ? `, next ${next.label}${by}` : ""}`)
+          + (at < 0 ? `not started${next ? `, first step ${next.label}${by}` : ""}` : `${st[at].label} done${next ? `, next ${next.label}${by}` : ""}`)
           + `${finalOk(l.id) ? " ✅ Final QC passed" : ""}`;
       }),
       "",
@@ -324,12 +324,12 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
               <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" aria-hidden><path d="M4 1.75h5.5L12.25 4.5v9.75H4z" /><path d="M9.25 1.75V4.75h3" /></svg>
               {poDocs[0].ext === "pdf" ? "Buyer PO PDF" : "Buyer PO file"}{poDocs.length > 1 ? ` · ${poDocs.length} files` : ""}</a>
               : <a href="#details-po" className="chip warn" title="A factory PO is locked only once the buyer's PO is on file">No buyer PO yet</a>)}
-            {ship.part && o.status === "open" && <a href="#dispatch" className="chip info">Part shipped · {partText(ship)}</a>}
+            {ship.part && o.status === "open" && <a href="#dispatch" className="chip info">Part shipped · {qty(ship.shipped)} of {qty(ship.ordered)} pcs</a>}
             {o.closed_short_at && <span className="chip warn" title={o.short_reason ?? undefined}>Closed short · {qty(ship.billed)} of {qty(ship.ordered)} pcs</span>}
-            {!ship.part && outlook?.level === "risk" && <span className="chip bad" title="A late step pushes back every step after it">At risk · about {outlook.daysLate} {outlook.daysLate === 1 ? "day" : "days"} late</span>}
+            {!ship.part && outlook?.level === "risk" && <span className="chip bad" title="A late step pushes back every step after it">{riskLate(outlook.daysLate)}</span>}
           </p>
         </div>
-        <ShipClock c={shipClock(due ?? null, today, o.status)} date={due ? `${o.revised_ship_date && o.revised_ship_date !== o.ship_date ? "New date " : ""}${day(due)}` : undefined} />
+        <ShipClock c={shipClock(due ?? null, today, o.status)} date={due ? `${o.revised_ship_date && o.revised_ship_date !== o.ship_date ? "New date " : ""}${day(due).replaceAll(" ", "\u00a0")}` : undefined} />
       </header>
       <OrderJourney orderId={o.id} orderNo={o.order_no} j={j} canEdit={canEdit} canRecordQc={canRecordQc(me?.role)} shipBlocker={shipBlocker as string | null}>
         {/* The journey card carries the main next step; these stay for any time. */}

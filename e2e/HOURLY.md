@@ -20,6 +20,15 @@ Its job: find glitches and rough edges before the team does, and fix the safe on
    - `query_logs` for the API and Postgres in the last hour: errors (5xx, exceptions) point at broken screens.
    - Data that makes the app lie: open orders past ship date by 30+ days, steps marked done in the future,
      factory POs waiting for approval over 2 days, buyer POs waiting to be checked over 2 days.
+     These tables and columns are right (guessing names puts errors in the Postgres log that look like app errors):
+     ```sql
+     select
+       (select count(*) from orders where status = 'open' and coalesce(revised_ship_date, ship_date) < current_date - 30) late30,
+       (select count(*) from line_stages where done_on > current_date) done_in_future,
+       (select count(*) from factory_pos where lock_requested_at < now() - interval '2 days' and accepted_at is null and released_at is null) factory_po_waiting,
+       (select json_object_agg(status, n) from (select status, count(*) n from incoming_pos where created_at < now() - interval '2 days' group by 1) x) buyer_pos_over_2_days;
+     ```
+     Postgres log errors whose query ends in `-- source: POST /mcp` come from these checks, not from the app.
 4. **Live deploy**: the latest commits on main have a green production deploy (GitHub deployments, as in
    `scripts/deploy-status.mjs`), and CI on main is green.
 5. **One improvement look**: pick ONE screen in rotation (Home, Orders, an order page, Buyer POs, Inquiries,

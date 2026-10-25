@@ -36,6 +36,8 @@ export default async function PayablesPage({ searchParams }: PageProps<"/payable
     .map((b) => ({ ...b, key: `${b.ledger}|${b.bill ?? ""}`, name: supplierName(b), due: dueOf(b, today) }))
     .sort((a, z) => (a.due_on ?? "9").localeCompare(z.due_on ?? "9") || z.open - a.open);
   const suppliers = bySupplier(shown, today);
+  // Name who the late MSME bills are owed to, so the banner says whom to pay first without hunting the list.
+  const msmeWho = [...new Set(rows.filter((r) => isMsme45(r.msme) && r.due_on && r.due_on < today).map((r) => r.name))];
   const oneName = one ? suppliers[0]?.name ?? one : "";
   // No bills and Tally never read: there is nothing to count yet, so "₹0" and "every bill is paid" would mislead.
   const unread = !bills.length && !error && (!tallyOn || !readAt);
@@ -78,7 +80,8 @@ export default async function PayablesPage({ searchParams }: PageProps<"/payable
 
           {t.msmeLate > 0 && (
             <div className="latebox" role="status">
-              <b>{t.msmeLate} MSME {t.msmeLate === 1 ? "bill" : "bills"} past {MSME_DAYS} days, {money(Math.round(t.msmeLateAmount))}.</b>{" "}
+              <b>{t.msmeLate} MSME {t.msmeLate === 1 ? "bill" : "bills"} past {MSME_DAYS} days, {money(Math.round(t.msmeLateAmount))}</b>
+              {msmeWho.length ? `, owed to ${msmeWho.length > 3 ? `${msmeWho.slice(0, 3).join(", ")} and ${msmeWho.length - 3} more` : msmeWho.join(", ")}` : ""}.{" "}
               Pay {t.msmeLate === 1 ? "it" : "them"} first: the law sets interest on late MSME bills.
             </div>
           )}
@@ -104,10 +107,12 @@ export default async function PayablesPage({ searchParams }: PageProps<"/payable
                     <div className="sup-top">
                       <div className="min-w-0">
                         <Link className="sup-name" href={`/payables?s=${encodeURIComponent(s.ledger)}`}>{s.name}</Link>
-                        <div className="sup-sub">
-                          {s.bills.filter((b) => b.bill).length} {s.bills.filter((b) => b.bill).length === 1 ? "bill" : "bills"}
-                          {s.nextDue && ` · ${s.nextDue < today ? "oldest due" : "next due"} ${day(s.nextDue)}`}
-                          {!s.factoryId && " · not a factory in the app"}
+                        <div className="sup-sub dots">
+                          <span>
+                            <span>{s.bills.filter((b) => b.bill).length} {s.bills.filter((b) => b.bill).length === 1 ? "bill" : "bills"}</span>
+                            {s.nextDue && <span>{s.nextDue < today ? "oldest due" : "next due"} {day(s.nextDue)}</span>}
+                            {!s.factoryId && <span>not a factory in the app</span>}
+                          </span>
                         </div>
                         <div className="bill-tags">
                           {!isMsme45(s.msme) && <span className="chip">{s.days} days</span>}

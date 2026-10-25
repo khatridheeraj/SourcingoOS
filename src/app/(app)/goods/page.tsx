@@ -75,10 +75,7 @@ export default async function GoodsPage({ searchParams }: PageProps<"/goods">) {
       <div className="head">
         <div className="grow">
           <h1>Goods with us</h1>
-          <p>
-            Every lot bought from a factory until the buyer&apos;s GRN.{" "}
-            {over.length ? <b className="text-bad">{over.length} held over {HOLD_HOURS} hours</b> : <b className="text-ok">Nothing held over {HOLD_HOURS} hours</b>}
-          </p>
+          <p>Every lot bought from a factory until the buyer&apos;s GRN.</p>
         </div>
       </div>
 
@@ -94,10 +91,7 @@ export default async function GoodsPage({ searchParams }: PageProps<"/goods">) {
 
       <section className="card" aria-labelledby="goods-h">
         <header className="card-h">
-          <div className="min-w-0">
-            <h2 id="goods-h">{t.label}</h2>
-            <p>{t.hint}</p>
-          </div>
+          <h2 id="goods-h" className="min-w-0">{t.label}</h2>
           <nav className="seg" aria-label="Show">
             {TABS.map((x) => (
               <Link key={x.key} href={x.key === "with-us" ? "/goods" : `/goods?show=${x.key}`} aria-current={tab === x.key ? "page" : undefined} scroll={false}>
@@ -137,27 +131,36 @@ export default async function GoodsPage({ searchParams }: PageProps<"/goods">) {
                     {d.shipped_at && (
                       <div className="todo-detail">
                         Shipped {at.format(new Date(d.shipped_at))}{d.transporter ? ` by ${d.transporter}` : ""}{d.lr_no ? `, LR ${d.lr_no}` : ""}
+                        {d.grn_due_on && !grnLateHere ? ` · GRN due ${day(d.grn_due_on)}` : ""}
                       </div>
                     )}
+                    {held && hours < HOLD_HOURS - 6 && <div className="todo-detail">{heldText(hours)}</div>}
                     <div className="todo-links">
                       {held ? (
                         <>
-                          <span className={`chip ${hours >= HOLD_HOURS ? "bad" : hours >= HOLD_HOURS - 6 ? "warn" : ""}`}>{heldText(hours)}</span>
-                          <span className={`chip ${step.cls}`}>{step.text}</span>
+                          {hours >= HOLD_HOURS - 6 && <span className={`chip ${hours >= HOLD_HOURS ? "bad" : "warn"}`}>{heldText(hours)}</span>}
+                          {step.cls !== "ok" && <span className={`chip ${step.cls}`}>{step.text}</span>}
                         </>
                       ) : (
-                        d.grn_due_on && <span className={`chip ${grnLateHere ? "bad" : ""}`}>{grnLateHere ? `GRN was due ${day(d.grn_due_on)}` : `GRN due ${day(d.grn_due_on)}`}</span>
+                        grnLateHere && <span className="chip bad">GRN was due {day(d.grn_due_on!)}</span>
                       )}
-                      <Link href={`/goods/${d.id}/challan`} prefetch={false} className="chip info">{d.challan_no ? `Challan ${d.challan_no}` : "Delivery challan"}</Link>
+                      <Link href={`/goods/${d.id}/challan`} prefetch={false} className="link text-[13px]">{d.challan_no ? `Challan ${d.challan_no}` : "Delivery challan"}</Link>
                     </div>
                   </div>
                   <div className="todo-chip" />
-                  <Link href={`/orders/${d.order_id}#dispatch`} className="btn sm todo-act">{held ? step.act : "Add GRN"}</Link>
+                  {/* Like Home's To do: only red rows (held too long, invoice overdue, GRN late) get the primary button. */}
+                  <div className="todo-acts">
+                    <Link href={`/orders/${d.order_id}#dispatch`} className={`btn sm todo-act ${sev === "bad" ? "primary" : ""}`}>{held ? step.act : "Add GRN"}</Link>
+                  </div>
                 </li>
               );
             })}
           </ul>
         )}
+        <details className="howto border-t border-line px-4 py-3">
+          <summary>How this list works</summary>
+          <p>{t.hint}</p>
+        </details>
       </section>
     </>
   );

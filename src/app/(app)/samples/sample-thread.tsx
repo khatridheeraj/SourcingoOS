@@ -187,10 +187,10 @@ export function SampleThreadCard({ t, today, showOrder = true, readOnly = false 
           </>}
           {t.state === "with_buyer" && <>
             <button type="button" className="btn primary" onClick={() => open("answer")}>Record buyer&apos;s answer</button>
-            <a className="btn wa" href={waLink(toBuyer)} target="_blank" rel="noreferrer">Remind buyer</a>
+            <a className="btn" href={waLink(toBuyer)} target="_blank" rel="noreferrer">Remind buyer</a>
           </>}
           {(t.state === "changes" || t.state === "returned" || t.state === "not_sent") && <>
-            <a className="btn wa" href={waLink(toFactory, t.factoryPhone)} target="_blank" rel="noreferrer">{t.state === "not_sent" ? "Ask factory" : "Tell factory"}</a>
+            <a className="btn primary" href={waLink(toFactory, t.factoryPhone)} target="_blank" rel="noreferrer">{t.state === "not_sent" ? "Ask factory" : "Tell factory"}</a>
             <button type="button" className="btn" onClick={() => open("add")}>{t.state === "not_sent" ? "Add sample" : `Add round ${nextRound}`}</button>
           </>}
         </div>

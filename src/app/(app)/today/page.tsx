@@ -3,7 +3,7 @@ import Link from "next/link";
 import { canEditOrders, canRecordQc, getMe } from "@/lib/auth";
 import { fetchAll } from "@/lib/fetch-all";
 import { buyerName, loadBuyers, loadFactories } from "@/lib/data";
-import { day, daysBetween, money, dueDate, nowMs, planDueAt, PLAN_HOURS, qcKindLabel, qty, SHIP_QC, stageReached, TNA_STEPS, todayIST } from "@/lib/format";
+import { day, daysBetween, money, riskLate, dueDate, nowMs, planDueAt, PLAN_HOURS, qcKindLabel, qty, SHIP_QC, stageReached, TNA_STEPS, todayIST } from "@/lib/format";
 import { NO_COMPANY } from "@/lib/names";
 import { poWaitDays, PO_WAIT_DAYS } from "@/lib/order-checks";
 import { project, shipRisk } from "@/lib/tna-plan";
@@ -115,6 +115,9 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
   const dayStart = new Date(`${today}T00:00:00+05:30`).toISOString();
   const none = Promise.resolve({ data: [], error: null });
   const ratesP = team && ids.length ? fetchAll<LinePrice>((a, z) => supabase.rpc("line_prices", { p_orders: ids }).order("id").range(a, z)) : none;
+  // Orders whose buyer PO is on file: a factory PO goes out only against it, so the order page's next step
+  // (journey) asks for it before production starts, and Home says the same.
+  const withPoP = team && ids.length ? supabase.rpc("orders_with_po_file", { p_orders: ids }) : none;
   const chaseP = team
     ? Promise.all([
         supabase.from("factory_chases").select("factory_id, order_id").gte("chased_at", dayStart),
@@ -200,6 +203,7 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
   const now = nowMs();
   // Factory rates come separately: the database gives them only to the orders team and Accounts.
   const { data: rates } = keep(await ratesP);
+  const hasPo = new Set(((await withPoP).data ?? []) as string[]);
   const priceOf = new Map(((rates ?? []) as LinePrice[]).map((r) => [r.id, r]));
   // Factories chased on WhatsApp today, and what each step done today by this person adds up to.
   const [{ data: chases }, [{ data: links }, origin], { count: doneToday }] = await chaseP;
@@ -230,6 +234,9 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
   const waiting: Item[] = [];
   const noTargets: { o: (typeof open)[number]; n: number }[] = [];
   // Factory plans and POs are the orders team's work; Quality doesn't see them.
+  const noPoAsked = new Set<string>();
+  const shipSoonChip = (due: string | null | undefined): Item["chip"] =>
+    !due ? { text: "No ship date", cls: "bad" } : due < addDays(today, 30) ? { text: `Ships ${dm(due)}`, cls: "warn" } : undefined;
   for (const o of team ? active : []) {
     const lines = o.order_lines ?? [];
     const href = `/orders/${o.id}#tna`;
@@ -249,13 +256,23 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
         if (untracked) noTargets.push({ o, n: untracked });
         continue;
       }
+      // Factory and rates are in but no buyer PO on file yet: that comes next, as on the order page, before a plan is set or sent.
+      if (!hasPo.has(o.id) && lines.every((l) => l.factory_id && priceOf.get(l.id)?.factory_rate != null) && !po?.lock_requested_at && !po?.plan_requested_at && !po?.plan_requested_on) {
+        if (!noPoAsked.has(o.id)) {
+          noPoAsked.add(o.id);
+          now_.push({ key: `nopo:${o.id}`, href: `/orders/${o.id}#details-po`, ...base(o), sev: "warn",
+            detail: "Add the buyer's PO first: a factory PO goes out only against it. Then start production.",
+            chip: shipSoonChip(dueDate(o)), action: "Add buyer PO", sort: `1${dueDate(o) ?? "9999"}` });
+        }
+        continue;
+      }
       // Nothing planned yet for this factory: one line that starts its production from a sheet.
       if (noTarget === rows.length && !po?.plan_requested_at && !po?.plan_requested_on) {
         const due = dueDate(o);
         now_.push({ key: `start:${o.id}:${f}`, href, ...base(o), sev: "warn", sheet: { orderId: o.id, mode: "start", factoryId: f },
           // A ship date a month or more away is no reason for a chip; it reads as part of the detail.
           detail: `${fname} · ${plural(fl.length, "style")} · not started yet${due && due >= addDays(today, 30) ? ` · ships ${dm(due)}` : ""}. Set the whole plan in one go.`,
-          chip: !due ? { text: "No ship date", cls: "bad" } : due < addDays(today, 30) ? { text: `Ships ${dm(due)}`, cls: "warn" } : undefined,
+          chip: shipSoonChip(due),
           action: "Start production", sort: `1${due ?? "9999"}` });
         continue;
       }
@@ -328,7 +345,7 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
       detail: `${plural(late.length, "step")} overdue: ${labels.slice(0, 3).join(", ")}${labels.length > 3 ? ` and ${labels.length - 3} more` : ""}`
         + `${lines > 1 ? ` · ${styles === lines ? `all ${lines} styles` : `${styles} of ${lines} styles`}` : ""}${due ? ` · ships ${dm(due)}` : ""}`,
       chip: !due ? { text: "No ship date", cls: "bad" } : due < today ? { text: `${plural(daysBetween(due, today), "day")} late`, cls: "bad" }
-        : riskDays(o) ? { text: `At risk · ${riskDays(o)}d late`, cls: "bad" } : { text: "Behind plan", cls: "bad" },
+        : riskDays(o) ? { text: riskLate(riskDays(o)), cls: "bad" } : { text: "Behind plan", cls: "bad" },
       action: due ? "Update" : "Set ship date", sort: due ?? "",
       ...(due ? { sheet: { orderId: o.id, mode: "update" as const } } : {}), chase: chaseFor(o),
     });
@@ -566,7 +583,7 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
     return !d ? { text: "No ship date", cls: "bad" } : lateBy ? { text: `${part ? "Part shipped · " : ""}${plural(lateBy, "day")} late`, cls: "bad" }
       : part ? { text: "Part shipped", cls: "warn" }
       : finalPassed(o) ? { text: "Final QC passed", cls: "ok" } : !p.total ? { text: "No targets", cls: "warn" }
-      : riskDays(o) ? { text: `At risk · ${riskDays(o)}d late`, cls: "bad" } : p.behind ? { text: "Behind plan", cls: "bad" } : { text: "On plan", cls: "ok" };
+      : riskDays(o) ? { text: riskLate(riskDays(o)), cls: "bad" } : p.behind ? { text: "Behind plan", cls: "bad" } : { text: "On plan", cls: "ok" };
   };
   const kpis = [
     { key: "now", href: qs("now"), label: "Needs you now", value: String(nowCount), sev: nowCount ? "bad" : "ok", sub: nowCount ? "Late, overdue or blocking" : "All clear" },
@@ -580,18 +597,18 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
       : { key: "book", href: "/", label: "Open orders", value: String(open.length), sev: "", sub: `${plural(allLines.length, "style")} · ${qty(pcs(open))} pcs` },
   ];
 
-  // Shortcuts to the jobs done most often, within thumb reach on a phone.
+  // Shortcuts to the jobs done most often, within thumb reach on a phone. Indigo, as things to tap; red only for overdue work.
   const quick: { href: string; label: string; icon: IconName; count?: number; tone: string }[] = team
     ? [
         { href: "/orders/new", label: "New order", icon: "plus", tone: "accent" },
         { href: "/pos", label: "Check POs", icon: "inbox", count: toCheck.length, tone: "info" },
-        { href: "/updates", label: "Chase and update", icon: "share", count: chaseList.filter((f) => !f.chased).length, tone: "bad" },
-        { href: "/?find=1", label: "Search", icon: "search", tone: "ok" },
+        { href: "/updates", label: "Chase and update", icon: "share", count: chaseList.filter((f) => !f.chased).length, tone: "" },
+        { href: "/?find=1", label: "Search", icon: "search", tone: "" },
       ]
     : [
         { href: qs("soon"), label: "QC due", icon: "check", tone: "accent" },
-        { href: qs("now"), label: "Overdue", icon: "clock", count: nowCount, tone: "bad" },
-        { href: "/?find=1", label: "Find order", icon: "search", tone: "ok" },
+        { href: qs("now"), label: "Overdue", icon: "clock", count: nowCount, tone: nowCount ? "bad" : "" },
+        { href: "/?find=1", label: "Find order", icon: "search", tone: "" },
       ];
 
   const urgent = collect.filter((a) => a.sev === "bad").length;
@@ -739,7 +756,7 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
                     ? <QcButton orderId={i.qc.orderId} kind={i.qc.kind} className="btn sm todo-act primary">{i.action}</QcButton>
                     : i.sheet
                     ? <SheetButton {...i.sheet} className={`btn sm todo-act ${i.sev === "bad" || i.sheet.mode === "start" ? "primary" : ""}`}>{i.action}</SheetButton>
-                    : <Link href={i.href} className="btn sm todo-act">{i.action}</Link>}
+                    : <Link href={i.href} className={`btn sm todo-act ${i.sev === "bad" ? "primary" : ""}`}>{i.action}</Link>}
                 </div>
               </li>
             ))}

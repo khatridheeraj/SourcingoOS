@@ -1,10 +1,11 @@
+import { riskLate } from "@/lib/format";
 import type { Progress } from "@/lib/progress";
 import { partText, type OrderShip } from "@/lib/shipments";
 
 // A chip only when an open order (or one factory's part of it) needs someone: on plan says nothing, so it shows none.
 export function PlanChip({ p, looksShipped = false }: { p: Progress; looksShipped?: boolean }) {
   return looksShipped ? <span className="chip warn">Shipped? Close it</span>
-    : p.riskDays > 0 ? <span className="chip bad" title="A late step pushes back every step after it">At risk · {p.riskDays}d late</span>
+    : p.riskDays > 0 ? <span className="chip bad" title="A late step pushes back every step after it">{riskLate(p.riskDays)}</span>
     : p.behind ? <span className="chip bad">Behind plan</span>
     : !p.planned ? <span className="chip warn">No targets</span>
     : null;

@@ -76,7 +76,7 @@ export function FactoryLink({ factoryId, name, phone, size = "sm" }: { factoryId
             <textarea className="inp mt-2 h-56 w-full resize-none font-[inherit] leading-relaxed" value={text} readOnly aria-label="Message" />
           )}
           <div className="sheet-acts">
-            <a className={`btn wa ${!url ? "pointer-events-none opacity-50" : ""}`} aria-disabled={!url}
+            <a className={`btn primary ${!url ? "pointer-events-none opacity-50" : ""}`} aria-disabled={!url}
               href={`https://wa.me/${to}?text=${encodeURIComponent(text)}`} target="_blank" rel="noreferrer">
               {to ? "WhatsApp" : "WhatsApp (choose chat)"}
             </a>

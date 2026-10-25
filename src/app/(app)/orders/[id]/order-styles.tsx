@@ -11,6 +11,7 @@ import { FactoryLink } from "../../factories/factory-link";
 import { sizeEntries } from "@/lib/sizes";
 import { StyleDetails, type StyleDetail } from "./style-details";
 import { ErrorFix } from "@/components/fix-link";
+import { openHelp } from "@/components/help/help-chat";
 import { acceptTargetsForFactory, releaseFactoryPo, requestPlan, requestPoLock, saveLineStages, sendBackPoLock, setLineProduct, setStylePhoto, type LineStageInput } from "../actions";
 
 // fabricOrder: a fabric style, whose TNA skips the garment-making steps.
@@ -339,6 +340,11 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
               {!released && target && c.planned_on > target && !c.done_on && (
                 <small className="step-moved text-bad">After the target date {dm(target)}</small>
               )}
+              {/* A greyed-out picker gave no reason on a phone, so a locked target says so and offers the way to move it. */}
+              {locked && editable && !c.done_on && (
+                <button type="button" className="link step-ask" aria-label={`Ask to move ${l.style} ${s.label} target`}
+                  onClick={() => openHelp("ask", `Please move the ${l.style} ${s.label} target from ${dm(c.planned_on)} to: \nReason: `)}>Locked · Ask to move</button>
+              )}
               {base && base.on !== c.planned_on && (
                 <small className="step-moved" title={base.note || undefined}>Was {dm(base.on)}{base.note ? `: ${base.note}` : ""}</small>
               )}
@@ -346,7 +352,7 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
             {released ? (
               <label className="step-f"><span>Done</span>
                 <input className="inp" type="date" value={c.done_on} max={today} disabled={!doneEditable}
-                  aria-label={`${l.style} ${s.label} done`}
+                  aria-label={`${l.style} ${s.label} done`} title="The day it was finished: today or earlier"
                   onChange={(e) => set(l.id, s.key, { done_on: e.target.value })} />
               </label>
             ) : (
@@ -390,7 +396,7 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
     const outlook = risk.level === "risk" && p ? { text: `Likely ready ${dm(p.finish)}, ${plural(risk.daysLate)} after the ship date`, cls: "bad" }
       : risk.level === "behind" && p ? { text: `Running ${plural(p.slip)} behind plan, ready ${dm(p.finish)}`, cls: "warn" }
       : null;
-    return { done, total: cells.length, at: last ? `At ${last.s.label}` : "Not started", status, segs, next: next?.s, outlook };
+    return { done, total: cells.length, at: last ? `${last.s.label} done` : "Not started", status, segs, next: next?.s, outlook };
   }
 
   const toggle = (id: string) => setShown((s) => {
@@ -433,14 +439,14 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
           : critical ? { text: `Critical: no TNA from the factory, due ${at.format(dueAt!)}`, cls: "bad" }
           : sent ? { text: g.planEnteredBy ? `Factory's TNA entered by ${g.planEnteredBy} ${dayAt(sent)}` : `Factory sent its TNA ${dayAt(sent)}`, cls: "warn" }
           : dueAt ? { text: `Waiting for the factory's TNA, due ${at.format(dueAt)}`, cls: "warn" }
-          : toAsk.length ? { text: asked ? "Plan not complete" : "Plan not set yet", cls: "warn" }
+          : toAsk.length ? (asked ? { text: "Plan not complete", cls: "warn" } : null)
           : { text: "Targets set, ask the factory", cls: "warn" };
         return (
           <div key={g.factoryId ?? "none"} className="fac-group" data-factory={g.factoryName}>
             <div className="fac-head">
               <div className="row">
                 <h3 className="font-bold text-[14px]">{g.factoryName}</h3>
-                <span className={`chip ${status.cls}`}>{status.text}</span>
+                {status && <span className={`chip ${status.cls}`}>{status.text}</span>}
                 <span className="muted text-xs">{g.lines.length} {g.lines.length === 1 ? "style" : "styles"}{target && g.factoryId ? ` · target date ${dm(target)}` : ""}</span>
               </div>
               {canEdit && g.factoryId && released && (
@@ -586,7 +592,7 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
                           onClick={() => setDetailShown((d) => { const n = new Set(d); if (n.has(l.id)) n.delete(l.id); else n.add(l.id); return n; })}>
                           {[l.detail.fabric ? (l.detail.fabric.length > 22 ? `${l.detail.fabric.slice(0, 21)}…` : l.detail.fabric) : editable ? "Add fabric" : "", sizeCount ? `${sizeCount} sizes` : editable && !l.fabricOrder ? "sizes" : "",
                             techPack ? "tech pack ✓" : editable ? "tech pack" : ""].filter(Boolean).join(" · ") || "Fabric, sizes and files"}
-                          {detailOpen ? " ▴" : " ▾"}
+                          {detailOpen ? "\u00a0▴" : "\u00a0▾"}
                         </button>
                         {editable && !released ? (
                           <div className="seg seg-sm w-fit" role="group" aria-label={`What ${l.style} is`}>
@@ -607,7 +613,7 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
                           {sm.segs.map((x) => <i key={x.key} className={x.cls} title={`${x.label}: ${x.text}`} />)}
                         </div>
                         <div className="style-line">
-                          <span>{sm.at} · {sm.done} of {sm.total} steps done</span>
+                          <span>{sm.at} · {sm.done} of {sm.total} steps</span>
                           <b className={sm.status.cls}>{sm.status.text}</b>
                         </div>
                         {sm.outlook && <p className={`style-outlook ${sm.outlook.cls}`}>{sm.outlook.text}</p>}

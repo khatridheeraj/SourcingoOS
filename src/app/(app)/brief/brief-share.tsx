@@ -14,7 +14,7 @@ export function BriefShare({ text }: { text: string }) {
   }
   return (
     <>
-      <a className="btn wa" href={`https://wa.me/?text=${encodeURIComponent(text)}`} target="_blank" rel="noreferrer">Send on WhatsApp</a>
+      <a className="btn primary" href={`https://wa.me/?text=${encodeURIComponent(text)}`} target="_blank" rel="noreferrer">Send on WhatsApp</a>
       <button type="button" className="btn" onClick={copy}>Copy</button>
     </>
   );

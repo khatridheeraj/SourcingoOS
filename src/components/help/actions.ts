@@ -109,7 +109,7 @@ export async function checkOrder(orderId: string): Promise<OrderCheck | null> {
     const f = name.get(fid) ?? "the factory";
     const po = (pos ?? []).find((p) => p.factory_id === fid);
     if (po?.released_at) {
-      items.push({ ok: true, text: `${f}: PO approved, so Done dates are open.` });
+      items.push({ ok: true, text: `${f}: PO approved, so Done dates are open (today or earlier). Targets are locked: tap Locked · Ask to move on a step to change one.` });
       if (po.accepted_at) items.push({ ok: true, text: `${f} accepted the PO.` });
       else if (po.mailed_at) items.push({ ok: false, text: `${f} hasn't accepted the emailed PO yet. Help follows up every 2 hours; you can also call them.` });
       continue;
