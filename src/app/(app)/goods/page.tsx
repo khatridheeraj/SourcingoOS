@@ -94,10 +94,7 @@ export default async function GoodsPage({ searchParams }: PageProps<"/goods">) {
 
       <section className="card" aria-labelledby="goods-h">
         <header className="card-h">
-          <div className="min-w-0">
-            <h2 id="goods-h">{t.label}</h2>
-            <p>{t.hint}</p>
-          </div>
+          <h2 id="goods-h" className="min-w-0">{t.label}</h2>
           <nav className="seg" aria-label="Show">
             {TABS.map((x) => (
               <Link key={x.key} href={x.key === "with-us" ? "/goods" : `/goods?show=${x.key}`} aria-current={tab === x.key ? "page" : undefined} scroll={false}>
@@ -155,12 +152,18 @@ export default async function GoodsPage({ searchParams }: PageProps<"/goods">) {
                   </div>
                   <div className="todo-chip" />
                   {/* Like Home's To do: only red rows (held too long, invoice overdue, GRN late) get the primary button. */}
-                  <Link href={`/orders/${d.order_id}#dispatch`} className={`btn sm todo-act ${sev === "bad" ? "primary" : ""}`}>{held ? step.act : "Add GRN"}</Link>
+                  <div className="todo-acts">
+                    <Link href={`/orders/${d.order_id}#dispatch`} className={`btn sm todo-act ${sev === "bad" ? "primary" : ""}`}>{held ? step.act : "Add GRN"}</Link>
+                  </div>
                 </li>
               );
             })}
           </ul>
         )}
+        <details className="howto border-t border-line px-4 py-3">
+          <summary>How this list works</summary>
+          <p>{t.hint}</p>
+        </details>
       </section>
     </>
   );
