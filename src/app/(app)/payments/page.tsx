@@ -258,7 +258,6 @@ export default async function PaymentsPage({ searchParams }: PageProps<"/payment
           <p>Invoices raised on buyers and the cheques that pay them.</p>
         </div>
         <div className="head-acts">
-          <Link className="btn" href="/tally">Check Tally</Link>
           <Link className="btn" href="/payments/invoices/new">Add invoice</Link>
           <Link className="btn primary" href="/payments/cheques/new">Record cheque</Link>
         </div>
