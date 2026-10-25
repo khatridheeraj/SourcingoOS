@@ -90,13 +90,16 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
   ];
 
   return (
-    <div className="shell">
+    <div className={me.role ? "shell" : undefined}>
       {me.role && <Sidebar groups={groups} tabs={tabs} create={create} user={me.fullName || me.email} role={roleLabel(me.role)} company={me.companyName ?? ""} helpUnseen={help.unseen ?? 0} />}
       <main className="page">
         {me.role ? children : (
-          <div className="empty mt-10">
+          <div className="empty mx-auto mt-10 w-full max-w-[560px]">
             <b>You haven&apos;t been added to a company yet</b>
             You are signed in as {me.email}. Ask the owner to add this email in Team, then refresh this page.
+            <form action="/auth/signout" method="post" className="mt-3">
+              <button className="btn ghost sm">Sign out</button>
+            </form>
           </div>
         )}
       </main>
