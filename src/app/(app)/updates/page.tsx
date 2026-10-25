@@ -9,6 +9,8 @@ import { createClient } from "@/lib/supabase/server";
 import { appOrigin } from "@/lib/origin";
 import { buildUpdates } from "@/lib/updates";
 import { UpdatesView } from "./updates-view";
+import { PageTabs } from "@/components/page-tabs";
+import { HOME_TABS } from "@/lib/page-groups";
 
 // The day's messages in one place: chase every factory that is behind, and send each buyer where their orders stand.
 export default async function UpdatesPage({ searchParams }: PageProps<"/updates">) {
@@ -50,6 +52,7 @@ export default async function UpdatesPage({ searchParams }: PageProps<"/updates"
 
   return (
     <>
+      <PageTabs tabs={HOME_TABS} label="Home" />
       <div className="head">
         <div className="grow">
           <h1>Updates</h1>

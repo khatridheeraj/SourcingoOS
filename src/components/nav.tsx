@@ -6,7 +6,8 @@ import { useState, useSyncExternalStore } from "react";
 import { openHelp } from "@/components/help/help-chat";
 
 export type IconName = keyof typeof ICONS;
-export type NavItem = { href: string; label: string; icon: IconName; count?: number };
+// `also`: other pages that live under this item (its tab row), so the item stays lit on them.
+export type NavItem = { href: string; label: string; icon: IconName; count?: number; also?: string[] };
 export type NavGroup = { label?: string; items: NavItem[] };
 
 // Line icons drawn on a 20px grid, so every menu row has the same weight.
@@ -60,13 +61,14 @@ export function Sidebar({ groups, tabs, create = [], user, role, company, helpUn
   const [open, setOpen] = useState(false);
   const [making, setMaking] = useState(false);
   const mac = useSyncExternalStore(() => () => {}, () => /Mac|iPhone|iPad/.test(navigator.platform), () => true);
-  const on = (href: string) => (href === "/" ? path === "/" || path.startsWith("/orders") : path.startsWith(href));
+  const at = (href: string) => (href === "/" ? path === "/" || path.startsWith("/orders") : path.startsWith(href));
+  const on = (it: NavItem) => at(it.href) || !!it.also?.some(at);
   const initials = user.split(/[\s@.]+/).filter(Boolean).slice(0, 2).map((w) => w[0]?.toUpperCase()).join("");
   // The bottom bar holds the main screens and New; the rest sit in More, whose dot adds up what waits inside it.
-  const inMore = groups.flatMap((g) => g.items).some((it) => !tabs.some((t) => t.href === it.href) && on(it.href));
+  const inMore = groups.flatMap((g) => g.items).some((it) => !tabs.some((t) => t.href === it.href) && on(it));
   const moreCount = groups.flatMap((g) => g.items).filter((it) => !tabs.some((t) => t.href === it.href)).reduce((n, it) => n + (it.count ?? 0), 0);
   const tab = (it: NavItem) => (
-    <Link key={it.href} href={it.href} onClick={() => setOpen(false)} aria-current={on(it.href) && !open ? "page" : undefined}>
+    <Link key={it.href} href={it.href} onClick={() => setOpen(false)} aria-current={on(it) && !open ? "page" : undefined}>
       <span className="tab-ic"><Icon name={it.icon} size={22} />{!!it.count && <span className="tab-badge">{it.count}</span>}</span>
       {it.label}
     </Link>
@@ -133,7 +135,7 @@ export function Sidebar({ groups, tabs, create = [], user, role, company, helpUn
             <div key={g.label ?? i} className="side-group">
               {g.label && <div className="side-label">{g.label}</div>}
               {g.items.map((it) => (
-                <Link key={it.href} href={it.href} onClick={() => setOpen(false)} aria-current={on(it.href) ? "page" : undefined}>
+                <Link key={it.href} href={it.href} onClick={() => setOpen(false)} aria-current={on(it) ? "page" : undefined}>
                   <Icon name={it.icon} />
                   <span className="grow">{it.label}</span>
                   {!!it.count && <span className="side-count">{it.count}</span>}

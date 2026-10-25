@@ -291,6 +291,7 @@ h1, h2, h3 { font-family: var(--font-display); text-wrap: balance; font-weight: 
   .seg a span { margin-left: 6px; font-size: 12px; font-variant-numeric: tabular-nums; color: var(--faint); }
   .seg a:hover { color: var(--foreground); }
   .seg a[aria-current="page"] { background: var(--surface); color: var(--foreground); box-shadow: var(--shadow), 0 0 0 1px var(--line); }
+  .page-tabs { display: flex; width: fit-content; margin-bottom: 14px; }
   .seg a[aria-current="page"] span { color: var(--muted); }
 
   /* Metric strip: one bordered band split into equal cells. */

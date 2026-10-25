@@ -6,6 +6,8 @@ import { createClient } from "@/lib/supabase/server";
 import { compareWithTally, type TallyItem, type TallyLedger, type TallyVoucher } from "@/lib/tally";
 import { loadBooks } from "../payments/load";
 import { type ImportRow, ImportList, KeyMaker, LedgerLink, PartyLink, SettingsForm } from "./forms";
+import { PageTabs } from "@/components/page-tabs";
+import { MONEY_TABS } from "@/lib/page-groups";
 
 export const metadata = { title: "Tally · Sourcingo OS" };
 
@@ -282,6 +284,7 @@ export default async function TallyPage({ searchParams }: PageProps<"/tally">) {
 
   return (
     <>
+      <PageTabs tabs={MONEY_TABS} label="Money" />
       <div className="head">
         <div className="grow">
           <h1>Tally</h1>

@@ -10,6 +10,8 @@ import { createClient } from "@/lib/supabase/server";
 import { AddPo } from "./add-po";
 import { AiKey } from "./ai-key";
 import { STATE } from "./state";
+import { PageTabs } from "@/components/page-tabs";
+import { INBOX_TABS } from "@/lib/page-groups";
 
 // Two lists: what still needs checking, and what is done with (made into an order, or set aside). Mail from
 // unknown senders is the owner's alone and only shows when there is some.
@@ -53,6 +55,7 @@ export default async function IncomingPosPage({ searchParams }: PageProps<"/pos"
 
   return (
     <>
+      <PageTabs tabs={INBOX_TABS} label="Buyer emails" />
       <div className="head">
         <div className="grow">
           <h1>Buyer POs</h1>

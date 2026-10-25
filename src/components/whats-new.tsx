@@ -4,7 +4,7 @@ import { useState, useSyncExternalStore } from "react";
 import { Icon, type IconName } from "@/components/nav";
 
 const KEY = "sourcingo:whats-new";
-const VERSION = "2026-10-24-redesign";
+const VERSION = "2026-10-25-menu";
 
 type Item = { icon: IconName; title: string; text: string };
 
@@ -12,11 +12,14 @@ type Item = { icon: IconName; title: string; text: string };
 // Kept to three lines: Home is for today's work, not reading.
 const NEXT: Item = { icon: "check", title: "Every order at a glance", text: "Each order opens with its days to ship, its value and the one next step. Tap a stage on its road to open that work." };
 const DAY: Item = { icon: "home", title: "Your day", text: "Home starts with what needs you now, and its ring fills as you get things done today." };
+// The menu went from 17 places to 10: pages that belong together now share one item and a tab row.
+const MENU: Item = { icon: "more", title: "A shorter menu", text: "Buyer POs and Inquiries are now Buyer emails; Payments, Bills to pay and Tally are now Money. The brief is in Reports, chasing is a tab on Home." };
+const MONEY: Item = { icon: "payments", title: "One Money page", text: "Payments, Bills to pay and Tally are now tabs on one Money page in the menu." };
 const FOR: Record<string, Item[]> = {
   orders: [
+    MENU,
     NEXT,
     { icon: "orders", title: "Orders as a board", text: "On a computer, Orders shows one column per stage. On a phone, each order shows its stage bar and next step." },
-    DAY,
   ],
   quality: [
     NEXT,
@@ -24,11 +27,12 @@ const FOR: Record<string, Item[]> = {
     { icon: "check", title: "QC in four taps", text: "Tap Record QC on a Home row or an order: styles are already picked, tap Pass or Fail, take photos, save." },
   ],
   owner: [
+    MENU,
     NEXT,
     { icon: "orders", title: "Orders as a board", text: "On a computer, Orders shows one column per stage, so POs waiting for your approval stand out." },
-    DAY,
   ],
   accounts: [
+    MONEY,
     NEXT,
     { icon: "plus", title: "New, in one place", text: "The + New button adds a cheque or an invoice from any screen." },
   ],

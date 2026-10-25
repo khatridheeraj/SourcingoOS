@@ -47,35 +47,37 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
 
   const edit = canEditOrders(me.role);
   const money = me.role === "owner" || me.role === "accounts";
-  // The menu follows the work: sell (inquiries, buyer POs), make (orders, samples, chasing), ship, money,
-  // then the records everything hangs off. On a phone the first few sit in the tab bar.
-  const home = { href: "/today", label: "Home", icon: "home" as const };
+  // Ten places, in the order the work flows. Pages that belong together share one menu item and a tab row on top
+  // (Home and its chase list, Buyer emails, Money, Reports), so nobody hunts through near-duplicate pages.
+  const home = { href: "/today", label: "Home", icon: "home" as const, also: ["/updates"] };
   const orders = { href: "/", label: "Orders", icon: "orders" as const };
-  const inbox = { href: "/pos", label: "Buyer POs", icon: "inbox" as const, count: toCheck };
+  const inbox = { href: "/pos", label: "Buyer emails", icon: "inbox" as const, count: toCheck + (due.count ?? 0), also: ["/inquiries"] };
   const samplesItem = { href: "/samples", label: "Samples", icon: "sample" as const, count: samples.count ?? 0 };
   const groups: NavGroup[] = [
-    { items: [home, orders] },
-    ...(edit ? [{ label: "Sell", items: [
-      { href: "/inquiries", label: "Inquiries", icon: "inquiry" as const, count: due.count ?? 0 },
-      inbox,
-    ] }] : []),
-    { label: "Make", items: [
+    { items: [
+      home, orders,
+      ...(edit ? [inbox] : []),
       samplesItem,
-      ...(edit ? [{ href: "/updates", label: "Chase and updates", icon: "share" as const }] : []),
+      ...(edit ? [{ href: "/goods", label: "Goods with us", icon: "box" as const, count: held.count ?? 0 }] : []),
+      ...(money ? [{ href: "/payments", label: "Money", icon: "payments" as const, also: ["/payables", "/tally"] }] : []),
     ] },
-    ...(edit ? [{ label: "Ship", items: [{ href: "/goods", label: "Goods with us", icon: "box" as const, count: held.count ?? 0 }] }] : []),
-    ...(money ? [{ label: "Money", items: [{ href: "/payments", label: "Payments", icon: "payments" as const }, { href: "/payables", label: "Bills to pay", icon: "bills" as const }, { href: "/tally", label: "Tally", icon: "tally" as const }] }] : []),
     { label: "Records", items: [
       ...(edit ? [{ href: "/buyers", label: "Buyers", icon: "buyers" as const }, { href: "/factories", label: "Factories", icon: "factories" as const },
-        { href: "/styles", label: "Style catalogue", icon: "styles" as const }, { href: "/reports", label: "Reports", icon: "chart" as const },
+        { href: "/styles", label: "Style catalogue", icon: "styles" as const },
         ...(MARKERS_ON ? [{ href: "/markers", label: "Markers", icon: "markers" as const }] : [])] : []),
-      { href: "/brief", label: "Morning brief", icon: "sun" as const },
+      edit ? { href: "/reports", label: "Reports", icon: "chart" as const, also: ["/brief"] } : { href: "/brief", label: "Morning brief", icon: "sun" as const },
     ] },
     ...(me.role === "owner" ? [{ label: "Admin", items: [{ href: "/team", label: "Team", icon: "team" as const }, { href: "/activity", label: "Activity log", icon: "activity" as const },
       { href: "/feedback", label: "Team notes", icon: "notes" as const, count: help.new ?? 0 }] }] : []),
   ];
+  // Search still finds every page by its own name.
+  const pages: NavGroup = { items: [
+    ...(edit ? [{ href: "/updates", label: "Chase and updates", icon: "share" as const }, { href: "/inquiries", label: "Inquiries", icon: "inquiry" as const },
+      { href: "/pos", label: "Buyer POs", icon: "inbox" as const }, { href: "/brief", label: "Morning brief", icon: "sun" as const }] : []),
+    ...(money ? [{ href: "/payables", label: "Bills to pay", icon: "bills" as const }, { href: "/tally", label: "Tally", icon: "tally" as const }, { href: "/payments", label: "Payments", icon: "payments" as const }] : []),
+  ] };
   // Phone tab bar: Home, Orders, New, then the screen each role opens most.
-  const tabs = edit ? [home, orders, inbox] : [home, orders, samplesItem];
+  const tabs = edit ? [home, orders, { ...inbox, label: "Inbox" }] : [home, orders, samplesItem];
   // Everything that starts a piece of work, in one place.
   const create = [
     ...(edit ? [
@@ -107,7 +109,7 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
         <HelpChat who="staff" role={me.role} name={me.fullName ?? ""} userId={me.id} companyId={me.companyId} ownerName={me.role === "owner" ? "Claude" : help.owner || "the owner"} unseen={help.unseen ?? 0} />
       )}
       {canEnterDone(me.role) && <OrderSheet />}
-      <SearchPalette groups={groups} />
+      <SearchPalette groups={[...groups, pages]} />
       {canRecordQc(me.role) && <QcSheet />}
       <Toaster />
       <Suspense fallback={null}><SegScroll /></Suspense>
