@@ -20,7 +20,7 @@ export default async function UpdatesPage({ searchParams }: PageProps<"/updates"
   const today = todayIST();
   const dayStart = new Date(`${today}T00:00:00+05:30`).toISOString();
   const [{ data: all, error }, buyers, factories, { data: chases }, { data: links }, origin] = await Promise.all([
-    fetchAll((a, z) => supabase.from("orders").select("id, order_no, buyer_id, buyer_po, ship_date, revised_ship_date, merchandiser_id, order_lines(id, style, colour, qty, factory_id, position)")
+    fetchAll((a, z) => supabase.from("orders").select("id, order_no, buyer_id, buyer_po, ship_date, revised_ship_date, merchandiser_id, order_lines(id, style, colour, qty, factory_id, position, product)")
       .eq("company_id", companyId).eq("status", "open").is("order_lines.removed_at", null).order("id").range(a, z)),
     loadBuyers(),
     loadFactories(),

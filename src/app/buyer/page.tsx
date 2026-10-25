@@ -1,12 +1,12 @@
 import { createClient } from "@/lib/supabase/server";
-import { day, daysBetween, qty, todayIST, TNA_STEPS } from "@/lib/format";
+import { day, daysBetween, qty, qtyTotal, qtyU, todayIST, TNA_STEPS, unitOfAll } from "@/lib/format";
 import { PHOTO_BUCKET } from "@/lib/storage";
 import { getMe } from "@/lib/auth";
 import { BuyerSamples, type BuyerSample } from "./buyer-samples";
 
 type Step = { stage: string; label: string | null; planned_on: string | null; done_on: string | null };
 type FinalQc = { result: string; checked_on: string; pieces_checked: number | null; photos: string[] };
-type Line = { id: string; style: string; colour: string | null; description: string | null; qty: number; shipped?: number; photo_path: string | null; steps: Step[]; final_qc: FinalQc | null };
+type Line = { id: string; style: string; colour: string | null; description: string | null; qty: number; product?: string; shipped?: number; photo_path: string | null; steps: Step[]; final_qc: FinalQc | null };
 type Order = { id: string; order_no: string; buyer_po: string | null; po_date: string | null; status: string; ship_date: string | null; revised_ship_date: string | null; closed_short?: boolean; lines: Line[] };
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -70,7 +70,7 @@ export default async function BuyerPage() {
           {/* The whole picture in one line; each order below says where it is. */}
           {open.length > 0 && (
             <p className="num">
-              {open.length} open {open.length === 1 ? "order" : "orders"} · {qty(styles.reduce((n, l) => n + Number(l.qty), 0))} pcs
+              {open.length} open {open.length === 1 ? "order" : "orders"} · {qtyTotal(styles)}
               {nextShip && <> · next ship <b className="text-foreground">{dm(nextShip)}</b>, in {daysBetween(today, nextShip)} days</>}
               {passed > 0 && <> · {passed} of {styles.length} styles passed final QC</>}
             </p>
@@ -114,7 +114,7 @@ export default async function BuyerPage() {
                       )}
                       <span className="bstyle-id">
                         <b className="code">{l.style}</b>
-                        <span>{[l.colour, l.description, `${qty(l.qty)} pcs`, !shipped && l.shipped ? `${qty(l.shipped)} shipped` : ""].filter(Boolean).join(" · ")}</span>
+                        <span>{[l.colour, l.description, qtyU(l.qty, l.product), !shipped && l.shipped ? `${qty(l.shipped)} shipped` : ""].filter(Boolean).join(" · ")}</span>
                       </span>
                       <span className="bstyle-prog">
                         <span className="stepper" aria-label={`${w.done} of ${w.total} steps done`}>
@@ -175,11 +175,11 @@ export default async function BuyerPage() {
                     <h2>{o.buyer_po || o.order_no}</h2>
                     <span className="muted">
                       {[`Sourcingo ref ${o.order_no}`, o.po_date && `PO date ${day(o.po_date)}`, `${lines.length} ${lines.length === 1 ? "style" : "styles"}`,
-                        `${qty(o.lines.reduce((n, l) => n + Number(l.qty), 0))} pcs`].filter(Boolean).join(" · ")}
+                        qtyTotal(o.lines)].filter(Boolean).join(" · ")}
                     </span>
                   </div>
                   <div className="bord-ship">
-                    {shipped ? <span className="chip ok">{o.closed_short && sent < ordered ? `Shipped · ${qty(sent)} of ${qty(ordered)} pcs` : "Shipped"}</span> : ship ? (
+                    {shipped ? <span className="chip ok">{o.closed_short && sent < ordered ? `Shipped · ${qty(sent)} of ${qty(ordered)} ${unitOfAll(o.lines)}` : "Shipped"}</span> : ship ? (
                       <>
                         <span className="eyebrow">{o.revised_ship_date ? "Revised ship date" : "Ship date"}</span>
                         <b>{day(ship)}</b>
@@ -189,7 +189,7 @@ export default async function BuyerPage() {
                   </div>
                 </header>
                 {!shipped && sent > 0 && (
-                  <p className="bord-sent"><span className="chip ok">Part shipped</span> {qty(sent)} of {qty(ordered)} pcs sent · {qty(ordered - sent)} to follow</p>
+                  <p className="bord-sent"><span className="chip ok">Part shipped</span> {qty(sent)} of {qty(ordered)} {unitOfAll(o.lines)} sent · {qty(ordered - sent)} to follow</p>
                 )}
                 {!shipped && total > 0 && (
                   <div className="bord-prog">

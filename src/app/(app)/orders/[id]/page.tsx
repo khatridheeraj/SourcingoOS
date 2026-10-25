@@ -1,9 +1,10 @@
 import type { LinePrice } from "@/lib/margin";
 import Link from "next/link";
+import { Fragment } from "react";
 import { notFound } from "next/navigation";
 import { canEditOrders, canEnterDone, canRecordQc, getMe } from "@/lib/auth";
 import { fetchAll } from "@/lib/fetch-all";
-import { day, dayAt, money, moneyShort, qty, riskLate, SHIP_QC, stageReached, STATUS, TNA_STEPS, todayIST } from "@/lib/format";
+import { day, dayAt, money, moneyShort, qty, qtyTotal, qtyU, riskLate, unitOf, unitOfAll, SHIP_QC, stageReached, STATUS, TNA_STEPS, todayIST } from "@/lib/format";
 import { areaOf, journey, shipClock } from "@/lib/journey";
 import { fileNamesStyle, styleKey } from "@/lib/po-match";
 import { PhotoStack, ShipClock } from "@/components/order-ui";
@@ -232,7 +233,7 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
         const next = st.slice(at + 1).find((x) => !x.row?.done_on);
         // A target already passed isn't a promise to the buyer: say the step is under way instead.
         const by = next?.row?.planned_on && next.row.planned_on >= today ? ` by ${dm(next.row.planned_on)}` : next?.row?.planned_on ? " (in progress)" : "";
-        return `• ${l.style}${l.colour ? ` (${l.colour})` : ""}, ${qty(l.qty)} pcs: `
+        return `• ${l.style}${l.colour ? ` (${l.colour})` : ""}, ${qtyU(l.qty, l.product)}: `
           + (at < 0 ? `not started${next ? `, first step ${next.label}${by}` : ""}` : `${st[at].label} done${next ? `, next ${next.label}${by}` : ""}`)
           + `${finalOk(l.id) ? " ✅ Final QC passed" : ""}`;
       }),
@@ -249,7 +250,7 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
         const st = styleSteps(l.id);
         const over = st.filter((x) => !x.row?.done_on && x.row?.planned_on && x.row.planned_on < today);
         const next = st.find((x) => !x.row?.done_on);
-        return `• ${l.style}${l.colour ? ` (${l.colour})` : ""}, ${qty(l.qty)} pcs: `
+        return `• ${l.style}${l.colour ? ` (${l.colour})` : ""}, ${qtyU(l.qty, l.fabricOrder ? "fabric" : "garment")}: `
           + (over.length ? `${over[0].label} was due ${dm(over[0].row!.planned_on!)}${over.length > 1 ? ` (+${over.length - 1} more late)` : ""}`
             : next ? `next ${next.label}${next.row?.planned_on ? ` by ${dm(next.row.planned_on)}` : ""}` : "all steps done");
       }),
@@ -314,7 +315,7 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
               <PhotoStack photos={lines.map((l) => ({ url: (l.photo_path && urlByPath.get(l.photo_path)) || null, alt: l.style }))} total={lines.length} />
             )}
             <span><b className="num">{lines.length}</b> {lines.length === 1 ? "style" : "styles"}</span>
-            <span><b className="num">{qty(lines.reduce((t, l) => t + l.qty, 0))}</b> pcs</span>
+            <span>{qtyTotal(lines).split(" + ").map((t, i) => { const [n, u] = t.split(" "); return <Fragment key={u}>{i > 0 && " + "}<b className="num">{n}</b> {u}</Fragment>; })}</span>
             {canEdit && lines.length > 0 && lines.every((l) => l.buyer_rate != null) && (
               <span title={money(lines.reduce((t, l) => t + l.qty * Number(l.buyer_rate), 0))}><b className="num">{moneyShort(lines.reduce((t, l) => t + l.qty * Number(l.buyer_rate), 0))}</b> value</span>
             )}
@@ -325,8 +326,8 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
               <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" aria-hidden><path d="M4 1.75h5.5L12.25 4.5v9.75H4z" /><path d="M9.25 1.75V4.75h3" /></svg>
               {poDocs[0].ext === "pdf" ? "Buyer PO PDF" : "Buyer PO file"}{poDocs.length > 1 ? ` · ${poDocs.length} files` : ""}</a>
               : <a href="#details-po" className="chip warn" title="A factory PO is locked only once the buyer's PO is on file">No buyer PO yet</a>)}
-            {ship.part && o.status === "open" && <a href="#dispatch" className="chip info">Part shipped · {qty(ship.shipped)} of {qty(ship.ordered)} pcs</a>}
-            {o.closed_short_at && <span className="chip warn" title={o.short_reason ?? undefined}>Closed short · {qty(ship.billed)} of {qty(ship.ordered)} pcs</span>}
+            {ship.part && o.status === "open" && <a href="#dispatch" className="chip info">Part shipped · {qty(ship.shipped)} of {qty(ship.ordered)} {unitOfAll(lines)}</a>}
+            {o.closed_short_at && <span className="chip warn" title={o.short_reason ?? undefined}>Closed short · {qty(ship.billed)} of {qty(ship.ordered)} {unitOfAll(lines)}</span>}
             {!ship.part && outlook?.level === "risk" && <span className="chip bad" title="A late step pushes back every step after it">{riskLate(outlook.daysLate)}</span>}
           </p>
         </div>
@@ -390,13 +391,13 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
       </div>
       <div data-sec="qc">
       <OrderQc orderId={o.id} companyId={o.company_id} open={o.status === "open"} canRecord={canRecordQc(me?.role)} today={todayIST()} checks={checks} finalPassed={finalPassed}
-        styles={lines.map((l) => ({ id: l.id, style: l.style, colour: str(l.colour), qty: l.qty }))} />
+        styles={lines.map((l) => ({ id: l.id, style: l.style, colour: str(l.colour), qty: l.qty, product: l.product }))} />
       </div>
       {canEdit && (
         <div data-sec="dispatch"><OrderDispatch orderId={o.id} orderNo={o.order_no} companyId={o.company_id} open={o.status === "open"} owner={me?.role === "owner"} factories={dispatchFactories}
           ship={lines.map((l) => {
             const r = shipRows.find((x) => x.line_id === l.id);
-            return { id: l.id, style: l.style, colour: str(l.colour), ordered: l.qty, bought: r?.bought ?? 0, billed: r?.billed ?? 0, shipped: r?.shipped ?? 0 };
+            return { id: l.id, style: l.style, colour: str(l.colour), ordered: l.qty, bought: r?.bought ?? 0, billed: r?.billed ?? 0, shipped: r?.shipped ?? 0, unit: unitOf(l.product) };
           })}
           closedShort={o.closed_short_at ? { at: o.closed_short_at, reason: str(o.short_reason), by: (o.closed_short_by && people.get(o.closed_short_by)) || "the orders team" } : null}
           dispatches={dispatches} tally={tallyBills} now={Date.parse(new Date().toISOString())} today={todayIST()} /></div>
@@ -404,7 +405,7 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
       {canEdit && (
         <div data-sec="dispatch"><OrderMargin
           styles={lines.map((l) => ({
-            id: l.id, style: l.style, colour: str(l.colour), qty: l.qty,
+            id: l.id, style: l.style, colour: str(l.colour), qty: l.qty, product: l.product,
             buyerRate: l.buyer_rate == null ? null : Number(l.buyer_rate), factoryRate: l.factory_rate == null ? null : Number(l.factory_rate),
           }))}
           dispatches={dispatches}

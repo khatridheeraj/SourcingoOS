@@ -2,6 +2,18 @@ const inr = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 2 });
 const date = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" });
 
 export const qty = (n: number | null | undefined) => (n == null ? "" : inr.format(n));
+// Fabric is bought by the metre, garments by the piece (order_lines.product).
+export const unitOf = (product: string | null | undefined) => (product === "fabric" ? "m" : "pcs");
+export const qtyU = (n: number | null | undefined, product: string | null | undefined) => (n == null ? "" : `${qty(n)} ${unitOf(product)}`);
+// A total across styles, kept apart by unit: "500 pcs", "250 m" or "500 pcs + 250 m".
+export const qtyTotal = (lines: { qty: number | null; product?: string | null }[], qtyOf: (l: { qty: number | null; product?: string | null }) => number = (l) => Number(l.qty ?? 0)) => {
+  let pcs = 0, m = 0;
+  for (const l of lines) if (l.product === "fabric") m += qtyOf(l); else pcs += qtyOf(l);
+  return [pcs || !m ? `${qty(pcs)} pcs` : "", m ? `${qty(m)} m` : ""].filter(Boolean).join(" + ");
+};
+// One unit for a number summed over several styles: "m" when all are fabric, "pcs" when none are, else "units".
+export const unitOfAll = (lines: { product?: string | null }[]) =>
+  lines.length && lines.every((l) => l.product === "fabric") ? "m" : lines.some((l) => l.product === "fabric") ? "units" : "pcs";
 export const money = (n: number | null | undefined) => (n == null ? "" : `₹${inr.format(n)}`);
 // Rupees the way people say them at a glance: ₹10.7 L, ₹1.2 Cr.
 export const moneyShort = (n: number | null | undefined) =>

@@ -25,7 +25,8 @@ const KINDS: { key: LineFileKind; label: string; hint: string }[] = [
 const toRows = (sizes: Record<string, number>) => sizeEntries(sizes).map(([size, n]) => ({ size, qty: String(n) }));
 
 // A style's fabric, its pieces per size, and its tech pack, cutting program and other files.
-export function StyleDetails({ orderId, companyId, lineId, style, styleQty, detail, editable }: {
+// A fabric style is bought by the metre and has no sizes, so it shows only the fabric.
+export function StyleDetails({ orderId, companyId, lineId, style, styleQty, detail, editable, fabricOrder = false }: {
   orderId: string;
   companyId: string;
   lineId: string;
@@ -33,6 +34,7 @@ export function StyleDetails({ orderId, companyId, lineId, style, styleQty, deta
   styleQty: number;
   detail: StyleDetail;
   editable: boolean;
+  fabricOrder?: boolean;
 }) {
   const router = useRouter();
   const [fabric, setFabric] = useState(detail.fabric);
@@ -85,7 +87,7 @@ export function StyleDetails({ orderId, companyId, lineId, style, styleQty, deta
         </label>
       </div>
 
-      <div className="grid gap-2">
+      {!fabricOrder && <div className="grid gap-2">
         <div className="row !gap-2">
           <span className="text-[12.5px] font-medium">Pieces per size</span>
           {editable && rows.length > 0 && (
@@ -125,14 +127,14 @@ export function StyleDetails({ orderId, companyId, lineId, style, styleQty, deta
             {sizeEntries(detail.sizes).map(([s, n]) => <label key={s}><b className="text-[13px] text-foreground">{s}</b>{qty(n)}</label>)}
           </div>
         ) : <span className="muted text-[13px]">Not entered</span>}
-      </div>
+      </div>}
 
       {editable && (dirty || error) && (
         <div className="row">
           <button type="button" className="btn primary sm" disabled={pending || !dirty || (filled.length > 0 && sum !== styleQty)}
             title={filled.length > 0 && sum !== styleQty ? `The sizes must add up to ${qty(styleQty)} pcs` : undefined}
             onClick={() => run("save", () => saveStyleDetails(orderId, lineId, fabric, filled), `${style} saved`)}>
-            {busy === "save" ? "Saving…" : "Save fabric and sizes"}
+            {busy === "save" ? "Saving…" : fabricOrder ? "Save fabric" : "Save fabric and sizes"}
           </button>
           {dirty && (
             <button type="button" className="btn sm" disabled={pending} onClick={() => { setFabric(detail.fabric); setRows(toRows(detail.sizes)); setError(""); }}>Undo</button>

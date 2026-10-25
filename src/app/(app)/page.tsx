@@ -2,7 +2,7 @@ import { NO_COMPANY } from "@/lib/names";
 import Link from "next/link";
 import { canEditOrders, getMe } from "@/lib/auth";
 import { buyerName, loadBuyers, loadFactories, loadTeam, personName } from "@/lib/data";
-import { day, dayAt, daysBetween, dueDate, money, moneyShort, qty, SHIP_QC, stageReached, STATUS, todayIST } from "@/lib/format";
+import { day, dayAt, daysBetween, dueDate, money, moneyShort, qty, qtyTotal, SHIP_QC, stageReached, STATUS, todayIST, unitOfAll } from "@/lib/format";
 import { type LinePrice, marginCls, pct, planMargin } from "@/lib/margin";
 import { fetchAll } from "@/lib/fetch-all";
 import { styleProgress } from "@/lib/progress";
@@ -21,7 +21,7 @@ const TABS = [
   { key: "all", label: "All" },
 ];
 
-type Line = { id: string; style: string; qty: number; buyer_rate: number | null; factory_id: string | null; factory_rate: number | null };
+type Line = { id: string; style: string; qty: number; product: string; buyer_rate: number | null; factory_id: string | null; factory_rate: number | null };
 
 export default async function OrdersPage({ searchParams }: PageProps<"/">) {
   const sp = await searchParams;
@@ -38,7 +38,7 @@ export default async function OrdersPage({ searchParams }: PageProps<"/">) {
   const page = (a: number, z: number) => {
     let query = supabase
       .from("orders")
-      .select("id, order_no, buyer_id, buyer_po, ship_date, revised_ship_date, delay_reason, stage, status, closed_short_at, order_lines(id, style, qty, factory_id)")
+      .select("id, order_no, buyer_id, buyer_po, ship_date, revised_ship_date, delay_reason, stage, status, closed_short_at, order_lines(id, style, qty, factory_id, product)")
       .eq("company_id", companyId)
       .is("order_lines.removed_at", null)
       .order("ship_date", { ascending: true, nullsFirst: false })
@@ -103,7 +103,7 @@ export default async function OrdersPage({ searchParams }: PageProps<"/">) {
   // Open orders whose buyer PO is on file, to point out the ones still missing it.
   const { data: withPo } = prices && openIds.length ? await supabase.rpc("orders_with_po_file", { p_orders: openIds }) : { data: null };
   const hasPo = new Set((withPo ?? []) as string[]);
-  const withRates = (o: { order_lines: { id: string; style: string; qty: number; factory_id: string | null }[] | null }): Line[] =>
+  const withRates = (o: { order_lines: { id: string; style: string; qty: number; factory_id: string | null; product: string }[] | null }): Line[] =>
     (o.order_lines ?? []).map((l) => ({ ...l, buyer_rate: rateOf.get(l.id)?.buyer_rate ?? null, factory_rate: rateOf.get(l.id)?.factory_rate ?? null }));
 
   // Progress of an open order: where its slowest styles are, and whether any step is past its target.
@@ -146,7 +146,10 @@ export default async function OrdersPage({ searchParams }: PageProps<"/">) {
       lines,
       buyer: b ? buyerName(b) : "",
       styles: lines.map((l) => l.style),
-      pieces: lines.reduce((s, l) => s + l.qty, 0),
+      // Garments in pieces; fabric is in metres and never added to them.
+      pieces: lines.reduce((s, l) => s + (l.product === "fabric" ? 0 : l.qty), 0),
+      metres: lines.reduce((s, l) => s + (l.product === "fabric" ? l.qty : 0), 0),
+      qtyText: qtyTotal(lines),
       value: prices && lines.every((l) => l.buyer_rate != null) ? lines.reduce((s, l) => s + l.qty * (l.buyer_rate ?? 0), 0) : null,
       margin: prices ? planMargin(lines) : null,
       factoryNames,
@@ -191,7 +194,7 @@ export default async function OrdersPage({ searchParams }: PageProps<"/">) {
       {status === "open" && openCount > 0 && (
         <div className="kpis hide-phone" style={{ gridTemplateColumns: `repeat(${openMargin && openMargin.sale > 0 ? 5 : 4}, minmax(0, 1fr))` }}>
           <div className="kpi"><span className="kpi-label"><i aria-hidden />Open orders</span><b>{openCount}</b><small>{qty(open.reduce((s, r) => s + r.styles.length, 0))} styles</small></div>
-          <div className="kpi"><span className="kpi-label"><i aria-hidden />Pieces</span><b>{qty(open.reduce((s, r) => s + r.pieces, 0))}</b><small>On open orders</small></div>
+          <div className="kpi"><span className="kpi-label"><i aria-hidden />Pieces</span><b>{qty(open.reduce((s, r) => s + r.pieces, 0))}</b><small>{open.some((r) => r.metres) ? `Plus ${qty(open.reduce((s, r) => s + r.metres, 0))} m of fabric` : "On open orders"}</small></div>
           <Link href="/?status=late" className={`kpi ${late ? "bad" : "ok"}`}><span className="kpi-label"><i aria-hidden />Late</span><b>{late}</b><small>Past their ship date</small></Link>
           <div className={`kpi ${noFactory ? "warn" : "ok"}`}><span className="kpi-label"><i aria-hidden />Need a factory</span><b>{noFactory}</b><small>{noFactory ? "Choose one on the order" : "Every style has one"}</small></div>
           {openMargin && openMargin.sale > 0 && (
@@ -251,7 +254,7 @@ export default async function OrdersPage({ searchParams }: PageProps<"/">) {
                     <span className="ocard-top"><span className="code">{r.order_no}</span>
                       <ShipClock c={shipClock(r.due, today, r.status)} size="sm" /></span>
                     <b className="ocard-buyer">{r.buyer}</b>
-                    <span className="ocard-sub">PO {r.buyer_po} · {qty(r.pieces)} pcs{r.value != null ? ` · ${moneyShort(r.value)}` : ""}</span>
+                    <span className="ocard-sub">PO {r.buyer_po} · {r.qtyText}{r.value != null ? ` · ${moneyShort(r.value)}` : ""}</span>
                     <span className="ocard-next">{nextText(r.journey!)}</span>
                   </Link>
                 ))}
@@ -269,7 +272,7 @@ export default async function OrdersPage({ searchParams }: PageProps<"/">) {
       ) : (
         <div className={`olist ${prices ? "" : "noprice"} ${board ? "board-alt" : ""}`} role="table" aria-label="Orders">
           <div className="olist-h" role="row">
-            <span role="columnheader">Order</span><span role="columnheader">Ship date</span><span role="columnheader" className="r">Pieces</span>
+            <span role="columnheader">Order</span><span role="columnheader">Ship date</span><span role="columnheader" className="r">Qty</span>
             {prices && <><span role="columnheader" className="r">Value</span><span role="columnheader" className="r">Margin</span></>}
             <span role="columnheader">Progress</span>
           </div>
@@ -288,7 +291,7 @@ export default async function OrdersPage({ searchParams }: PageProps<"/">) {
                   </span>
                 )}
                 <span className="o-facts show-phone">
-                  {qty(r.pieces)} pcs{r.value != null && ` · ${moneyShort(r.value)}`}
+                  {r.qtyText}{r.value != null && ` · ${moneyShort(r.value)}`}
                   {r.margin && r.margin.sale > 0 && <>{" · "}<b className={marginCls(r.margin.pct)}>{pct(r.margin.pct)}</b>{" margin"}</>}
                 </span>
               </span>
@@ -297,7 +300,7 @@ export default async function OrdersPage({ searchParams }: PageProps<"/">) {
                 {r.late ? <small className="text-bad">{r.lateBy} {r.lateBy === 1 ? "day" : "days"} late</small>
                   : r.revised_ship_date && r.ship_date && r.revised_ship_date !== r.ship_date ? <small title={r.delay_reason ?? undefined}>Buyer date {day(r.ship_date)}</small> : null}
               </span>
-              <span className="r num hide-phone" role="cell"><span className="o-k">Pieces </span>{qty(r.pieces)}</span>
+              <span className="r num hide-phone" role="cell"><span className="o-k">Qty </span>{r.qtyText}</span>
               {prices && <span className="r num hide-phone" role="cell"><span className="o-k">Value </span>{money(r.value)}</span>}
               {prices && (
                 <span className="r num hide-phone" role="cell">
@@ -306,7 +309,7 @@ export default async function OrdersPage({ searchParams }: PageProps<"/">) {
               )}
               <span className="o-prog" role="cell">
                 {r.progress ? (
-                  <ProgressCell p={r.progress} looksShipped={r.looksShipped} ship={r.ship} />
+                  <ProgressCell p={r.progress} looksShipped={r.looksShipped} ship={r.ship} unit={unitOfAll(r.lines)} />
                 ) : <span className={STATUS[r.status]?.cls}>{STATUS[r.status]?.label}</span>}
               </span>
             </Link>

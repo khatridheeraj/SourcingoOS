@@ -14,13 +14,13 @@ export function PlanChip({ p, looksShipped = false }: { p: Progress; looksShippe
 // The plan chip, steps done out of planned, a bar and where the slowest styles are.
 // Before any step is done there is nothing to report but the chip, so "No step done yet" is left out.
 // An order sent in parts shows its pieces shipped instead: what is left is what matters now.
-export function ProgressCell({ p, looksShipped = false, ship }: { p: Progress; looksShipped?: boolean; ship?: OrderShip | null }) {
+export function ProgressCell({ p, looksShipped = false, ship, unit = "pcs" }: { p: Progress; looksShipped?: boolean; ship?: OrderShip | null; unit?: string }) {
   if (ship?.part) {
     return (
       <>
         <span className="flex items-center justify-between gap-2"><span className="chip info">Part shipped</span><small className="num">{Math.floor((100 * ship.shipped) / ship.ordered)}%</small></span>
         <span className="bar"><i className="ok" style={{ width: `${Math.max(3, (100 * ship.shipped) / ship.ordered)}%` }} /></span>
-        <small>{partText(ship)}</small>
+        <small>{partText(ship, unit)}</small>
       </>
     );
   }
