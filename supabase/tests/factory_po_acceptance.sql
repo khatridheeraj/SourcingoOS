@@ -74,9 +74,9 @@ select pg_temp.expect(public.po_mail_due()->0->>'to' = 'merch@sourcingo.in' and 
 select pg_temp.expect((public.po_mail_content(:'o1', '20000000-0000-0000-0000-000000000001', 'po')->>'subject') = 'Purchase order SO/172/2026 from Sourcingo', 'subject with SO number');
 select pg_temp.expect((public.po_mail_content(:'o1', '20000000-0000-0000-0000-000000000001', 'po')->>'html') like '%/po/' || :'tok' || '%', 'email links the PO');
 select pg_temp.expect((public.po_mail_content(:'o1', '20000000-0000-0000-0000-000000000001', 'po')->>'html') not like '%AV-129%', 'other factory''s style not on it');
--- Each column holds what its heading says (0066): sizes under Sizes, pieces under Qty, the value under Value.
+-- Each column holds what its heading says (0066, unit in the cell since 0068): sizes under Sizes, "500 pcs" under Qty, the value under Value.
 select pg_temp.expect((public.po_mail_content(:'o1', '20000000-0000-0000-0000-000000000001', 'po')->>'html')
-  ~ 'Sizes</th>.*Rate</th>.*Qty \(pcs\)</th>.*Value</th>.*Size-wise qty will be confirmed before cutting</td>[^<]*<td[^>]*>[^<]*</td><td[^>]*>500</td>', 'email table columns shifted');
+  ~ 'Sizes</th>.*Rate</th>.*Qty</th>.*Value</th>.*Size-wise qty will be confirmed before cutting</td>[^<]*<td[^>]*>[^<]*</td><td[^>]*>500 pcs</td>', 'email table columns shifted');
 select public.po_mail_sent(:'o1', '20000000-0000-0000-0000-000000000001', 'thread-1', 'po');
 select pg_temp.expect(jsonb_array_length(public.po_mail_due()) = 0, 'nothing due right after sending');
 update public.factory_pos set mail_requested_at = now() - interval '4 hours', last_mailed_at = now() - interval '2 hours' where order_id = :'o1';
