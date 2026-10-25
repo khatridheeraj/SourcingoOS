@@ -75,10 +75,7 @@ export default async function GoodsPage({ searchParams }: PageProps<"/goods">) {
       <div className="head">
         <div className="grow">
           <h1>Goods with us</h1>
-          <p>
-            Every lot bought from a factory until the buyer&apos;s GRN.{" "}
-            {over.length ? <b className="text-bad">{over.length} held over {HOLD_HOURS} hours</b> : <b className="text-ok">Nothing held over {HOLD_HOURS} hours</b>}
-          </p>
+          <p>Every lot bought from a factory until the buyer&apos;s GRN.</p>
         </div>
       </div>
 
