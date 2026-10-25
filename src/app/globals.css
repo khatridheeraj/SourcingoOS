@@ -280,6 +280,7 @@ h1, h2, h3 { font-family: var(--font-display); text-wrap: balance; font-weight: 
   .tile { display: block; border-radius: 12px; padding: 16px; border: 1px solid var(--line); background: var(--surface); box-shadow: var(--shadow); }
   .tile span { font-size: 12.5px; font-weight: 500; color: var(--muted); display: block; }
   .tile b { display: block; font-size: 24px; font-weight: 600; letter-spacing: -0.02em; line-height: 1.15; margin-top: 6px; font-variant-numeric: tabular-nums; }
+  .tile small { display: block; margin-top: 4px; line-height: 1.45; }
   .tile.alarm b { color: var(--bad); }
   a.tile:hover { border-color: var(--line-strong); }
 
