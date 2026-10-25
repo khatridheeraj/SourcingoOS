@@ -36,6 +36,8 @@ export default async function PayablesPage({ searchParams }: PageProps<"/payable
     .map((b) => ({ ...b, key: `${b.ledger}|${b.bill ?? ""}`, name: supplierName(b), due: dueOf(b, today) }))
     .sort((a, z) => (a.due_on ?? "9").localeCompare(z.due_on ?? "9") || z.open - a.open);
   const suppliers = bySupplier(shown, today);
+  // Name who the late MSME bills are owed to, so the banner says whom to pay first without hunting the list.
+  const msmeWho = [...new Set(rows.filter((r) => isMsme45(r.msme) && r.due_on && r.due_on < today).map((r) => r.name))];
   const oneName = one ? suppliers[0]?.name ?? one : "";
   // No bills and Tally never read: there is nothing to count yet, so "₹0" and "every bill is paid" would mislead.
   const unread = !bills.length && !error && (!tallyOn || !readAt);
@@ -78,7 +80,8 @@ export default async function PayablesPage({ searchParams }: PageProps<"/payable
 
           {t.msmeLate > 0 && (
             <div className="latebox" role="status">
-              <b>{t.msmeLate} MSME {t.msmeLate === 1 ? "bill" : "bills"} past {MSME_DAYS} days, {money(Math.round(t.msmeLateAmount))}.</b>{" "}
+              <b>{t.msmeLate} MSME {t.msmeLate === 1 ? "bill" : "bills"} past {MSME_DAYS} days, {money(Math.round(t.msmeLateAmount))}</b>
+              {msmeWho.length ? `, owed to ${msmeWho.length > 3 ? `${msmeWho.slice(0, 3).join(", ")} and ${msmeWho.length - 3} more` : msmeWho.join(", ")}` : ""}.{" "}
               Pay {t.msmeLate === 1 ? "it" : "them"} first: the law sets interest on late MSME bills.
             </div>
           )}
