@@ -132,6 +132,7 @@ export default async function OrdersPage({ searchParams }: PageProps<"/">) {
         billedAll: !!o.closed_short_at || lines.every((l) => (shipRows.find((r) => r.line_id === l.id)?.billed ?? 0) >= l.qty),
       } : null,
       due: dueDate(o),
+      riskDays: styleProgress(lines.map((l) => l.id), steps ?? [], dueDate(o), today).riskDays,
       today,
     });
   };

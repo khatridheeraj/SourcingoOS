@@ -6,7 +6,8 @@ import { partText, type OrderShip } from "@/lib/shipments";
 export function PlanChip({ p, looksShipped = false }: { p: Progress; looksShipped?: boolean }) {
   return looksShipped ? <span className="chip warn">Shipped? Close it</span>
     : p.riskDays > 0 ? <span className="chip bad" title="A late step pushes back every step after it">{riskLate(p.riskDays)}</span>
-    : p.behind ? <span className="chip bad">Behind plan</span>
+    // Past a target but the ship date still holds: most likely done and not marked yet.
+    : p.behind ? <span className="chip warn" title="A step's target has passed with no Done date">Needs update</span>
     : !p.planned ? <span className="chip warn">No targets</span>
     : null;
 }
@@ -29,7 +30,7 @@ export function ProgressCell({ p, looksShipped = false, ship, unit = "pcs" }: { 
   return (
     <>
       <span className="flex items-center justify-between gap-2"><PlanChip p={p} looksShipped={looksShipped} /><small className="num">{p.total > 0 && `${p.done}/${p.total}`}</small></span>
-      <span className="bar"><i className={p.behind ? "bad" : ""} style={{ width: `${p.total ? Math.max(3, (100 * p.done) / p.total) : 0}%` }} /></span>
+      <span className="bar"><i className={p.riskDays > 0 ? "bad" : p.behind ? "warn" : ""} style={{ width: `${p.total ? Math.max(3, (100 * p.done) / p.total) : 0}%` }} /></span>
       {p.done > 0 && <small>{p.text}</small>}
     </>
   );

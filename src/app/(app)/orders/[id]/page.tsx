@@ -280,10 +280,11 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
       billedAll: !!o.closed_short_at || lines.every((l) => (shipRows.find((x) => x.line_id === l.id)?.billed ?? 0) >= l.qty),
     } : null,
     due: due ?? null,
+    riskDays: outlook?.level === "risk" ? outlook.daysLate : 0,
     today,
   });
   const tabs: SectionTab[] = [
-    { id: "tna", label: "Styles", count: pendingUpdates.length || behind || undefined, tone: pendingUpdates.length ? "info" : "bad" },
+    { id: "tna", label: "Styles", count: pendingUpdates.length || behind || undefined, tone: pendingUpdates.length ? "info" : outlook?.level === "risk" ? "bad" : "warn" },
     { id: "samples", label: "Samples", count: samplesToAct || undefined, tone: "warn" },
     { id: "qc", label: "QC" },
     ...(canEdit ? [{ id: "dispatch", label: "Dispatch" }] : []),

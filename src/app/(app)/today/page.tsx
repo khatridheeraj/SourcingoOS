@@ -341,9 +341,16 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
     });
   }
 
-  // Overdue TNA steps, one line per order.
+  // Steps past their target with no Done date, one line per order. Red only when the ship date is at risk;
+  // otherwise it is most likely done and not marked yet, so it asks for an update in amber.
+  const quality = me?.role === "quality";
+  // Quality's own work among them: an inspection (inline, mid-line, final) no style has passed yet.
+  const qcOpen = (s: (typeof live)[number]) => {
+    const kinds = TNA_STEPS.find((t) => t.key === s.stage)?.qc;
+    return !!kinds && ["inline", "midline", "final_qc"].includes(s.stage) && latest(s.line_id, kinds)?.result !== "pass";
+  };
   const overdueBy = new Map<string, typeof live>();
-  for (const s of live) if (!s.done_on && s.planned_on && s.planned_on < today) overdueBy.set(s.order_id, [...(overdueBy.get(s.order_id) ?? []), s]);
+  for (const s of live) if (!s.done_on && s.planned_on && s.planned_on < today && (!quality || qcOpen(s))) overdueBy.set(s.order_id, [...(overdueBy.get(s.order_id) ?? []), s]);
   for (const o of active) {
     const late = overdueBy.get(o.id);
     if (!late || pastDue.has(o.id)) continue;
@@ -353,12 +360,23 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
     const labels = [...new Set(late.sort((a, b) => stepIndex(a.stage) - stepIndex(b.stage)).map((s) => stepLabel(s.stage)))];
     const styles = new Set(late.map((s) => s.line_id)).size;
     const lines = (o.order_lines ?? []).length;
+    const facts = `${lines > 1 ? ` · ${styles === lines ? `all ${lines} styles` : `${styles} of ${lines} styles`}` : ""}${due ? ` · ships ${dm(due)}` : ""}`;
+    if (quality) {
+      // Inspections are Quality's to record: the oldest one first, opened straight in the QC sheet.
+      const first = late.reduce((m, s) => (s.planned_on! < m.planned_on! ? s : m), late[0]);
+      const kind = TNA_STEPS.find((t) => t.key === first.stage)!.qc![0];
+      now_.push({ key: `late:${o.id}`, href: `/orders/${o.id}#qc`, sev: "bad", ...base(o),
+        detail: `Not recorded yet: ${labels.join(", ")} · first planned ${dm(first.planned_on!)}${facts}`,
+        chip: { text: `${plural(daysBetween(first.planned_on!, today), "day")} overdue`, cls: "bad" },
+        action: "Record QC", sort: first.planned_on!, qc: { orderId: o.id, kind } });
+      continue;
+    }
+    const risk = !due || due < today || riskDays(o) > 0;
     now_.push({
-      key: `late:${o.id}`, href: due || !team ? `/orders/${o.id}#tna` : `/orders/${o.id}#details`, sev: "bad", ...base(o),
-      detail: `${plural(late.length, "step")} overdue: ${labels.slice(0, 3).join(", ")}${labels.length > 3 ? ` and ${labels.length - 3} more` : ""}`
-        + `${lines > 1 ? ` · ${styles === lines ? `all ${lines} styles` : `${styles} of ${lines} styles`}` : ""}${due ? ` · ships ${dm(due)}` : ""}`,
+      key: `late:${o.id}`, href: due || !team ? `/orders/${o.id}#tna` : `/orders/${o.id}#details`, sev: risk ? "bad" : "warn", ...base(o),
+      detail: `${plural(late.length, "step")} past target with no Done date: ${labels.slice(0, 3).join(", ")}${labels.length > 3 ? ` and ${labels.length - 3} more` : ""}${facts}`,
       chip: !due ? { text: "No ship date", cls: "bad" } : due < today ? { text: `${plural(daysBetween(due, today), "day")} late`, cls: "bad" }
-        : riskDays(o) ? { text: riskLate(riskDays(o)), cls: "bad" } : { text: "Behind plan", cls: "bad" },
+        : riskDays(o) ? { text: riskLate(riskDays(o)), cls: "bad" } : { text: "Needs update", cls: "warn" },
       action: due ? "Update" : "Set ship date", sort: due ?? "",
       ...(due ? { sheet: { orderId: o.id, mode: "update" as const } } : {}), chase: chaseFor(o),
     });
@@ -596,7 +614,7 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
     return !d ? { text: "No ship date", cls: "bad" } : lateBy ? { text: `${part ? "Part shipped · " : ""}${plural(lateBy, "day")} late`, cls: "bad" }
       : part ? { text: "Part shipped", cls: "warn" }
       : finalPassed(o) ? { text: "Final QC passed", cls: "ok" } : !p.total ? { text: "No targets", cls: "warn" }
-      : riskDays(o) ? { text: riskLate(riskDays(o)), cls: "bad" } : p.behind ? { text: "Behind plan", cls: "bad" } : { text: "On plan", cls: "ok" };
+      : riskDays(o) ? { text: riskLate(riskDays(o)), cls: "bad" } : p.behind ? { text: "Needs update", cls: "warn" } : { text: "On plan", cls: "ok" };
   };
   const kpis = [
     { key: "now", href: qs("now"), label: "Needs you now", value: String(nowCount), sev: nowCount ? "bad" : "ok", sub: nowCount ? "Late, overdue or blocking" : "All clear" },

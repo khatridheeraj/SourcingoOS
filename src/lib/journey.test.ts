@@ -40,6 +40,15 @@ test("late steps make the production step red", () => {
   assert.equal(r.next.tone, "bad");
   assert.equal(r.overdue, 12);
 });
+test("steps past target with the ship date still safe ask for an update in amber, not red", () => {
+  const r = j({ steps: steps(3, "2026-10-20"), riskDays: 0 });
+  assert.equal(r.next.tone, "warn");
+  assert.equal(r.next.title, "12 steps need an update");
+  assert.equal(r.next.action.kind, "update");
+  const risky = j({ steps: steps(3, "2026-10-20"), riskDays: 4 });
+  assert.equal(risky.next.tone, "bad");
+  assert.match(risky.next.detail, /about 4 days late/);
+});
 test("factory updates and samples come first while making", () => {
   assert.equal(j({ pendingUpdates: 2 }).next.action.kind, "review");
   assert.equal(j({ samplesToAct: 1 }).next.action.kind, "samples");

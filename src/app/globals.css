@@ -374,6 +374,7 @@ h1, h2, h3 { font-family: var(--font-display); text-wrap: balance; font-weight: 
   .bar { display: block; height: 4px; border-radius: 4px; background: var(--surface-3); overflow: hidden; margin: 8px 0 6px; }
   .bar i { display: block; height: 100%; background: var(--accent); border-radius: 4px; }
   .bar i.bad { background: var(--bad); }
+  .bar i.warn { background: var(--warn); }
   .bar i.ok { background: var(--ok); }
   .pipe { display: flex; flex-direction: column; gap: 12px; padding: 18px 20px; }
   .pipe-row { display: grid; grid-template-columns: 150px minmax(0, 1fr) 28px; gap: 14px; align-items: center; font-size: 13px; color: var(--muted); }

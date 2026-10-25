@@ -411,7 +411,7 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
     <section className="panel scroll-mt-20" id="tna">
       <div className="row mb-3 !flex-nowrap">
         <h2 className="font-bold text-base">Styles and TNA</h2>
-        {late > 0 && <span className="chip bad hide-phone">{late} {late === 1 ? "style" : "styles"} behind plan</span>}
+        {late > 0 && <span className="chip warn hide-phone">{late} {late === 1 ? "style needs" : "styles need"} an update</span>}
         {lines.length > 1 && (
           <button type="button" className="btn sm ml-auto shrink-0" onClick={() => setShown(new Set(allShown ? [] : lines.map((l) => l.id)))}>
             {allShown ? "Hide all steps" : "Show all steps"}
