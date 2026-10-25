@@ -33,6 +33,8 @@ export const dueDate = (o: { ship_date: string | null; revised_ship_date?: strin
 // Whole days between two YYYY-MM-DD dates (b minus a).
 // "1 day late", "5 days late": every late chip counts days the same way.
 export const daysLate = (n: number) => `${n} ${n === 1 ? "day" : "days"} late`;
+// An "At risk" order is not late yet: it will likely finish this many days after its ship date.
+export const riskLate = (n: number) => `At risk · about ${daysLate(n)}`;
 export const daysBetween = (a: string, b: string) => Math.round((Date.parse(b) - Date.parse(a)) / 86_400_000);
 
 // QC stages in the order they happen: sampling and approvals, then production checks.
