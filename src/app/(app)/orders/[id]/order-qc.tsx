@@ -238,11 +238,9 @@ export function OrderQc({ orderId, companyId, open, canRecord, today, checks, fi
         <h2 className="font-bold text-base">Quality checks</h2>
         {finalPassed ? <span className="chip ok">Final QC passed for every style</span>
           : anyFailed ? <span className="chip bad">Final QC failed on a style</span>
-          : open ? <span className="chip warn">Final QC passed for {passedCount} of {styles.length} {styles.length === 1 ? "style" : "styles"}</span> : null}
+          : open ? <span className="muted num text-[13px]">Final QC passed for {passedCount} of {styles.length} {styles.length === 1 ? "style" : "styles"}</span> : null}
       </div>
       {notice && <p className="mb-3 text-[13px] font-semibold text-bad" role="status">{notice}</p>}
-      {open && !finalPassed && <p className="muted mb-3 text-[13px]">Each style has its own QC. The order can be marked Shipped once every style&apos;s latest final QC has passed.{!canRecord && " The Quality team records QC; you can comment on any check."}</p>}
-
 
       <div className="flex flex-col gap-4">
         {groups.map((st) => {
@@ -346,6 +344,12 @@ export function OrderQc({ orderId, companyId, open, canRecord, today, checks, fi
           );
         })}
       </div>
+      {open && !finalPassed && (
+        <details className="howto mt-4 border-t border-line pt-3">
+          <summary>How QC works</summary>
+          <p>Each style has its own QC. The order can be marked Shipped once every style&apos;s latest final QC has passed.{!canRecord && " The Quality team records QC; you can comment on any check."}</p>
+        </details>
+      )}
     </section>
   );
 }

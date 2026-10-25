@@ -123,7 +123,7 @@ export function OrderDispatch({ orderId, orderNo, companyId, open, owner, factor
 
   return (
     <section className="panel scroll-mt-20" id="dispatch">
-      <div className="row mb-1">
+      <div className="row mb-3">
         <h2 className="font-bold text-base">Dispatch</h2>
         {open && !adding && factories.length > 0 && (
           <button type="button" className={`btn sm ml-auto ${part && toBuy ? "primary" : ""}`} onClick={() => { setP(blank(factories.length === 1 ? factories[0] : undefined)); setAdding(true); }}>
@@ -131,9 +131,6 @@ export function OrderDispatch({ orderId, orderNo, companyId, open, owner, factor
           </button>
         )}
       </div>
-      <p className="muted mb-3 text-[13px]">
-        Purchase from the factory, then invoice the buyer within 4 hours, add the e-way bill, ship with photos and the LR, and collect the buyer&apos;s GRN in time.
-      </p>
 
       {dispatches.length > 0 && (
         <ShipSummary orderId={orderId} orderNo={orderNo} ship={ship} open={open} closedShort={closedShort} pending={pending} start={start}
@@ -179,14 +176,14 @@ export function OrderDispatch({ orderId, orderNo, companyId, open, owner, factor
               <Copies d={d} pending={pending} onAttach={(kind, file) => attach(d.id, kind, file)} />
 
               {d.invoicedAt && (
-                <p className="mt-2 text-[13px]">Invoice <b>{d.invoiceNo}</b>: {money(Math.round((d.invoiceTaxable ?? 0) + (d.invoiceGst ?? 0)))} with GST, made {at.format(new Date(d.invoicedAt))}.</p>
+                <p className="mt-2 text-[13px]">Invoice <b>{d.invoiceNo}</b>{d.invoiceTaxable != null && `: ${money(Math.round(d.invoiceTaxable + (d.invoiceGst ?? 0)))} with GST`}, made {at.format(new Date(d.invoicedAt))}.</p>
               )}
               {d.ewayNo && (
-                <p className="text-[13px]">E-way bill <b className="num">{d.ewayNo}</b> of {day(d.ewayDate)}{d.ewayValidUntil && `, valid till ${day(d.ewayValidUntil)}`}{d.ewayFromTally && ", from Tally"}. {d.ewayUrl && <a className="link" href={d.ewayUrl} target="_blank" rel="noreferrer">Open</a>}</p>
+                <p className="text-[13px]">E-way bill <b className="num">{d.ewayNo}</b>{d.ewayDate && ` of ${day(d.ewayDate)}`}{d.ewayValidUntil && `, valid till ${day(d.ewayValidUntil)}`}{d.ewayFromTally && ", from Tally"}. {d.ewayUrl && <a className="link" href={d.ewayUrl} target="_blank" rel="noreferrer">Open</a>}</p>
               )}
               {d.shippedAt && (
                 <div className="text-[13px]">
-                  Shipped by {d.transporter}{d.vehicleNo && ` (${d.vehicleNo})`}, LR <b>{d.lrNo}</b> of {day(d.lrDate)}{d.cartons && `, ${d.cartons} cartons`}. {d.lrUrl && <a className="link" href={d.lrUrl} target="_blank" rel="noreferrer">LR copy</a>}
+                  Shipped by {d.transporter}{d.vehicleNo && ` (${d.vehicleNo})`}, LR <b>{d.lrNo}</b>{d.lrDate && ` of ${day(d.lrDate)}`}{d.cartons && `, ${d.cartons} cartons`}. {d.lrUrl && <a className="link" href={d.lrUrl} target="_blank" rel="noreferrer">LR copy</a>}
                   <div className="mt-1 flex flex-wrap gap-1.5">
                     {d.photoUrls.map((u) => (
                       // eslint-disable-next-line @next/next/no-img-element
@@ -209,6 +206,10 @@ export function OrderDispatch({ orderId, orderNo, companyId, open, owner, factor
           );
         })}
       </div>
+      <details className="howto mt-4 border-t border-line pt-3">
+        <summary>How dispatch works</summary>
+        <p>Purchase from the factory, then invoice the buyer within 4 hours, add the e-way bill, ship with photos and the LR, and collect the buyer&apos;s GRN in time.</p>
+      </details>
     </section>
   );
 }
