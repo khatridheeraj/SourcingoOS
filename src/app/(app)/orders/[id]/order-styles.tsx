@@ -384,7 +384,7 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
     const over = cells.filter((x) => !x.c.done_on && x.c.planned_on && x.c.planned_on < today);
     const next = cells.find((x) => !x.c.done_on);
     const last = [...cells].reverse().find((x) => x.c.done_on);
-    const p = project(cells.map((x) => x.c), today);
+    const p = project(cells.map((x) => ({ ...x.c, stage: x.s.key })), today);
     const risk = shipRisk(p, dueDate);
     // Past a target while the style still makes the ship date: most likely done and not marked, so amber, as the
     // order's next step says. Red only when it really puts the ship date at risk.

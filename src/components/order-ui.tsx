@@ -1,4 +1,5 @@
 import { type Clock, STAGES, type StageKey, stageIndex } from "@/lib/journey";
+import type { Forecast } from "@/lib/progress";
 
 // The building blocks every order is drawn with, so an order looks the same on Home, in Orders and on its own page.
 
@@ -54,5 +55,25 @@ export function Ring({ done, total, size = 56, children }: { done: number; total
       </svg>
       <span className="pring-c">{children}</span>
     </span>
+  );
+}
+
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const dm = (d: string) => `${Number(d.slice(8, 10))} ${MONTHS[Number(d.slice(5, 7)) - 1]}`;
+const days = (n: number) => `${n} ${n === 1 ? "day" : "days"}`;
+
+// Where the order is heading, worked out from its steps and how its factory usually runs: the day it will likely be
+// ready against the ship date, and the one reason when it slips. Red only when it will miss the ship date.
+export function Outlook({ f, due, styles = 1 }: { f: Forecast; due: string | null; styles?: number }) {
+  const spare = due ? Math.round((Date.parse(due) - Date.parse(f.finish)) / 86_400_000) : 0;
+  const late = f.daysLate > 0;
+  const head = late ? `Likely ready ${dm(f.finish)}, ${days(f.daysLate)} after the ship date`
+    : `On course: likely ready ${dm(f.finish)}${spare > 0 ? `, ${days(spare)} to spare` : ", just in time"}`;
+  const reason = f.why && `${!late && f.slip ? `${days(f.slip)} behind plan. ` : ""}${f.why}${styles > 1 && f.style ? ` on ${f.style}` : ""}.`;
+  return (
+    <p className={`outlook ${late ? "tone-bad" : ""}`}>
+      <b>{head}</b>
+      {reason && <span>{reason}</span>}
+    </p>
   );
 }

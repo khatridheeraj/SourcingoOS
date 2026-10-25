@@ -2285,4 +2285,10 @@ h1, h2, h3 { font-family: var(--font-display); text-wrap: balance; font-weight: 
   .style-floor b { font-weight: 500; color: var(--foreground); }
   .style-floor.warn b { color: var(--warn); }
   .style-floor.bad b { color: var(--bad); }
+
+/* The order's forecast under its hero: the likely ready day, and the one reason when it slips. */
+@layer components {
+  .outlook { display: flex; flex-direction: column; gap: 2px; margin-top: 10px; font-size: 13.5px; line-height: 1.45; color: var(--muted); }
+  .outlook b { font-weight: 600; color: var(--foreground); }
+  .outlook.tone-bad b { color: var(--bad); }
 }

@@ -1,6 +1,8 @@
 import { NO_COMPANY } from "@/lib/names";
 import { getMe } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
+import { fetchAll } from "@/lib/fetch-all";
+import { factoryPace } from "@/lib/tna-plan";
 
 export type Buyer = { id: string; code: string; city: string | null; notes: string | null; active: boolean; grn_days: number | null; realName: string | null };
 export type Factory = { id: string; name: string; city: string | null; contact_name: string | null; phone: string | null; notes: string | null; active: boolean; address: string | null; gstin: string | null; email: string | null };
@@ -50,3 +52,14 @@ export async function loadInvites(): Promise<Invite[]> {
 }
 
 export { personName } from "@/lib/names";
+
+// How late each factory usually finishes a step, learnt from every finished step with a target on its orders.
+export async function loadPace(): Promise<Map<string, number>> {
+  const { companyId, supabase } = await scope();
+  const { data } = await fetchAll((a, z) => supabase.from("line_stages").select("planned_on, done_on, order_lines!inner(factory_id)")
+    .eq("company_id", companyId).not("done_on", "is", null).not("planned_on", "is", null).order("id").range(a, z));
+  return factoryPace((data ?? []).map((r) => {
+    const l = r.order_lines as unknown as { factory_id: string | null } | { factory_id: string | null }[] | null;
+    return { factory_id: (Array.isArray(l) ? l[0]?.factory_id : l?.factory_id) ?? null, planned_on: r.planned_on, done_on: r.done_on };
+  }));
+}

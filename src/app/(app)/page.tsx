@@ -1,11 +1,11 @@
 import { NO_COMPANY } from "@/lib/names";
 import Link from "next/link";
 import { canEditOrders, getMe } from "@/lib/auth";
-import { buyerName, loadBuyers, loadFactories, loadTeam, personName } from "@/lib/data";
+import { buyerName, loadBuyers, loadFactories, loadPace, loadTeam, personName } from "@/lib/data";
 import { dayAtNear, dayNear, daysBetween, dueDate, money, moneyShort, qty, qtyTotal, SHIP_QC, stageReached, STATUS, todayIST, unitOfAll } from "@/lib/format";
 import { type LinePrice, marginCls, pct, planMargin } from "@/lib/margin";
 import { fetchAll } from "@/lib/fetch-all";
-import { styleProgress } from "@/lib/progress";
+import { paceLookup, styleProgress } from "@/lib/progress";
 import { loadShipProgress, orderShip } from "@/lib/shipments";
 import { ProgressCell } from "@/components/progress";
 import { createClient } from "@/lib/supabase/server";
@@ -47,13 +47,14 @@ export default async function OrdersPage({ searchParams }: PageProps<"/">) {
     if (status !== "all") query = query.eq("status", status === "late" ? "open" : status);
     return query.range(a, z);
   };
-  const [{ data, error }, buyers, factories, counts, { data: qc, error: qcError }] = await Promise.all([
+  const [{ data, error }, buyers, factories, counts, { data: qc, error: qcError }, pace] = await Promise.all([
     fetchAll(page),
     loadBuyers(),
     loadFactories(),
     fetchAll((a, z) => supabase.from("orders").select("status, ship_date, revised_ship_date").eq("company_id", companyId).order("id").range(a, z)),
     fetchAll((a, z) => supabase.from("qc_checks").select("line_id, result").eq("company_id", companyId).in("kind", SHIP_QC).is("cancelled_at", null)
       .order("checked_on", { ascending: false }).order("created_at", { ascending: false }).order("id").range(a, z)),
+    loadPace(),
   ]);
   // The owner's deleted POs, under Cancelled, to bring one back.
   let deleted: DeletedPo[] = [];
@@ -107,8 +108,9 @@ export default async function OrdersPage({ searchParams }: PageProps<"/">) {
     (o.order_lines ?? []).map((l) => ({ ...l, buyer_rate: rateOf.get(l.id)?.buyer_rate ?? null, factory_rate: rateOf.get(l.id)?.factory_rate ?? null }));
 
   // Progress of an open order: where its slowest styles are, and whether any step is past its target.
-  const progressOf = (o: { order_lines: { id: string }[] | null; ship_date: string | null; revised_ship_date: string | null }) =>
-    styleProgress((o.order_lines ?? []).map((l) => l.id), steps ?? [], dueDate(o), today);
+  const factoryName = (id: string) => factories.find((f) => f.id === id)?.name ?? "This factory";
+  const progressOf = (o: { order_lines: { id: string; factory_id: string | null }[] | null; ship_date: string | null; revised_ship_date: string | null }) =>
+    styleProgress((o.order_lines ?? []).map((l) => l.id), steps ?? [], dueDate(o), today, paceLookup(pace, o.order_lines ?? [], factoryName));
   const journeyOf = (o: { id: string; status: string; stage: string | null; closed_short_at: string | null; ship_date: string | null; revised_ship_date: string | null }, lines: Line[]) => {
     const ids = new Set(lines.map((l) => l.id));
     const fs = [...new Set(lines.map((l) => l.factory_id))];
