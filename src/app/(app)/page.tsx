@@ -96,7 +96,7 @@ export default async function OrdersPage({ searchParams }: PageProps<"/">) {
   // Progress of an open order: where its slowest styles are, and whether any step is past its target.
   const progressOf = (o: { order_lines: { id: string }[] | null; ship_date: string | null; revised_ship_date: string | null }) =>
     styleProgress((o.order_lines ?? []).map((l) => l.id), steps ?? [], dueDate(o), today);
-  const journeyOf = (o: { id: string; status: string; stage: string | null; closed_short_at: string | null }, lines: Line[]) => {
+  const journeyOf = (o: { id: string; status: string; stage: string | null; closed_short_at: string | null; ship_date: string | null; revised_ship_date: string | null }, lines: Line[]) => {
     const ids = new Set(lines.map((l) => l.id));
     const fs = [...new Set(lines.map((l) => l.factory_id))];
     const ds = (disp as { order_id: string; invoiced_at: string | null; shipped_at: string | null }[]).filter((d) => d.order_id === o.id);
@@ -118,6 +118,7 @@ export default async function OrdersPage({ searchParams }: PageProps<"/">) {
         count: ds.length, uninvoiced: ds.filter((d) => !d.invoiced_at).length, unshipped: ds.filter((d) => !d.shipped_at).length,
         billedAll: !!o.closed_short_at || lines.every((l) => (shipRows.find((r) => r.line_id === l.id)?.billed ?? 0) >= l.qty),
       } : null,
+      due: dueDate(o),
       today,
     });
   };

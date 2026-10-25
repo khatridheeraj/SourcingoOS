@@ -76,3 +76,17 @@ test("each stage opens the part of the order its work is in", () => {
   assert.equal(areaOf("ship", true), "dispatch");
   assert.equal(areaOf("ship", false), "qc");
 });
+test("an order past its ship date asks the orders team for a new date first", () => {
+  const r = j({ due: "2026-09-10" });
+  assert.equal(r.stage, "make");
+  assert.equal(r.next.action.kind, "date");
+  assert.equal(r.next.title, "44 days past the ship date");
+  assert.equal(r.next.tone, "bad");
+  assert.equal(j({ due: "2026-10-23" }).next.title, "1 day past the ship date");
+});
+test("a ship date today or ahead, Quality, and packed orders keep their usual next step", () => {
+  assert.equal(j({ due: today }).next.action.kind, "update");
+  assert.equal(j({ due: "2026-09-10", role: "quality" }).next.action.kind, "update");
+  assert.equal(j({ due: "2026-09-10", packedAll: true }).next.action.kind, "qc");
+  assert.equal(j({ due: "2026-09-10", status: "shipped" }).next.action.kind, "none");
+});

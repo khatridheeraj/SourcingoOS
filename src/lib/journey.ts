@@ -18,6 +18,7 @@ export type Action =
   | { kind: "review" }
   | { kind: "samples" }
   | { kind: "po" }
+  | { kind: "date" }
   | { kind: "qc" }
   | { kind: "dispatch" }
   | { kind: "ship" }
@@ -43,6 +44,8 @@ export type JourneyInput = {
   pendingUpdates: number;
   dispatch: { count: number; uninvoiced: number; unshipped: number; billedAll: boolean } | null;
   shipBlocker?: string | null;
+  // The date the order ships by: the new ship date when it moved, else the buyer's.
+  due?: string | null;
   today: string;
 };
 
@@ -60,6 +63,21 @@ const dm = (d: string) => {
 };
 
 export function journey(j: JourneyInput): Journey {
+  const r = route(j);
+  // Past its ship date and not yet packed: the date everyone plans by is wrong. Until the orders team agrees a new
+  // one with the buyer and the factory, that is the next step, whatever stage the order is at.
+  const late = j.due && j.due < j.today ? Math.round((Date.parse(j.today) - Date.parse(j.due)) / 86_400_000) : 0;
+  if (late > 0 && j.role !== "quality" && ["factory", "plan", "approve", "make"].includes(r.stage)) {
+    return { ...r, next: {
+      title: `${late} ${late === 1 ? "day" : "days"} past the ship date`,
+      detail: `It was due ${dm(j.due!)}. Agree a new ship date with the buyer and the factory, and say why it moved, so everyone works to the real date.`,
+      action: { kind: "date" }, label: "Set new ship date", tone: "bad",
+    } };
+  }
+  return r;
+}
+
+function route(j: JourneyInput): Journey {
   const team = j.role !== "quality";
   const owner = j.role === "owner";
   const qcRole = j.role === "owner" || j.role === "quality";

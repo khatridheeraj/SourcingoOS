@@ -277,6 +277,7 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
       unshipped: dispatches.filter((d) => !d.shippedAt).length,
       billedAll: !!o.closed_short_at || lines.every((l) => (shipRows.find((x) => x.line_id === l.id)?.billed ?? 0) >= l.qty),
     } : null,
+    due: due ?? null,
     today,
   });
   const tabs: SectionTab[] = [
