@@ -937,7 +937,7 @@ h1, h2, h3 { font-family: var(--font-display); text-wrap: balance; font-weight: 
     .smp-photos.lg img { width: 128px; height: 128px; }
     .smp-pick button { height: 40px; }
     .fsmp { margin-inline: -4px; padding: 12px 10px; }
-    .fsmp-step .btn { min-height: 40px; }
+    .fsmp-step .btn { flex: 1 1 100%; min-height: 44px; }
     .head-acts { width: 100%; }
     .head-acts > * { flex: 1; }
     .head-acts > .btn, .head-acts > div > .btn:first-child { width: 100%; min-height: 44px; }

@@ -110,7 +110,8 @@ export function FactorySamples({ companyId, order, rounds, lang }: { companyId: 
                       )}
                     </div>
                     {canSend && (
-                      <button type="button" className={`btn ${last ? "primary" : ""}`} onClick={() => openFor(l, s.key, next)}>
+                      // A sample sent back, or late before its first send, is the factory's next job: it gets the primary button.
+                      <button type="button" className={`btn ${last || status.cls === "bad" ? "primary" : ""}`} onClick={() => openFor(l, s.key, next)}>
                         {last ? w.sendRound(next) : w.sendSample}
                       </button>
                     )}
