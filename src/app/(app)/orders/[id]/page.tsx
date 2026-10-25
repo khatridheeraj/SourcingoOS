@@ -19,7 +19,8 @@ import { OrderProduction } from "./order-production";
 import { OrderQc, type QcCheck } from "./order-qc";
 import { OrderStyles, type Baseline, type ExtraStep, type FactoryGroup, type StepQc } from "./order-styles";
 import { forecast, paceLookup } from "@/lib/progress";
-import { loadPace, loadTeam, personName } from "@/lib/data";
+import { loadPace, loadTeam, loadTerms, personName } from "@/lib/data";
+import { isFinance } from "../../payments/load";
 import { PHOTO_BUCKET } from "@/lib/storage";
 import { OrderSections, type SectionTab } from "./order-sections";
 import { ShareUpdate, type ShareOption } from "./share-update";
@@ -291,6 +292,14 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
   const fc = o.status === "open"
     ? forecast(lines, stageRows, due, today, paceLookup(await paceP, lines, (fid) => opts.factories.find((f) => f.id === fid)?.name || "This factory"))
     : null;
+  // When the order's money moves: the factory is paid its days after the goods come, the buyer its credit days after they ship.
+  // Owner and Accounts only: factory terms are theirs.
+  const terms = isFinance(me?.role) && o.status === "open" && due ? await loadTerms() : null;
+  const shipsOn = terms ? [today, due!, fc?.finish ?? due!].sort().at(-1)! : null;
+  const cash = terms && shipsOn ? {
+    ships: shipsOn, buyerDays: terms.buyerDays(o.buyer_id),
+    factoryDays: Math.min(...lines.map((l) => terms.factoryDays(l.factory_id ?? null))),
+  } : null;
   const outlook = fc ? { level: (fc.daysLate > 0 ? "risk" : fc.slip > 0 ? "behind" : "ok") as "ok" | "behind" | "risk", daysLate: fc.daysLate } : null;
   // The road from buyer PO to shipped, and the one next step on it.
   const lineIds = new Set(lines.map((l) => l.id));
@@ -443,7 +452,7 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
             id: l.id, style: l.style, colour: str(l.colour), qty: l.qty, product: l.product,
             buyerRate: l.buyer_rate == null ? null : Number(l.buyer_rate), factoryRate: l.factory_rate == null ? null : Number(l.factory_rate),
           }))}
-          dispatches={dispatches}
+          dispatches={dispatches} cash={cash}
         /></div>
       )}
       <div data-sec="details">{canEdit && <BuyerPo orderId={o.id} companyId={o.company_id} docs={poDocs} found={foundPos} canEdit={canEdit} />}{canEdit ? <OrderForm

@@ -2292,3 +2292,44 @@ h1, h2, h3 { font-family: var(--font-display); text-wrap: balance; font-weight: 
   .outlook b { font-weight: 600; color: var(--foreground); }
   .outlook.tone-bad b { color: var(--bad); }
 }
+
+/* Cash ahead: one row a week, money in and out, and the running total. */
+@layer components {
+  .kpis.cash-kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .cash-weeks { margin: 0; padding: 0; list-style: none; }
+  .cash-weeks > li { border-top: 1px solid var(--line); }
+  .cash-weeks > li:first-child { border-top: 0; }
+  .cash-week {
+    display: grid; grid-template-columns: minmax(0, 1fr) 96px 96px 104px; gap: 12px; align-items: center;
+    padding: 12px 16px 12px 20px; cursor: pointer; list-style: none; font-size: 14px;
+  }
+  .cash-week::-webkit-details-marker { display: none; }
+  .cash-week:hover { background: var(--surface-2); }
+  .cash-week-h { padding-top: 8px; padding-bottom: 8px; border-bottom: 1px solid var(--line); cursor: default; font-size: 12px; font-weight: 500; color: var(--muted); }
+  .cash-week-h:hover { background: none; }
+  .cash-week-h .cash-bal { font-weight: 500; }
+  .cash-when { display: flex; align-items: baseline; gap: 8px; font-weight: 500; }
+  .cash-when small { font-size: 12px; font-weight: 500; color: var(--accent); }
+  .cash-in, .cash-out { text-align: right; color: var(--muted); }
+  .cash-bal { text-align: right; font-weight: 600; }
+  .cash-items { margin: 0; padding: 0 0 8px; list-style: none; }
+  .cash-item { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px; align-items: center; padding: 8px 16px 8px 32px; font-size: 13.5px; }
+  a.cash-item:hover { background: var(--surface-2); }
+  .cash-item b { display: block; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .cash-item small { display: block; font-size: 12.5px; color: var(--muted); }
+  .cash-carry { padding: 4px 0; }
+  .cash-carry .cash-item { padding-left: 20px; }
+  .cash-days { font-weight: 600; }
+  .cash-none, .cash-later { padding: 4px 16px 12px 32px; font-size: 13px; color: var(--muted); }
+  .cash-later { padding: 12px 20px; border-top: 1px solid var(--line); }
+  @media (max-width: 760px) {
+    .cash-week { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "when bal" "flow flow"; row-gap: 2px; padding: 12px 16px; }
+    .cash-when { grid-area: when; }
+    .cash-bal { grid-area: bal; }
+    .cash-in, .cash-out { display: inline; text-align: left; font-size: 12.5px; }
+    .cash-in { grid-area: flow; }
+    .cash-out { grid-area: flow; justify-self: end; }
+    .cash-item { padding-left: 16px; }
+    .cash-none { padding-left: 16px; }
+  }
+}
