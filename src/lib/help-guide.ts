@@ -133,7 +133,7 @@ export const TOPICS: Topic[] = [
     words: "share whatsapp update buyer status message send update", pages: ["/orders/"] },
   { id: "at-risk", who: "staff", q: "What does 'At risk' or 'likely late' mean?",
     a: ["A late step pushes back every step after it. The app works out when the style will likely be ready.",
-        "At risk · 5 days late means the style will likely be ready 5 days after the ship date unless the factory catches up.", "Chase the late step shown, or move the ship date."],
+        "At risk · about 5 days late means the style will likely be ready 5 days after the ship date unless the factory catches up.", "Chase the late step shown, or move the ship date."],
     words: "at risk late delay red behind plan likely ready slip", pages: ["/", "/today", "/orders/", "/brief"] },
   { id: "samples", who: "staff", roles: ORDERS_TEAM, q: "How do sample approvals work?",
     a: ["Factories send fit, strike off, PP and size-set samples with photos from their panel. They show on Samples under To check.",

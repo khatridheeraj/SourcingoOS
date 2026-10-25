@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { day, dayAt, daysBetween, stageLabel } from "@/lib/format";
+import { day, dayAt, daysBetween, riskLate, stageLabel } from "@/lib/format";
 import { saveProgress, type ProgressInput } from "../actions";
 
 // Where the order stands against its ship date, and its new ship date if it slipped.
@@ -51,7 +51,7 @@ export function OrderProduction({ id, open, canEdit, shipDate, today, stage, sta
         <h2 className="font-bold text-base">Ship date</h2>
         {lateBy > 0 && <span className="chip bad">Late by {lateBy} {lateBy === 1 ? "day" : "days"}</span>}
         {!lateBy && movedBy > 0 && <span className="chip warn">Moved {movedBy} {movedBy === 1 ? "day" : "days"} later</span>}
-        {open && !lateBy && riskDays > 0 && <span className="chip bad" title="A late step pushes back every step after it">At risk · about {riskDays} {riskDays === 1 ? "day" : "days"} late</span>}
+        {open && !lateBy && riskDays > 0 && <span className="chip bad" title="A late step pushes back every step after it">{riskLate(riskDays)}</span>}
         {open && !lateBy && !movedBy && !riskDays && due && <span className="chip ok">On time</span>}
       </div>
       {!open && <p className="muted text-[13px] mb-3">This order is closed. Production details are kept as they were.</p>}
