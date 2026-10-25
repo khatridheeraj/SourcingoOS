@@ -1536,7 +1536,7 @@ h1, h2, h3 { font-family: var(--font-display); text-wrap: balance; font-weight: 
   .old-close .inp { min-height: 30px; padding: 4px 8px; font-size: 13px; }
 }
 @layer components {
-  .todo > li { grid-template-columns: 8px minmax(0, 1fr) 128px auto; }
+  .todo > li { grid-template-columns: 8px minmax(0, 1fr) minmax(128px, max-content) auto; }
   .todo-acts { display: flex; justify-content: flex-end; gap: 6px; min-width: 120px; }
   .todo-acts .btn { min-width: 0; }
   .todo-acts .todo-act { width: auto; min-width: 96px; }
