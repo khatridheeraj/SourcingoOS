@@ -58,10 +58,7 @@ export default async function SamplesPage({ searchParams }: PageProps<"/samples"
 
       <section className="card" aria-labelledby="smp-h">
         <header className="card-h">
-          <div className="min-w-0">
-            <h2 id="smp-h">{TABS.find((t) => t.key === tab)?.label}</h2>
-            <p>{TABS.find((t) => t.key === tab)?.hint}</p>
-          </div>
+          <h2 id="smp-h" className="min-w-0">{TABS.find((t) => t.key === tab)?.label}</h2>
           <nav className="seg" aria-label="Show">
             {TABS.map((t) => (
               <Link key={t.key} href={`/samples?tab=${t.key}`} aria-current={tab === t.key ? "page" : undefined} scroll={false}>{t.label} <span>{lists[t.key].length}</span></Link>
@@ -81,6 +78,7 @@ export default async function SamplesPage({ searchParams }: PageProps<"/samples"
         <details className="howto border-t border-line px-4 py-3">
           <summary>How samples work</summary>
           <p>Factories send samples from their panel. You check the photos and courier each one, then the buyer approves or asks for changes in the app. An approval closes its TNA step.</p>
+          {TABS.map((t) => <p key={t.key}><b>{t.label}:</b> {t.hint}</p>)}
         </details>
       </section>
     </>
