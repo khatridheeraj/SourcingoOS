@@ -31,6 +31,7 @@ import { loadSampleThreads } from "@/lib/samples-server";
 import { SampleThreadCard } from "../../samples/sample-thread";
 import { PO_BUCKET, type StoredFile } from "@/lib/po-files";
 import { BuyerPo, type FoundPo, type PoDoc } from "./buyer-po";
+import { DeletePo } from "./delete-po";
 
 const str = (v: unknown) => (v == null ? "" : String(v));
 
@@ -278,6 +279,7 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
       unshipped: dispatches.filter((d) => !d.shippedAt).length,
       billedAll: !!o.closed_short_at || lines.every((l) => (shipRows.find((x) => x.line_id === l.id)?.billed ?? 0) >= l.qty),
     } : null,
+    due: due ?? null,
     today,
   });
   const tabs: SectionTab[] = [
@@ -288,6 +290,14 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
     { id: "details", label: "Details" },
     { id: "history", label: "History" },
   ];
+
+  // What the owner is told before deleting this PO: who already has it, or why it can't go.
+  const shortName = (fid: string) => opts.factories.find((f) => f.id === fid)?.name || factoryLabel(fid);
+  const deleteWarnings = (factoryPos ?? []).flatMap((p) => p.accepted_at ? [`${shortName(p.factory_id)} already accepted this PO. Tell them it is off.`]
+    : p.mailed_at || p.last_mailed_at ? [`This PO was emailed to ${shortName(p.factory_id)}. Tell them it is off.`]
+    : p.released_at ? [`${shortName(p.factory_id)} sees this PO in its panel. It goes from there too.`] : []);
+  const deleteBlocked = o.status === "shipped" ? "This order is shipped, so it can't be deleted."
+    : dispatches.length ? "Goods are already bought on this order, so it can't be deleted. Cancel its dispatches first, or close the order short." : null;
 
   return (
     <>
@@ -446,6 +456,9 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
         riskDays={outlook?.level === "risk" ? outlook.daysLate : 0}
         initial={{ revised_ship_date: str(o.revised_ship_date), delay_reason: str(o.delay_reason) }}
       /></div>
+      {me?.role === "owner" && (
+        <div data-sec="details"><DeletePo orderId={o.id} orderNo={o.order_no} buyerPo={o.buyer_po} warnings={deleteWarnings} blocked={deleteBlocked} /></div>
+      )}
       <div data-sec="history"><OrderHistory orderId={o.id} /></div>
       </OrderSections>
     </>

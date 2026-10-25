@@ -183,3 +183,13 @@ select pg_temp.as_user('00000000-0000-0000-0000-0000000000a1');
 select public.save_order(jsonb_build_object('buyer_id', :'mr', 'buyer_po', 'MR-FAB-31', 'ship_date', (current_date + 24)::text),
   '[{"style":"Cotton Cambric Test","description":"Fabric","qty":1500,"buyer_rate":78,"factory_id":"20000000-0000-0000-0000-000000000002","factory_rate":70},{"style":"Printed Cambric Test","description":"Fabric","qty":2500,"buyer_rate":74,"factory_id":"20000000-0000-0000-0000-000000000002","factory_rate":66}]') as o_fab \gset
 reset role;
+
+-- 14. Slipped in production: past its ship date, still being made, no new date agreed yet.
+set role authenticated;
+select pg_temp.as_user('00000000-0000-0000-0000-0000000000a1');
+select public.save_order(jsonb_build_object('buyer_id', :'ah', 'buyer_po', 'AH-2090', 'ship_date', (current_date - 6)::text),
+  '[{"style":"AH-SHIRT-04","qty":450,"buyer_rate":360,"factory_id":"20000000-0000-0000-0000-000000000002","factory_rate":240}]') as o_slip \gset
+reset role;
+insert into public.factory_pos (company_id, order_id, factory_id, released_at, po_no)
+select o.company_id, o.id, '20000000-0000-0000-0000-000000000002', now() - interval '40 days', 'FPO-' || o.order_no from public.orders o where o.id = :'o_slip';
+select pg_temp.plan(:'o_slip', 9, 0);
