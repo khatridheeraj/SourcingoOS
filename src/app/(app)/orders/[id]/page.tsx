@@ -34,6 +34,7 @@ import { BuyerPo, type FoundPo, type PoDoc } from "./buyer-po";
 import { DeletePo } from "./delete-po";
 import { OrderFloor, type FloorUpdate } from "./order-floor";
 import { floorLine, floorStatus } from "@/lib/floor";
+import { BuyerLink } from "../../buyers/buyer-link";
 
 const str = (v: unknown) => (v == null ? "" : String(v));
 
@@ -370,6 +371,7 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
           <SheetButton orderId={o.id} mode="update" className="btn">Update progress</SheetButton>
         )}
         {/* Keyed like the styles below, so the message is worded afresh after every save. */}
+        {canEdit && o.status === "open" && <BuyerLink buyerId={o.buyer_id} name={buyerLabel || "the buyer"} size="md" />}
         <ShareUpdate key={`${(lineStages ?? []).length}:${(lineStages ?? []).reduce((a, r) => (r.updated_at > a ? r.updated_at : a), "")}`} options={share} />
       </OrderJourney>
       {saved && <div className="okbox">Order saved as {o.order_no}.</div>}

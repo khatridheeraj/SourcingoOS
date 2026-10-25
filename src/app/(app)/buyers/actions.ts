@@ -1,7 +1,8 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { getMe } from "@/lib/auth";
+import { headers } from "next/headers";
+import { canEditOrders, getMe } from "@/lib/auth";
 import { friendly } from "@/lib/errors";
 import { createClient } from "@/lib/supabase/server";
 
@@ -54,4 +55,18 @@ export async function addBuyer(code: string, realName: string): Promise<{ error?
   if (error) return { error: friendly(error) };
   revalidatePath("/", "layout");
   return { id: data as string };
+}
+
+// The buyer's status link: opening it shows the buyer's own orders live, with no password. The same link is given
+// each time until a new one is made, which stops the old one and signs out every phone that used it.
+export async function buyerLink(buyerId: string, renew = false): Promise<{ url?: string; error?: string }> {
+  const me = await getMe();
+  if (!canEditOrders(me?.role)) return { error: "Only the orders team can send a buyer its link." };
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("buyer_link", { p_buyer: buyerId, p_renew: renew });
+  if (error || typeof data !== "string") return { error: error ? friendly(error) : "Couldn't make the link. Try again." };
+  const h = await headers();
+  const host = h.get("x-forwarded-host") ?? h.get("host") ?? "sourcingo-os.vercel.app";
+  const proto = h.get("x-forwarded-proto") ?? (host.startsWith("localhost") ? "http" : "https");
+  return { url: `${proto}://${host}/s/${data}` };
 }

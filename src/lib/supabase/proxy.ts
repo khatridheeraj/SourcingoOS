@@ -3,7 +3,7 @@ import { NextResponse, type NextRequest } from "next/server";
 
 // /api/brief is answered only for a mailbox Google vouches for. /f/<secret> is a factory link.
 // /po/<token> is one factory PO, to read and accept. /tally-reader is the Tally reader download (no secrets).
-const PUBLIC_PATHS = ["/login", "/auth", "/api/brief", "/f", "/po", "/tally-reader", "/manifest.webmanifest"];
+const PUBLIC_PATHS = ["/login", "/auth", "/api/brief", "/f", "/s", "/po", "/tally-reader", "/manifest.webmanifest"];
 
 // Refreshes the Supabase session cookie on every request and sends
 // signed-out visitors to /login.
