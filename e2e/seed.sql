@@ -103,7 +103,7 @@ select company_id, :'o_appr', '20000000-0000-0000-0000-000000000002', now() - in
 from public.orders where id = :'o_appr';
 
 -- 8. Final QC passed: ready to ship.
-update public.line_stages set done_on = planned_on where order_id = :'o_qc' and stage = 'final_qc';
+update public.line_stages set done_on = planned_on where order_id = :'o_over' and stage in ('packed', 'final_qc');
 insert into public.qc_checks (company_id, order_id, line_id, kind, checked_on, result, pieces_checked, checked_by)
 select l.company_id, l.order_id, l.id, 'final', current_date - 1, 'pass', 80, '00000000-0000-0000-0000-0000000000a4'
 from public.order_lines l where l.order_id = :'o_over';
