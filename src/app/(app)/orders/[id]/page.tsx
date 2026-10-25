@@ -25,7 +25,7 @@ import { ShareUpdate, type ShareOption } from "./share-update";
 import { formOptions } from "../options";
 import { SheetButton } from "@/components/order-sheet";
 import type { LineFileKind } from "../actions";
-import { loadShipProgress, orderShip, partText } from "@/lib/shipments";
+import { loadShipProgress, orderShip } from "@/lib/shipments";
 import { loadSampleThreads } from "@/lib/samples-server";
 import { SampleThreadCard } from "../../samples/sample-thread";
 import { PO_BUCKET, type StoredFile } from "@/lib/po-files";
@@ -315,7 +315,7 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
               <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" aria-hidden><path d="M4 1.75h5.5L12.25 4.5v9.75H4z" /><path d="M9.25 1.75V4.75h3" /></svg>
               {poDocs[0].ext === "pdf" ? "Buyer PO PDF" : "Buyer PO file"}{poDocs.length > 1 ? ` · ${poDocs.length} files` : ""}</a>
               : <a href="#details-po" className="chip warn" title="A factory PO is locked only once the buyer's PO is on file">No buyer PO yet</a>)}
-            {ship.part && o.status === "open" && <a href="#dispatch" className="chip info">Part shipped · {partText(ship)}</a>}
+            {ship.part && o.status === "open" && <a href="#dispatch" className="chip info">Part shipped · {qty(ship.shipped)} of {qty(ship.ordered)} pcs</a>}
             {o.closed_short_at && <span className="chip warn" title={o.short_reason ?? undefined}>Closed short · {qty(ship.billed)} of {qty(ship.ordered)} pcs</span>}
             {!ship.part && outlook?.level === "risk" && <span className="chip bad" title="A late step pushes back every step after it">{riskLate(outlook.daysLate)}</span>}
           </p>
