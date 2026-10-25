@@ -19,7 +19,7 @@ export type PanelOrder = {
   released_at: string | null;
   plan_due_at: string | null;
   target: string | null;
-  lines: { id: string; style: string; colour: string | null; qty: number; rate: number | null; stages: Stage[] }[];
+  lines: { id: string; style: string; colour: string | null; qty: number; rate: number | null; product?: string | null; stages: Stage[] }[];
 };
 
 // What the orders team entered for a style: its fabric, pieces per size, tech pack and cutting program.
@@ -169,7 +169,7 @@ export function FactoryOrder({ order, now, companyId, updates, rounds, lang, inf
           <article key={l.id} className="fstyle">
             <header>
               <b className="code">{l.style}</b>
-              <span className="muted text-[13px]">{[l.colour, `${qty(l.qty)} ${w.pcs}`, l.rate != null ? `₹${qty(l.rate)}` : ""].filter(Boolean).join(" · ")}</span>
+              <span className="muted text-[13px]">{[l.colour, `${qty(l.qty)} ${l.product === "fabric" ? w.metres : w.pcs}`, l.rate != null ? `₹${qty(l.rate)}` : ""].filter(Boolean).join(" · ")}</span>
               <Info info={info[l.id]} lang={lang} />
             </header>
             <ul>
@@ -201,7 +201,7 @@ export function FactoryOrder({ order, now, companyId, updates, rounds, lang, inf
               <tr key={l.id}>
                 <td className="tna-style">
                   <b className="code">{l.style}</b>
-                  <div className="muted text-xs">{[l.colour, `${qty(l.qty)} ${w.pcs}`].filter(Boolean).join(" · ")}</div>
+                  <div className="muted text-xs">{[l.colour, `${qty(l.qty)} ${l.product === "fabric" ? w.metres : w.pcs}`].filter(Boolean).join(" · ")}</div>
                   {l.rate != null && <div className="muted text-xs">{w.rate} ₹{qty(l.rate)}</div>}
                   <Info info={info[l.id]} lang={lang} />
                 </td>

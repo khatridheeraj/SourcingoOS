@@ -1,7 +1,7 @@
-import { money, qty } from "@/lib/format";
+import { money, qty, unitOfAll } from "@/lib/format";
 import { marginCls, pct, planMargin, THIN_MARGIN_PCT } from "@/lib/margin";
 
-export type MarginStyle = { id: string; style: string; colour: string; qty: number; buyerRate: number | null; factoryRate: number | null };
+export type MarginStyle = { id: string; style: string; colour: string; qty: number; product?: string; buyerRate: number | null; factoryRate: number | null };
 export type MarginDispatch = { invoiceTaxable: number | null; purchaseTaxable: number; lines: { qty: number }[] };
 
 // What the order earns: planned from the rates, and actual from what has been bought and invoiced so far.
@@ -34,7 +34,7 @@ export function OrderMargin({ styles, dispatches }: { styles: MarginStyle[]; dis
           <div className="tile">
             <span>Earned on invoiced goods</span>
             <b className={marginCls(actualPct)}>{money(sold - bought)}</b>
-            <span className="mt-1">{pct(actualPct)} on {money(sold)} invoiced{pcsInvoiced < pcsOrdered && ` · ${qty(pcsInvoiced)} of ${qty(pcsOrdered)} pcs`}</span>
+            <span className="mt-1">{pct(actualPct)} on {money(sold)} invoiced{pcsInvoiced < pcsOrdered && ` · ${qty(pcsInvoiced)} of ${qty(pcsOrdered)} ${unitOfAll(styles)}`}</span>
           </div>
         )}
       </div>

@@ -2,7 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { canEditOrders, getMe } from "@/lib/auth";
 import { buyerName, loadBuyers, loadFactories } from "@/lib/data";
-import { day, qty, STATUS, todayIST } from "@/lib/format";
+import { day, qty, qtyU, STATUS, todayIST } from "@/lib/format";
 import { styleProgress, type StepRow } from "@/lib/progress";
 import { sizeEntries } from "@/lib/sizes";
 import { PHOTO_BUCKET } from "@/lib/storage";
@@ -11,7 +11,7 @@ import { createClient } from "@/lib/supabase/server";
 const PAGE = 48;
 
 type Row = {
-  id: string; style: string; description: string | null; colour: string | null; qty: number; factory_id: string | null; photo_path: string | null;
+  id: string; style: string; description: string | null; colour: string | null; qty: number; product: string; factory_id: string | null; photo_path: string | null;
   fabric: string | null; sizes: Record<string, number> | null;
   orders: { id: string; order_no: string; buyer_id: string; buyer_po: string; status: string; ship_date: string | null; revised_ship_date: string | null };
 };
@@ -31,7 +31,7 @@ export default async function StylesPage({ searchParams }: PageProps<"/styles">)
   const [buyers, factories] = await Promise.all([loadBuyers(), loadFactories()]);
 
   let query = supabase.from("order_lines")
-    .select("id, style, description, colour, qty, factory_id, photo_path, fabric, sizes, orders!inner(id, order_no, buyer_id, buyer_po, status, ship_date, revised_ship_date)", { count: "exact" })
+    .select("id, style, description, colour, qty, factory_id, photo_path, fabric, sizes, product, orders!inner(id, order_no, buyer_id, buyer_po, status, ship_date, revised_ship_date)", { count: "exact" })
     .eq("company_id", me.companyId).is("removed_at", null);
   if (!all) query = query.eq("orders.status", "open");
   if (buyer) query = query.eq("orders.buyer_id", buyer);
@@ -112,7 +112,7 @@ export default async function StylesPage({ searchParams }: PageProps<"/styles">)
                     <b className="code">{r.style}</b>
                     <span className="cat-desc">{[r.description, r.colour].filter(Boolean).join(" · ") || "—"}</span>
                     <span className="cat-meta">{buyerOf.get(o.buyer_id)} · {r.factory_id ? factoryOf.get(r.factory_id) : "No factory"}</span>
-                    <span className="cat-meta">{o.order_no} · {qty(r.qty)} pcs{(o.revised_ship_date || o.ship_date) ? ` · ships ${day(o.revised_ship_date || o.ship_date)}` : ""}</span>
+                    <span className="cat-meta">{o.order_no} · {qtyU(r.qty, r.product)}{(o.revised_ship_date || o.ship_date) ? ` · ships ${day(o.revised_ship_date || o.ship_date)}` : ""}</span>
                     {(r.fabric || sizes.length > 0 || hasPack.has(r.id)) && (
                       <span className="cat-tags">
                         {r.fabric && <i>{r.fabric}</i>}

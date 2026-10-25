@@ -3,7 +3,7 @@ import Link from "next/link";
 import { canEditOrders, canRecordQc, getMe } from "@/lib/auth";
 import { fetchAll } from "@/lib/fetch-all";
 import { buyerName, loadBuyers, loadFactories } from "@/lib/data";
-import { day, daysBetween, money, riskLate, dueDate, nowMs, planDueAt, PLAN_HOURS, qcKindLabel, qty, SHIP_QC, stageReached, TNA_STEPS, todayIST } from "@/lib/format";
+import { day, daysBetween, money, riskLate, dueDate, nowMs, planDueAt, PLAN_HOURS, qcKindLabel, qty, qtyTotal, SHIP_QC, stageReached, TNA_STEPS, todayIST, unitOfAll } from "@/lib/format";
 import { NO_COMPANY } from "@/lib/names";
 import { poWaitDays, PO_WAIT_DAYS } from "@/lib/order-checks";
 import { project, shipRisk } from "@/lib/tna-plan";
@@ -96,7 +96,7 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
   const [{ data: orders }, buyers, factories] = await Promise.all([
     fetchAll((a, z) => supabase
       .from("orders")
-      .select("id, order_no, buyer_id, buyer_po, ship_date, revised_ship_date, merchandiser_id, stage, order_lines(id, style, colour, qty, factory_id)")
+      .select("id, order_no, buyer_id, buyer_po, ship_date, revised_ship_date, merchandiser_id, stage, order_lines(id, style, colour, qty, factory_id, product)")
       .eq("company_id", companyId)
       .eq("status", "open")
       .is("order_lines.removed_at", null)
@@ -175,8 +175,8 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
   const stepIndex = (k: string) => { const i = TNA_STEPS.findIndex((s) => s.key === k); return i < 0 ? TNA_STEPS.length : i; };
   const stageOf = new Map((stages ?? []).map((s) => [`${s.line_id}:${s.stage}`, s]));
   // A style's steps as the quick sheet and the factory chase read them.
-  const qStyle = (l: { id: string; style: string; colour: string | null; qty: number; factory_id: string | null }): QStyle => ({
-    id: l.id, style: l.style, colour: l.colour ?? "", qty: l.qty, hasRate: true, factoryId: l.factory_id,
+  const qStyle = (l: { id: string; style: string; colour: string | null; qty: number; factory_id: string | null; product?: string | null }): QStyle => ({
+    id: l.id, style: l.style, colour: l.colour ?? "", qty: l.qty, hasRate: true, factoryId: l.factory_id, fabric: l.product === "fabric",
     steps: [
       ...TNA_STEPS.map((t) => { const r = stageOf.get(`${l.id}:${t.key}`); return { key: t.key, label: t.label, planned_on: r?.planned_on ?? "", done_on: r?.done_on ?? "", not_needed: !!r?.not_needed, extra: false }; }),
       ...(stages ?? []).filter((s) => s.line_id === l.id && s.stage.startsWith("extra_"))
@@ -492,11 +492,11 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
     if (sh.part) {
       const late = !!due && due < today;
       (late ? now_ : soon).push({ key: `part:${o.id}`, href, sev: late ? "bad" : "warn", ...base(o),
-        detail: `${partText(sh)}${due ? ` · ship date ${dm(due)}` : ""}. Record the next part, or close the order short if the rest won't go.`,
+        detail: `${partText(sh, unitOfAll(o.order_lines ?? []))}${due ? ` · ship date ${dm(due)}` : ""}. Record the next part, or close the order short if the rest won't go.`,
         chip: late ? { text: `Part shipped · ${plural(daysBetween(due!, today), "day")} late`, cls: "bad" } : { text: "Part shipped", cls: "warn" },
         action: "Next part", sort: due ?? "" });
     } else if (sh.shipped > 0 && sh.toShip === 0) {
-      soon.push({ key: `allshipped:${o.id}`, href, sev: "ok", ...base(o), detail: `All ${qty(sh.ordered)} pcs have shipped. Mark the order shipped to close it.`,
+      soon.push({ key: `allshipped:${o.id}`, href, sev: "ok", ...base(o), detail: `All ${qty(sh.ordered)} ${unitOfAll(o.order_lines ?? [])} have shipped. Mark the order shipped to close it.`,
         chip: { text: "All shipped", cls: "ok" }, action: "Close order", sort: due ?? "" });
     }
   }
@@ -538,7 +538,7 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
   // Numbers on top.
   const late = active.filter((o) => { const d = dueDate(o); return !!d && d < today; });
   const shipSoon = active.filter((o) => { const d = dueDate(o); return !!d && d >= today && d <= addDays(today, 14); });
-  const pcs = (os: typeof open) => os.reduce((s, o) => s + (o.order_lines ?? []).reduce((t, l) => t + l.qty, 0), 0);
+  const pcs = (os: typeof open) => qtyTotal(os.flatMap((o) => o.order_lines ?? []));
   const allLines = open.flatMap((o) => o.order_lines ?? []);
   const book = allLines.reduce((s, l) => s + l.qty * Number(priceOf.get(l.id)?.buyer_rate ?? 0), 0);
   const unpriced = allLines.filter((l) => priceOf.get(l.id)?.buyer_rate == null).length;
@@ -590,11 +590,11 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
     { key: "late", href: team ? "/?status=late" : qs("now"), label: "Late orders", value: String(late.length), sev: late.length ? "bad" : "ok",
       sub: stale.length ? `Past ship date · ${stale.length} more look shipped` : "Past ship date" },
     { key: "ship", href: qs("soon"), label: "Ship in 14 days", value: String(shipSoon.length), sev: shipSoon.some((o) => !finalPassed(o)) ? "warn" : "",
-      sub: shipSoon.length ? `${qty(pcs(shipSoon))} pcs · ${shipSoon.filter((o) => !finalPassed(o)).length} without final QC` : "Nothing ships soon" },
+      sub: shipSoon.length ? `${pcs(shipSoon)} · ${shipSoon.filter((o) => !finalPassed(o)).length} without final QC` : "Nothing ships soon" },
     team && book > 0
       ? { key: "book", href: "/", label: "Open order book", value: lakh(book), sev: "",
-          sub: `${plural(open.length, "order")} · ${plural(allLines.length, "style")} · ${qty(pcs(open))} pcs${unpriced ? ` · ${unpriced} without a rate` : ""}` }
-      : { key: "book", href: "/", label: "Open orders", value: String(open.length), sev: "", sub: `${plural(allLines.length, "style")} · ${qty(pcs(open))} pcs` },
+          sub: `${plural(open.length, "order")} · ${plural(allLines.length, "style")} · ${pcs(open)}${unpriced ? ` · ${unpriced} without a rate` : ""}` }
+      : { key: "book", href: "/", label: "Open orders", value: String(open.length), sev: "", sub: `${plural(allLines.length, "style")} · ${pcs(open)}` },
   ];
 
   // Shortcuts to the jobs done most often, within thumb reach on a phone. Indigo, as things to tap; red only for overdue work.
@@ -841,12 +841,12 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
                           {sh.part ? (
                             <>
                               <span className="bar"><i className="ok" style={{ width: `${Math.max(3, (100 * sh.shipped) / sh.ordered)}%` }} /></span>
-                              <span className="todo-detail block">{partText(sh)}</span>
+                              <span className="todo-detail block">{partText(sh, unitOfAll(o.order_lines ?? []))}</span>
                             </>
                           ) : (
                             <>
                               <span className="bar"><i className={st.cls === "bad" ? "bad" : st.cls === "ok" ? "ok" : ""} style={{ width: `${p.total ? Math.max(3, (100 * p.done) / p.total) : 0}%` }} /></span>
-                              <span className="todo-detail block">{p.total ? `${p.done} of ${p.total} steps done` : "No steps planned yet"} · {qty(pcs([o]))} pcs</span>
+                              <span className="todo-detail block">{p.total ? `${p.done} of ${p.total} steps done` : "No steps planned yet"} · {pcs([o])}</span>
                             </>
                           )}
                         </span>
@@ -873,7 +873,7 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
                   <li key={o.id} className="tidy-row">
                     <Link href={`/orders/${o.id}`} className="min-w-0">
                       <span className="todo-title"><span className="code">{o.order_no}</span>{buyerOf.get(o.buyer_id)}</span>
-                      <span className="todo-detail block">Ship date {dm(dueDate(o)!)} · {qty(pcs([o]))} pcs</span>
+                      <span className="todo-detail block">Ship date {dm(dueDate(o)!)} · {pcs([o])}</span>
                     </Link>
                     <MarkShipped orderId={o.id} orderNo={o.order_no} blocked={staleBlocker.get(o.id)} old={!!staleBlocker.get(o.id)?.startsWith("Nothing is in Dispatch")} />
                   </li>

@@ -12,7 +12,10 @@ import {
 import { closeShort } from "../actions";
 
 // Each style's pieces across the order's dispatches: ordered, bought, billed (invoiced) and shipped.
-export type ShipLine = { id: string; style: string; colour: string; ordered: number; bought: number; billed: number; shipped: number };
+// unit: "m" for a fabric style (bought by the metre), "pcs" for a garment.
+export type ShipLine = { id: string; style: string; colour: string; ordered: number; bought: number; billed: number; shipped: number; unit: string };
+// One unit for a sum over several styles.
+const unitOver = (units: string[]) => (new Set(units).size > 1 ? "units" : units[0] ?? "pcs");
 export type DispatchFactory = { id: string; name: string; lines: { id: string; style: string; colour: string; qty: number; factoryRate: string; buyerRate: string }[] };
 // Bills in Tally that no dispatch has taken yet (the order's factories' purchase bills and its buyer's invoices),
 // to check a typed number against. Not shown as a list. buyerInTally: the buyer has a Tally ledger, so its invoice is picked up by itself.
@@ -54,6 +57,7 @@ export function OrderDispatch({ orderId, orderNo, companyId, open, owner, factor
   const router = useRouter();
   const [pending, start] = useTransition();
   const [adding, setAdding] = useState(false);
+  const unitOfStyle = new Map(ship.map((l) => [l.style, l.unit]));
   const [error, setError] = useState<Record<string, string>>({});
   const fail = (k: string, m: string) => setError((e) => ({ ...e, [k]: m }));
 
@@ -149,6 +153,7 @@ export function OrderDispatch({ orderId, orderNo, companyId, open, owner, factor
           const done = [true, !!d.invoicedAt, !!d.ewayNo, !!d.shippedAt, !!d.grnAt];
           const next = done.indexOf(false);
           const pcs = d.lines.reduce((s, l) => s + l.qty, 0);
+          const unit = unitOver(d.lines.map((l) => unitOfStyle.get(l.style) ?? "pcs"));
           const invoiceLate = !d.invoicedAt && Date.parse(d.invoiceDueAt) < now;
           const billTotal = Math.round(d.purchaseTaxable + d.purchaseGst);
           const tallyOff = d.purchaseTallyAmount != null && Math.abs(d.purchaseTallyAmount - billTotal) > 1;
@@ -157,7 +162,7 @@ export function OrderDispatch({ orderId, orderNo, companyId, open, owner, factor
             <article key={d.id} className="rounded-[10px] border border-line p-3" aria-label={`Dispatch ${d.billNo}`}>
               <div className="row">
                 <b>{numbered && <span className="part-no">Part {di + 1}</span>}{d.factoryName} · bill {d.billNo}</b>
-                <span className="muted text-[13px]">{day(d.billDate)} · {qty(pcs)} pcs · {money(billTotal)} with GST</span>
+                <span className="muted text-[13px]">{day(d.billDate)} · {qty(pcs)} {unit} · {money(billTotal)} with GST</span>
                 {d.purchaseTallyAmount == null
                   ? <span className="chip" title="Linked by itself once Accounts books this bill in Tally.">Not in Tally yet</span>
                   : tallyOff ? <span className="chip bad">Tally says {money(d.purchaseTallyAmount)}</span> : <span className="chip ok">In Tally</span>}
@@ -171,7 +176,7 @@ export function OrderDispatch({ orderId, orderNo, companyId, open, owner, factor
                   <li key={s}><span className={done[i] ? "chip ok" : i === next ? (i === 1 && invoiceLate) || (i === 4 && grnLate) ? "chip bad" : "chip warn" : "chip"}>{done[i] ? "✓ " : ""}{s}</span></li>
                 ))}
               </ol>
-              <p className="muted mt-1 text-[13px]">{d.lines.map((l) => `${l.style} ${qty(l.qty)} pcs at ${money(l.purchaseRate)}`).join(" · ")}</p>
+              <p className="muted mt-1 text-[13px]">{d.lines.map((l) => `${l.style} ${qty(l.qty)} ${unitOfStyle.get(l.style) ?? "pcs"} at ${money(l.purchaseRate)}`).join(" · ")}</p>
 
               <Copies d={d} pending={pending} onAttach={(kind, file) => attach(d.id, kind, file)} />
 
@@ -193,14 +198,14 @@ export function OrderDispatch({ orderId, orderNo, companyId, open, owner, factor
                 </div>
               )}
               {d.grnAt && (
-                <p className="text-[13px]">GRN: buyer received <b className="num">{qty(d.grnQty)}</b> of {qty(pcs)} pcs{d.grnNotes && ` (${d.grnNotes})`}. {d.grnUrl && <a className="link" href={d.grnUrl} target="_blank" rel="noreferrer">GRN report</a>}</p>
+                <p className="text-[13px]">GRN: buyer received <b className="num">{qty(d.grnQty)}</b> of {qty(pcs)} {unit}{d.grnNotes && ` (${d.grnNotes})`}. {d.grnUrl && <a className="link" href={d.grnUrl} target="_blank" rel="noreferrer">GRN report</a>}</p>
               )}
 
               {/* Each dispatch goes on to its next step even once the order is shipped or cancelled: the goods are already on their way. */}
-              {next === 1 && <InvoiceStep d={d} bills={tally.sales} buyerInTally={tally.buyerInTally} today={today} late={invoiceLate} pending={pending} onSave={(v) => step(d.id, () => recordDispatchInvoice(orderId, d.id, v))} />}
+              {next === 1 && <InvoiceStep d={d} unit={unit} bills={tally.sales} buyerInTally={tally.buyerInTally} today={today} late={invoiceLate} pending={pending} onSave={(v) => step(d.id, () => recordDispatchInvoice(orderId, d.id, v))} />}
               {next === 2 && <EwayStep invoiceNo={d.invoiceNo ?? ""} today={today} pending={pending} onSave={(v, file) => step(d.id, async (folder) => recordEwayBill(orderId, d.id, { ...v, path: await uploadDoc(folder, file) }))} />}
               {next === 3 && <ShipStep today={today} pending={pending} qcBlock={owner ? [] : d.qcNotPassed ?? []} onSave={(v, lr, photos) => step(d.id, async (folder) => recordShipping(orderId, d.id, { ...v, lr_path: await uploadDoc(folder, lr), photos: await uploadPhotos(folder, photos) }))} />}
-              {next === 4 && <GrnStep d={d} pcs={pcs} late={grnLate} pending={pending} onSave={(v, file) => step(d.id, async (folder) => recordGrn(orderId, d.id, { ...v, path: await uploadDoc(folder, file) }))} />}
+              {next === 4 && <GrnStep d={d} pcs={pcs} unit={unit} late={grnLate} pending={pending} onSave={(v, file) => step(d.id, async (folder) => recordGrn(orderId, d.id, { ...v, path: await uploadDoc(folder, file) }))} />}
               {error[d.id] && <p className="mt-2 text-[13px] font-semibold text-bad" role="alert">{error[d.id]}</p>}
             </article>
           );
@@ -360,8 +365,8 @@ function PurchaseForm({ p, setP, blank, factories, ship, bills, today, pending, 
   );
 }
 
-function InvoiceStep({ d, bills, buyerInTally, today, late, pending, onSave }: {
-  d: Dispatch; bills: TallyBills["sales"]; buyerInTally: boolean; today: string; late: boolean; pending: boolean;
+function InvoiceStep({ d, unit, bills, buyerInTally, today, late, pending, onSave }: {
+  d: Dispatch; unit: string; bills: TallyBills["sales"]; buyerInTally: boolean; today: string; late: boolean; pending: boolean;
   onSave: (v: { invoice_no: string; invoice_date: string; taxable: string }) => void;
 }) {
   const pcs = d.lines.reduce((s, l) => s + l.qty, 0);
@@ -411,7 +416,7 @@ function InvoiceStep({ d, bills, buyerInTally, today, late, pending, onSave }: {
         <label className="field">
           <span>Value before GST ₹ <i>*</i></span>
           <input className="inp" inputMode="decimal" value={v.taxable} onChange={(e) => setV({ ...v, taxable: e.target.value })} aria-label="Invoice value before GST" />
-          <small>{sale ? `${qty(pcs)} pcs at the sale rates.` : "Pieces times the sale rate."}</small>
+          <small>{sale ? `${qty(pcs)} ${unit} at the sale rates.` : "Quantity times the sale rate."}</small>
         </label>
       </div>
       {taxable > 0 && (
@@ -517,8 +522,8 @@ function ShipStep({ today, pending, qcBlock, onSave }: {
   );
 }
 
-function GrnStep({ d, pcs, late, pending, onSave }: {
-  d: Dispatch; pcs: number; late: boolean; pending: boolean; onSave: (v: { received_qty: string; notes: string }, file: File) => void;
+function GrnStep({ d, pcs, unit, late, pending, onSave }: {
+  d: Dispatch; pcs: number; unit: string; late: boolean; pending: boolean; onSave: (v: { received_qty: string; notes: string }, file: File) => void;
 }) {
   const [v, setV] = useState({ received_qty: String(pcs), notes: "" });
   const [file, setFile] = useState<File | null>(null);
@@ -529,7 +534,7 @@ function GrnStep({ d, pcs, late, pending, onSave }: {
       if (!file) return setErr("Attach the GRN report.");
       // The same check as the server, before the report is uploaded.
       const q = digits(v.received_qty);
-      if (q === "" || !Number.isInteger(Number(q)) || Number(q) < 0) return setErr("Enter the pieces the buyer received.");
+      if (q === "" || !Number.isInteger(Number(q)) || Number(q) < 0) return setErr(`Enter the ${unit === "m" ? "metres" : "pieces"} the buyer received.`);
       setErr("");
       onSave(v, file);
     }}>
@@ -538,7 +543,7 @@ function GrnStep({ d, pcs, late, pending, onSave }: {
       </p>
       <div className="fgrid">
         <label className="field"><span>GRN report <i>*</i></span><input className="inp" type="file" accept={DOC_ACCEPT} onChange={(e) => setFile(e.target.files?.[0] ?? null)} aria-label="GRN report" /></label>
-        <label className="field"><span>Pieces received <i>*</i></span><input className="inp" inputMode="numeric" value={v.received_qty} onChange={(e) => setV({ ...v, received_qty: e.target.value })} aria-label="Pieces received" /></label>
+        <label className="field"><span>{unit === "m" ? "Metres" : "Pieces"} received <i>*</i></span><input className="inp" inputMode="numeric" value={v.received_qty} onChange={(e) => setV({ ...v, received_qty: e.target.value })} aria-label={`${unit === "m" ? "Metres" : "Pieces"} received`} /></label>
         <label className="field"><span>Shortages or remarks</span><input className="inp" value={v.notes} onChange={(e) => setV({ ...v, notes: e.target.value })} aria-label="GRN remarks" /></label>
       </div>
       <div className="row mt-3">
@@ -558,6 +563,7 @@ function ShipSummary({ orderId, orderNo, ship, open, closedShort, pending, start
   const [closing, setClosing] = useState(false);
   const [reason, setReason] = useState("");
   const [err, setErr] = useState("");
+  const unit = unitOver(ship.map((l) => l.unit));
   const ordered = ship.reduce((t, l) => t + l.ordered, 0);
   const shipped = ship.reduce((t, l) => t + l.shipped, 0);
   const billed = ship.reduce((t, l) => t + l.billed, 0);
@@ -579,7 +585,7 @@ function ShipSummary({ orderId, orderNo, ship, open, closedShort, pending, start
   return (
     <div className="ship-sum mb-3" aria-label="Pieces shipped">
       <div className="row">
-        <b className="text-[14px]">{toShip === 0 ? `All ${qty(ordered)} pcs shipped` : `${qty(shipped)} of ${qty(ordered)} pcs shipped`}</b>
+        <b className="text-[14px]">{toShip === 0 ? `All ${qty(ordered)} ${unit} shipped` : `${qty(shipped)} of ${qty(ordered)} ${unit} shipped`}</b>
         {closedShort ? <span className="chip warn">Closed short</span> : toShip > moving && shipped > 0 ? <span className="chip info">{qty(toShip - moving)} to send</span>
           : moving > 0 && shipped > 0 ? <span className="chip info">{qty(moving)} on the way</span> : null}
       </div>
@@ -596,7 +602,7 @@ function ShipSummary({ orderId, orderNo, ship, open, closedShort, pending, start
         ))}
       </ul>
       {closedShort && (
-        <p className="mt-2 text-[13px]">Closed short with {qty(billed)} of {qty(ordered)} pcs by {closedShort.by}, {at.format(new Date(closedShort.at))}: {closedShort.reason}</p>
+        <p className="mt-2 text-[13px]">Closed short with {qty(billed)} of {qty(ordered)} {unit} by {closedShort.by}, {at.format(new Date(closedShort.at))}: {closedShort.reason}</p>
       )}
       {open && unbilled > 0 && billed > 0 && !closing && (
         <div className="row mt-2">
@@ -606,7 +612,7 @@ function ShipSummary({ orderId, orderNo, ship, open, closedShort, pending, start
       )}
       {open && closing && (
         <form className="mt-3 flex flex-col gap-2 rounded-[10px] bg-surface-2 p-3" onSubmit={close}>
-          <p className="text-[13px] font-semibold text-warn">Close {orderNo} with {qty(billed)} of {qty(ordered)} pcs? The other {qty(unbilled)} won&apos;t be sent.</p>
+          <p className="text-[13px] font-semibold text-warn">Close {orderNo} with {qty(billed)} of {qty(ordered)} {unit}? The other {qty(unbilled)} won&apos;t be sent.</p>
           <label className="field">
             <span>Why <i>*</i></span>
             <input className="inp" value={reason} onChange={(e) => setReason(e.target.value)} aria-label="Why the rest won't be sent" placeholder="For example: buyer accepted 579 pcs" autoFocus />

@@ -2,11 +2,13 @@ import { NO_COMPANY } from "@/lib/names";
 import Link from "next/link";
 import { getMe } from "@/lib/auth";
 import { buyerName, loadBuyers, type Factory } from "@/lib/data";
-import { day, dayAt, daysBetween, dueDate, nowMs, planDueAt, qty, stageReached, todayIST } from "@/lib/format";
+import { day, dayAt, daysBetween, dueDate, nowMs, planDueAt, qty, qtyTotal, stageReached, todayIST } from "@/lib/format";
 import { fetchAll } from "@/lib/fetch-all";
 import { type StepRow, styleProgress } from "@/lib/progress";
 import { createClient } from "@/lib/supabase/server";
 import { ProgressCell } from "@/components/progress";
+
+type Qty = { qty: number; product: string };
 
 type Po = { order_id: string; factory_id: string; released_at: string | null; plan_requested_at: string | null; plan_requested_on: string | null; factory_sent_at: string | null };
 
@@ -19,7 +21,7 @@ export async function FactoryBoard({ factories }: { factories: Factory[] }) {
   const companyId = me?.companyId ?? NO_COMPANY;
   const [{ data: orders, error }, buyers] = await Promise.all([
     fetchAll((a, z) => supabase.from("orders")
-      .select("id, order_no, buyer_id, buyer_po, ship_date, revised_ship_date, stage, order_lines(id, style, qty, factory_id)")
+      .select("id, order_no, buyer_id, buyer_po, ship_date, revised_ship_date, stage, order_lines(id, style, qty, factory_id, product)")
       .eq("company_id", companyId).eq("status", "open").is("order_lines.removed_at", null).order("id").range(a, z)),
     loadBuyers(),
   ]);
@@ -39,7 +41,7 @@ export async function FactoryBoard({ factories }: { factories: Factory[] }) {
 type BoardInput = {
   factories: Factory[];
   orders: { id: string; order_no: string; buyer_id: string; buyer_po: string; ship_date: string | null; revised_ship_date: string | null; stage: string | null;
-    order_lines: { id: string; style: string; qty: number; factory_id: string | null }[] | null }[];
+    order_lines: { id: string; style: string; qty: number; factory_id: string | null; product: string }[] | null }[];
   pos: Po[];
   steps: StepRow[];
   buyers: Map<string, string>;
@@ -55,7 +57,8 @@ export function buildBoard({ factories, orders, pos, steps, buyers: buyerById, t
   // One row per order and factory: that factory's styles on the order.
   type Row = {
     key: string; orderId: string; orderNo: string; buyerId: string; buyer: string; buyerPo: string; due: string | null;
-    styles: string[]; pieces: number; released: string | null; state: { text: string; cls: string } | null;
+    // items: qty and product of each style, so fabric metres are never added to garment pieces.
+    styles: string[]; pieces: number; items: Qty[]; released: string | null; state: { text: string; cls: string } | null;
     progress: ReturnType<typeof styleProgress>; looksShipped: boolean;
   };
   const byFactory = new Map<string, Row[]>();
@@ -78,7 +81,7 @@ export function buildBoard({ factories, orders, pos, steps, buyers: buyerById, t
         : { text: "Factory not asked for its TNA yet", cls: "warn" };
       const row: Row = {
         key: `${o.id}:${f}`, orderId: o.id, orderNo: o.order_no, buyerId: o.buyer_id, buyer: buyerById.get(o.buyer_id) ?? "", buyerPo: o.buyer_po, due,
-        styles: mine.map((l) => l.style), pieces: mine.reduce((s, l) => s + l.qty, 0), released, state,
+        styles: mine.map((l) => l.style), pieces: mine.reduce((s, l) => s + l.qty, 0), items: mine, released, state,
         progress: styleProgress(mine.map((l) => l.id), steps, due, today),
         looksShipped: !!due && daysBetween(due, today) > 30 && stageReached(o.stage, "packed"),
       };
@@ -93,12 +96,13 @@ export function buildBoard({ factories, orders, pos, steps, buyers: buyerById, t
     const released = rows.filter((r) => r.released);
     const buyerList = [...new Set(rows.map((r) => r.buyerId))].map((id) => {
       const mine = rows.filter((r) => r.buyerId === id);
-      return { id, name: buyerById.get(id) ?? "", pos: mine.length, pieces: mine.reduce((s, r) => s + r.pieces, 0) };
+      return { id, name: buyerById.get(id) ?? "", pos: mine.length, pieces: mine.reduce((s, r) => s + r.pieces, 0), items: mine.flatMap((r) => r.items) };
     }).sort((a, b) => b.pieces - a.pieces);
     return {
       f, rows, buyerList,
       released: released.length, waiting: rows.length - released.length,
       pieces: released.reduce((s, r) => s + r.pieces, 0),
+      items: released.flatMap((r) => r.items),
       styles: released.reduce((s, r) => s + r.styles.length, 0),
       atRisk: released.filter((r) => r.progress.riskDays > 0 || r.progress.behind).length,
     };
@@ -108,6 +112,7 @@ export function buildBoard({ factories, orders, pos, steps, buyers: buyerById, t
     released: cards.reduce((s, c) => s + c.released, 0),
     waiting: cards.reduce((s, c) => s + c.waiting, 0),
     pieces: cards.reduce((s, c) => s + c.pieces, 0),
+    items: cards.flatMap((c) => c.items),
   };
   return { cards, total, noFactory };
 }
@@ -122,7 +127,7 @@ export function BoardView({ board: { cards, total, noFactory }, today, loadError
       {cards.length > 0 && (
         <div className="kpis">
           <div className="kpi"><span className="kpi-label"><i aria-hidden />Factories working</span><b>{cards.length}</b><small>On open orders</small></div>
-          <div className="kpi ok"><span className="kpi-label"><i aria-hidden />POs released</span><b>{total.released}</b><small>{qty(total.pieces)} pieces in work</small></div>
+          <div className="kpi ok"><span className="kpi-label"><i aria-hidden />POs released</span><b>{total.released}</b><small>{qtyTotal(total.items)} in work</small></div>
           <div className={`kpi ${total.waiting ? "warn" : "ok"}`}><span className="kpi-label"><i aria-hidden />Not released</span><b>{total.waiting}</b><small>{total.waiting ? "Waiting on the TNA" : "Every PO is out"}</small></div>
           <div className={`kpi ${noFactory ? "warn" : "ok"}`}><span className="kpi-label"><i aria-hidden />Styles without a factory</span><b>{noFactory}</b><small>{noFactory ? "Choose one on the order" : "Every style has one"}</small></div>
         </div>
@@ -142,7 +147,7 @@ export function BoardView({ board: { cards, total, noFactory }, today, loadError
             <div>
               <h2>{c.f.name}</h2>
               <p>
-                {[c.f.city, `${plural(c.released, "PO")} released`, `${plural(c.styles, "style")}`, `${qty(c.pieces)} pcs`].filter(Boolean).join(" · ")}
+                {[c.f.city, `${plural(c.released, "PO")} released`, `${plural(c.styles, "style")}`, qtyTotal(c.items)].filter(Boolean).join(" · ")}
               </p>
             </div>
             <div className="row">
@@ -153,7 +158,7 @@ export function BoardView({ board: { cards, total, noFactory }, today, loadError
           </div>
           <div className="fac-buyers" aria-label="Buyers">
             {c.buyerList.map((b) => (
-              <span key={b.id} className="fac-buyer"><b>{b.name}</b>{plural(b.pos, "PO")} · {qty(b.pieces)} pcs</span>
+              <span key={b.id} className="fac-buyer"><b>{b.name}</b>{plural(b.pos, "PO")} · {qtyTotal(b.items)}</span>
             ))}
           </div>
           {[{ label: "Not released", rows: c.rows.filter((r) => !r.released) }, { label: "Released", rows: c.rows.filter((r) => r.released) }]
@@ -168,7 +173,7 @@ export function BoardView({ board: { cards, total, noFactory }, today, loadError
                       {r.due && r.due < today && <small className="text-bad">{plural(daysBetween(r.due, today), "day")} late</small>}
                     </span>
                     <span className="frow-s">
-                      PO {r.buyerPo} · {r.styles.length <= 2 ? r.styles.join(", ") : `${r.styles.slice(0, 2).join(", ")} +${r.styles.length - 2}`} · <b>{qty(r.pieces)} pcs</b>
+                      PO {r.buyerPo} · {r.styles.length <= 2 ? r.styles.join(", ") : `${r.styles.slice(0, 2).join(", ")} +${r.styles.length - 2}`} · <b>{qtyTotal(r.items)}</b>
                       {r.released && <> · released {dayAt(r.released).slice(0, -5)}</>}
                     </span>
                     <span className="frow-g o-prog">

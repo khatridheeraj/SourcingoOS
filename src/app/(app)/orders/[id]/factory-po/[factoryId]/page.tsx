@@ -149,7 +149,7 @@ export default async function FactoryPoPage({ params }: PageProps<"/orders/[id]/
           poNo, draft: !released, date: short(released ? istDay(po!.released_at!) : todayIST()),
           company: { name: co?.legal_name || co?.name || "", address: co?.address ?? null, shipAddress: co?.ship_address ?? null, gstin: co?.gstin ?? null, phone: co?.phone ?? null, email: co?.email ?? null },
           factory: { name: f.name, address: f.address || f.city, gstin: vendorGstin || null, phone: f.phone, contact: f.contact_name, email: f.email },
-          lines: lines.map((l) => ({ id: l.id, style: l.style, description: l.description, colour: l.colour, fabric: l.fabric, qty: l.qty, sizes: l.sizes,
+          lines: lines.map((l) => ({ id: l.id, style: l.style, description: l.description, colour: l.colour, fabric: l.fabric, qty: l.qty, sizes: l.sizes, product: l.product,
             rate: rateOf.get(l.id) ?? null, photo: (l.photo_path && photoOf.get(l.photo_path)) || null })),
           paymentDays: terms?.days ?? 60, delivery: po?.delivery_note || (readyBy ? short(readyBy) : "As agreed"), keyDates, accepted,
         }} />

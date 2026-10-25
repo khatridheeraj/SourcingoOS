@@ -3,7 +3,7 @@
 import { dueDate, TNA_STEPS } from "@/lib/format";
 import { addDays, buyerUpdateText, chaseAllText, waLink, type QStyle } from "@/lib/quick";
 
-type Line = { id: string; style: string; colour: string | null; qty: number; factory_id: string | null };
+type Line = { id: string; style: string; colour: string | null; qty: number; factory_id: string | null; product?: string | null };
 type Order = { id: string; order_no: string; buyer_id: string; buyer_po: string | null; ship_date: string | null; revised_ship_date: string | null; order_lines: Line[] | null };
 type Stage = { line_id: string; stage: string; label: string | null; planned_on: string | null; done_on: string | null; not_needed: boolean };
 type Po = { order_id: string; factory_id: string; released_at: string | null; buffer_days: number | null };
@@ -15,7 +15,7 @@ export type BuyerUpdate = { buyerId: string; name: string; orders: number; style
 export function toQStyle(l: Line, stages: Stage[]): QStyle {
   const mine = stages.filter((s) => s.line_id === l.id);
   return {
-    id: l.id, style: l.style, colour: l.colour ?? "", qty: l.qty, hasRate: true, factoryId: l.factory_id,
+    id: l.id, style: l.style, colour: l.colour ?? "", qty: l.qty, hasRate: true, factoryId: l.factory_id, fabric: l.product === "fabric",
     steps: [
       ...TNA_STEPS.map((t) => { const r = mine.find((s) => s.stage === t.key); return { key: t.key, label: t.label, planned_on: r?.planned_on ?? "", done_on: r?.done_on ?? "", not_needed: !!r?.not_needed, extra: false }; }),
       ...mine.filter((s) => s.stage.startsWith("extra_")).map((s) => ({ key: s.stage, label: s.label ?? "", planned_on: s.planned_on ?? "", done_on: s.done_on ?? "", not_needed: s.not_needed, extra: true })),

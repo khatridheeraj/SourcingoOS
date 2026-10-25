@@ -1,6 +1,6 @@
 // Helpers behind the quick sheets: an order's steps per style, what to mark done, the plan to start production with,
 // and the WhatsApp chase for a factory. Pure functions, used on the server and in the browser alike.
-import { daysBetween, TNA_STEPS } from "@/lib/format";
+import { daysBetween, qtyTotal, qtyU, TNA_STEPS } from "@/lib/format";
 import { fillEmptyTargets, stepDays } from "@/lib/tna-plan";
 
 export type QStep = { key: string; label: string; planned_on: string; done_on: string; not_needed: boolean; extra: boolean };
@@ -106,7 +106,7 @@ export function styleLine(s: QStyle, today: string) {
   const st = live(s);
   const over = st.filter((x) => !x.done_on && x.planned_on && x.planned_on < today);
   const next = st.find((x) => !x.done_on);
-  return `• ${s.style}${s.colour ? ` (${s.colour})` : ""}, ${s.qty} pcs: `
+  return `• ${s.style}${s.colour ? ` (${s.colour})` : ""}, ${qtyU(s.qty, s.fabric ? "fabric" : null)}: `
     + (over.length ? `${over[0].label} was due ${dm(over[0].planned_on)}${over.length > 1 ? ` (+${over.length - 1} more late)` : ""}`
       : next ? `next ${next.label}${next.planned_on ? ` by ${dm(next.planned_on)}` : ""}` : "all steps done");
 }
@@ -147,7 +147,7 @@ export function chaseAllText(factoryName: string, orders: { orderNo: string; buy
 // the buyer doesn't need.
 export function buyerStyleLine(s: QStyle, today: string, started: boolean) {
   const st = live(s);
-  const head = `• ${s.style}${s.colour ? ` (${s.colour})` : ""}, ${s.qty.toLocaleString("en-IN")} pcs: `;
+  const head = `• ${s.style}${s.colour ? ` (${s.colour})` : ""}, ${qtyU(s.qty, s.fabric ? "fabric" : null)}: `;
   if (!started) return `${head}pre-production, plan being set with the factory`;
   const done = [...st].reverse().find((x) => x.done_on);
   const next = st.find((x) => !x.done_on);
@@ -163,7 +163,7 @@ export function buyerUpdateText(buyer: string, orders: { orderNo: string; buyerP
       "",
       `*${o.buyerPo ? `PO ${o.buyerPo}` : o.orderNo}*${o.due ? ` · ship date ${dm(o.due)}` : ""}${o.due && o.due < today ? " · delayed, new date to follow" : o.late ? " · a few steps behind, catching up" : o.started ? " · on track" : ""}`,
       ...(o.started ? o.styles.map((s) => buyerStyleLine(s, today, true))
-        : [`• ${o.styles.map((s) => s.style).join(", ")} (${o.styles.reduce((n, s) => n + s.qty, 0).toLocaleString("en-IN")} pcs): in pre-production`]),
+        : [`• ${o.styles.map((s) => s.style).join(", ")} (${qtyTotal(o.styles.map((s) => ({ qty: s.qty, product: s.fabric ? "fabric" : null })))}): in pre-production`]),
     ]),
     "",
     "Please let us know if you need anything.",

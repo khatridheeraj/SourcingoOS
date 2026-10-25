@@ -1,9 +1,9 @@
 import type { ReactNode } from "react";
 import { FACTORY_PO_TERMS } from "@/lib/factory-po-terms";
-import { money, qty } from "@/lib/format";
+import { money, qty, qtyTotal, qtyU } from "@/lib/format";
 import { sizeEntries } from "@/lib/sizes";
 
-export type FpoLine = { id: string; style: string; description: string | null; colour: string | null; fabric: string | null; qty: number; sizes: Record<string, number> | null; rate: number | null; photo: string | null };
+export type FpoLine = { id: string; style: string; description: string | null; colour: string | null; fabric: string | null; qty: number; sizes: Record<string, number> | null; rate: number | null; photo: string | null; product?: string | null };
 export type FpoDocData = {
   poNo: string;
   date: string;
@@ -21,7 +21,6 @@ export type FpoDocData = {
 // as its terms. Accepted by email or on the PO link, so it carries no signature lines. Used by the team's PO page
 // and by the PO link the factory opens. photoSlot lets the team add a missing style photo right on the PO.
 export function FactoryPoDoc({ d, photoSlot }: { d: FpoDocData; photoSlot?: (line: FpoLine) => ReactNode }) {
-  const pcs = d.lines.reduce((t, r) => t + r.qty, 0);
   const priced = d.lines.every((r) => r.rate != null);
   const value = d.lines.reduce((t, r) => t + r.qty * (r.rate ?? 0), 0);
   return (
@@ -65,7 +64,7 @@ export function FactoryPoDoc({ d, photoSlot }: { d: FpoDocData; photoSlot?: (lin
               <div>
                 <b>{r.style}</b>
                 <span>{[r.description, r.colour].filter(Boolean).join(" · ")}</span>
-                <span className="num">{qty(r.qty)} pcs{r.rate != null && ` · ${money(r.rate)}`}</span>
+                <span className="num">{qtyU(r.qty, r.product)}{r.rate != null && ` · ${money(r.rate)}`}</span>
               </div>
             </li>
           ))}
@@ -87,8 +86,8 @@ export function FactoryPoDoc({ d, photoSlot }: { d: FpoDocData; photoSlot?: (lin
                     <td>{sizes.length ? sizes.map(([s]) => s).join(", ") : "—"}</td>
                     <td className="nw">{r.style}</td>
                     <td className="num">{r.rate == null ? "—" : money(r.rate)}</td>
-                    <td className="fpo-qty">{counted ? sizes.map(([s, k]) => <span key={s} className="nw">{s} {qty(k)}</span>) : "Size-wise qty will be confirmed before cutting"}</td>
-                    <td className="num">{qty(r.qty)}</td>
+                    <td className="fpo-qty">{counted ? sizes.map(([s, k]) => <span key={s} className="nw">{s} {qty(k)}</span>) : r.product === "fabric" ? qtyU(r.qty, r.product) : "Size-wise qty will be confirmed before cutting"}</td>
+                    <td className="num nw">{qtyU(r.qty, r.product)}</td>
                     <td>{r.colour || "—"}</td>
                     <td className={`fpo-img ${r.photo ? "" : "missing"}`}>
                       {r.photo ? (
@@ -103,7 +102,7 @@ export function FactoryPoDoc({ d, photoSlot }: { d: FpoDocData; photoSlot?: (lin
               })}
             </tbody>
             <tfoot>
-              <tr><td colSpan={6}>Total{priced && <span className="fpo-value"> · Value {money(value)} + GST</span>}</td><td className="num">{qty(pcs)}</td><td colSpan={2} /></tr>
+              <tr><td colSpan={6}>Total{priced && <span className="fpo-value"> · Value {money(value)} + GST</span>}</td><td className="num nw">{qtyTotal(d.lines)}</td><td colSpan={2} /></tr>
             </tfoot>
           </table>
         </div>

@@ -26,10 +26,10 @@ export function orderShip(rows: LineShip[], orderId?: string): OrderShip {
   return { ...s, part: s.shipped > 0 && s.toShip > 0 };
 }
 
-// "579 of 600 pcs shipped · 21 to send", or "· 21 being dispatched" once the next part is bought.
-export function partText(s: OrderShip) {
+// "579 of 600 pcs shipped · 21 to send", or "· 21 being dispatched" once the next part is bought. unit is "m" for fabric.
+export function partText(s: OrderShip, unit = "pcs") {
   const moving = Math.min(s.toShip, Math.max(0, s.bought - s.shipped));
   const rest = s.toShip - moving;
-  return `${qty(s.shipped)} of ${qty(s.ordered)} pcs shipped`
+  return `${qty(s.shipped)} of ${qty(s.ordered)} ${unit} shipped`
     + (moving ? ` · ${qty(moving)} being dispatched` : "") + (rest ? ` · ${qty(rest)} to send` : "");
 }

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
-import { money, qty as fmtQty } from "@/lib/format";
+import { money, qtyTotal } from "@/lib/format";
 import { NO_WARNINGS, overdueText, type OrderWarnings, type Overdue } from "@/lib/order-checks";
 import { PO_ACCEPT, poFileProblem, uploadPoFiles } from "@/lib/po-upload";
 import { checkOrder, saveOrder, type LineInput, type OrderInput } from "./actions";
@@ -75,7 +75,9 @@ export function OrderForm({ initial, initialLines, buyers, factories, team, inco
     setSaved(false);
   };
 
-  const pieces = lines.reduce((s, l) => s + n(l.qty), 0);
+  // A style described "Fabric" is saved as fabric (bought by the metre), as the database does.
+  const isFabric = (l: LineInput) => ["fabric", "fabrics"].includes(l.description.trim().toLowerCase());
+  const total = qtyTotal(lines.map((l) => ({ qty: n(l.qty), product: isFabric(l) ? "fabric" : "garment" })));
   const value = lines.reduce((s, l) => s + n(l.qty) * n(l.buyer_rate), 0);
   const cost = lines.reduce((s, l) => s + n(l.qty) * n(l.factory_rate), 0);
 
@@ -229,7 +231,7 @@ export function OrderForm({ initial, initialLines, buyers, factories, team, inco
                   <td data-label="Style no."><input className="inp min-w-[110px]" value={l.style} onChange={(e) => setLine(i, "style", e.target.value)} aria-label={`Line ${i + 1} style`} /></td>
                   <td data-label="Description"><input className="inp min-w-[140px]" value={l.description} onChange={(e) => setLine(i, "description", e.target.value)} aria-label={`Line ${i + 1} description`} /></td>
                   <td data-label="Colour"><input className="inp min-w-[90px]" value={l.colour} onChange={(e) => setLine(i, "colour", e.target.value)} aria-label={`Line ${i + 1} colour`} /></td>
-                  <td data-label="Qty"><input className="inp w-[90px]" inputMode="numeric" value={l.qty} onChange={(e) => setLine(i, "qty", e.target.value)} aria-label={`Line ${i + 1} quantity`} /></td>
+                  <td data-label="Qty"><input className="inp w-[90px]" inputMode="numeric" value={l.qty} onChange={(e) => setLine(i, "qty", e.target.value)} placeholder={isFabric(l) ? "metres" : "pcs"} aria-label={`Line ${i + 1} quantity in ${isFabric(l) ? "metres" : "pieces"}`} /></td>
                   <td data-label="Buyer rate ₹"><input className="inp w-[90px]" inputMode="decimal" value={l.buyer_rate} onChange={(e) => setLine(i, "buyer_rate", e.target.value)} aria-label={`Line ${i + 1} buyer rate`} /></td>
                   {fac && <><td data-label="Factory">
                     <select className="inp min-w-[150px]" value={l.factory_id} onChange={(e) => setLine(i, "factory_id", e.target.value)} aria-label={`Line ${i + 1} factory`}>
@@ -288,7 +290,7 @@ export function OrderForm({ initial, initialLines, buyers, factories, team, inco
 
       <div className="sticky-actions">
         <div className="grow text-[13px]">
-          <b className="num">{fmtQty(pieces)}</b> pcs
+          <b className="num">{total}</b>
           {value > 0 && <> · buyer value <b className="num">{money(value)}</b></>}
           {cost > 0 && value > 0 && <> · margin <b className="num">{money(value - cost)}</b></>}
         </div>

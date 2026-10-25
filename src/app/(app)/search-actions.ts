@@ -3,7 +3,7 @@
 import { canEditOrders, getMe } from "@/lib/auth";
 import { buyerName, loadBuyers, loadFactories } from "@/lib/data";
 import { fetchAll } from "@/lib/fetch-all";
-import { day, dueDate, todayIST } from "@/lib/format";
+import { day, dueDate, qtyU, todayIST } from "@/lib/format";
 import { createClient } from "@/lib/supabase/server";
 
 export type Hit = { kind: "order" | "style" | "buyer" | "factory" | "inquiry" | "po"; href: string; title: string; sub: string; code?: string; state?: string; tone?: "bad" | "ok" | "" };
@@ -18,7 +18,7 @@ export async function searchAll(raw: string): Promise<{ hits: Hit[]; error?: str
   const team = canEditOrders(me.role);
   const supabase = await createClient();
   const [{ data: orders, error }, buyers, factories, { data: inqs }, { data: pos }] = await Promise.all([
-    fetchAll((a, z) => supabase.from("orders").select("id, order_no, buyer_id, buyer_po, ship_date, revised_ship_date, status, order_lines(id, style, colour, qty, factory_id)")
+    fetchAll((a, z) => supabase.from("orders").select("id, order_no, buyer_id, buyer_po, ship_date, revised_ship_date, status, order_lines(id, style, colour, qty, factory_id, product)")
       .eq("company_id", me.companyId!).is("order_lines.removed_at", null).order("created_at", { ascending: false }).order("id").range(a, z)),
     loadBuyers(),
     loadFactories(),
@@ -65,7 +65,7 @@ export async function searchAll(raw: string): Promise<{ hits: Hit[]; error?: str
       const fields = [l.style, l.colour ?? "", o.order_no, buyer, l.factory_id ? fName.get(l.factory_id) ?? "" : ""];
       if (!has(fields.join(" "))) continue;
       styleHits.push({ kind: "style", href: `${href}#tna`, code: o.order_no, title: `${l.style}${l.colour ? ` · ${l.colour}` : ""}`,
-        sub: `${buyer} · ${l.qty.toLocaleString("en-IN")} pcs${l.factory_id ? ` · ${fName.get(l.factory_id) ?? ""}` : ""}`, state: st.text, tone: st.tone,
+        sub: `${buyer} · ${qtyU(l.qty, l.product)}${l.factory_id ? ` · ${fName.get(l.factory_id) ?? ""}` : ""}`, state: st.text, tone: st.tone,
         s: score([l.style, l.colour ?? ""]) + (o.status === "open" ? 0 : 0.5) });
     }
   }

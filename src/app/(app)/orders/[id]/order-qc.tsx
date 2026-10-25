@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { day, QC_KINDS, qcKindLabel, SHIP_QC, todayIST } from "@/lib/format";
+import { day, QC_KINDS, qcKindLabel, qtyU, SHIP_QC, todayIST } from "@/lib/format";
 import { REPORT_ACCEPT, REPORT_MAX_MB, uploadPhotos, uploadReports } from "@/lib/photos";
 import { addQcComment, addQcFiles, cancelQc, recordQc, removeQcPhoto, type QcFile, type QcInput } from "../actions";
 
@@ -57,7 +57,7 @@ function qcProblem(q: QcInput, photos: File[], reports: File[]): string {
   return "";
 }
 
-export type QcStyle = { id: string; style: string; colour: string; qty: number };
+export type QcStyle = { id: string; style: string; colour: string; qty: number; product?: string };
 
 // Sampling and production inspections, kept separately for each style of the order. Saved checks are cancelled, never edited.
 // The Quality team records them with proof; everyone else can read them and comment.
@@ -250,7 +250,7 @@ export function OrderQc({ orderId, companyId, open, canRecord, today, checks, fi
             <div key={st.id || "gone"} id={st.id ? `qc-${st.id}` : undefined} className="scroll-mt-20">
               <div className="row mb-2">
                 <b className={st.id ? "code" : ""}>{st.style}</b>
-                {st.id && <span className="muted text-xs">{[st.colour, `${st.qty} pcs`].filter(Boolean).join(" · ")}</span>}
+                {st.id && <span className="muted text-xs">{[st.colour, qtyU(st.qty, st.product)].filter(Boolean).join(" · ")}</span>}
                 {st.id && (fin ? <span className={`chip ${fin.result === "pass" ? "ok" : "bad"}`}>Final QC {fin.result === "pass" ? "passed" : "failed"}</span>
                   : open && <span className="chip warn">Final QC not done</span>)}
                 {st.id && can && !(adding && q.line_id === st.id) && (

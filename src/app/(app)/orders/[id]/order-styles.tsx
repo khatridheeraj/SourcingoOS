@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { day, dayAt, daysBetween, defaultBuffer, planDueAt, PLAN_HOURS, qty, TNA_STEPS } from "@/lib/format";
+import { day, dayAt, daysBetween, defaultBuffer, planDueAt, PLAN_HOURS, qtyU, TNA_STEPS } from "@/lib/format";
 import { uploadPhotos } from "@/lib/photos";
 import { toast } from "@/components/toast";
 import { project, shipRisk, fillEmptyTargets, stepDays } from "@/lib/tna-plan";
@@ -261,7 +261,7 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
   async function copyRequest(g: FactoryGroup) {
     const text = [
       `Please enter your TNA for order ${orderNo} in your Sourcingo factory panel${g.planRequestedAt ? ` by ${at.format(planDueAt(g.planRequestedAt))}` : ` within ${PLAN_HOURS} hours`}. We release the PO only after that.`,
-      `Styles: ${g.lines.map((l) => `${l.style}${l.colour ? ` (${l.colour})` : ""}, ${l.qty} pcs`).join("; ")}.`,
+      `Styles: ${g.lines.map((l) => `${l.style}${l.colour ? ` (${l.colour})` : ""}, ${qtyU(l.qty, l.fabricOrder ? "fabric" : null)}`).join("; ")}.`,
       g.target ? `Every date must be on or before ${day(g.target)}.` : "",
     ].filter(Boolean).join("\n");
     try {
@@ -587,7 +587,7 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
                       </div>
                       <div className="style-id">
                         <b className="code text-[13.5px]">{l.style}</b>
-                        <span>{[l.colour, `${qty(l.qty)} pcs`].filter(Boolean).join(" · ")}</span>
+                        <span>{[l.colour, qtyU(l.qty, l.fabricOrder ? "fabric" : null)].filter(Boolean).join(" · ")}</span>
                         <button type="button" className="link w-fit text-left text-xs" aria-expanded={detailOpen} aria-controls={`detail-${l.id}`}
                           onClick={() => setDetailShown((d) => { const n = new Set(d); if (n.has(l.id)) n.delete(l.id); else n.add(l.id); return n; })}>
                           {[l.detail.fabric ? (l.detail.fabric.length > 22 ? `${l.detail.fabric.slice(0, 21)}…` : l.detail.fabric) : editable ? "Add fabric" : "", sizeCount ? `${sizeCount} sizes` : editable && !l.fabricOrder ? "sizes" : "",
@@ -639,7 +639,7 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
                     </div>
                     {detailOpen && (
                       <div id={`detail-${l.id}`}>
-                        <StyleDetails orderId={orderId} companyId={companyId} lineId={l.id} style={l.style} styleQty={l.qty} detail={l.detail} editable={editable} />
+                        <StyleDetails orderId={orderId} companyId={companyId} lineId={l.id} style={l.style} styleQty={l.qty} detail={l.detail} editable={editable} fabricOrder={l.fabricOrder} />
                       </div>
                     )}
                     {isOpen && (
