@@ -1371,6 +1371,10 @@ h1, h2, h3 { font-family: var(--font-display); text-wrap: balance; font-weight: 
     .terms label, .terms-udyam { flex: 1 1 140px; }
     .terms label .inp, .terms-udyam .inp { width: 100% !important; }
     .bills-bar .text-xs { display: none; }
+    /* The payment list: its total on one line, Send on WhatsApp full width, Copy and Clear side by side. */
+    .bills-bar { display: grid; grid-template-columns: 1fr 1fr; }
+    .bills-bar .grow, .bills-bar .btn.primary { grid-column: 1 / -1; }
+    .bills-bar .btn { min-height: 44px; justify-content: center; }
   }
 }
 
