@@ -31,6 +31,8 @@ export const stageReached = (s: string | null | undefined, step: string) =>
 export const dueDate = (o: { ship_date: string | null; revised_ship_date?: string | null }) => o.revised_ship_date || o.ship_date;
 
 // Whole days between two YYYY-MM-DD dates (b minus a).
+// "1 day late", "5 days late": every late chip counts days the same way.
+export const daysLate = (n: number) => `${n} ${n === 1 ? "day" : "days"} late`;
 export const daysBetween = (a: string, b: string) => Math.round((Date.parse(b) - Date.parse(a)) / 86_400_000);
 
 // QC stages in the order they happen: sampling and approvals, then production checks.
