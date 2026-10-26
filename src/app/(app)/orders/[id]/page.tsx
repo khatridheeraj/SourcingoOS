@@ -4,10 +4,10 @@ import { Fragment } from "react";
 import { notFound } from "next/navigation";
 import { canEditOrders, canEnterDone, canRecordQc, getMe } from "@/lib/auth";
 import { fetchAll } from "@/lib/fetch-all";
-import { day, dayAt, dayNear, money, moneyShort, qty, qtyTotal, qtyU, riskLate, unitOf, unitOfAll, SHIP_QC, stageReached, STATUS, TNA_STEPS, todayIST } from "@/lib/format";
+import { day, dayAt, dayNear, money, moneyShort, qty, qtyTotal, qtyU, unitOf, unitOfAll, SHIP_QC, stageReached, STATUS, TNA_STEPS, todayIST } from "@/lib/format";
 import { areaOf, journey, shipClock } from "@/lib/journey";
 import { fileNamesStyle, styleKey } from "@/lib/po-match";
-import { PhotoStack, ShipClock } from "@/components/order-ui";
+import { Outlook, PhotoStack, ShipClock } from "@/components/order-ui";
 import { OrderJourney } from "./order-journey";
 import { createClient } from "@/lib/supabase/server";
 import { OrderForm } from "../order-form";
@@ -18,8 +18,9 @@ import { OrderMargin } from "./order-margin";
 import { OrderProduction } from "./order-production";
 import { OrderQc, type QcCheck } from "./order-qc";
 import { OrderStyles, type Baseline, type ExtraStep, type FactoryGroup, type StepQc } from "./order-styles";
-import { project, shipRisk } from "@/lib/tna-plan";
-import { loadTeam, personName } from "@/lib/data";
+import { forecast, paceLookup } from "@/lib/progress";
+import { loadPace, loadTeam, loadTerms, personName } from "@/lib/data";
+import { isFinance } from "../../payments/load";
 import { PHOTO_BUCKET } from "@/lib/storage";
 import { OrderSections, type SectionTab } from "./order-sections";
 import { ShareUpdate, type ShareOption } from "./share-update";
@@ -34,6 +35,7 @@ import { BuyerPo, type FoundPo, type PoDoc } from "./buyer-po";
 import { DeletePo } from "./delete-po";
 import { OrderFloor, type FloorUpdate } from "./order-floor";
 import { floorLine, floorStatus } from "@/lib/floor";
+import { BuyerLink } from "../../buyers/buyer-link";
 
 const str = (v: unknown) => (v == null ? "" : String(v));
 
@@ -55,6 +57,8 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
   const priceOf = new Map(((prices ?? []) as LinePrice[]).map((p) => [p.id, p]));
   const lines = [...(o.order_lines ?? [])].sort((a, b) => a.position - b.position)
     .map((l) => ({ ...l, buyer_rate: priceOf.get(l.id)?.buyer_rate ?? null, factory_rate: priceOf.get(l.id)?.factory_rate ?? null }));
+  // How late each factory usually runs, for the forecast; read alongside everything else.
+  const paceP = loadPace();
   const [{ data: qc }, team, me, { data: lineStages }, { data: factoryPos }, { data: stepUps }, { data: lineFiles }, { data: shipRows }, { data: floorRows }] = await Promise.all([
     supabase
       .from("qc_checks")
@@ -285,8 +289,18 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
   })) : [])];
   const behind = o.status !== "open" ? 0 : lines.filter((l) => styleSteps(l.id).some((x) => !x.row?.done_on && x.row?.planned_on && x.row.planned_on < today)).length;
   // Where the order is heading: its latest style, with every late step pushing the steps after it back.
-  const outlook = o.status === "open" ? lines.map((l) => shipRisk(project(styleSteps(l.id).map((x) => ({ planned_on: x.row?.planned_on, done_on: x.row?.done_on })), today), due))
-    .reduce((w, r) => (r.daysLate > w.daysLate || (w.level === "ok" && r.level === "behind") ? r : w), { level: "ok" as "ok" | "behind" | "risk", daysLate: 0 }) : null;
+  const fc = o.status === "open"
+    ? forecast(lines, stageRows, due, today, paceLookup(await paceP, lines, (fid) => opts.factories.find((f) => f.id === fid)?.name || "This factory"))
+    : null;
+  // When the order's money moves: the factory is paid its days after the goods come, the buyer its credit days after they ship.
+  // Owner and Accounts only: factory terms are theirs.
+  const terms = isFinance(me?.role) && o.status === "open" && due ? await loadTerms() : null;
+  const shipsOn = terms ? [today, due!, fc?.finish ?? due!].sort().at(-1)! : null;
+  const cash = terms && shipsOn ? {
+    ships: shipsOn, buyerDays: terms.buyerDays(o.buyer_id),
+    factoryDays: Math.min(...lines.map((l) => terms.factoryDays(l.factory_id ?? null))),
+  } : null;
+  const outlook = fc ? { level: (fc.daysLate > 0 ? "risk" : fc.slip > 0 ? "behind" : "ok") as "ok" | "behind" | "risk", daysLate: fc.daysLate } : null;
   // The road from buyer PO to shipped, and the one next step on it.
   const lineIds = new Set(lines.map((l) => l.id));
   const j = journey({
@@ -355,8 +369,8 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
               : <a href="#details-po" className="chip warn" title="A factory PO is locked only once the buyer's PO is on file">No buyer PO yet</a>)}
             {ship.part && o.status === "open" && <a href="#dispatch" className="chip info">Part shipped · {qty(ship.shipped)} of {qty(ship.ordered)} {unitOfAll(lines)}</a>}
             {o.closed_short_at && <span className="chip warn" title={o.short_reason ?? undefined}>Closed short · {qty(ship.billed)} of {qty(ship.ordered)} {unitOfAll(lines)}</span>}
-            {!ship.part && outlook?.level === "risk" && <span className="chip bad" title="A late step pushes back every step after it">{riskLate(outlook.daysLate)}</span>}
           </p>
+          {!ship.part && fc && <Outlook f={fc} due={due ?? null} styles={lines.length} />}
         </div>
         <ShipClock c={shipClock(due ?? null, today, o.status)} date={due ? `${o.revised_ship_date && o.revised_ship_date !== o.ship_date ? "New date " : ""}${dayNear(due, today).replaceAll(" ", "\u00a0")}` : undefined} />
       </header>
@@ -366,6 +380,7 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
           <SheetButton orderId={o.id} mode="update" className="btn">Update progress</SheetButton>
         )}
         {/* Keyed like the styles below, so the message is worded afresh after every save. */}
+        {canEdit && o.status === "open" && <BuyerLink buyerId={o.buyer_id} name={buyerLabel || "the buyer"} size="md" />}
         <ShareUpdate key={`${(lineStages ?? []).length}:${(lineStages ?? []).reduce((a, r) => (r.updated_at > a ? r.updated_at : a), "")}`} options={share} />
       </OrderJourney>
       {saved && <div className="okbox">Order saved as {o.order_no}.</div>}
@@ -437,7 +452,7 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
             id: l.id, style: l.style, colour: str(l.colour), qty: l.qty, product: l.product,
             buyerRate: l.buyer_rate == null ? null : Number(l.buyer_rate), factoryRate: l.factory_rate == null ? null : Number(l.factory_rate),
           }))}
-          dispatches={dispatches}
+          dispatches={dispatches} cash={cash}
         /></div>
       )}
       <div data-sec="details">{canEdit && <BuyerPo orderId={o.id} companyId={o.company_id} docs={poDocs} found={foundPos} canEdit={canEdit} />}{canEdit ? <OrderForm
