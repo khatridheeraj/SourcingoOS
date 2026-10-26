@@ -78,7 +78,7 @@ export default async function PayablesPage({ searchParams }: PageProps<"/payable
               <span className="kpi-label"><i aria-hidden />Due in 7 days</span><b className="num">{lakh(t.week)}</b>
               <small>{t.weekBills ? `${t.weekBills} ${t.weekBills === 1 ? "bill" : "bills"}` : "Nothing this week"}</small>
             </Link>
-            <div className="kpi"><span className="kpi-label"><i aria-hidden />Due in 30 days</span><b className="num">{lakh(t.month)}</b><small>Overdue included</small></div>
+            <div className="kpi"><span className="kpi-label"><i aria-hidden />To pay in 30 days</span><b className="num">{lakh(t.month)}</b><small>{!t.overdue ? "Nothing overdue" : t.overdue >= t.month ? "All of it overdue" : `${lakh(t.overdue)} of it overdue`}</small></div>
             <div className="kpi"><span className="kpi-label"><i aria-hidden />Total to pay</span><b className="num">{lakh(t.owed)}</b><small>{plural(new Set(shown.map((b) => b.ledger)).size, "supplier")}</small></div>
           </div>
 
