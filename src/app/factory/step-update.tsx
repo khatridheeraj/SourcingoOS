@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useRef, useState, useTransition } from "react";
 import { toast } from "@/components/toast";
-import { day, todayIST, TNA_STEPS } from "@/lib/format";
+import { dayNear as day, todayIST, TNA_STEPS } from "@/lib/format";
 import { uploadPhotos } from "@/lib/photos";
 import { SAMPLE_STEPS } from "@/lib/samples";
 import { postStepUpdate } from "./actions";
