@@ -8,7 +8,6 @@ export function PlanChip({ p, looksShipped = false }: { p: Progress; looksShippe
     : p.riskDays > 0 ? <span className="chip bad" title="A late step pushes back every step after it">{riskLate(p.riskDays)}</span>
     // Past a target but the ship date still holds: most likely done and not marked yet.
     : p.behind ? <span className="chip warn" title="A step's target has passed with no Done date">Needs update</span>
-    : !p.planned ? <span className="chip warn">No targets</span>
     : null;
 }
 
@@ -27,6 +26,8 @@ export function ProgressCell({ p, looksShipped = false, ship, unit = "pcs" }: { 
   }
   const quiet = !looksShipped && !p.riskDays && !p.behind && p.planned > 0;
   if (quiet && p.done === 0) return null;
+  // No targets yet: the order's next step already says to plan it, so a chip would only repeat that.
+  if (!looksShipped && !p.planned && !p.done) return null;
   return (
     <>
       <span className="flex items-center justify-between gap-2"><PlanChip p={p} looksShipped={looksShipped} /><small className="num">{p.total > 0 && `${p.done}/${p.total}`}</small></span>

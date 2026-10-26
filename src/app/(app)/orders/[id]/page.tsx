@@ -4,7 +4,7 @@ import { Fragment } from "react";
 import { notFound } from "next/navigation";
 import { canEditOrders, canEnterDone, canRecordQc, getMe } from "@/lib/auth";
 import { fetchAll } from "@/lib/fetch-all";
-import { day, dayAt, money, moneyShort, qty, qtyTotal, qtyU, riskLate, unitOf, unitOfAll, SHIP_QC, stageReached, STATUS, TNA_STEPS, todayIST } from "@/lib/format";
+import { day, dayAt, dayNear, money, moneyShort, qty, qtyTotal, qtyU, riskLate, unitOf, unitOfAll, SHIP_QC, stageReached, STATUS, TNA_STEPS, todayIST } from "@/lib/format";
 import { areaOf, journey, shipClock } from "@/lib/journey";
 import { fileNamesStyle, styleKey } from "@/lib/po-match";
 import { PhotoStack, ShipClock } from "@/components/order-ui";
@@ -358,7 +358,7 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
             {!ship.part && outlook?.level === "risk" && <span className="chip bad" title="A late step pushes back every step after it">{riskLate(outlook.daysLate)}</span>}
           </p>
         </div>
-        <ShipClock c={shipClock(due ?? null, today, o.status)} date={due ? `${o.revised_ship_date && o.revised_ship_date !== o.ship_date ? "New date " : ""}${day(due).replaceAll(" ", "\u00a0")}` : undefined} />
+        <ShipClock c={shipClock(due ?? null, today, o.status)} date={due ? `${o.revised_ship_date && o.revised_ship_date !== o.ship_date ? "New date " : ""}${dayNear(due, today).replaceAll(" ", "\u00a0")}` : undefined} />
       </header>
       <OrderJourney orderId={o.id} orderNo={o.order_no} j={j} canEdit={canEdit} canRecordQc={canRecordQc(me?.role)} shipBlocker={shipBlocker as string | null}>
         {/* The journey card carries the main next step; these stay for any time. */}
@@ -499,16 +499,16 @@ const sizeOf = (n: unknown) => (typeof n === "number" ? n : Number(n) || 0);
 // The buyer's PO files on an order, newest hand-added first after the ones that came with the PO itself.
 async function loadPoDocs(supabase: Awaited<ReturnType<typeof createClient>>, orderId: string, people: Map<string, string>): Promise<PoDoc[]> {
   const [{ data: incoming }, { data: added }] = await Promise.all([
-    supabase.from("incoming_pos").select("id, source, email_from, received_at, files").eq("order_id", orderId).order("received_at"),
+    supabase.from("incoming_pos").select("id, source, email_from, received_at, files, off_order").eq("order_id", orderId).order("received_at"),
     supabase.from("order_po_files").select("id, path, file_name, file_type, size_bytes, created_by, created_at").eq("order_id", orderId).is("removed_at", null).order("created_at"),
   ]);
   const docs: (Omit<PoDoc, "url" | "download"> & { path: string })[] = [
-    ...(incoming ?? []).flatMap((i) => ((i.files ?? []) as StoredFile[]).map((f) => ({
-      key: f.path, id: null, path: f.path, name: f.name || "PO", ext: (f.path.split(".").pop() ?? "").toLowerCase(), size: sizeOf(f.size),
+    ...(incoming ?? []).flatMap((i) => ((i.files ?? []) as StoredFile[]).filter((f) => !(i.off_order ?? []).includes(f.path)).map((f) => ({
+      key: f.path, id: null, incomingId: i.id as string, path: f.path, name: f.name || "PO", ext: (f.path.split(".").pop() ?? "").toLowerCase(), size: sizeOf(f.size),
       from: i.source === "email" ? `Came by email${i.email_from ? ` from ${i.email_from.replace(/\s*<.*>$/, "")}` : ""} · ${dayAt(i.received_at)}` : `Added on Buyer POs · ${dayAt(i.received_at)}`,
     }))),
     ...(added ?? []).map((f) => ({
-      key: f.id, id: f.id, path: f.path, name: f.file_name, ext: (f.path.split(".").pop() ?? "").toLowerCase(), size: f.size_bytes,
+      key: f.id, id: f.id, incomingId: null, path: f.path, name: f.file_name, ext: (f.path.split(".").pop() ?? "").toLowerCase(), size: f.size_bytes,
       from: `Added by ${(f.created_by && people.get(f.created_by)) || "the team"} · ${dayAt(f.created_at)}`,
     })),
   ];
@@ -523,7 +523,7 @@ async function loadPoDocs(supabase: Awaited<ReturnType<typeof createClient>>, or
   // PDFs and photos come first: they are what people open to read the PO.
   const rank = (ext: string) => (ext === "pdf" ? 0 : ["jpg", "jpeg", "png", "webp"].includes(ext) ? 1 : 2);
   return docs
-    .map(({ path, ...d }, i) => ({ ...d, url: viewOf.get(path) ?? null, download: downloads[i].data?.signedUrl ?? null }))
+    .map((d, i) => ({ ...d, url: viewOf.get(d.path) ?? null, download: downloads[i].data?.signedUrl ?? null }))
     .sort((a, b) => rank(a.ext) - rank(b.ext));
 }
 
@@ -532,10 +532,10 @@ async function loadPoDocs(supabase: Awaited<ReturnType<typeof createClient>>, or
 async function loadFoundPos(supabase: Awaited<ReturnType<typeof createClient>>, buyerId: string, styles: string[]): Promise<FoundPo[]> {
   const named = styles.filter((s) => styleKey(s).length >= 3);
   if (!named.length) return [];
-  const { data } = await supabase.from("incoming_pos").select("id, email_from, received_at, files").eq("buyer_id", buyerId)
+  const { data } = await supabase.from("incoming_pos").select("id, email_from, received_at, files, off_order").eq("buyer_id", buyerId)
     .order("received_at", { ascending: false }).limit(30);
   const found = (data ?? []).flatMap((i) => ((i.files ?? []) as StoredFile[])
-    .filter((f) => named.some((s) => fileNamesStyle(f.name ?? "", s)))
+    .filter((f) => !(i.off_order ?? []).includes(f.path) && named.some((s) => fileNamesStyle(f.name ?? "", s)))
     .map((f) => ({
       key: f.path, incomingId: i.id as string, path: f.path, name: f.name || "PO", ext: (f.path.split(".").pop() ?? "").toLowerCase(), size: sizeOf(f.size),
       from: `Email${i.email_from ? ` from ${i.email_from.replace(/\s*<.*>$/, "")}` : ""} · ${dayAt(i.received_at)}`,

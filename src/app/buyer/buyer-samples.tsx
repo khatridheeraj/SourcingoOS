@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useRef, useState, useTransition } from "react";
 import { PhotoPicker, type Picked } from "@/components/photo-picker";
 import { toast } from "@/components/toast";
-import { day } from "@/lib/format";
+import { dayNear as day } from "@/lib/format";
 import { uploadPhotos } from "@/lib/photos";
 import { sampleLabel, trackUrl, type SampleStatus } from "@/lib/samples";
 import { answerSample } from "./actions";

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { day, money } from "@/lib/format";
+import { day, dayNear, money } from "@/lib/format";
 import { addDays, AGE_BUCKETS, ageing, type Advice, buyerTotals, INVOICE_LABEL, type InvoiceRow, paymentTodos, type ReceiptLine } from "@/lib/payments";
 import { type ChequeLine, ChequeTable, CreditDays } from "./forms";
 import { loadBooks } from "./load";
@@ -52,7 +52,7 @@ export default async function PaymentsPage({ searchParams }: PageProps<"/payment
   const overdue = unpaid.filter((i) => i.overdue);
   const dueSoon = unpaid.filter((i) => i.due && i.due >= t && i.due <= addDays(t, 30));
   const held = b.cheques.filter((c) => (c.status === "in_hand" && !c.stale) || c.status === "deposited");
-  const todos = paymentTodos(b, buyerLabel, money, day, advice);
+  const todos = paymentTodos(b, buyerLabel, money, (d) => dayNear(d, t), advice);
   const settle: SettleRow[] = b.cheques.flatMap((c) => {
     const a = advice.get(c.id);
     if (a?.kind !== "cleared" && a?.kind !== "paid_other") return [];
@@ -239,7 +239,7 @@ export default async function PaymentsPage({ searchParams }: PageProps<"/payment
         ) : (
           <p className="muted">Nothing to do on payments today.</p>
         )}
-        {next && <p className="text-xs muted">Next post-dated cheque: {next.cheque_no} ({buyerLabel(next.buyer_id)}, {money(next.amount)}) can go to the bank on {day(next.cheque_date)}.</p>}
+        {next && <p className="text-xs muted">Next post-dated cheque: {next.cheque_no} ({buyerLabel(next.buyer_id)}, {money(next.amount)}) can go to the bank on {dayNear(next.cheque_date, t)}.</p>}
         <details className="howto border-t border-line pt-3">
           <summary>How this list works</summary>
           <p>Urgent is an invoice past due with no cheque, or a cheque about to expire. Today is a cheque to take to the bank, or one to check against the bank statement or Tally. Set up is a buyer with no credit days yet. Only Accounts and the owner see this page.</p>

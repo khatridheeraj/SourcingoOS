@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { qtyTotal, qtyU, unitOf, unitOfAll } from "./format.ts";
+import { dayAtNear, dayNear, qtyTotal, qtyU, unitOf, unitOfAll } from "./format.ts";
 
 test("fabric is counted in metres, garments in pieces", () => {
   assert.equal(unitOf("fabric"), "m");
@@ -17,4 +17,13 @@ test("totals keep metres and pieces apart", () => {
   assert.equal(unitOfAll([{ product: "fabric" }]), "m");
   assert.equal(unitOfAll([{ product: "fabric" }, { product: "garment" }]), "units");
   assert.equal(unitOfAll([{ product: "garment" }]), "pcs");
+});
+
+test("near dates drop the year, other years keep it", () => {
+  assert.equal(dayNear("2026-10-24", "2026-10-26"), "24 Oct");
+  assert.equal(dayNear("2025-12-05", "2026-01-10"), "5 Dec 2025");
+  assert.equal(dayNear(null, "2026-10-26"), "");
+  // 20:00 UTC on 5 Oct is already 6 Oct in India.
+  assert.equal(dayAtNear("2026-10-05T20:00:00Z", "2026-10-26"), "6 Oct");
+  assert.equal(dayAtNear("2025-10-05T20:00:00Z", "2026-10-26"), "6 Oct 2025");
 });

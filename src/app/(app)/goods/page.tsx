@@ -3,8 +3,9 @@ import { redirect } from "next/navigation";
 import { canEditOrders, getMe } from "@/lib/auth";
 import { buyerName, loadBuyers, loadFactories } from "@/lib/data";
 import { fetchAll } from "@/lib/fetch-all";
-import { day, money, nowMs, qty, todayIST } from "@/lib/format";
+import { money, nowMs, qty, todayIST } from "@/lib/format";
 import { HOLD_HOURS, heldHours, heldText } from "@/lib/goods";
+import { dm } from "@/lib/quick";
 import { createClient } from "@/lib/supabase/server";
 
 const TABS = [
@@ -91,7 +92,10 @@ export default async function GoodsPage({ searchParams }: PageProps<"/goods">) {
 
       <section className="card" aria-labelledby="goods-h">
         <header className="card-h">
-          <h2 id="goods-h" className="min-w-0">{t.label}</h2>
+          {/* Like Buyer POs: the heading says what the list asks, so it doesn't just repeat the selected tab. */}
+          <h2 id="goods-h" className="min-w-0">{tab === "with-us"
+            ? (withUs.length ? `${withUs.length} ${withUs.length === 1 ? "lot" : "lots"} to ship` : "Nothing with us")
+            : (onWay.length ? `${onWay.length} waiting for GRN` : "Nothing waiting for GRN")}</h2>
           <nav className="seg" aria-label="Show">
             {TABS.map((x) => (
               <Link key={x.key} href={x.key === "with-us" ? "/goods" : `/goods?show=${x.key}`} aria-current={tab === x.key ? "page" : undefined} scroll={false}>
@@ -131,7 +135,7 @@ export default async function GoodsPage({ searchParams }: PageProps<"/goods">) {
                     {d.shipped_at && (
                       <div className="todo-detail">
                         Shipped {at.format(new Date(d.shipped_at))}{d.transporter ? ` by ${d.transporter}` : ""}{d.lr_no ? `, LR ${d.lr_no}` : ""}
-                        {d.grn_due_on && !grnLateHere ? ` · GRN due ${day(d.grn_due_on)}` : ""}
+                        {d.grn_due_on && !grnLateHere ? ` · GRN due ${dm(d.grn_due_on)}` : ""}
                       </div>
                     )}
                     {held && hours < HOLD_HOURS - 6 && <div className="todo-detail">{heldText(hours)}</div>}
@@ -142,7 +146,7 @@ export default async function GoodsPage({ searchParams }: PageProps<"/goods">) {
                           {step.cls !== "ok" && <span className={`chip ${step.cls}`}>{step.text}</span>}
                         </>
                       ) : (
-                        grnLateHere && <span className="chip bad">GRN was due {day(d.grn_due_on!)}</span>
+                        grnLateHere && <span className="chip bad">GRN was due {dm(d.grn_due_on!)}</span>
                       )}
                       <Link href={`/goods/${d.id}/challan`} prefetch={false} className="link text-[13px]">{d.challan_no ? `Challan ${d.challan_no}` : "Delivery challan"}</Link>
                     </div>

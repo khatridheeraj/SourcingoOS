@@ -2,7 +2,7 @@ import { NO_COMPANY } from "@/lib/names";
 import Link from "next/link";
 import { canEditOrders, getMe } from "@/lib/auth";
 import { buyerName, loadBuyers, loadFactories, loadTeam, personName } from "@/lib/data";
-import { day, dayAt, daysBetween, dueDate, money, moneyShort, qty, qtyTotal, SHIP_QC, stageReached, STATUS, todayIST, unitOfAll } from "@/lib/format";
+import { dayAtNear, dayNear, daysBetween, dueDate, money, moneyShort, qty, qtyTotal, SHIP_QC, stageReached, STATUS, todayIST, unitOfAll } from "@/lib/format";
 import { type LinePrice, marginCls, pct, planMargin } from "@/lib/margin";
 import { fetchAll } from "@/lib/fetch-all";
 import { styleProgress } from "@/lib/progress";
@@ -63,7 +63,7 @@ export default async function OrdersPage({ searchParams }: PageProps<"/">) {
     const buyerOf = new Map(buyers.map((b) => [b.id, buyerName(b)]));
     deleted = ((del ?? []) as { id: string; order_no: string; buyer_id: string; buyer_po: string; removed_at: string; removed_by: string | null; reason: string; pieces: number }[])
       .map((d) => ({
-        id: d.id, orderNo: d.order_no, buyer: buyerOf.get(d.buyer_id) ?? "Buyer", buyerPo: d.buyer_po, when: dayAt(d.removed_at),
+        id: d.id, orderNo: d.order_no, buyer: buyerOf.get(d.buyer_id) ?? "Buyer", buyerPo: d.buyer_po, when: dayAtNear(d.removed_at),
         by: (d.removed_by && people.get(d.removed_by)) || "the owner", reason: d.reason, pieces: `${qty(d.pieces)} pcs`,
       }));
   }
@@ -297,9 +297,9 @@ export default async function OrdersPage({ searchParams }: PageProps<"/">) {
                 </span>
               </span>
               <span className="o-date" role="cell">
-                {r.due ? day(r.due) : <span className="muted">No ship date</span>}
+                {r.due ? dayNear(r.due, today) : <span className="muted">No ship date</span>}
                 {r.late ? <small className="text-bad">{r.lateBy} {r.lateBy === 1 ? "day" : "days"} late</small>
-                  : r.revised_ship_date && r.ship_date && r.revised_ship_date !== r.ship_date ? <small title={r.delay_reason ?? undefined}>Buyer date {day(r.ship_date)}</small> : null}
+                  : r.revised_ship_date && r.ship_date && r.revised_ship_date !== r.ship_date ? <small title={r.delay_reason ?? undefined}>Buyer date {dayNear(r.ship_date, today)}</small> : null}
               </span>
               <span className="r num hide-phone" role="cell"><span className="o-k">Qty </span>{r.qtyText}</span>
               {prices && <span className="r num hide-phone" role="cell"><span className="o-k">Value </span>{money(r.value)}</span>}
@@ -309,7 +309,8 @@ export default async function OrdersPage({ searchParams }: PageProps<"/">) {
                 </span>
               )}
               <span className="o-prog" role="cell">
-                {r.progress ? (
+                {/* A late order's date already says how late it is; "at risk" on top of that only adds noise. */}
+                {r.progress ? (r.late && !r.ship?.part && !r.looksShipped ? null :
                   <ProgressCell p={r.progress} looksShipped={r.looksShipped} ship={r.ship} unit={unitOfAll(r.lines)} />
                 ) : <span className={STATUS[r.status]?.cls}>{STATUS[r.status]?.label}</span>}
               </span>
