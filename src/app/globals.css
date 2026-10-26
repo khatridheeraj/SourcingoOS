@@ -570,8 +570,8 @@ h1, h2, h3 { font-family: var(--font-display); text-wrap: balance; font-weight: 
 /* Orders list: one aligned row per order. Columns line up on desktop; on a phone each row stacks. */
 @layer components {
   .olist { border: 1px solid var(--line); border-radius: 12px; background: var(--surface); box-shadow: var(--shadow); overflow: hidden; }
-  .olist-h, .olist-r { display: grid; grid-template-columns: minmax(0, 1fr) 118px 64px 100px 96px 190px; gap: 16px; align-items: center; padding: 0 20px; }
-  .olist.noprice .olist-h, .olist.noprice .olist-r { grid-template-columns: minmax(0, 1fr) 118px 64px 190px; }
+  .olist-h, .olist-r { display: grid; grid-template-columns: minmax(0, 1fr) 100px 64px 100px 96px 232px; gap: 16px; align-items: center; padding: 0 20px; }
+  .olist.noprice .olist-h, .olist.noprice .olist-r { grid-template-columns: minmax(0, 1fr) 100px 64px 232px; }
   .olist-h { height: 38px; font-size: 12px; font-weight: 500; color: var(--muted); background: var(--surface-2); border-bottom: 1px solid var(--line); }
   .olist-r { padding-top: 14px; padding-bottom: 14px; border-top: 1px solid var(--line); transition: background 0.12s; }
   .olist-h + .olist-r { border-top: 0; }
