@@ -15,6 +15,8 @@ export const STAGES: { key: Exclude<StageKey, "done">; label: string; hint: stri
 export type Action =
   | { kind: "start"; factoryId: string }
   | { kind: "update" }
+  // Quality's factory visit: post each style's step from the floor, with photos.
+  | { kind: "visit" }
   | { kind: "review" }
   | { kind: "samples" }
   | { kind: "po" }
@@ -145,7 +147,7 @@ function route(j: JourneyInput): Journey {
 
   // 4. Production, with samples and factory updates first when they are waiting.
   if (!j.packedAll && !sent) {
-    if (team && j.pendingUpdates > 0) {
+    if (j.pendingUpdates > 0) {
       return { ...base, stage: "make", next: { title: `Confirm ${j.pendingUpdates} ${j.pendingUpdates === 1 ? "update" : "updates"} from the factory`, detail: "The factory marked steps done with photos. Check them and confirm.", action: { kind: "review" }, label: "Review updates", tone: "info" } };
     }
     if (team && j.samplesToAct > 0) {
@@ -155,6 +157,14 @@ function route(j: JourneyInput): Journey {
     // Past target but the ship date still holds: most likely done and not marked yet, so ask for an update in amber.
     const catchUp = late && j.riskDays === 0;
     const risk = j.riskDays ?? 0;
+    // Quality owns the updates from the floor (Dheeraj, 26 Oct 2026): it visits the factory and posts every step.
+    if (!team) {
+      return { ...base, stage: "make", next: {
+        title: late ? `${overdue} ${overdue === 1 ? "step needs" : "steps need"} an update from the floor` : nextStep ? `Next: ${nextStep.label}${nextStep.planned ? ` by ${dm(nextStep.planned)}` : ""}` : "In production",
+        detail: `Visit the factory and post each style's step with photos: done, on track, running late or a problem. ${done} of ${total} steps done.`,
+        action: { kind: "visit" }, label: "Post update", tone: late ? (catchUp ? "warn" : "bad") : "info",
+      } };
+    }
     return { ...base, stage: "make", next: {
       title: catchUp ? `${overdue} ${overdue === 1 ? "step needs" : "steps need"} an update`
         : late ? `${overdue} ${overdue === 1 ? "step is" : "steps are"} past target` : nextStep ? `Next: ${nextStep.label}${nextStep.planned ? ` by ${dm(nextStep.planned)}` : ""}` : "In production",

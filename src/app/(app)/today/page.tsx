@@ -16,6 +16,8 @@ import { chaseText, panelLine, waLink, type QStyle } from "@/lib/quick";
 import { buildUpdates } from "@/lib/updates";
 import { appOrigin } from "@/lib/origin";
 import { QcButton } from "@/components/qc-sheet";
+import { VisitButton } from "@/components/visit-sheet";
+import { FRESH_DAYS, floorLine, VISIT_DAYS, visitedText } from "@/lib/floor";
 import { Ring } from "@/components/order-ui";
 import { WhatsNew } from "@/components/whats-new";
 import { MarkShipped } from "../orders/mark-shipped";
@@ -38,6 +40,8 @@ type Item = {
   chase?: { href: string; factoryId: string; orderId: string; chased: boolean };
   // The action opens the quick QC sheet for this check.
   qc?: { orderId: string; kind: string };
+  // The action starts a factory visit.
+  visit?: { factoryId: string };
 };
 
 const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;
@@ -119,6 +123,12 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
           .gte("at", dayStart).not("after->>done_on", "is", null).is("before->>done_on", null),
       ])
     : Promise.resolve([{ data: [] }, [{ data: [] }, ""], { count: 0 }] as const);
+  // Updates Quality posted from the factory floor in the last month: when each factory was last visited, and the
+  // latest word on each step.
+  const floorP = ids.length
+    ? fetchAll((a, z) => supabase.from("floor_updates").select("order_id, line_id, factory_id, stage, status, qty_done, expected_on, visited_on, created_by, created_at")
+        .in("order_id", ids).gte("visited_on", addDays(today, -30)).order("created_at", { ascending: false }).order("id").range(a, z))
+    : none;
   const upsP = ids.length
     ? fetchAll((a, z) => supabase.from("step_updates").select("order_id, line_id, stage, created_at").in("order_id", ids).eq("status", "pending").order("created_at").order("id").range(a, z))
     : none;
@@ -329,6 +339,17 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
     });
   }
 
+  // What Quality last saw on the floor: fresh news on a late step is shown with it, and isn't asked for again.
+  const { data: floorRows } = keep(await floorP);
+  const floorRecent = (floorRows ?? []) as { order_id: string; line_id: string; factory_id: string; stage: string; status: string; qty_done: number | null; expected_on: string | null; visited_on: string; created_by: string | null; created_at: string }[];
+  const freshFrom = addDays(today, -FRESH_DAYS);
+  const heard = new Set(floorRecent.filter((u) => u.visited_on >= freshFrom).map((u) => `${u.line_id}:${u.stage}`));
+  const floorNews = (o: (typeof open)[number]) => {
+    const u = floorRecent.find((x) => x.order_id === o.id && x.visited_on >= freshFrom && x.status !== "done");
+    const l = u && (o.order_lines ?? []).find((x) => x.id === u.line_id);
+    return u && l ? ` · From the floor ${dm(u.visited_on)}: ${l.style} ${floorLine(u, stepLabel(u.stage), `${qty(l.qty)} ${l.product === "fabric" ? "m" : "pcs"}`, dm)}` : "";
+  };
+
   // Steps past their target with no Done date, one line per order. Red only when the ship date is at risk;
   // otherwise it is most likely done and not marked yet, so it asks for an update in amber.
   const quality = me?.role === "quality";
@@ -362,7 +383,7 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
     const risk = !due || due < today || riskDays(o) > 0;
     now_.push({
       key: `late:${o.id}`, href: due || !team ? `/orders/${o.id}#tna` : `/orders/${o.id}#details`, sev: risk ? "bad" : "warn", ...base(o),
-      detail: `${plural(late.length, "step")} past target with no Done date: ${labels.slice(0, 3).join(", ")}${labels.length > 3 ? ` and ${labels.length - 3} more` : ""}${facts}`,
+      detail: `${plural(late.length, "step")} past target with no Done date: ${labels.slice(0, 3).join(", ")}${labels.length > 3 ? ` and ${labels.length - 3} more` : ""}${floorNews(o)}${facts}`,
       chip: !due ? { text: "No ship date", cls: "bad" } : due < today ? { text: `${plural(daysBetween(due, today), "day")} late`, cls: "bad" }
         : riskDays(o) ? { text: riskLate(riskDays(o)), cls: "bad" } : { text: "Needs update", cls: "warn" },
       action: due ? "Update" : "Set ship date", sort: due ?? "",
@@ -393,6 +414,43 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
       chip, action: me?.role === "quality" ? "Record QC" : "Update", sort: first + o.order_no,
       ...(me?.role === "quality" ? { qc: { orderId: o.id, kind: qcKinds[0] } } : { sheet: { orderId: o.id, mode: "update" as const } }),
     });
+  }
+
+  // Quality's factory visits (Dheeraj, 26 Oct 2026): every factory with production running is visited at least every
+  // VISIT_DAYS days, and sooner when a step is late with no word from the floor. One line per factory, red first.
+  if (quality) {
+    const lastVisit = new Map<string, string>();
+    for (const u of floorRecent) if (!lastVisit.has(u.factory_id) || u.visited_on > lastVisit.get(u.factory_id)!) lastVisit.set(u.factory_id, u.visited_on);
+    const byFactory = new Map<string, { o: (typeof active)[number]; l: NonNullable<(typeof active)[number]["order_lines"]>[number] }[]>();
+    for (const o of active) {
+      for (const l of o.order_lines ?? []) {
+        if (!l.factory_id || !(pos ?? []).some((p) => p.order_id === o.id && p.factory_id === l.factory_id && p.released_at)) continue;
+        if (!live.some((s) => s.line_id === l.id && !s.done_on)) continue;
+        byFactory.set(l.factory_id, [...(byFactory.get(l.factory_id) ?? []), { o, l }]);
+      }
+    }
+    const soonTo = addDays(today, VISIT_DAYS);
+    for (const [f, rows] of byFactory) {
+      const lineIds = new Set(rows.map((r) => r.l.id));
+      const open_ = live.filter((s) => lineIds.has(s.line_id) && !s.done_on && s.planned_on);
+      const stale = open_.filter((s) => s.planned_on! < today && !heard.has(`${s.line_id}:${s.stage}`)).sort((a, b) => a.planned_on!.localeCompare(b.planned_on!));
+      const dueSoon = open_.filter((s) => s.planned_on! >= today && s.planned_on! <= soonTo).sort((a, b) => a.planned_on!.localeCompare(b.planned_on!));
+      const last = lastVisit.get(f) ?? null;
+      const visitDue = !last || daysBetween(last, today) >= VISIT_DAYS;
+      if (!stale.length && !dueSoon.length && !visitDue) continue;
+      const orderNos = [...new Set(rows.map((r) => r.o.order_no))];
+      const named = (ss: typeof open_) => [...new Set(ss.map((s) => stepLabel(s.stage)))].slice(0, 3).join(", ");
+      now_.push({
+        key: `visit:${f}`, href: `/orders/${rows[0].o.id}#floor`, sev: stale.length ? "bad" : "warn",
+        title: factoryName.get(f) ?? "Factory",
+        // The chip says what is wrong; the detail adds when it was last visited unless the chip already says so.
+        detail: (stale.length || !visitDue ? `${visitedText(last, today)} · ` : "")
+          + (stale.length ? `no word yet on ${named(stale)}` : dueSoon.length ? `${named(dueSoon)} due by ${dm(dueSoon[dueSoon.length - 1].planned_on!)}` : "production running")
+          + ` · ${orderNos.slice(0, 3).join(", ")}${orderNos.length > 3 ? ` and ${orderNos.length - 3} more` : ""}, ${plural(lineIds.size, "style")}`,
+        chip: stale.length ? { text: `${plural(stale.length, "step")} late`, cls: "bad" } : visitDue ? { text: visitedText(last, today), cls: "warn" } : { text: `Due by ${dm(dueSoon[0].planned_on!)}`, cls: "warn" },
+        action: "Start visit", sort: stale[0]?.planned_on ?? last ?? "", visit: { factoryId: f },
+      });
+    }
   }
 
   // Shipping within two weeks without a passed final QC.
@@ -569,6 +627,8 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
   const collect = books ? paymentTodos(books.books, books.buyerLabel, money, (d) => dayNear(d, books.books.today), books.advice) : [];
   const payDue = pay ? bySupplier(pay.bills.filter((b) => ["overdue", "week"].includes(dueOf(b, today).key)), today).slice(0, 4) : [];
 
+  // Quality's ring counts the updates it posted from the floor today.
+  const doneNow = quality ? floorRecent.filter((u) => u.created_by === me?.id && u.created_at >= dayStart).length : doneToday ?? 0;
   const hour = Number(hourIST.format(new Date()));
   const first = (me?.fullName ?? me?.email.split("@")[0] ?? "").split(" ")[0];
   const nowCount = lists.now.length;
@@ -661,10 +721,10 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
         </div>
         {/* Today's progress: things done today against what still needs doing now. */}
         <div className="day-ring">
-          <Ring done={doneToday ?? 0} total={(doneToday ?? 0) + headCount} size={64}>
-            <b>{doneToday ?? 0}</b>
+          <Ring done={doneNow} total={doneNow + headCount} size={64}>
+            <b>{doneNow}</b>
           </Ring>
-          <span>done today</span>
+          <span>{quality ? "posted today" : "done today"}</span>
         </div>
       </section>
 
@@ -701,7 +761,7 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
           <div className="all-clear">
             <span className="all-clear-ic" aria-hidden><Icon name="check" size={28} /></span>
             <b>All caught up</b>
-            <p>{doneToday ? `${plural(doneToday, "step")} done today. ` : ""}Nothing is late or waiting on you{lists.soon.length ? `. ${plural(lists.soon.length, "thing")} coming up this week.` : "."}</p>
+            <p>{doneNow ? `${plural(doneNow, quality ? "update" : "step")} ${quality ? "posted" : "done"} today. ` : ""}Nothing is late or waiting on you{lists.soon.length ? `. ${plural(lists.soon.length, "thing")} coming up this week.` : "."}</p>
           </div>
         ) : groups.length === 0 ? (
           <p className="card-empty">
@@ -736,7 +796,9 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
                         </div>
                         <div className="task-acts">
                           {i.chase && <ChaseLink {...i.chase} compact />}
-                          {i.qc
+                          {i.visit
+                            ? <VisitButton factoryId={i.visit.factoryId} className="btn sm">{i.action}</VisitButton>
+                            : i.qc
                             ? <QcButton orderId={i.qc.orderId} kind={i.qc.kind} className="btn sm">{i.action}</QcButton>
                             : i.sheet
                             ? <SheetButton {...i.sheet} className="btn sm">{i.action}</SheetButton>

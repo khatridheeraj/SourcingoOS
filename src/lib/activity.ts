@@ -12,7 +12,7 @@ export type Names = { people: Map<string, string>; buyers: Map<string, string>; 
 
 export const AREAS: Record<string, { label: string; tables: string[] }> = {
   orders: { label: "Orders and TNA", tables: ["orders", "order_lines", "line_stages", "factory_pos"] },
-  quality: { label: "Quality checks", tables: ["qc_checks", "qc_photos", "qc_comments"] },
+  quality: { label: "Quality checks and visits", tables: ["qc_checks", "qc_photos", "qc_comments", "floor_updates"] },
   dispatch: { label: "Dispatch", tables: ["dispatches", "dispatch_lines", "dispatch_photos"] },
   pos: { label: "Buyer POs", tables: ["incoming_pos"] },
   payments: { label: "Payments", tables: ["invoices", "credit_notes", "cheques", "cheque_allocations"] },
@@ -25,7 +25,7 @@ export const OTHER_AREA = { key: "other", label: "Anything else", known: KNOWN }
 
 const TABLE: Record<string, string> = {
   orders: "order", order_lines: "style", line_stages: "TNA step", factory_pos: "factory PO",
-  qc_checks: "QC check", qc_photos: "QC photo", qc_comments: "QC comment",
+  qc_checks: "QC check", qc_photos: "QC photo", qc_comments: "QC comment", floor_updates: "update from the floor",
   dispatches: "dispatch", dispatch_lines: "dispatch quantity", dispatch_photos: "dispatch photo",
   incoming_pos: "incoming PO", invoices: "invoice", credit_notes: "credit note", cheques: "cheque", cheque_allocations: "cheque against invoice",
   buyers: "buyer", buyer_names: "buyer's real name", factories: "factory",

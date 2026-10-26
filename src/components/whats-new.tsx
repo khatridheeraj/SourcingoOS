@@ -4,7 +4,7 @@ import { useState, useSyncExternalStore } from "react";
 import { Icon, type IconName } from "@/components/nav";
 
 const KEY = "sourcingo:whats-new";
-const VERSION = "2026-10-26-calm";
+const VERSION = "2026-10-26-floor";
 
 type Item = { icon: IconName; title: string; text: string };
 
@@ -12,12 +12,17 @@ type Item = { icon: IconName; title: string; text: string };
 // Kept to three lines: Home is for today's work, not reading.
 const HOME: Item = { icon: "home", title: "Home is one short list", text: "Everything an order needs sits together under its name, with a small button for each job. What used to take six screens fits in two." };
 const RED: Item = { icon: "clock", title: "Red means really late", text: "A step past its target shows amber while the ship date still holds; red is kept for orders that will miss it." };
-const STYLES: Item = { icon: "check", title: "Faster style updates", text: "On an order, each style shows its step done today and all its steps side by side, in one row." };
+// Quality owns the updates from the factory floor (26 Oct 2026).
+const FLOOR: Item = { icon: "factories", title: "Live from the factory floor", text: "Quality visits the factories and posts every style's step with photos. See it on each order under Styles, and on Home." };
 const MONEY: Item = { icon: "payments", title: "Money first", text: "Money to collect and bills to pay lead Home, and each line says how late it is." };
 const FOR: Record<string, Item[]> = {
-  orders: [HOME, RED, STYLES],
-  quality: [HOME, RED, { icon: "check", title: "QC in four taps", text: "Tap Record QC on a Home row or an order: styles are already picked, tap Pass or Fail, take photos, save." }],
-  owner: [HOME, RED, STYLES],
+  orders: [FLOOR, HOME, RED],
+  quality: [
+    { icon: "factories", title: "Factory visits", text: "Home lists the factories to visit, late steps first. Tap Start visit, then post each style's step: done, on track, late or a problem, with photos." },
+    HOME,
+    { icon: "check", title: "QC in four taps", text: "Tap Record QC on a Home row or an order: styles are already picked, tap Pass or Fail, take photos, save." },
+  ],
+  owner: [FLOOR, HOME, RED],
   accounts: [MONEY, HOME],
 };
 

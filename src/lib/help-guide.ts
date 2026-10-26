@@ -273,6 +273,13 @@ export const TOPICS: Topic[] = [
     words: "activity log history audit who changed changes record", link: { href: "/activity", label: "Open Activity log" }, pages: ["/activity", "/orders/"] },
 
   // ---------------------------------------------------------------- quality
+  { id: "floor-visit", who: "staff", q: "How do I post a factory visit update?",
+    a: ["At the factory, tap Start visit on Home (or Post update on an order). Every style in production there is listed.",
+        "Tap a style, pick its step, then tap how it is: Done, On track, Running late (give the ready date) or Problem (say what).",
+        "Add the pieces done so far if you counted them, and take at least one photo. Tap Post update. The next style opens by itself.",
+        "Done marks the step done today on the TNA. Everyone sees the update on the order under From the factory floor.",
+        "Hindi: factory mein Home par Start visit dabao, style chuno, step chuno, haal batao (Done, On track, Late, Problem), photo lo aur Post update dabao."],
+    words: "visit factory floor update live progress step status photo late problem on track post visit qc visit production update", pages: ["/today", "/orders/"] },
   { id: "record-qc", who: "staff", roles: ["owner", "quality"], q: "How do I record a QC check?",
     a: ["Open the order and go to QC. Tap Record QC.", "Pick the style and type of check, the date, pieces checked, defects found, and Pass or Fail.",
         "Attach the signed QC report as proof, and photos if you have them (a check needs at least one file). If it failed, write what the factory must fix.", "Save. Each style has its own QC."],
