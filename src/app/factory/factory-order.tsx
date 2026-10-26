@@ -2,7 +2,8 @@
 
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { day, dayAt, PLAN_HOURS, qty, TNA_STEPS } from "@/lib/format";
+// Dates in this year read without the year ("9 Sep"), like the rest of the app.
+import { dayAtNear as dayAt, dayNear as day, PLAN_HOURS, qty, TNA_STEPS } from "@/lib/format";
 import { saveFactoryTna, type FactoryDateInput } from "./actions";
 import { stepName, words, type Lang } from "./i18n";
 import { sizeEntries } from "@/lib/sizes";
