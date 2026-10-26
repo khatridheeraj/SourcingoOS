@@ -19,7 +19,7 @@ export default async function MarkersPage() {
       {!MARKER_PHOTOS_ON && (
         <div className="empty">
           <b>Photo reading is off for now</b>
-          The Claude AI account has no credit, so photos can't be read. Tap Set up this style by hand instead, then enter the garment, fabrics and measurements yourself. Everything else works and saved styles are kept.
+          The Claude AI account has no credit, so photos cannot be read. Tap Set up this style by hand instead, then enter the garment, fabrics and measurements yourself. Everything else works and saved styles are kept.
         </div>
       )}
       <iframe className="marker-frame" src="/markerpilot/index.html" title="MarkerPilot" allow="clipboard-write" />
