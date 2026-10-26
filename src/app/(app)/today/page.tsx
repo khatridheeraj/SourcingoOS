@@ -2,11 +2,11 @@ import type { LinePrice } from "@/lib/margin";
 import Link from "next/link";
 import { canEditOrders, canRecordQc, getMe } from "@/lib/auth";
 import { fetchAll } from "@/lib/fetch-all";
-import { buyerName, loadBuyers, loadFactories } from "@/lib/data";
+import { buyerName, loadBuyers, loadFactories, loadPace } from "@/lib/data";
 import { day, dayNear, daysBetween, money, riskLate, dueDate, nowMs, planDueAt, PLAN_HOURS, qcKindLabel, qty, qtyTotal, SHIP_QC, stageReached, TNA_STEPS, todayIST, unitOfAll } from "@/lib/format";
 import { NO_COMPANY } from "@/lib/names";
 import { poWaitDays, PO_WAIT_DAYS } from "@/lib/order-checks";
-import { project, shipRisk } from "@/lib/tna-plan";
+import { forecast, paceLookup } from "@/lib/progress";
 import { HOLD_HOURS, heldHours, heldText } from "@/lib/goods";
 import { createClient } from "@/lib/supabase/server";
 import { loadShipProgress, orderShip, partText } from "@/lib/shipments";
@@ -88,7 +88,7 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
     if (r.error) errors.push(r.error.message);
     return r;
   };
-  const [{ data: orders }, buyers, factories] = await Promise.all([
+  const [{ data: orders }, buyers, factories, pace] = await Promise.all([
     fetchAll((a, z) => supabase
       .from("orders")
       .select("id, order_no, buyer_id, buyer_po, ship_date, revised_ship_date, merchandiser_id, stage, order_lines(id, style, colour, qty, factory_id, product)")
@@ -99,6 +99,7 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
       .range(a, z)).then(keep),
     loadBuyers(),
     loadFactories(),
+    loadPace(),
   ]);
   const mineCount = (orders ?? []).filter((o) => o.merchandiser_id === me?.id).length;
   // Merchandisers see their own orders first; anyone can switch to everyone's.
@@ -189,10 +190,8 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
   const live = (stages ?? []).filter((s) => liveLine.has(s.line_id) && !s.not_needed);
   const latest = (lineId: string, kinds: string[]) => (checks ?? []).find((c) => c.line_id === lineId && kinds.includes(c.kind));
   // Days the order's latest style will likely miss the ship date by: each late step pushes the later ones back.
-  const riskDays = (o: (typeof open)[number]) => Math.max(0, ...(o.order_lines ?? []).map((l) => shipRisk(project([
-    ...TNA_STEPS.map((t) => stageOf.get(`${l.id}:${t.key}`)),
-    ...(stages ?? []).filter((s) => s.line_id === l.id && s.stage.startsWith("extra_")),
-  ].filter((s) => !s?.not_needed).map((s) => ({ planned_on: s?.planned_on, done_on: s?.done_on })), today), dueDate(o)).daysLate));
+  const riskDays = (o: (typeof open)[number]) =>
+    forecast(o.order_lines ?? [], (stages ?? []).filter((s) => !s.not_needed), dueDate(o), today, paceLookup(pace, o.order_lines ?? [], (id) => factoryName.get(id) ?? "This factory"))?.daysLate ?? 0;
 
   const staleIds = new Set(stale.map((o) => o.id));
   const staleBlocker = new Map(await blockerP);

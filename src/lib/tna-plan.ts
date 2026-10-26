@@ -90,42 +90,91 @@ export function fillEmptyTargets(steps: { stage: string; on: string | null }[], 
   return out;
 }
 
-export type PlanStep = { planned_on: string | null | undefined; done_on: string | null | undefined };
+// `stage` is the step's key; a standard step marked done shows the standard steps before it are finished too.
+export type PlanStep = { planned_on: string | null | undefined; done_on: string | null | undefined; stage?: string };
+// Why a style will finish late: the step that added the most days. `done_late`: it was finished after its target;
+// `overdue`: its target has passed and it isn't marked done; `pace`: this factory usually finishes steps late.
+export type Cause = { index: number; kind: "done_late" | "overdue" | "pace"; days: number };
 export type Projection = {
   // When the last planned step will likely be done, and when it was planned.
   finish: string;
   plannedFinish: string;
   // Days the style is running behind its plan (0 when on time or ahead).
   slip: number;
+  cause: Cause | null;
+  // Steps left open but already passed: a later standard step is done, so they are counted as done.
+  implied: number;
 };
+
+const standard = (s: PlanStep) => !!s.stage && !s.stage.startsWith("extra_");
 
 // Carries lateness forward: a step done late, or still open past its target, pushes every later step back by
 // the same days, as the work after it can only start once it is done. Steps without a target are skipped.
+// A standard step left open while a later standard step is done is counted as done: the work has moved past it.
+// `pace`: days late this factory usually finishes a step (learnt from its past orders), added to steps still to come.
 // Returns null when no step has a target.
-export function project(steps: PlanStep[], today: string): Projection | null {
+export function project(steps: PlanStep[], today: string, pace = 0): Projection | null {
+  const lastDone = steps.reduce((m, s, i) => (standard(s) && s.done_on ? i : m), -1);
   let prevPlan: string | null = null;
   let prevProj: string | null = null;
   let last: { plan: string; proj: string } | null = null;
-  for (const s of steps) {
+  let lateBefore = 0;
+  let cause: Cause | null = null;
+  let implied = 0;
+  for (let i = 0; i < steps.length; i++) {
+    const s = steps[i];
     const plan = s.planned_on || null;
     if (!plan) continue;
     let proj: string;
+    let kind: Cause["kind"] = "done_late";
     if (s.done_on) {
       proj = s.done_on;
+    } else if (standard(s) && i < lastDone) {
+      // Passed already: on its target (or pushed by the step before), but no later than the step done after it.
+      implied++;
+      const after = steps.slice(i + 1).find((x) => standard(x) && x.done_on)!.done_on!;
+      proj = prevPlan && prevProj ? addDays(prevProj, Math.max(0, diff(prevPlan, plan))) : plan;
+      if (proj < plan) proj = plan;
+      if (proj > after) proj = after;
     } else {
-      proj = plan;
+      proj = addDays(plan, pace);
+      kind = "pace";
       if (prevPlan && prevProj) {
         const pushed = addDays(prevProj, Math.max(0, diff(prevPlan, plan)));
         if (pushed > proj) proj = pushed;
       }
-      if (proj < today) proj = today;
+      if (proj < today) { proj = today; kind = "overdue"; }
     }
+    const late = diff(plan, proj);
+    if (late - lateBefore > 0 && (!cause || late - lateBefore > cause.days)) cause = { index: i, kind, days: late - lateBefore };
+    lateBefore = Math.max(lateBefore, late);
     prevPlan = plan;
     prevProj = proj;
     last = { plan, proj };
   }
   if (!last) return null;
-  return { finish: last.proj, plannedFinish: last.plan, slip: Math.max(0, diff(last.plan, last.proj)) };
+  const slip = Math.max(0, diff(last.plan, last.proj));
+  return { finish: last.proj, plannedFinish: last.plan, slip, cause: slip ? cause : null, implied };
+}
+
+// How often a factory's steps finish after their target, from its finished steps on every order: the middle
+// value in days, once there are enough to trust (8). Early finishes count as on time, and it is capped at 10 days
+// so one bad order can't swamp the rest.
+export const PACE_MIN = 8;
+export function factoryPace(rows: { factory_id: string | null; planned_on: string | null; done_on: string | null }[]): Map<string, number> {
+  const by = new Map<string, number[]>();
+  for (const r of rows) {
+    if (!r.factory_id || !r.planned_on || !r.done_on) continue;
+    by.set(r.factory_id, [...(by.get(r.factory_id) ?? []), diff(r.planned_on, r.done_on)]);
+  }
+  const out = new Map<string, number>();
+  for (const [f, xs] of by) {
+    if (xs.length < PACE_MIN) continue;
+    const v = [...xs].sort((a, b) => a - b);
+    const mid = v.length % 2 ? v[(v.length - 1) / 2] : Math.round((v[v.length / 2 - 1] + v[v.length / 2]) / 2);
+    if (mid > 0) out.set(f, Math.min(10, mid));
+  }
+  return out;
 }
 
 // How a style's likely finish compares with the date it must ship: at risk once it would miss the ship date,
