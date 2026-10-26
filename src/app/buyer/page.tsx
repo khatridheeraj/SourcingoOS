@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
-import { day, daysBetween, qty, qtyTotal, qtyU, todayIST, TNA_STEPS, unitOfAll } from "@/lib/format";
+// Dates in this year read without the year ("4 Nov"), like the rest of the app.
+import { dayNear as day, daysBetween, qty, qtyTotal, qtyU, todayIST, TNA_STEPS, unitOfAll } from "@/lib/format";
 import { PHOTO_BUCKET } from "@/lib/storage";
 import { getMe } from "@/lib/auth";
 import { BuyerSamples, type BuyerSample } from "./buyer-samples";
@@ -9,8 +10,6 @@ type FinalQc = { result: string; checked_on: string; pieces_checked: number | nu
 type Line = { id: string; style: string; colour: string | null; description: string | null; qty: number; product?: string; shipped?: number; photo_path: string | null; steps: Step[]; final_qc: FinalQc | null };
 type Order = { id: string; order_no: string; buyer_po: string | null; po_date: string | null; status: string; ship_date: string | null; revised_ship_date: string | null; closed_short?: boolean; lines: Line[] };
 
-const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-const dm = (d: string) => `${Number(d.slice(8, 10))} ${MONTHS[Number(d.slice(5, 7)) - 1]}`;
 const stepName = (s: Step) => s.label ?? TNA_STEPS.find((t) => t.key === s.stage)?.label ?? s.stage;
 
 // Where a style stands, in the buyer's words: the furthest step done ("PP sample done", not "At PP sample",
@@ -23,13 +22,13 @@ function where(l: Line, today: string) {
   const next = l.steps.slice(last + 1).find((s) => !s.done_on) ?? l.steps.find((s) => !s.done_on);
   const at = last < 0 ? "Not started" : `${stepName(l.steps[last])} done`;
   const then = !next ? "Every step done"
-    : next.planned_on && next.planned_on >= today ? `Next: ${stepName(next)} by ${dm(next.planned_on)}` : `Next: ${stepName(next)}`;
+    : next.planned_on && next.planned_on >= today ? `Next: ${stepName(next)} by ${day(next.planned_on)}` : `Next: ${stepName(next)}`;
   return { done, total: l.steps.length, at, then, next };
 }
 
 function qcChip(q: FinalQc | null) {
   if (!q) return { text: "Final QC not done yet", cls: "" };
-  return q.result === "pass" ? { text: `Final QC passed ${dm(q.checked_on)}`, cls: "ok" } : { text: "Final QC: being reworked", cls: "warn" };
+  return q.result === "pass" ? { text: `Final QC passed ${day(q.checked_on)}`, cls: "ok" } : { text: "Final QC: being reworked", cls: "warn" };
 }
 
 // "Final QC not done yet" means something only once a style is near the end of production.
@@ -71,7 +70,7 @@ export default async function BuyerPage() {
           {open.length > 0 && (
             <p className="num">
               {open.length} open {open.length === 1 ? "order" : "orders"} · {qtyTotal(styles)}
-              {nextShip && <> · next ship <b className="text-foreground">{dm(nextShip)}</b>, {inDays(daysBetween(today, nextShip))}</>}
+              {nextShip && <> · next ship <b className="text-foreground">{day(nextShip)}</b>, {inDays(daysBetween(today, nextShip))}</>}
               {passed > 0 && <> · {passed} of {styles.length} styles passed final QC</>}
             </p>
           )}
@@ -134,8 +133,8 @@ export default async function BuyerPage() {
                               <i aria-hidden>{s.done_on ? "✓" : ""}</i>
                               <span>{stepName(s)}</span>
                               <small>
-                                {s.done_on ? `Done ${dm(s.done_on)}` : now ? (s.planned_on && s.planned_on >= today ? `In progress, by ${dm(s.planned_on)}` : "In progress")
-                                  : s.planned_on && s.planned_on >= today ? `Planned ${dm(s.planned_on)}` : null}
+                                {s.done_on ? `Done ${day(s.done_on)}` : now ? (s.planned_on && s.planned_on >= today ? `In progress, by ${day(s.planned_on)}` : "In progress")
+                                  : s.planned_on && s.planned_on >= today ? `Planned ${day(s.planned_on)}` : null}
                               </small>
                             </li>
                           );
