@@ -251,8 +251,7 @@ export function OrderQc({ orderId, companyId, open, canRecord, today, checks, fi
               <div className="row mb-2">
                 <b className={st.id ? "code" : ""}>{st.style}</b>
                 {st.id && <span className="muted text-xs">{[st.colour, qtyU(st.qty, st.product)].filter(Boolean).join(" · ")}</span>}
-                {st.id && (fin ? <span className={`chip ${fin.result === "pass" ? "ok" : "bad"}`}>Final QC {fin.result === "pass" ? "passed" : "failed"}</span>
-                  : open && <span className="chip warn">Final QC not done</span>)}
+                {st.id && fin && <span className={`chip ${fin.result === "pass" ? "ok" : "bad"}`}>Final QC {fin.result === "pass" ? "passed" : "failed"}</span>}
                 {st.id && can && !(adding && q.line_id === st.id) && (
                   <button type="button" className="btn sm ml-auto" onClick={() => startFor(st.id)}>Record QC</button>
                 )}
