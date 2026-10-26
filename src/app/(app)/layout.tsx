@@ -11,7 +11,6 @@ import { canEditOrders, canEnterDone, canRecordQc, getMe, roleLabel } from "@/li
 import { todayIST } from "@/lib/format";
 import { heldSince } from "@/lib/goods";
 import { createClient } from "@/lib/supabase/server";
-import { MARKERS_ON } from "@/lib/features";
 
 export default async function AppLayout({ children }: LayoutProps<"/">) {
   const me = await getMe();
@@ -64,7 +63,7 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
     { label: "Records", items: [
       ...(edit ? [{ href: "/buyers", label: "Buyers", icon: "buyers" as const }, { href: "/factories", label: "Factories", icon: "factories" as const },
         { href: "/styles", label: "Style catalogue", icon: "styles" as const },
-        ...(MARKERS_ON ? [{ href: "/markers", label: "Markers", icon: "markers" as const }] : [])] : []),
+        { href: "/markers", label: "Markers", icon: "markers" as const }] : []),
       edit ? { href: "/reports", label: "Reports", icon: "chart" as const, also: ["/brief"] } : { href: "/brief", label: "Morning brief", icon: "sun" as const },
     ] },
     ...(me.role === "owner" ? [{ label: "Admin", items: [{ href: "/team", label: "Team", icon: "team" as const }, { href: "/activity", label: "Activity log", icon: "activity" as const },
