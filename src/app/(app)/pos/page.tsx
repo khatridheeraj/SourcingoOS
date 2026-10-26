@@ -2,7 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { canEditOrders, getMe } from "@/lib/auth";
 import { buyerName, loadBuyers } from "@/lib/data";
-import { nowMs, qty } from "@/lib/format";
+import { dayTimeNear, nowMs, qty } from "@/lib/format";
 import { poWaitDays, PO_WAIT_DAYS } from "@/lib/order-checks";
 import type { PoReading } from "@/lib/po-inbox";
 import { comparePo, poNoKey } from "@/lib/po-match";
@@ -21,7 +21,6 @@ const ALL_TABS = [
   { key: "done", label: "Done", statuses: ["added", "not_po"] },
 ];
 
-const when = new Intl.DateTimeFormat("en-IN", { timeZone: "Asia/Kolkata", day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
 // The colour bar on each row: what needs a person first.
 const SEV: Record<string, string> = { failed: "bad", to_check: "warn", held: "warn", added: "ok" };
 
@@ -114,10 +113,12 @@ export default async function IncomingPosPage({ searchParams }: PageProps<"/pos"
                         : r.buyer_po ? <span className="code">PO {r.buyer_po}</span> : <span className="muted">{busy ? "Reading… " : "PO number not found · "}</span>}
                       {buyer && <span className={r.buyer_id ? "" : "text-bad"}>{buyer}</span>}
                     </Link>
+                    {/* The date goes before the sender, so a long email address cut short on a phone never hides when it came. */}
                     <div className="todo-detail truncate">
                       {[
                         lines.length > 0 ? `${lines.length} ${lines.length === 1 ? "style" : "styles"} · ${qty(lines.reduce((n, l) => n + (l.qty || 0), 0))} pcs` : "",
-                        `${r.source === "email" ? `Email from ${r.email_from ?? "unknown"}` : "Added from a file"}, ${when.format(new Date(r.received_at))}`,
+                        dayTimeNear(r.received_at),
+                        r.source === "email" ? `Email from ${r.email_from ?? "unknown"}` : "Added from a file",
                       ].filter(Boolean).join(" · ")}
                     </div>
                     {(order || matched || doubts > 0 || r.status === "failed" || waited > 0) && (
