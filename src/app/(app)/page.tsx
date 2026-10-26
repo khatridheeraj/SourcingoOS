@@ -322,7 +322,9 @@ export default async function OrdersPage({ searchParams }: PageProps<"/">) {
   );
 }
 
-// The next step in a few words; when it is someone else's move, say who it waits on.
+// The next step in a few words; when it is someone else's move, say who it waits on. A late order's card already
+// says how late it is beside the date, so it names the fix instead, as Home does.
 function nextText(j: Journey) {
+  if (j.next.action.kind === "date") return j.next.label;
   return j.next.action.kind === "none" ? `Waiting: ${j.next.title.replace(/^Waiting (for|on) /, "")}` : j.next.title;
 }
