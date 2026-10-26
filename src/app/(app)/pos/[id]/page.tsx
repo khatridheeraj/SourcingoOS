@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { canEditOrders, getMe } from "@/lib/auth";
-import { nowMs } from "@/lib/format";
+import { dayTimeNear, nowMs } from "@/lib/format";
 import { buyerOverdue, overdueText, poWaitDays } from "@/lib/order-checks";
 import { PO_BUCKET, type StoredFile } from "@/lib/po-files";
 import type { PoReading } from "@/lib/po-inbox";
@@ -18,7 +18,6 @@ import { suggestBuyerCode } from "@/lib/names";
 import { comparePo, poNoKey } from "@/lib/po-match";
 import { PoCompare, type CompareSide } from "./po-compare";
 
-const when = new Intl.DateTimeFormat("en-IN", { timeZone: "Asia/Kolkata", day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit" });
 
 export default async function IncomingPoPage({ params, searchParams }: PageProps<"/pos/[id]">) {
   const { id } = await params;
@@ -96,7 +95,7 @@ export default async function IncomingPoPage({ params, searchParams }: PageProps
           <h1>{po.buyer_po ? <>PO {po.buyer_po}</> : po.email_subject ?? "Buyer PO"}{buyerLabel && <span className="muted font-normal"> · {buyerLabel}</span>}</h1>
           <p className="row">
             {!checking && <span className={s?.cls}>{s?.label}</span>}
-            <span>{po.source === "email" ? `Email from ${po.email_from ?? "unknown"}` : "Added from a file"}, {when.format(new Date(po.received_at))}</span>
+            <span>{po.source === "email" ? `Email from ${po.email_from ?? "unknown"}` : "Added from a file"} · {dayTimeNear(po.received_at)}</span>
             {waited > 0 && <span className="chip bad">Waiting {waited} days</span>}
           </p>
         </div>
@@ -163,7 +162,7 @@ export default async function IncomingPoPage({ params, searchParams }: PageProps
           <section className="panel">
             <div className="row mb-2">
               <h2 id="in-h">The PO</h2>
-              <span className="muted ml-auto text-[12.5px]">{files.length} {files.length === 1 ? "file" : "files"}</span>
+              {files.length > 0 && <span className="muted ml-auto text-[12.5px]">{files.length} {files.length === 1 ? "file" : "files"}</span>}
             </div>
             {preview && urlOf.get(preview.path) && (
               preview.type.includes("pdf")
