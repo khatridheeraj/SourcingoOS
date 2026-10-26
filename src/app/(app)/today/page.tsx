@@ -10,12 +10,11 @@ import { project, shipRisk } from "@/lib/tna-plan";
 import { HOLD_HOURS, heldHours, heldText } from "@/lib/goods";
 import { createClient } from "@/lib/supabase/server";
 import { loadShipProgress, orderShip, partText } from "@/lib/shipments";
-import { Icon, type IconName } from "@/components/nav";
+import { Icon } from "@/components/nav";
 import { ChaseLink, SheetButton } from "@/components/order-sheet";
 import { chaseText, panelLine, waLink, type QStyle } from "@/lib/quick";
 import { buildUpdates } from "@/lib/updates";
 import { appOrigin } from "@/lib/origin";
-import { SearchTile } from "@/components/search";
 import { QcButton } from "@/components/qc-sheet";
 import { Ring } from "@/components/order-ui";
 import { WhatsNew } from "@/components/whats-new";
@@ -59,20 +58,10 @@ const lakh = (n: number) => (n >= 1e7 ? `₹${(n / 1e7).toFixed(2)} Cr` : `₹${
 const rank = (s: Sev) => ({ bad: 0, warn: 1, ok: 2, "": 3 })[s];
 const bySev = (a: Item, b: Item) => rank(a.sev) - rank(b.sev) || a.sort.localeCompare(b.sort);
 
-// Where a style is, by the furthest standard step it has done.
-const PHASES = [
-  { label: "No targets yet", upTo: -2 },
-  { label: "Planned, not started", upTo: -1 },
-  { label: "Samples and fabric", upTo: TNA_STEPS.findIndex((s) => s.key === "size_set") },
-  { label: "Cutting and stitching", upTo: TNA_STEPS.findIndex((s) => s.key === "midline") },
-  { label: "Finishing and final QC", upTo: TNA_STEPS.findIndex((s) => s.key === "final_qc") },
-  { label: "Left the factory", upTo: TNA_STEPS.length },
-];
-
 const TABS = [
   { key: "now", label: "Now", hint: "Late, overdue or blocking work. Red first." },
-  { key: "soon", label: "Coming up", hint: "Steps due in the next 7 days, dispatch, GRNs, and shipments without a passed final QC." },
-  { key: "waiting", label: "Waiting on others", hint: `Factories asked for their TNA (they have ${PLAN_HOURS} hours), samples with buyers, and changes factories are making.` },
+  { key: "soon", label: "This week", hint: "Steps due in the next 7 days, dispatch, GRNs, and shipments without a passed final QC." },
+  { key: "waiting", label: "Waiting", hint: `Factories asked for their TNA (they have ${PLAN_HOURS} hours), samples with buyers, and changes factories are making.` },
 ] as const;
 
 // The home screen: what needs doing across open orders, one line per order, plus shipping and style progress.
@@ -194,7 +183,6 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
     ...TNA_STEPS.map((t) => stageOf.get(`${l.id}:${t.key}`)),
     ...(stages ?? []).filter((s) => s.line_id === l.id && s.stage.startsWith("extra_")),
   ].filter((s) => !s?.not_needed).map((s) => ({ planned_on: s?.planned_on, done_on: s?.done_on })), today), dueDate(o)).daysLate));
-  const finalPassed = (o: (typeof open)[number]) => (o.order_lines ?? []).length > 0 && (o.order_lines ?? []).every((l) => latest(l.id, SHIP_QC)?.result === "pass");
 
   const staleIds = new Set(stale.map((o) => o.id));
   const staleBlocker = new Map(await blockerP);
@@ -566,30 +554,11 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
   const tab = TABS.some((t) => t.key === sp.tab) ? (sp.tab as keyof typeof lists) : lists.now.length || !lists.soon.length ? "now" : "soon";
   const qs = (t: string) => `/today?${new URLSearchParams({ ...(sp.who ? { who: String(sp.who) } : {}), tab: t })}`;
 
-  // Numbers on top.
+  // The day in numbers, for the header line.
   const late = active.filter((o) => { const d = dueDate(o); return !!d && d < today; });
   const shipSoon = active.filter((o) => { const d = dueDate(o); return !!d && d >= today && d <= addDays(today, 14); });
-  const pcs = (os: typeof open) => qtyTotal(os.flatMap((o) => o.order_lines ?? []));
   const allLines = open.flatMap((o) => o.order_lines ?? []);
   const book = allLines.reduce((s, l) => s + l.qty * Number(priceOf.get(l.id)?.buyer_rate ?? 0), 0);
-  const unpriced = allLines.filter((l) => priceOf.get(l.id)?.buyer_rate == null).length;
-
-  // Shipping next: each open order's progress against its plan, by ship date.
-  const progress = (o: (typeof open)[number]) => {
-    const rows = live.filter((s) => s.order_id === o.id && (s.planned_on || s.done_on));
-    return { total: rows.length, done: rows.filter((s) => s.done_on).length, behind: overdueBy.has(o.id) };
-  };
-  const shipping = [...active].sort((a, b) => (dueDate(a) ?? "9999").localeCompare(dueDate(b) ?? "9999") || a.order_no.localeCompare(b.order_no)).slice(0, 7);
-
-  // Where the styles are, counted per style (each style has its own TNA).
-  const phaseCount = PHASES.map(() => 0);
-  for (const l of active.flatMap((o) => o.order_lines ?? [])) {
-    const rows = live.filter((s) => s.line_id === l.id && TNA_STEPS.some((t) => t.key === s.stage));
-    const doneIdx = Math.max(-1, ...rows.filter((s) => s.done_on).map((s) => stepIndex(s.stage)));
-    const at_ = !rows.some((s) => s.planned_on || s.done_on) ? -2 : doneIdx;
-    phaseCount[PHASES.findIndex((p) => at_ <= p.upTo)]++;
-  }
-  const styleTotal = phaseCount.reduce((s, n) => s + n, 0);
 
   const pay = payP ? await payP : null;
   if (pay?.error) errors.push(pay.error.message);
@@ -605,42 +574,17 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
   const nowCount = lists.now.length;
   // The greeting counts money jobs that can't wait too, for the owner and Accounts.
   const headCount = nowCount + collect.filter((a) => a.sev === "bad").length;
+  const toChase = chaseList.filter((f) => !f.chased).length;
 
-  const state = (o: (typeof open)[number]) => {
-    const d = dueDate(o);
-    const p = progress(o);
-    const lateBy = d && d < today ? daysBetween(d, today) : 0;
-    const part = shipOf(o).part;
-    return !d ? { text: "No ship date", cls: "bad" } : lateBy ? { text: `${part ? "Part shipped · " : ""}${plural(lateBy, "day")} late`, cls: "bad" }
-      : part ? { text: "Part shipped", cls: "warn" }
-      : finalPassed(o) ? { text: "Final QC passed", cls: "ok" } : !p.total ? { text: "No targets", cls: "warn" }
-      : riskDays(o) ? { text: riskLate(riskDays(o)), cls: "bad" } : p.behind ? { text: "Needs update", cls: "warn" } : { text: "On plan", cls: "ok" };
-  };
-  const kpis = [
-    { key: "now", href: qs("now"), label: "Needs you now", value: String(nowCount), sev: nowCount ? "bad" : "ok", sub: nowCount ? "Late, overdue or blocking" : "All clear" },
-    { key: "late", href: team ? "/?status=late" : qs("now"), label: "Late orders", value: String(late.length), sev: late.length ? "bad" : "ok",
-      sub: stale.length ? `Past ship date · ${stale.length} more look shipped` : "Past ship date" },
-    { key: "ship", href: qs("soon"), label: "Ship in 14 days", value: String(shipSoon.length), sev: shipSoon.some((o) => !finalPassed(o)) ? "warn" : "",
-      sub: shipSoon.length ? `${pcs(shipSoon)} · ${shipSoon.filter((o) => !finalPassed(o)).length} without final QC` : "Nothing ships soon" },
-    team && book > 0
-      ? { key: "book", href: "/", label: "Open order book", value: lakh(book), sev: "",
-          sub: `${plural(open.length, "order")} · ${plural(allLines.length, "style")} · ${pcs(open)}${unpriced ? ` · ${unpriced} without a rate` : ""}` }
-      : { key: "book", href: "/", label: "Open orders", value: String(open.length), sev: "", sub: `${plural(allLines.length, "style")} · ${pcs(open)}` },
-  ];
-
-  // Shortcuts to the jobs done most often, within thumb reach on a phone. Indigo, as things to tap; red only for overdue work.
-  const quick: { href: string; label: string; icon: IconName; count?: number; tone: string }[] = team
-    ? [
-        { href: "/orders/new", label: "New order", icon: "plus", tone: "accent" },
-        { href: "/pos", label: "Check POs", icon: "inbox", count: toCheck.length, tone: "info" },
-        { href: "/updates", label: "Chase and update", icon: "share", count: chaseList.filter((f) => !f.chased).length, tone: "" },
-        { href: "/?find=1", label: "Search", icon: "search", tone: "" },
-      ]
-    : [
-        { href: qs("soon"), label: "QC due", icon: "check", tone: "accent" },
-        { href: qs("now"), label: "Overdue", icon: "clock", count: nowCount, tone: nowCount ? "bad" : "" },
-        { href: "/?find=1", label: "Find order", icon: "search", tone: "" },
-      ];
+  // One block per order: everything an order needs sits together under its name, worst first, so the same order
+  // never shows up three times down the list. Work that isn't about one order (buyer POs, inquiries) stands alone.
+  const groups: { key: string; head?: { code?: string; title: string; href: string }; items: Item[] }[] = [];
+  for (const i of lists[tab]) {
+    const order = i.code && /^\/orders\/([^/#?]+)/.exec(i.href)?.[1];
+    const g = order ? groups.find((x) => x.key === order) : undefined;
+    if (g) g.items.push(i);
+    else groups.push({ key: order || i.key, head: order ? { code: i.code, title: i.title.split(" · bill ")[0], href: `/orders/${order}` } : undefined, items: [i] });
+  }
 
   const urgent = collect.filter((a) => a.sev === "bad").length;
   // Money is Accounts' daily work, so it leads their Home; for the owner it leads only when something can't wait.
@@ -656,15 +600,17 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
             </div>
             <Link href="/payments" className="btn sm">Payments</Link>
           </header>
-          <ul className="todo">
+          <ul className="tasks">
             {collect.slice(0, 4).map((a) => (
-              <li key={a.title}>
+              <li key={a.title} className="task">
                 <span className={`sev ${a.sev === "info" ? "" : a.sev}`} aria-hidden />
-                <div className="min-w-0">
-                  <Link href={a.href} className="todo-title">{a.title}</Link>
-                  <div className="todo-detail">{a.detail}</div>
+                <Link href={a.href} className="task-text">
+                  <b>{a.title}</b>
+                  <span>{a.detail}</span>
+                </Link>
+                <div className="task-acts">
+                  <Link href={a.href} className="btn sm">{a.href.endsWith("#tally-settle") ? "Check" : "Open"}</Link>
                 </div>
-                <Link href={a.href} className="btn sm todo-act">{a.href.endsWith("#tally-settle") ? "Check and mark" : "Open"}</Link>
               </li>
             ))}
           </ul>
@@ -681,24 +627,21 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
                 {payT.msmeLate > 0 && <> · <b className="text-bad">{payT.msmeLate} MSME {payT.msmeLate === 1 ? "bill" : "bills"} past 45 days</b></>}
               </p>
             </div>
-            <Link href="/payables" className="btn sm">Plan payments</Link>
+            <Link href="/payables" className="btn sm">Plan</Link>
           </header>
-          <ul className="todo">
+          <ul className="tasks">
             {payDue.map((s) => (
-              <li key={s.ledger}>
+              <li key={s.ledger} className="task">
                 <span className={`sev ${s.overdue ? "bad" : "warn"}`} aria-hidden />
-                <div className="min-w-0">
-                  <Link href={`/payables?s=${encodeURIComponent(s.ledger)}`} className="todo-title">{s.name}</Link>
-                  <div className="todo-detail">{s.bills.length} {s.bills.length === 1 ? "bill" : "bills"} · {rupees(s.bills.reduce((a, b) => a + b.open, 0))}</div>
-                </div>
-                <div className="todo-chip"><span className={`chip ${s.worst.tone}`}>{s.worst.text}</span></div>
-                <Link href={`/payables?s=${encodeURIComponent(s.ledger)}`} className="btn sm todo-act">See bills</Link>
+                <Link href={`/payables?s=${encodeURIComponent(s.ledger)}`} className="task-text">
+                  <b>{s.name}</b>
+                  <span><em className={`why ${s.worst.tone}`}>{s.worst.text}</em> · {s.bills.length} {s.bills.length === 1 ? "bill" : "bills"} · {rupees(s.bills.reduce((a, b) => a + b.open, 0))}</span>
+                </Link>
               </li>
             ))}
           </ul>
         </section>
       )}
-
     </>
   );
 
@@ -711,21 +654,17 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
           <h1>Good {hour < 12 ? "morning" : hour < 17 ? "afternoon" : "evening"}{first && `, ${first}`}</h1>
           <p>
             {headCount ? <b className="text-bad">{plural(headCount, "thing")} {headCount === 1 ? "needs" : "need"} you now</b> : <b className="text-ok">Nothing urgent</b>}
-            {shipSoon.length > 0 && ` · ${plural(shipSoon.length, "order")} ${shipSoon.length === 1 ? "ships" : "ship"} in the next two weeks`}
+            {late.length > 0 && ` · ${plural(late.length, "order")} late`}
+            {shipSoon.length > 0 && ` · ${shipSoon.length} ${shipSoon.length === 1 ? "ships" : "ship"} in 14 days`}
+            {me?.role === "owner" && book > 0 && ` · ${lakh(book)} open`}
           </p>
-          {mineCount > 0 && (
-            <nav className="seg mt-3 w-fit" aria-label="Whose orders">
-              <Link href="/today?who=mine" aria-current={who === "mine" ? "page" : undefined}>My orders <span>{mineCount}</span></Link>
-              <Link href="/today?who=all" aria-current={who === "all" ? "page" : undefined}>Everyone&apos;s <span>{(orders ?? []).length}</span></Link>
-            </nav>
-          )}
         </div>
-        {/* Today's progress: steps done today against what still needs doing now. */}
+        {/* Today's progress: things done today against what still needs doing now. */}
         <div className="day-ring">
-          <Ring done={doneToday ?? 0} total={(doneToday ?? 0) + headCount} size={92}>
-            <b>{doneToday ?? 0}</b><small>done today</small>
+          <Ring done={doneToday ?? 0} total={(doneToday ?? 0) + headCount} size={64}>
+            <b>{doneToday ?? 0}</b>
           </Ring>
-          <span>{headCount ? `${headCount} to go` : doneToday ? "All caught up" : "A clear day"}</span>
+          <span>done today</span>
         </div>
       </section>
 
@@ -737,203 +676,105 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
         <div className="errbox">Some lists couldn&apos;t load, so this page may be missing work. Reload to try again. ({[...new Set(errors)].join("; ")})</div>
       )}
 
-      <section className="card" aria-labelledby="todo-h">
-        <header className="card-h">
-          <div className="min-w-0">
-            <h2 id="todo-h">To do</h2>
-            <p>{TABS.find((t) => t.key === tab)?.hint}</p>
-          </div>
+      <section className="card inbox" aria-label="To do">
+        <header className="inbox-h">
           <nav className="seg" aria-label="When">
             {TABS.filter((t) => t.key !== "waiting" || lists.waiting.length || tab === "waiting").map((t) => (
               <Link key={t.key} href={qs(t.key)} aria-current={tab === t.key ? "page" : undefined} scroll={false}>{t.label} <span>{lists[t.key].length}</span></Link>
             ))}
           </nav>
+          {mineCount > 0 && (
+            <nav className="seg" aria-label="Whose orders">
+              <Link href={`/today?${new URLSearchParams({ who: "mine", ...(sp.tab ? { tab: String(sp.tab) } : {}) })}`} aria-current={who === "mine" ? "page" : undefined}>Mine</Link>
+              <Link href={`/today?${new URLSearchParams({ who: "all", ...(sp.tab ? { tab: String(sp.tab) } : {}) })}`} aria-current={who === "all" ? "page" : undefined}>All</Link>
+            </nav>
+          )}
         </header>
-        {lists[tab].length === 0 && tab === "now" && !errors.length ? (
+        {tab === "now" && toChase > 0 && (
+          <Link href="/updates" className="inbox-chase">
+            <Icon name="share" size={18} />
+            <span className="grow"><b>{toChase} {toChase === 1 ? "factory is" : "factories are"} behind plan.</b> One WhatsApp each lists every late step.</span>
+            <span className="link">Chase</span>
+          </Link>
+        )}
+        {groups.length === 0 && tab === "now" && !errors.length ? (
           <div className="all-clear">
             <span className="all-clear-ic" aria-hidden><Icon name="check" size={28} /></span>
             <b>All caught up</b>
             <p>{doneToday ? `${plural(doneToday, "step")} done today. ` : ""}Nothing is late or waiting on you{lists.soon.length ? `. ${plural(lists.soon.length, "thing")} coming up this week.` : "."}</p>
           </div>
-        ) : lists[tab].length === 0 ? (
+        ) : groups.length === 0 ? (
           <p className="card-empty">
-            {errors.length ? "Couldn't load this list. Reload to try again." : tab === "now" ? "Nothing is late or blocked." : tab === "soon" ? "Nothing due in the next 7 days." : "Not waiting on any factory or buyer."}
+            {errors.length ? "Couldn't load this list. Reload to try again." : tab === "soon" ? "Nothing due in the next 7 days." : "Not waiting on any factory or buyer."}
           </p>
         ) : (
-          <ul className="todo">
-            {lists[tab].map((i) => (
-              <li key={i.key}>
-                <span className={`sev ${i.sev}`} aria-hidden />
-                <div className="min-w-0">
-                  <Link href={i.href} className="todo-title">
-                    {i.code && <span className="code">{i.code}</span>}{i.title}
+          <ul className="groups">
+            {groups.map((g) => (
+              <li key={g.key} className="group">
+                {g.head && (
+                  <Link href={g.head.href} className="group-h">
+                    <span className="code">{g.head.code}</span><b>{g.head.title}</b>
                   </Link>
-                  <div className="todo-detail">{i.detail}</div>
-                  {i.links && (
-                    <div className="todo-links">
-                      {i.links.slice(0, 8).map((l) => <Link key={l.href} href={l.href} className="chip code">{l.text}</Link>)}
-                      {i.links.length > 8 && (
-                        <details>
-                          <summary className="chip">+{i.links.length - 8} more</summary>
-                          <div className="todo-links mt-1.5">{i.links.slice(8).map((l) => <Link key={l.href} href={l.href} className="chip code">{l.text}</Link>)}</div>
-                        </details>
-                      )}
-                    </div>
-                  )}
-                </div>
-                <div className="todo-chip">{i.chip && <span className={`chip ${i.chip.cls}`}>{i.chip.text}</span>}</div>
-                <div className="todo-acts">
-                  {i.chase && <ChaseLink {...i.chase} />}
-                  {i.qc
-                    ? <QcButton orderId={i.qc.orderId} kind={i.qc.kind} className="btn sm todo-act primary">{i.action}</QcButton>
-                    : i.sheet
-                    ? <SheetButton {...i.sheet} className={`btn sm todo-act ${i.sev === "bad" || i.sheet.mode === "start" ? "primary" : ""}`}>{i.action}</SheetButton>
-                    : <Link href={i.href} className={`btn sm todo-act ${i.sev === "bad" ? "primary" : ""}`}>{i.action}</Link>}
-                </div>
+                )}
+                <ul className="tasks">
+                  {g.items.map((i) => {
+                    // A dispatch line names its bill, as one order can have several.
+                    const sub = g.head && i.title.includes(" · bill ") ? `Bill ${i.title.split(" · bill ")[1]}` : "";
+                    return (
+                      <li key={i.key} className="task">
+                        <span className={`sev ${i.sev}`} aria-hidden />
+                        <div className="task-text">
+                          {!g.head && <Link href={i.href} className="task-title">{i.code && <span className="code">{i.code}</span>}{i.title}</Link>}
+                          {sub && <b>{sub}</b>}
+                          <span>{i.chip && <em className={`why ${i.chip.cls}`}>{i.chip.text}</em>}{i.chip && " · "}{i.detail}</span>
+                          {i.links && (
+                            <span className="task-links">
+                              {i.links.slice(0, 6).map((l) => <Link key={l.href} href={l.href} className="chip code">{l.text}</Link>)}
+                              {i.links.length > 6 && <Link href={i.href} className="chip">+{i.links.length - 6} more</Link>}
+                            </span>
+                          )}
+                        </div>
+                        <div className="task-acts">
+                          {i.chase && <ChaseLink {...i.chase} compact />}
+                          {i.qc
+                            ? <QcButton orderId={i.qc.orderId} kind={i.qc.kind} className="btn sm">{i.action}</QcButton>
+                            : i.sheet
+                            ? <SheetButton {...i.sheet} className="btn sm">{i.action}</SheetButton>
+                            : <Link href={i.href} className="btn sm">{i.action}</Link>}
+                        </div>
+                      </li>
+                    );
+                  })}
+                </ul>
               </li>
             ))}
           </ul>
         )}
       </section>
 
-      {chaseList.length > 0 && (
-        <section className="card chase-card" aria-labelledby="chase-h">
+      {!moneyFirst && moneyCards}
+
+      {team && stale.length > 0 && (
+        <section className="card" aria-labelledby="tidy-h">
           <header className="card-h">
             <div className="min-w-0">
-              <h2 id="chase-h">Factories to chase</h2>
-              <p>{`${chaseList.length} ${chaseList.length === 1 ? "factory" : "factories"}`} behind plan. One message each, listing every late order.</p>
+              <h2 id="tidy-h">Tidy up</h2>
+              <p>Shipped long ago but still open, so they count as late.</p>
             </div>
-            <Link href="/updates" className="link text-[13px]">{chaseList.length > 4 ? `All ${chaseList.length}` : "Buyer updates"}</Link>
           </header>
-          <ul className="upd-list">
-            {chaseList.slice(0, 4).map((f) => (
-              <li key={f.factoryId} className={`upd-row ${f.chased ? "is-done" : ""}`}>
-                <div className="upd-main">
-                  <span className={`sev ${f.chased ? "ok" : "bad"}`} aria-hidden />
-                  <div className="min-w-0 grow">
-                    <div className="todo-title">{f.name}</div>
-                    <div className="todo-detail">{plural(f.late, "late step")} · {f.orders.map((o) => o.orderNo).join(", ")}</div>
-                  </div>
-                  <div className="upd-acts"><ChaseLink href={f.href} factoryId={f.factoryId} orderId={null} chased={f.chased} /></div>
-                </div>
+          <ul className="rows">
+            {stale.map((o) => (
+              <li key={o.id} className="tidy-row">
+                <Link href={`/orders/${o.id}`} className="min-w-0">
+                  <span className="todo-title"><span className="code">{o.order_no}</span>{buyerOf.get(o.buyer_id)}</span>
+                  <span className="todo-detail block">Ship date {dm(dueDate(o)!)} · {qtyTotal(o.order_lines ?? [])}</span>
+                </Link>
+                <MarkShipped orderId={o.id} orderNo={o.order_no} blocked={staleBlocker.get(o.id)} old={!!staleBlocker.get(o.id)?.startsWith("Nothing is in Dispatch")} />
               </li>
             ))}
           </ul>
         </section>
       )}
-
-      <nav className="quick" aria-label="Shortcuts">
-        {quick.map((q) => {
-          const inner = <><span className="quick-ic"><Icon name={q.icon} size={22} />{!!q.count && <span className="tab-badge">{q.count}</span>}</span>{q.label}</>;
-          return q.icon === "search"
-            ? <SearchTile key={q.label} className={q.tone}>{inner}</SearchTile>
-            : <Link key={q.label} href={q.href} className={q.tone}>{inner}</Link>;
-        })}
-      </nav>
-
-      <div className="kpis">
-        {kpis.map((k) => (
-          <Link key={k.key} href={k.href} className={`kpi ${k.sev}`}>
-            <span className="kpi-label"><i aria-hidden />{k.label}</span>
-            <b className="num">{k.value}</b>
-            <small>{k.sub}</small>
-          </Link>
-        ))}
-      </div>
-
-      {!moneyFirst && moneyCards}
-
-      <div className="home">
-          <section className="card" aria-labelledby="ship-h">
-            <header className="card-h">
-              <div className="min-w-0">
-                <h2 id="ship-h">Shipping next</h2>
-                <p>By ship date, with steps done against plan.</p>
-              </div>
-              <Link href="/" className="link text-[13px]">All orders</Link>
-            </header>
-            {shipping.length === 0 ? <p className="card-empty">No open orders.</p> : (
-              <ul className="rows">
-                {shipping.map((o) => {
-                  const d = dueDate(o);
-                  const p = progress(o);
-                  const st = state(o);
-                  const sh = shipOf(o);
-                  return (
-                    <li key={o.id}>
-                      <Link href={`/orders/${o.id}`} className="ship-row">
-                        <span className={`date ${st.cls === "bad" && (!d || d < today) ? "late" : ""}`}>
-                          {d ? <><b>{Number(d.slice(8, 10))}</b><span>{MONTHS[Number(d.slice(5, 7)) - 1]}</span></> : <><b>–</b><span>no date</span></>}
-                        </span>
-                        <span className="min-w-0">
-                          <span className="ship-top">
-                            <span className="todo-title truncate"><span className="code">{o.order_no}</span>{buyerOf.get(o.buyer_id)}</span>
-                            <span className={`ship-state ${st.cls}`}>{st.text}</span>
-                          </span>
-                          {sh.part ? (
-                            <>
-                              <span className="bar"><i className="ok" style={{ width: `${Math.max(3, (100 * sh.shipped) / sh.ordered)}%` }} /></span>
-                              <span className="todo-detail block">{partText(sh, unitOfAll(o.order_lines ?? []))}</span>
-                            </>
-                          ) : (
-                            <>
-                              <span className="bar"><i className={st.cls === "bad" ? "bad" : st.cls === "ok" ? "ok" : ""} style={{ width: `${p.total ? Math.max(3, (100 * p.done) / p.total) : 0}%` }} /></span>
-                              <span className="todo-detail block">{p.total ? `${p.done} of ${p.total} steps done` : "No steps planned yet"} · {pcs([o])}</span>
-                            </>
-                          )}
-                        </span>
-                      </Link>
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
-          </section>
-
-        <div className="side">
-          {team && stale.length > 0 && (
-            <section className="card" aria-labelledby="tidy-h">
-              <header className="card-h">
-                <div className="min-w-0">
-                  <h2 id="tidy-h">Tidy up</h2>
-                  <p>Shipped long ago but still open, so they count as late.</p>
-                </div>
-                <span className="chip warn">{plural(stale.length, "order")}</span>
-              </header>
-              <ul className="rows">
-                {stale.map((o) => (
-                  <li key={o.id} className="tidy-row">
-                    <Link href={`/orders/${o.id}`} className="min-w-0">
-                      <span className="todo-title"><span className="code">{o.order_no}</span>{buyerOf.get(o.buyer_id)}</span>
-                      <span className="todo-detail block">Ship date {dm(dueDate(o)!)} · {pcs([o])}</span>
-                    </Link>
-                    <MarkShipped orderId={o.id} orderNo={o.order_no} blocked={staleBlocker.get(o.id)} old={!!staleBlocker.get(o.id)?.startsWith("Nothing is in Dispatch")} />
-                  </li>
-                ))}
-              </ul>
-            </section>
-          )}
-
-          <section className="card styles-card" aria-labelledby="pipe-h">
-            <header className="card-h">
-              <div className="min-w-0">
-                <h2 id="pipe-h">Where the styles are</h2>
-                <p>Each style by the furthest step it has done.</p>
-              </div>
-              <span className="chip">{plural(styleTotal, "style")}</span>
-            </header>
-            <ul className="pipe">
-              {PHASES.map((p, i) => (
-                <li key={p.label} className="pipe-row">
-                  <span>{p.label}</span>
-                  <span className="track"><i className={i < 2 ? "dim" : i === PHASES.length - 1 ? "ok" : ""} style={{ width: `${styleTotal ? (100 * phaseCount[i]) / styleTotal : 0}%` }} /></span>
-                  <b className="num">{phaseCount[i]}</b>
-                </li>
-              ))}
-            </ul>
-          </section>
-        </div>
-      </div>
     </>
   );
 }

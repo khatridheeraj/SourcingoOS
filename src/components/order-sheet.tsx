@@ -25,12 +25,14 @@ export function SheetButton({ orderId, mode, factoryId, className = "btn sm", ch
 }
 
 // A WhatsApp chase to a factory with the message ready; the chase is noted so the team sees it was done today.
-export function ChaseLink({ href, factoryId, orderId, chased, className = "btn sm" }: { href: string; factoryId: string; orderId: string | null; chased?: boolean; className?: string }) {
+// `compact`: the WhatsApp mark alone, for a row that already has its main button.
+export function ChaseLink({ href, factoryId, orderId, chased, className = "btn sm", compact }: { href: string; factoryId: string; orderId: string | null; chased?: boolean; className?: string; compact?: boolean }) {
   const [done, setDone] = useState(!!chased);
   return (
-    <a href={href} target="_blank" rel="noreferrer" className={`${className} wa-link ${done ? "is-done" : ""}`}
+    <a href={href} target="_blank" rel="noreferrer" className={`${className} wa-link ${compact ? "wa-only" : ""} ${done ? "is-done" : ""}`}
+      aria-label={compact ? (done ? "Chased on WhatsApp" : "Chase on WhatsApp") : undefined} title={compact ? "Chase on WhatsApp" : undefined}
       onClick={() => { setDone(true); logChase(factoryId, orderId).catch(() => {}); }}>
-      <WaIcon />{done ? "Chased" : "Chase"}
+      <WaIcon />{!compact && (done ? "Chased" : "Chase")}
     </a>
   );
 }
