@@ -5,10 +5,10 @@ import { useRouter } from "next/navigation";
 import { useRef, useState, useTransition } from "react";
 import { toast } from "@/components/toast";
 import { PO_ACCEPT, poFileProblem, uploadPoFiles } from "@/lib/po-upload";
-import { linkEmailPo, removeOrderPoFile } from "../actions";
+import { linkEmailPo, removeEmailPoFile, removeOrderPoFile } from "../actions";
 
-// One file of the buyer's PO. Files that came with the email (or from Buyer POs) can't be taken off here.
-export type PoDoc = { key: string; id: string | null; name: string; ext: string; size: number; url: string | null; download: string | null; from: string };
+// One file of the buyer's PO: added by hand (id), or one that came with the email or from Buyer POs (incomingId + path).
+export type PoDoc = { key: string; id: string | null; incomingId: string | null; path: string; name: string; ext: string; size: number; url: string | null; download: string | null; from: string };
 
 // A file from one of the buyer's emails that names a style on this order, offered when no PO is on file yet.
 export type FoundPo = { key: string; incomingId: string; path: string; name: string; ext: string; size: number; url: string | null; from: string };
@@ -54,11 +54,11 @@ export function BuyerPo({ orderId, companyId, docs, found = [], canEdit }: { ord
   }
 
   function remove(d: PoDoc) {
-    if (!d.id || !window.confirm(`Take ${d.name} off this order?`)) return;
+    if ((!d.id && !d.incomingId) || !window.confirm(`Take ${d.name} off this order?`)) return;
     setError("");
     setBusy(d.key);
     start(async () => {
-      const res = await removeOrderPoFile(orderId, d.id!);
+      const res = d.id ? await removeOrderPoFile(orderId, d.id) : await removeEmailPoFile(orderId, d.incomingId!, d.path);
       setBusy("");
       if (res.error) return setError(res.error);
       toast("PO file taken off");
@@ -97,7 +97,7 @@ export function BuyerPo({ orderId, companyId, docs, found = [], canEdit }: { ord
               <div className="po-doc-acts">
                 {d.url && <a href={d.url} target="_blank" rel="noreferrer" className="btn sm">Open</a>}
                 {d.download && <a href={d.download} className="btn sm" aria-label={`Download ${d.name}`}>Download</a>}
-                {canEdit && d.id && (
+                {canEdit && (d.id || d.incomingId) && (
                   <button type="button" className="btn sm ghost" disabled={pending} onClick={() => remove(d)} aria-label={`Take ${d.name} off`}>
                     {busy === d.key ? "…" : "Remove"}
                   </button>
