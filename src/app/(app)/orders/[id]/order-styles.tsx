@@ -436,8 +436,8 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
         const asked = !!(g.planRequestedAt || g.planRequestedOn);
         const status = !g.factoryId ? { text: "No factory chosen", cls: "warn" }
           : released ? { text: `Locked and released ${dayAt(g.releasedAt)}`, cls: "ok" }
-          : !gaps.length && g.lockRequestedAt ? { text: isOwner ? "Waiting for your approval" : `Sent for approval ${dayAt(g.lockRequestedAt)}`, cls: isOwner ? "bad" : "info" }
-          : !gaps.length && g.lockNote ? { text: "Sent back by the owner", cls: "bad" }
+          : !gaps.length && g.lockRequestedAt ? { text: isOwner ? "Waiting for your approval" : `Sent for approval ${dayAt(g.lockRequestedAt)}`, cls: isOwner ? "warn" : "info" }
+          : !gaps.length && g.lockNote ? { text: "Sent back by the owner", cls: "warn" }
           : !gaps.length ? { text: isOwner ? "Plan complete, ready to approve" : "Plan complete, send the PO for approval", cls: "info" }
           : critical ? { text: `Critical: no TNA from the factory, due ${at.format(dueAt!)}`, cls: "bad" }
           : sent ? { text: g.planEnteredBy ? `Factory's TNA entered by ${g.planEnteredBy} ${dayAt(sent)}` : `Factory sent its TNA ${dayAt(sent)}`, cls: "warn" }
