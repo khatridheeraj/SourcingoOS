@@ -1,8 +1,9 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getMe } from "@/lib/auth";
-import { day, dayAt, money, todayIST } from "@/lib/format";
+import { dayAt, money, todayIST } from "@/lib/format";
 import { bySupplier, dueOf, isMsme45, lakh, MSME_DAYS, MSME_LABEL, supplierName, totals } from "@/lib/payables";
+import { dm } from "@/lib/quick";
 import { createClient } from "@/lib/supabase/server";
 import { isFinance } from "../payments/load";
 import { BillList, type BillRow } from "./bill-list";
@@ -113,7 +114,7 @@ export default async function PayablesPage({ searchParams }: PageProps<"/payable
                         <div className="sup-sub dots">
                           <span>
                             <span>{s.bills.filter((b) => b.bill).length} {s.bills.filter((b) => b.bill).length === 1 ? "bill" : "bills"}</span>
-                            {s.nextDue && <span>{s.nextDue < today ? "oldest due" : "next due"} {day(s.nextDue)}</span>}
+                            {s.nextDue && <span>{s.nextDue < today ? "oldest due" : "next due"} {dm(s.nextDue)}</span>}
                             {!s.factoryId && <span>not a factory in the app</span>}
                           </span>
                         </div>
