@@ -2285,6 +2285,7 @@ h1, h2, h3 { font-family: var(--font-display); text-wrap: balance; font-weight: 
   .style-floor b { font-weight: 500; color: var(--foreground); }
   .style-floor.warn b { color: var(--warn); }
   .style-floor.bad b { color: var(--bad); }
+}
 
 /* The order's forecast under its hero: the likely ready day, and the one reason when it slips. */
 @layer components {
