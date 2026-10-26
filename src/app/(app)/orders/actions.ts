@@ -385,6 +385,15 @@ export async function removeOrderPoFile(orderId: string, fileId: string): Promis
   return {};
 }
 
+// A file that came with the buyer's email: the email keeps it, the order stops showing it.
+export async function removeEmailPoFile(orderId: string, incomingId: string, path: string): Promise<{ error?: string }> {
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("remove_email_po_file", { p_incoming: incomingId, p_path: path });
+  if (error) return { error: friendly(error) };
+  revalidatePath(`/orders/${orderId}`);
+  return {};
+}
+
 export type QcInput = { line_id: string; kind: string; checked_on: string; result: string; pieces_checked: string; defects: string; notes: string };
 
 export type QcFile = { path: string; kind: "photo" | "report"; file_name: string };
