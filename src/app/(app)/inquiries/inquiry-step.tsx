@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
 import { WaIcon } from "@/components/order-sheet";
 import { toast } from "@/components/toast";
-import { day, money, qty } from "@/lib/format";
+import { dayNear, money, qty } from "@/lib/format";
 import { LOST_REASONS, STAGES } from "@/lib/inquiries";
 import { addDays } from "@/lib/payments";
 import { waLink } from "@/lib/whatsapp";
@@ -31,7 +31,6 @@ export type StepInquiry = {
 };
 
 type Mode = "" | "quote" | "sample" | "lost";
-const dayShort = (d: string) => day(d).replace(/ \d{4}$/, "");
 const FOLLOW = [{ d: 1, label: "Tomorrow" }, { d: 3, label: "In 3 days" }, { d: 7, label: "Next week" }];
 
 // The message to send the buyer at each stage, ready in WhatsApp.
@@ -140,7 +139,7 @@ export function InquiryNext({ i, today, onDone }: { i: StepInquiry; today: strin
             return <button key={f.d} type="button" className={`chip ${next === d ? "info" : ""}`} aria-pressed={next === d} onClick={() => setNext(next === d ? "" : d)}>{f.label}</button>;
           })}
           <label className={`chip inq-other ${next && !FOLLOW.some((f) => addDays(today, f.d) === next) ? "info" : ""}`}>
-            {next && !FOLLOW.some((f) => addDays(today, f.d) === next) ? dayShort(next) : "Other day"}
+            {next && !FOLLOW.some((f) => addDays(today, f.d) === next) ? dayNear(next, today) : "Other day"}
             <input type="date" min={today} value={next} onChange={(e) => setNext(e.target.value)} aria-label="Pick another day" />
           </label>
         </div>
