@@ -71,7 +71,7 @@ export default async function BuyerPage() {
           {open.length > 0 && (
             <p className="num">
               {open.length} open {open.length === 1 ? "order" : "orders"} · {qtyTotal(styles)}
-              {nextShip && <> · next ship <b className="text-foreground">{dm(nextShip)}</b>, in {daysBetween(today, nextShip)} days</>}
+              {nextShip && <> · next ship <b className="text-foreground">{dm(nextShip)}</b>, {inDays(daysBetween(today, nextShip))}</>}
               {passed > 0 && <> · {passed} of {styles.length} styles passed final QC</>}
             </p>
           )}
@@ -183,7 +183,7 @@ export default async function BuyerPage() {
                       <>
                         <span className="eyebrow">{o.revised_ship_date ? "Revised ship date" : "Ship date"}</span>
                         <b>{day(ship)}</b>
-                        {left != null && left >= 0 && <span className="muted">{left === 0 ? "today" : `in ${left} ${left === 1 ? "day" : "days"}`}</span>}
+                        {left != null && left >= 0 && <span className="muted">{inDays(left)}</span>}
                       </>
                     ) : <span className="muted">Ship date to be confirmed</span>}
                   </div>
@@ -214,4 +214,9 @@ export default async function BuyerPage() {
       )}
     </>
   );
+}
+
+// "today", "in 1 day", "in 8 days": the header and each order say it the same way.
+function inDays(n: number) {
+  return n === 0 ? "today" : `in ${n} ${n === 1 ? "day" : "days"}`;
 }
