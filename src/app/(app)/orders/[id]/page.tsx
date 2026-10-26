@@ -32,6 +32,8 @@ import { SampleThreadCard } from "../../samples/sample-thread";
 import { PO_BUCKET, type StoredFile } from "@/lib/po-files";
 import { BuyerPo, type FoundPo, type PoDoc } from "./buyer-po";
 import { DeletePo } from "./delete-po";
+import { OrderFloor, type FloorUpdate } from "./order-floor";
+import { floorLine, floorStatus } from "@/lib/floor";
 
 const str = (v: unknown) => (v == null ? "" : String(v));
 
@@ -53,7 +55,7 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
   const priceOf = new Map(((prices ?? []) as LinePrice[]).map((p) => [p.id, p]));
   const lines = [...(o.order_lines ?? [])].sort((a, b) => a.position - b.position)
     .map((l) => ({ ...l, buyer_rate: priceOf.get(l.id)?.buyer_rate ?? null, factory_rate: priceOf.get(l.id)?.factory_rate ?? null }));
-  const [{ data: qc }, team, me, { data: lineStages }, { data: factoryPos }, { data: stepUps }, { data: lineFiles }, { data: shipRows }] = await Promise.all([
+  const [{ data: qc }, team, me, { data: lineStages }, { data: factoryPos }, { data: stepUps }, { data: lineFiles }, { data: shipRows }, { data: floorRows }] = await Promise.all([
     supabase
       .from("qc_checks")
       .select("id, line_id, kind, checked_on, result, pieces_checked, defects, notes, checked_by, cancelled_at, cancel_reason")
@@ -72,6 +74,9 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
     supabase.from("line_files").select("id, line_id, kind, path, file_name").eq("order_id", id).is("removed_at", null).order("created_at"),
     // Each style's pieces bought, billed and shipped across the order's dispatches.
     loadShipProgress(supabase, [id]),
+    // What Quality saw on its factory visits, newest first.
+    supabase.from("floor_updates").select("id, line_id, stage, status, qty_done, expected_on, note, photos, created_by, created_at").eq("order_id", id)
+      .order("created_at", { ascending: false }).limit(60),
   ]);
   const ship = orderShip(shipRows);
   const canEdit = canEditOrders(me?.role);
@@ -110,7 +115,8 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
     : [{ data: [] }, { data: [] }];
   const stylePaths = lines.map((l) => l.photo_path).filter(Boolean) as string[];
   const dispatchPaths = [...(dRows ?? []).flatMap((d) => [d.bill_path, d.invoice_path, d.eway_path, d.lr_path, d.grn_path]), ...dispatchPhotos.map((p) => p.path)].filter(Boolean) as string[];
-  const allPaths = [...(photoRows ?? []).map((p) => p.path), ...stylePaths, ...dispatchPaths, ...(stepUps ?? []).flatMap((u) => u.photos as string[]), ...(lineFiles ?? []).map((f) => f.path)];
+  const allPaths = [...(photoRows ?? []).map((p) => p.path), ...stylePaths, ...dispatchPaths, ...(stepUps ?? []).flatMap((u) => u.photos as string[]), ...(lineFiles ?? []).map((f) => f.path),
+    ...(floorRows ?? []).flatMap((u) => u.photos as string[])];
   const { data: signed } = allPaths.length
     ? await supabase.storage.from(PHOTO_BUCKET).createSignedUrls(allPaths, 3600)
     : { data: [] };
@@ -174,6 +180,26 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
       photos: (u.photos as string[]).map((p) => urlByPath.get(p)).filter((x): x is string => !!x),
     };
   });
+  const stepName = (lineId: string, stage: string) => TNA_STEPS.find((t) => t.key === stage)?.label
+    || str((lineStages ?? []).find((r) => r.line_id === lineId && r.stage === stage)?.label) || "Extra step";
+  const floor: FloorUpdate[] = (floorRows ?? []).filter((u) => lines.some((l) => l.id === u.line_id)).map((u) => {
+    const l = lines.find((x) => x.id === u.line_id)!;
+    return {
+      id: u.id, style: l.style, step: stepName(u.line_id, u.stage), status: u.status, qtyDone: u.qty_done, total: qtyU(l.qty, l.product), expectedOn: u.expected_on,
+      note: str(u.note), at: u.created_at, by: (u.created_by && people.get(u.created_by)) || "Quality",
+      photos: (u.photos as string[]).map((p) => urlByPath.get(p)).filter((x): x is string => !!x),
+    };
+  });
+  // Each style's latest word from the floor, while its step is still open.
+  const floorByStyle: Record<string, { text: string; cls: string }> = {};
+  const seenFloor = new Set<string>();
+  for (const u of floorRows ?? []) {
+    if (seenFloor.has(u.line_id)) continue;
+    seenFloor.add(u.line_id);
+    const l = lines.find((x) => x.id === u.line_id);
+    if (!l || (lineStages ?? []).some((r) => r.line_id === u.line_id && r.stage === u.stage && r.done_on && u.status !== "done")) continue;
+    floorByStyle[u.line_id] = { text: `${dayAt(u.created_at).replace(/ \d{4}$/, "")}: ${floorLine(u, stepName(u.line_id, u.stage), qtyU(l.qty, l.product), (d) => day(d).replace(/ \d{4}$/, ""))}`, cls: floorStatus(u.status).tone };
+  }
   const dispatchFactories: DispatchFactory[] = groups.filter((g) => g.factoryId).map((g) => ({
     id: g.factoryId!, name: g.factoryName,
     lines: lines.filter((l) => l.factory_id === g.factoryId).map((l) => ({
@@ -346,6 +372,7 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
       <OrderSections tabs={tabs} start={areaOf(j.stage, canEdit)}>
       <div data-sec="tna">
       <FactoryUpdates orderId={o.id} updates={pendingUpdates} canReview={canEnterDone(me?.role) && o.status === "open"} />
+      <OrderFloor orderId={o.id} updates={floor} canPost={canEnterDone(me?.role) && o.status === "open"} />
       <OrderStyles
         // Start again from the saved dates whenever anyone's save changes them, so stale dates on this screen can't
         // be saved over someone else's newer ones.
@@ -369,6 +396,7 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
         initial={Object.fromEntries((lineStages ?? []).map((r) => [`${r.line_id}:${r.stage}`, { planned_on: str(r.planned_on), done_on: str(r.done_on), not_needed: !!r.not_needed }]))}
         baselines={Object.fromEntries((lineStages ?? []).filter((r) => r.baseline_on).map((r): [string, Baseline] => [`${r.line_id}:${r.stage}`, { on: String(r.baseline_on), note: str(r.target_note) }]))}
         qc={stepQc}
+        floor={floorByStyle}
         hasBuyerPo={poDocs.length > 0}
       />
       </div>

@@ -4,7 +4,7 @@ import { useState, useSyncExternalStore } from "react";
 import { Icon, type IconName } from "@/components/nav";
 
 const KEY = "sourcingo:whats-new";
-const VERSION = "2026-10-25-menu";
+const VERSION = "2026-10-26-floor";
 
 type Item = { icon: IconName; title: string; text: string };
 
@@ -14,19 +14,23 @@ const NEXT: Item = { icon: "check", title: "Every order at a glance", text: "Eac
 const DAY: Item = { icon: "home", title: "Your day", text: "Home starts with what needs you now, and its ring fills as you get things done today." };
 // The menu went from 17 places to 10: pages that belong together now share one item and a tab row.
 const MENU: Item = { icon: "more", title: "A shorter menu", text: "Buyer POs and Inquiries are now Buyer emails; Payments, Bills to pay and Tally are now Money. The brief is in Reports, chasing is a tab on Home." };
+// Quality owns the updates from the factory floor (26 Oct 2026).
+const FLOOR: Item = { icon: "factories", title: "Live from the factory floor", text: "Quality visits the factories and posts every style's step with photos. See it on each order under Styles, and on Home." };
 const MONEY: Item = { icon: "payments", title: "One Money page", text: "Payments, Bills to pay and Tally are now tabs on one Money page in the menu." };
 const FOR: Record<string, Item[]> = {
   orders: [
+    FLOOR,
     MENU,
     NEXT,
     { icon: "orders", title: "Orders as a board", text: "On a computer, Orders shows one column per stage. On a phone, each order shows its stage bar and next step." },
   ],
   quality: [
-    NEXT,
+    { icon: "factories", title: "Factory visits", text: "Home lists the factories to visit, late steps first. Tap Start visit, then post each style's step: done, on track, late or a problem, with photos." },
     DAY,
     { icon: "check", title: "QC in four taps", text: "Tap Record QC on a Home row or an order: styles are already picked, tap Pass or Fail, take photos, save." },
   ],
   owner: [
+    FLOOR,
     MENU,
     NEXT,
     { icon: "orders", title: "Orders as a board", text: "On a computer, Orders shows one column per stage, so POs waiting for your approval stand out." },

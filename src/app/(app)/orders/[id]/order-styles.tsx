@@ -73,7 +73,7 @@ function verdict(c: Cell, today: string): { text: string; cls: string } | null {
 
 // Every style as its own card with its full TNA, grouped by factory. A factory's plan is asked for and entered first;
 // its PO is released only once nothing is missing, and actual dates are entered after that.
-export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDone, isOwner, today, now, dueDate, groups, initial, initialExtras, factoryDates, baselines, qc, hasBuyerPo }: {
+export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDone, isOwner, today, now, dueDate, groups, initial, initialExtras, factoryDates, baselines, qc, floor = {}, hasBuyerPo }: {
   orderId: string;
   orderNo: string;
   companyId: string;
@@ -92,6 +92,8 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
   baselines: Record<string, Baseline>;
   // Quality's latest result for each style's step, keyed "line:step".
   qc: Record<string, StepQc>;
+  // Each style's latest update from Quality's factory visits.
+  floor?: Record<string, { text: string; cls: string }>;
   // The buyer's PO is on file: a factory PO is locked and released only against a PO received from the buyer.
   hasBuyerPo: boolean;
 }) {
@@ -617,6 +619,7 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
                           <b className={sm.status.cls}>{sm.status.text}</b>
                         </div>
                         {sm.outlook && <p className={`style-outlook ${sm.outlook.cls}`}>{sm.outlook.text}</p>}
+                        {floor[l.id] && <p className={`style-floor ${floor[l.id].cls}`}>From the floor <b>{floor[l.id].text}</b></p>}
                       </div>
                       <div className="style-side">
                         {dirty && <span className="chip warn">Unsaved</span>}

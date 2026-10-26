@@ -5,7 +5,7 @@ export const ROLES: { value: Role; label: string; hint: string }[] = [
   { value: "manager", label: "Manager", hint: "Orders and factories, no payments" },
   { value: "merchandiser", label: "Merchandiser", hint: "Orders and factories, no payments" },
   { value: "accounts", label: "Accounts", hint: "Orders, factories and payments" },
-  { value: "quality", label: "Quality", hint: "Records QC checks and photos, and enters done dates. Sees orders, no prices or payments" },
+  { value: "quality", label: "Quality", hint: "Visits the factories and posts live updates on every production step, records QC checks with photos. Sees orders, no prices or payments" },
   { value: "factory", label: "Factory", hint: "A factory's own login. Enters its TNA dates and marks steps done with photos for its POs, and sees nothing else" },
   { value: "buyer", label: "Buyer", hint: "A buyer's own login. Follows its own orders: styles, steps, ship dates and final QC. No factories, no prices" },
 ];

@@ -6,6 +6,7 @@ import { Toaster } from "@/components/toast";
 import { OrderSheet } from "@/components/order-sheet";
 import { SearchPalette } from "@/components/search";
 import { QcSheet } from "@/components/qc-sheet";
+import { VisitSheet } from "@/components/visit-sheet";
 import { SegScroll } from "@/components/seg-scroll";
 import { canEditOrders, canEnterDone, canRecordQc, getMe, roleLabel } from "@/lib/auth";
 import { todayIST } from "@/lib/format";
@@ -109,6 +110,7 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
         <HelpChat who="staff" role={me.role} name={me.fullName ?? ""} userId={me.id} companyId={me.companyId} ownerName={me.role === "owner" ? "Claude" : help.owner || "the owner"} unseen={help.unseen ?? 0} />
       )}
       {canEnterDone(me.role) && <OrderSheet />}
+      {canEnterDone(me.role) && <VisitSheet />}
       <SearchPalette groups={[...groups, pages]} />
       {canRecordQc(me.role) && <QcSheet />}
       <Toaster />
