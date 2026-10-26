@@ -22,7 +22,9 @@ export default async function InvoicePage({ params }: PageProps<"/payments/invoi
   const locked = i.cheques.length || credits.length ? "Has cheques or credit notes, so the buyer is fixed" : undefined;
   // The copy of this invoice the team uploaded on the order's dispatch, as printed from Tally.
   const supabase = await createClient();
-  const { data: disp } = await supabase.from("dispatches").select("order_id, invoice_path").eq("invoice_id", i.id).is("cancelled_at", null).maybeSingle();
+  // One invoice can cover several parts of an order; any part's copy will do.
+  const { data: parts } = await supabase.from("dispatches").select("order_id, invoice_path").eq("invoice_id", i.id).is("cancelled_at", null).order("invoice_path", { nullsFirst: false });
+  const disp = parts?.[0];
   const copy = disp?.invoice_path ? (await supabase.storage.from(PHOTO_BUCKET).createSignedUrl(disp.invoice_path, 3600)).data?.signedUrl : null;
   const input = { id: i.id, invoice_no: i.invoice_no, buyer_id: i.buyer_id, invoice_date: i.invoice_date, amount: String(i.amount), due_date: i.due_date ?? "", notes: i.notes ?? "" };
 
