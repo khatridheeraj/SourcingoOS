@@ -309,7 +309,8 @@ export default async function OrdersPage({ searchParams }: PageProps<"/">) {
                 </span>
               )}
               <span className="o-prog" role="cell">
-                {r.progress ? (
+                {/* A late order's date already says how late it is; "at risk" on top of that only adds noise. */}
+                {r.progress ? (r.late && !r.ship?.part && !r.looksShipped ? null :
                   <ProgressCell p={r.progress} looksShipped={r.looksShipped} ship={r.ship} unit={unitOfAll(r.lines)} />
                 ) : <span className={STATUS[r.status]?.cls}>{STATUS[r.status]?.label}</span>}
               </span>

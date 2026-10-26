@@ -382,8 +382,13 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
     const over = cells.filter((x) => !x.c.done_on && x.c.planned_on && x.c.planned_on < today);
     const next = cells.find((x) => !x.c.done_on);
     const last = [...cells].reverse().find((x) => x.c.done_on);
+    const p = project(cells.map((x) => x.c), today);
+    const risk = shipRisk(p, dueDate);
+    // Past a target while the style still makes the ship date: most likely done and not marked, so amber, as the
+    // order's next step says. Red only when it really puts the ship date at risk.
     const status = over.length
-      ? { text: `${over[0].s.label} overdue ${plural(daysBetween(over[0].c.planned_on, today))}${over.length > 1 ? `, ${over.length - 1} more late` : ""}`, cls: "bad" }
+      ? { text: `${over[0].s.label} ${risk.level === "risk" ? "overdue" : "needs an update,"} ${risk.level === "risk" ? plural(daysBetween(over[0].c.planned_on, today)) : `target was ${dm(over[0].c.planned_on)}`}${over.length > 1 ? `, ${over.length - 1} more late` : ""}`,
+          cls: risk.level === "risk" ? "bad" : "warn" }
       : !next ? { text: "Every step done", cls: "ok" }
       : !next.c.planned_on ? { text: `Next: ${next.s.label}, no target yet`, cls: "warn" }
       : { text: `Next: ${next.s.label} by ${dm(next.c.planned_on)}`, cls: verdict(next.c, today)?.cls ?? "" };
@@ -391,10 +396,8 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
       const v = verdict(c, today);
       return { key: s.key, label: s.label, cls: c.done_on ? "ok" : v?.cls ?? (c.planned_on ? "plan" : ""), text: v?.text ?? (c.planned_on ? `by ${dm(c.planned_on)}` : "no target") };
     });
-    const p = project(cells.map((x) => x.c), today);
-    const risk = shipRisk(p, dueDate);
     const outlook = risk.level === "risk" && p ? { text: `Likely ready ${dm(p.finish)}, ${plural(risk.daysLate)} after the ship date`, cls: "bad" }
-      : risk.level === "behind" && p ? { text: `Running ${plural(p.slip)} behind plan, ready ${dm(p.finish)}`, cls: "warn" }
+      : risk.level === "behind" && p ? { text: `${plural(p.slip)} behind plan, still ready by ${dm(p.finish)}`, cls: "muted" }
       : null;
     return { done, total: cells.length, at: last ? `${last.s.label} done` : "Not started", status, segs, next: next?.s, outlook };
   }
@@ -633,7 +636,7 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
                           </a>
                         )}
                         <button type="button" className="btn sm" aria-expanded={isOpen} aria-controls={`steps-${l.id}`} onClick={() => toggle(l.id)}>
-                          {isOpen ? "Hide steps" : editable || doneEditable ? "Steps and dates" : "Show steps"}
+                          {isOpen ? "Hide steps" : "All steps"}
                         </button>
                       </div>
                     </div>
@@ -664,7 +667,7 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
             </div>
             {/* Copying targets only makes sense once the first style has some. */}
             {editable && g.lines.length > 1 && g.lines[0] && Object.entries(dates).some(([k, v]) => k.startsWith(`${g.lines[0].id}:`) && v.planned_on) && (
-              <button type="button" className="btn sm mt-2 max-w-full !whitespace-normal text-left" disabled={pending} onClick={() => copyPlan(g)}>
+              <button type="button" className="btn sm mt-2 !h-auto max-w-full !whitespace-normal py-2 text-left" disabled={pending} onClick={() => copyPlan(g)}>
                 Copy {g.lines[0].style}&apos;s targets to {g.factoryName}&apos;s other styles
               </button>
             )}

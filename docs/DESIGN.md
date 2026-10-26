@@ -4,6 +4,9 @@ These rules keep every screen consistent. Every change follows them, including t
 
 ## One idea per screen
 - **Home** answers "what needs me today". The day header with its ring comes first, then one To do queue, ordered red first.
+  The queue holds one block per order: the order's name once, then each job as one line with its own small button.
+  Nothing else goes on Home but money for the owner and Accounts and the Tidy up list; overviews live on Orders and Reports.
+- Red means the ship date will be missed. A step past its target while the ship date still holds is amber ("needs an update").
 - **Orders** answers "where is everything". On a computer it is a board with one column per stage; on a phone it is a list of cards.
 - **An order** answers "where is this order, and what do I do next". The hero, then the journey card with one next step, then one work area at a time.
 
