@@ -26,6 +26,9 @@ export const dayAt = (ts: string | null | undefined) => (ts ? day(date.format(ne
 
 // Today's date in India as YYYY-MM-DD.
 export const todayIST = () => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(new Date());
+// "24 Oct" when the date falls in this year, else "24 Oct 2025": near dates read faster without the year.
+export const dayNear = (d: string | null | undefined, today: string = todayIST()) =>
+  d && d.slice(0, 4) === today.slice(0, 4) ? `${Number(d.slice(8, 10))} ${MONTHS[Number(d.slice(5, 7)) - 1]}` : day(d);
 
 export const STATUS: Record<string, { label: string; cls: string }> = {
   open: { label: "Open", cls: "chip info" },

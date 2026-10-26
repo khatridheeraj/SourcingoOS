@@ -3,7 +3,7 @@ import Link from "next/link";
 import { canEditOrders, canRecordQc, getMe } from "@/lib/auth";
 import { fetchAll } from "@/lib/fetch-all";
 import { buyerName, loadBuyers, loadFactories } from "@/lib/data";
-import { day, daysBetween, money, riskLate, dueDate, nowMs, planDueAt, PLAN_HOURS, qcKindLabel, qty, qtyTotal, SHIP_QC, stageReached, TNA_STEPS, todayIST, unitOfAll } from "@/lib/format";
+import { day, dayNear, daysBetween, money, riskLate, dueDate, nowMs, planDueAt, PLAN_HOURS, qcKindLabel, qty, qtyTotal, SHIP_QC, stageReached, TNA_STEPS, todayIST, unitOfAll } from "@/lib/format";
 import { NO_COMPANY } from "@/lib/names";
 import { poWaitDays, PO_WAIT_DAYS } from "@/lib/order-checks";
 import { project, shipRisk } from "@/lib/tna-plan";
@@ -597,7 +597,7 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
   // Suppliers with bills overdue or due this week, the most overdue first.
   const books = booksP ? await booksP : null;
   if (books?.error) errors.push(books.error.message);
-  const collect = books ? paymentTodos(books.books, books.buyerLabel, money, day, books.advice) : [];
+  const collect = books ? paymentTodos(books.books, books.buyerLabel, money, (d) => dayNear(d, books.books.today), books.advice) : [];
   const payDue = pay ? bySupplier(pay.bills.filter((b) => ["overdue", "week"].includes(dueOf(b, today).key)), today).slice(0, 4) : [];
 
   const hour = Number(hourIST.format(new Date()));
