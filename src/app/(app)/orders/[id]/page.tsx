@@ -4,7 +4,7 @@ import { Fragment } from "react";
 import { notFound } from "next/navigation";
 import { canEditOrders, canEnterDone, canRecordQc, getMe } from "@/lib/auth";
 import { fetchAll } from "@/lib/fetch-all";
-import { day, dayAt, dayNear, money, moneyShort, qty, qtyTotal, qtyU, unitOf, unitOfAll, SHIP_QC, stageReached, STATUS, TNA_STEPS, todayIST } from "@/lib/format";
+import { day, dayAt, dayAtNear, dayNear, money, moneyShort, qty, qtyTotal, qtyU, unitOf, unitOfAll, SHIP_QC, stageReached, STATUS, TNA_STEPS, todayIST } from "@/lib/format";
 import { areaOf, journey, shipClock } from "@/lib/journey";
 import { fileNamesStyle, styleKey } from "@/lib/po-match";
 import { Outlook, PhotoStack, ShipClock } from "@/components/order-ui";
@@ -202,7 +202,7 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
     seenFloor.add(u.line_id);
     const l = lines.find((x) => x.id === u.line_id);
     if (!l || (lineStages ?? []).some((r) => r.line_id === u.line_id && r.stage === u.stage && r.done_on && u.status !== "done")) continue;
-    floorByStyle[u.line_id] = { text: `${dayAt(u.created_at).replace(/ \d{4}$/, "")}: ${floorLine(u, stepName(u.line_id, u.stage), qtyU(l.qty, l.product), (d) => day(d).replace(/ \d{4}$/, ""))}`, cls: floorStatus(u.status).tone };
+    floorByStyle[u.line_id] = { text: `${dayAtNear(u.created_at)}: ${floorLine(u, stepName(u.line_id, u.stage), qtyU(l.qty, l.product), (d) => dayNear(d))}`, cls: floorStatus(u.status).tone };
   }
   const dispatchFactories: DispatchFactory[] = groups.filter((g) => g.factoryId).map((g) => ({
     id: g.factoryId!, name: g.factoryName,
