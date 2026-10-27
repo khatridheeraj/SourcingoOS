@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useRef, useState, useTransition } from "react";
 import { PhotoPicker, type Picked } from "@/components/photo-picker";
 import { toast } from "@/components/toast";
-import { day, dayAt } from "@/lib/format";
+import { dayAtNear, dayNear } from "@/lib/format";
 import { uploadPhotos } from "@/lib/photos";
 import { COURIERS, sampleLabel, STATE_TEXT, trackUrl } from "@/lib/samples";
 import type { RoundView, SampleThread } from "@/lib/samples-server";
@@ -38,23 +38,23 @@ function Trail({ r, factory }: { r: RoundView; factory: string }) {
     <ol className="smp-trail">
       <li className="done">
         <b>{r.sent_by_team ? `Added by ${r.sentByName || "the team"}` : `Sent by ${factory}`}</b>
-        <span>{dayAt(r.sent_at)}</span>
+        <span>{dayAtNear(r.sent_at)}</span>
         {r.note && <q>{r.note}</q>}
       </li>
       {r.status === "returned" && (
-        <li className="bad"><b>Sent back to {factory}{r.answeredByName && ` by ${r.answeredByName}`}</b><span>{dayAt(r.answered_at)}</span>{r.answer_note && <q>{r.answer_note}</q>}</li>
+        <li className="bad"><b>Sent back to {factory}{r.answeredByName && ` by ${r.answeredByName}`}</b><span>{dayAtNear(r.answered_at)}</span>{r.answer_note && <q>{r.answer_note}</q>}</li>
       )}
       {r.forwarded_at && (
         <li className="done">
           <b>To buyer{r.courier ? ` by ${r.courier}` : ""}{r.awb ? ` · AWB ${r.awb}` : ""}</b>
-          <span>{r.dispatched_on ? day(r.dispatched_on) : dayAt(r.forwarded_at)}{r.forwardedByName && ` · ${r.forwardedByName}`}{track && <> · <a className="link" href={track} target="_blank" rel="noreferrer">Track</a></>}</span>
+          <span>{r.dispatched_on ? dayNear(r.dispatched_on) : dayAtNear(r.forwarded_at)}{r.forwardedByName && ` · ${r.forwardedByName}`}{track && <> · <a className="link" href={track} target="_blank" rel="noreferrer">Track</a></>}</span>
           {r.buyer_note && <q>{r.buyer_note}</q>}
         </li>
       )}
       {(r.status === "approved" || r.status === "changes") && (
         <li className={r.status === "approved" ? "ok" : "bad"}>
           <b>{r.status === "approved" ? "Approved" : "Changes asked"}{r.answered_for_buyer ? ` (recorded by ${r.answeredByName || "the team"})` : " by the buyer"}</b>
-          <span>{r.approved_on ? day(r.approved_on) : dayAt(r.answered_at)}</span>
+          <span>{r.approved_on ? dayNear(r.approved_on) : dayAtNear(r.answered_at)}</span>
           {r.answer_note && <q>{r.answer_note}</q>}
         </li>
       )}
@@ -164,7 +164,7 @@ export function SampleThreadCard({ t, today, showOrder = true, readOnly = false 
       <div className="smp-meta">
         {/* "Not sent yet" is a not-done-yet chip; the target line already says whether it is late. */}
         {t.state !== "not_sent" && <span className={`chip ${state.cls}`}>{state.text}</span>}
-        {t.doneOn ? <span className="text-ok">Done {day(t.doneOn)}</span>
+        {t.doneOn ? <span className="text-ok">Done {dayNear(t.doneOn)}</span>
           : t.target ? <span className={late ? "text-bad" : "muted"}>Target {dm(t.target)}{late ? `, ${lateBy(t.target, today)} late` : ""}</span>
           : <span className="muted">No target date</span>}
         {waiting > 0 && <span className={waiting >= 5 ? "text-warn" : "muted"}>With buyer {waiting} {waiting === 1 ? "day" : "days"}</span>}
