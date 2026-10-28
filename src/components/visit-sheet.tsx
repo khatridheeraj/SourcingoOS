@@ -24,6 +24,8 @@ export function VisitButton({ factoryId, orderId, className = "btn sm", children
 }
 
 // A style's open steps, the one it is on first: the earliest target, then its place in the TNA.
+// Quality's own checks stay in view on every style, whatever their target, so a problem can be posted against them.
+const INSPECTION = ["inline", "midline", "final_qc"];
 const openSteps = (s: VisitStyle) => s.steps.map((x, i) => ({ ...x, i })).filter((x) => !x.done)
   .sort((a, b) => (a.planned || "9999").localeCompare(b.planned || "9999") || a.i - b.i);
 
@@ -149,7 +151,7 @@ function StyleCard({ s, companyId, today, open, posted, onToggle, onPosted }: {
   const w = first ? when(first.planned, today) : null;
   const noDone = NOT_DONE_ON_VISIT[stage];
   const total = `${s.qty.toLocaleString("en-IN")} ${s.unit}`;
-  const shown = all ? steps : steps.slice(0, 4).concat(steps.slice(4).filter((x) => x.key === stage));
+  const shown = all ? steps : steps.filter((x, i) => i < 4 || x.key === stage || INSPECTION.includes(x.key));
   const missing = !stage ? "Pick the step" : !status ? "Pick how it is" : status === "behind" && !ready ? "Give the ready date"
     : status === "issue" && !note.trim() ? "Say what the problem is" : !files.length ? "Add a photo" : "";
 
@@ -198,7 +200,7 @@ function StyleCard({ s, companyId, today, open, posted, onToggle, onPosted }: {
                   </button>
                 );
               })}
-              {!all && steps.length > 4 && <button type="button" className="vs-more" onClick={() => setAll(true)}>+{steps.length - 4} more</button>}
+              {!all && shown.length < steps.length && <button type="button" className="vs-more" onClick={() => setAll(true)}>All {steps.length} steps</button>}
             </div>
           </div>
 
