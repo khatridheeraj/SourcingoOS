@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { day, dayAt, daysBetween, defaultBuffer, planDueAt, PLAN_HOURS, qtyU, TNA_STEPS } from "@/lib/format";
+import { dayAtNear, dayNear, daysBetween, defaultBuffer, planDueAt, PLAN_HOURS, qtyU, TNA_STEPS } from "@/lib/format";
 import { uploadPhotos } from "@/lib/photos";
 import { toast } from "@/components/toast";
 import { project, shipRisk, fillEmptyTargets, stepDays } from "@/lib/tna-plan";
@@ -264,7 +264,7 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
     const text = [
       `Please enter your TNA for order ${orderNo} in your Sourcingo factory panel${g.planRequestedAt ? ` by ${at.format(planDueAt(g.planRequestedAt))}` : ` within ${PLAN_HOURS} hours`}. We release the PO only after that.`,
       `Styles: ${g.lines.map((l) => `${l.style}${l.colour ? ` (${l.colour})` : ""}, ${qtyU(l.qty, l.fabricOrder ? "fabric" : null)}`).join("; ")}.`,
-      g.target ? `Every date must be on or before ${day(g.target)}.` : "",
+      g.target ? `Every date must be on or before ${dayNear(g.target)}.` : "",
     ].filter(Boolean).join("\n");
     try {
       await navigator.clipboard.writeText(text);
@@ -396,7 +396,9 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
       : { text: `Next: ${next.s.label} by ${dm(next.c.planned_on)}`, cls: verdict(next.c, today)?.cls ?? "" };
     const segs = cells.map(({ s, c }) => {
       const v = verdict(c, today);
-      return { key: s.key, label: s.label, cls: c.done_on ? "ok" : v?.cls ?? (c.planned_on ? "plan" : ""), text: v?.text ?? (c.planned_on ? `by ${dm(c.planned_on)}` : "no target") };
+      // A passed target is red only when the ship date is at risk, like the status line below the bar.
+      const cls = !c.done_on && v?.cls === "bad" && risk.level !== "risk" ? "warn" : v?.cls;
+      return { key: s.key, label: s.label, cls: c.done_on ? "ok" : cls ?? (c.planned_on ? "plan" : ""), text: v?.text ?? (c.planned_on ? `by ${dm(c.planned_on)}` : "no target") };
     });
     const outlook = risk.level === "risk" && p ? { text: `Likely ready ${dm(p.finish)}, ${plural(risk.daysLate)} after the ship date`, cls: "bad" }
       : risk.level === "behind" && p ? { text: `${plural(p.slip)} behind plan, still ready by ${dm(p.finish)}`, cls: "muted" }
@@ -437,12 +439,12 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
         const toAsk = targetGaps(g, target);
         const asked = !!(g.planRequestedAt || g.planRequestedOn);
         const status = !g.factoryId ? { text: "No factory chosen", cls: "warn" }
-          : released ? { text: `Locked and released ${dayAt(g.releasedAt)}`, cls: "ok" }
-          : !gaps.length && g.lockRequestedAt ? { text: isOwner ? "Waiting for your approval" : `Sent for approval ${dayAt(g.lockRequestedAt)}`, cls: isOwner ? "warn" : "info" }
+          : released ? { text: `Locked and released ${dayAtNear(g.releasedAt)}`, cls: "ok" }
+          : !gaps.length && g.lockRequestedAt ? { text: isOwner ? "Waiting for your approval" : `Sent for approval ${dayAtNear(g.lockRequestedAt)}`, cls: isOwner ? "warn" : "info" }
           : !gaps.length && g.lockNote ? { text: "Sent back by the owner", cls: "warn" }
           : !gaps.length ? { text: isOwner ? "Plan complete, ready to approve" : "Plan complete, send the PO for approval", cls: "info" }
           : critical ? { text: `Critical: no TNA from the factory, due ${at.format(dueAt!)}`, cls: "bad" }
-          : sent ? { text: g.planEnteredBy ? `Factory's TNA entered by ${g.planEnteredBy} ${dayAt(sent)}` : `Factory sent its TNA ${dayAt(sent)}`, cls: "warn" }
+          : sent ? { text: g.planEnteredBy ? `Factory's TNA entered by ${g.planEnteredBy} ${dayAtNear(sent)}` : `Factory sent its TNA ${dayAtNear(sent)}`, cls: "warn" }
           : dueAt ? { text: `Waiting for the factory's TNA, due ${at.format(dueAt)}`, cls: "warn" }
           : toAsk.length ? (asked ? { text: "Plan not complete", cls: "warn" } : null)
           : { text: "Targets set, ask the factory", cls: "warn" };
@@ -467,8 +469,8 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
                 <summary>Plan by hand: targets, buffer, ask the factory</summary>
                 {target && (
                   <p className="muted mt-2 text-[13px]">
-                    Every target and factory date must be on or before <b className="text-foreground">{day(target)}</b>
-                    {dueDate && ` (PO delivery ${day(dueDate)} less ${!bufferOk ? g.bufferDays ?? 0 : buffer} days buffer)`}.
+                    Every target and factory date must be on or before <b className="text-foreground">{dayNear(target)}</b>
+                    {dueDate && ` (PO delivery ${dayNear(dueDate)} less ${!bufferOk ? g.bufferDays ?? 0 : buffer} days buffer)`}.
                   </p>
                 )}
                 <div className="row mt-2">
@@ -518,7 +520,7 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
             {g.factoryId && !released && open && isOwner && g.lockRequestedAt && (
               <div className="lock-box" role="status">
                 <div className="grow">
-                  <b>{g.lockRequestedBy || "The orders team"} sent this PO for your approval</b> {dayAt(g.lockRequestedAt)}.{" "}
+                  <b>{g.lockRequestedBy || "The orders team"} sent this PO for your approval</b> {dayAtNear(g.lockRequestedAt)}.{" "}
                   {gaps.length ? <span className="text-bad">Something changed since and it isn&apos;t complete now: see below.</span>
                     : <>Check the rates, targets and factory dates below and <Link href={`/orders/${orderId}/factory-po/${g.factoryId}`} className="link font-semibold">the PO with its photos</Link>, then approve it: the PO is emailed to the factory.</>}
                 </div>
@@ -543,15 +545,15 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
             )}
             {g.factoryId && !released && open && !g.lockRequestedAt && g.lockNote && (
               <div className="lock-box bad" role="status">
-                <div className="grow"><b>The owner sent this PO back</b> {dayAt(g.lockNoteAt)}: {g.lockNote}</div>
+                <div className="grow"><b>The owner sent this PO back</b> {dayAtNear(g.lockNoteAt)}: {g.lockNote}</div>
               </div>
             )}
             {!g.factoryId && <p className="muted mb-2 text-[13px]">Choose a factory for these styles in Order details below before planning them.</p>}
             {g.factoryId && target && !released && open && target < today && (
               <div className="warnbox mb-2" role="status">
-                <b>The target date {day(target)} has already passed.</b> Plan the real dates ahead anyway; steps after it are marked.
+                <b>The target date {dayNear(target)} has already passed.</b> Plan the real dates ahead anyway; steps after it are marked.
                 {canEdit && (dueDate && dueDate >= today
-                  ? <> The ship date {day(dueDate)} is still ahead: lower the buffer to {daysBetween(today, dueDate)} {daysBetween(today, dueDate) === 1 ? "day" : "days"} in Plan by hand or Start production, or <a href="#ship" className="link font-semibold">move the ship date</a>.</>
+                  ? <> The ship date {dayNear(dueDate)} is still ahead: lower the buffer to {daysBetween(today, dueDate)} {daysBetween(today, dueDate) === 1 ? "day" : "days"} in Plan by hand or Start production, or <a href="#ship" className="link font-semibold">move the ship date</a>.</>
                   : <> To lock the plan, <a href="#ship" className="link font-semibold">move the ship date</a> to the new delivery date agreed with the buyer.</>)}
               </div>
             )}
