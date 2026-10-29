@@ -194,14 +194,14 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
       photos: (u.photos as string[]).map((p) => urlByPath.get(p)).filter((x): x is string => !!x),
     };
   });
-  // Each style's latest word from the floor, while its step is still open.
+  // Each style's latest word from the floor, while its step is still open (a problem stays: a failed Inline can follow its done date).
   const floorByStyle: Record<string, { text: string; cls: string }> = {};
   const seenFloor = new Set<string>();
   for (const u of floorRows ?? []) {
     if (seenFloor.has(u.line_id)) continue;
     seenFloor.add(u.line_id);
     const l = lines.find((x) => x.id === u.line_id);
-    if (!l || (lineStages ?? []).some((r) => r.line_id === u.line_id && r.stage === u.stage && r.done_on && u.status !== "done")) continue;
+    if (!l || (lineStages ?? []).some((r) => r.line_id === u.line_id && r.stage === u.stage && r.done_on && u.status !== "done" && u.status !== "issue")) continue;
     floorByStyle[u.line_id] = { text: `${dayAtNear(u.created_at)}: ${floorLine(u, stepName(u.line_id, u.stage), qtyU(l.qty, l.product), (d) => dayNear(d))}`, cls: floorStatus(u.status).tone };
   }
   const dispatchFactories: DispatchFactory[] = groups.filter((g) => g.factoryId).map((g) => ({

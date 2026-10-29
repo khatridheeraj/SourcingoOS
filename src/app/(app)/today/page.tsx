@@ -127,7 +127,7 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
   // Updates Quality posted from the factory floor in the last month: when each factory was last visited, and the
   // latest word on each step.
   const floorP = ids.length
-    ? fetchAll((a, z) => supabase.from("floor_updates").select("order_id, line_id, factory_id, stage, status, qty_done, expected_on, visited_on, created_by, created_at")
+    ? fetchAll((a, z) => supabase.from("floor_updates").select("order_id, line_id, factory_id, stage, status, qty_done, expected_on, note, visited_on, created_by, created_at")
         .in("order_id", ids).gte("visited_on", addDays(today, -30)).order("created_at", { ascending: false }).order("id").range(a, z))
     : none;
   const upsP = ids.length
@@ -340,7 +340,7 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
 
   // What Quality last saw on the floor: fresh news on a late step is shown with it, and isn't asked for again.
   const { data: floorRows } = keep(await floorP);
-  const floorRecent = (floorRows ?? []) as { order_id: string; line_id: string; factory_id: string; stage: string; status: string; qty_done: number | null; expected_on: string | null; visited_on: string; created_by: string | null; created_at: string }[];
+  const floorRecent = (floorRows ?? []) as { order_id: string; line_id: string; factory_id: string; stage: string; status: string; qty_done: number | null; expected_on: string | null; note: string | null; visited_on: string; created_by: string | null; created_at: string }[];
   const freshFrom = addDays(today, -FRESH_DAYS);
   const heard = new Set(floorRecent.filter((u) => u.visited_on >= freshFrom).map((u) => `${u.line_id}:${u.stage}`));
   const floorNews = (o: (typeof open)[number]) => {

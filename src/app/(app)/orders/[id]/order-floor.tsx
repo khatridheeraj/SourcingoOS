@@ -17,7 +17,7 @@ export function OrderFloor({ orderId, updates, canPost }: { orderId: string; upd
     <li key={u.id} className="floor-row">
       <span className={`sev ${floorStatus(u.status).tone}`} aria-hidden />
       <div className="floor-what min-w-0">
-        <b><span className="code">{u.style}</span>{floorLine({ status: u.status, qty_done: u.qtyDone, expected_on: u.expectedOn }, u.step, u.total, dm)}</b>
+        <b><span className="code">{u.style}</span>{floorLine({ status: u.status, qty_done: u.qtyDone, expected_on: u.expectedOn, note: u.note }, u.step, u.total, dm)}</b>
         <small>{u.by} · {dayAt(u.at)}</small>
         {u.note && <p className="floor-note">&ldquo;{u.note}&rdquo;</p>}
         {u.photos.length > 0 && (
