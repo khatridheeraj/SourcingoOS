@@ -19,6 +19,15 @@ export function friendly(error: { message: string; code?: string } | null | unde
   if (m.includes("qty_check") || m.includes("order_lines_qty")) return "Every line needs a quantity above zero.";
   if (m.includes("violates foreign key") && m.includes("buyer")) return "This buyer has orders, so it can't be deleted. Mark it inactive instead.";
   if (m.includes("violates foreign key") && m.includes("factor")) return "This factory is on orders, so it can't be deleted. Mark it inactive instead.";
+  // The plan check lists what each style still needs; say it the way the team talks.
+  if (m.startsWith("The plan is not complete yet. Missing: ")) {
+    return "Not ready to approve yet. " + m.slice(39)
+      .replaceAll("target after the PO target date: ", "set after the factory's finish date: ")
+      .replaceAll("factory later than target: ", "factory's date later than ours: ")
+      .replaceAll("target: ", "no target yet: ")
+      .replaceAll("factory dates: ", "no factory date yet: ")
+      .replaceAll(" | ", "; ");
+  }
   if (error.code === "42501" || m.includes("row-level security")) return "You don't have permission to do that.";
   return m;
 }

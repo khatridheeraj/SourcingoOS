@@ -3,12 +3,15 @@
 import { daysBetween, qtyTotal, qtyU, TNA_STEPS } from "@/lib/format";
 import { fillEmptyTargets, stepDays } from "@/lib/tna-plan";
 
-export type QStep = { key: string; label: string; planned_on: string; done_on: string; not_needed: boolean; extra: boolean };
+// factory_on: the factory's own date for the step, when it has sent one.
+export type QStep = { key: string; label: string; planned_on: string; done_on: string; not_needed: boolean; extra: boolean; factory_on?: string };
 // fabric: a fabric style, planned with the fabric standard days.
 export type QStyle = { id: string; style: string; colour: string; qty: number; hasRate: boolean; hasPhoto?: boolean; factoryId: string | null; fabric?: boolean; steps: QStep[] };
 export type QGroup = {
   factoryId: string | null; factoryName: string; phone: string | null; email: string | null;
   released: boolean; asked: boolean; sent: boolean; lockRequestedAt: string; lockNote: string; bufferDays: number | null;
+  // What stops the owner approving a plan sent for approval, in the database's words ("" when nothing does).
+  blocker?: string;
   styles: QStyle[];
 };
 export type QOrder = {
@@ -100,6 +103,19 @@ export function startTargets(styles: QStyle[], target: string, today: string): R
   }
   return out;
 }
+
+// Open targets after the date a factory has to finish by (the ship date less the buffer), which stop the approval.
+// `movable`: every one of them can simply go back to that date, because the factory's own date is on or before it.
+export function pastTarget(styles: QStyle[], target: string) {
+  const rows = styles.flatMap((s) => live(s).filter((x) => !x.done_on && !!x.planned_on && x.planned_on > target).map((x) => ({ style: s, step: x })));
+  const labels = [...new Set(rows.map((r) => r.step.label))];
+  const dates = [...new Set(rows.map((r) => r.step.planned_on))].sort();
+  const movable = rows.length > 0 && rows.every((r) => !r.step.factory_on || r.step.factory_on <= target);
+  return { rows, labels, dates, movable, styleCount: new Set(rows.map((r) => r.style.id)).size };
+}
+
+// "Final QC and Ex-factory" from a list of step names.
+export const andList = (xs: string[]) => (xs.length < 2 ? xs.join("") : `${xs.slice(0, -1).join(", ")} and ${xs[xs.length - 1]}`);
 
 // One style's line in a chase: the first late step, or what is next.
 export function styleLine(s: QStyle, today: string) {

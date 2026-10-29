@@ -12,6 +12,8 @@ import { sizeEntries } from "@/lib/sizes";
 import { StyleDetails, type StyleDetail } from "./style-details";
 import { ErrorFix } from "@/components/fix-link";
 import { openHelp } from "@/components/help/help-chat";
+import { moveLateTargets } from "../quick-actions";
+import { andList } from "@/lib/quick";
 import { acceptTargetsForFactory, releaseFactoryPo, requestPlan, requestPoLock, saveLineStages, sendBackPoLock, setLineProduct, setStylePhoto, type LineStageInput } from "../actions";
 
 // fabricOrder: a fabric style, whose TNA skips the garment-making steps.
@@ -195,21 +197,29 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
     return gaps.length ? `${l.style}: ${gaps.join("; ")}` : "";
   }).filter(Boolean);
   // What still stops a factory's PO from being released, by style.
-  const missing = (g: FactoryGroup, target: string) => g.lines.map((l) => {
+  const missing = (g: FactoryGroup, target: string, skipAfter = false) => g.lines.map((l) => {
     const open = steps(l.id);
     const noTarget = open.filter((s) => !get(l.id, s.key).planned_on);
     const noFactory = open.filter((s) => !factoryDates[key(l.id, s.key)]);
     const later = open.filter((s) => factoryDates[key(l.id, s.key)] && get(l.id, s.key).planned_on && factoryDates[key(l.id, s.key)] > get(l.id, s.key).planned_on);
-    const after = target ? open.filter((s) => get(l.id, s.key).planned_on > target) : [];
+    const after = target && !skipAfter ? open.filter((s) => get(l.id, s.key).planned_on > target) : [];
     const gaps = [
       ...(l.hasRate ? [] : ["factory rate"]),
       ...(noTarget.length ? [`target (${list(open, noTarget)})`] : []),
-      ...(after.length ? [`target after the target date (${list(open, after)})`] : []),
+      ...(after.length ? [`set after the factory's finish date ${dayNear(target)} (${list(open, after)})`] : []),
       ...(noFactory.length ? [`factory dates (${list(open, noFactory)})`] : []),
       ...(later.length ? [`factory later than target (${list(open, later)})`] : []),
     ];
     return gaps.length ? `${l.style}: ${gaps.join("; ")}` : "";
   }).filter(Boolean);
+
+  // Open targets after the factory's finish date that can simply move back to it: the factory's own date already meets it
+  // and nothing else stops the approval. One tap fixes them.
+  const movable = (g: FactoryGroup, target: string) => {
+    if (!target || missing(g, target, true).length) return [];
+    const rows = g.lines.flatMap((l) => steps(l.id).filter((s) => !get(l.id, s.key).done_on && get(l.id, s.key).planned_on > target).map((s) => ({ l, s })));
+    return rows.every(({ l, s }) => (factoryDates[key(l.id, s.key)] ?? "") <= target) ? rows : [];
+  };
 
   // Behind plan: a step still open past its target (a step done late is history, not behind).
   const late = lines.filter((l) => steps(l.id).some((s) => { const c = get(l.id, s.key); return !c.not_needed && !c.done_on && !!c.planned_on && c.planned_on < today; })).length;
@@ -437,6 +447,7 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
         const target = released || !g.factoryId ? g.target : dueDate && bufferOk ? addDays(dueDate, -Number(buffer)) : g.target;
         const gaps = missing(g, target);
         const toAsk = targetGaps(g, target);
+        const fix = !released && g.lockRequestedAt ? movable(g, target) : [];
         const asked = !!(g.planRequestedAt || g.planRequestedOn);
         const status = !g.factoryId ? { text: "No factory chosen", cls: "warn" }
           : released ? { text: `Locked and released ${dayAtNear(g.releasedAt)}`, cls: "ok" }
@@ -521,13 +532,21 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
               <div className="lock-box" role="status">
                 <div className="grow">
                   <b>{g.lockRequestedBy || "The orders team"} sent this PO for your approval</b> {dayAtNear(g.lockRequestedAt)}.{" "}
-                  {gaps.length ? <span className="text-bad">Something changed since and it isn&apos;t complete now: see below.</span>
+                  {fix.length ? <span className="text-warn">{andList([...new Set(fix.map((x) => x.s.label))])} {fix.length === 1 ? "is" : "are"} now set after {dayNear(target)}, the date the factory has to finish by. The factory&apos;s own dates are on time, so move {fix.length === 1 ? "it" : "them"} back and approve.</span>
+                    : gaps.length ? <span className="text-warn">Something changed since and it can&apos;t be approved yet: see below.</span>
                     : <>Check the rates, targets and factory dates below and <Link href={`/orders/${orderId}/factory-po/${g.factoryId}`} className="link font-semibold">the PO with its photos</Link>, then approve it: the PO is emailed to the factory.</>}
                 </div>
-                <button type="button" className="btn primary" disabled={pending || gaps.length > 0 || unsaved(g) || !hasBuyerPo}
-                  onClick={() => run(`rel:${g.factoryId}`, () => releaseFactoryPo(orderId, g.factoryId!), `Approved. The PO is emailed to ${g.factoryName} within the hour.`)}>
-                  {busy === `rel:${g.factoryId}` ? "Approving…" : "Approve and send PO"}
-                </button>
+                {fix.length ? (
+                  <button type="button" className="btn primary" disabled={pending || unsaved(g) || !hasBuyerPo}
+                    onClick={() => run(`rel:${g.factoryId}`, () => moveLateTargets(orderId, g.factoryId!, true), `Moved to ${dayNear(target)} and approved. The PO is emailed to ${g.factoryName} within the hour.`)}>
+                    {busy === `rel:${g.factoryId}` ? "Approving…" : `Move to ${dayNear(target)} and approve`}
+                  </button>
+                ) : !gaps.length && (
+                  <button type="button" className="btn primary" disabled={pending || unsaved(g) || !hasBuyerPo}
+                    onClick={() => run(`rel:${g.factoryId}`, () => releaseFactoryPo(orderId, g.factoryId!), `Approved. The PO is emailed to ${g.factoryName} within the hour.`)}>
+                    {busy === `rel:${g.factoryId}` ? "Approving…" : "Approve and send PO"}
+                  </button>
+                )}
                 {sendingBack === g.factoryId ? (
                   <div className="row w-full">
                     <input className="inp min-w-[200px] flex-1" value={backNote[g.factoryId] ?? ""} maxLength={300} autoFocus aria-label="What to change"
@@ -562,7 +581,7 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
                 {g.factoryName} hasn&apos;t sent its TNA within {PLAN_HOURS} hours. Chase them now, or move these styles to another factory in Order details.
               </p>
             )}
-            {g.factoryId && !released && asked && gaps.length > 0 && (
+            {g.factoryId && !released && asked && gaps.length > 0 && !fix.length && (
               <p className="mb-2 text-[13px] text-warn"><b>Missing before release:</b> {gaps.join("; ")}</p>
             )}
             <div className="style-list">
