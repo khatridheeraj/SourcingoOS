@@ -1477,7 +1477,8 @@ h1, h2, h3 { font-family: var(--font-display); text-wrap: balance; font-weight: 
   .qs-stepper button:hover:not(:disabled) { background: var(--surface); }
   .qs-stepper button:disabled { opacity: 0.35; }
   .qs-stepper b { min-width: 28px; text-align: center; font-size: 15px; }
-  .qs-plan { margin-top: 14px; border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
+  /* flex-shrink: the sheet body is a scrolling column, which would otherwise squash the plan to a line on a phone. */
+  .qs-plan { flex-shrink: 0; margin-top: 14px; border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
   .qs-plan-h { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 10px 14px; background: var(--surface-2); border-bottom: 1px solid var(--line); }
   .qs-plan-h b { font-size: 13.5px; }
   .qs-plan-h small { font-size: 12px; color: var(--muted); text-align: right; }
@@ -1487,6 +1488,8 @@ h1, h2, h3 { font-family: var(--font-display); text-wrap: balance; font-weight: 
   .qs-plan li b { font-weight: 500; }
   .qs-plan li.done b { color: var(--ok); }
   .qs-plan li.late b { color: var(--warn); font-weight: 650; }
+  .qs-plan li b .qs-was { display: block; font-size: 11.5px; font-weight: 400; color: var(--faint); text-align: right; }
+  .qs-plan .qs-moved { color: var(--muted); }
   .qs-plan .qs-fine { padding: 0 14px 10px; margin: 0; }
   .qs-choice { display: flex; flex-direction: column; gap: 8px; margin-top: 14px; }
   .qs-choice button { display: flex; align-items: flex-start; gap: 12px; padding: 12px 14px; border-radius: 12px; text-align: left; box-shadow: inset 0 0 0 1px var(--line); transition: box-shadow 0.12s, background 0.12s; }
