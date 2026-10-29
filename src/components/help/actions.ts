@@ -2,8 +2,10 @@
 
 import { revalidatePath } from "next/cache";
 import { attachKind, attachName } from "@/lib/attachments";
-import { getMe } from "@/lib/auth";
+import { canEditOrders, getMe } from "@/lib/auth";
 import { friendly } from "@/lib/errors";
+import { FRESH_DAYS } from "@/lib/floor";
+import { qcCheck } from "@/lib/help-check";
 import type { NoteKind } from "@/lib/help-guide";
 import { TNA_STEPS, todayIST } from "@/lib/format";
 import { createClient } from "@/lib/supabase/server";
@@ -93,6 +95,9 @@ export async function checkOrder(orderId: string): Promise<OrderCheck | null> {
   const title = `Live check of ${o.order_no}`;
   if (o.status !== "open") return { title, items: [{ ok: false, text: `This order is ${o.status}, so nothing on it can change.` }] };
   const lines = (o.order_lines ?? []) as { id: string; style: string; factory_id: string | null; photo_path: string | null }[];
+  // Quality gets its own work (visits and inspections), never the orders team's Done dates, targets and approvals.
+  if (me.role === "quality") return { title, items: await qualityItems(orderId, lines) };
+  if (!canEditOrders(me.role)) return null;
   const items: OrderCheck["items"] = [];
   const unassigned = lines.filter((l) => !l.factory_id).map((l) => l.style);
   if (unassigned.length) items.push({ ok: false, text: `No factory picked yet for ${unassigned.join(", ")}. Pick one on the style card.` });
@@ -135,4 +140,27 @@ export async function checkOrder(orderId: string): Promise<OrderCheck | null> {
   if (pending?.length) items.push({ ok: false, text: `The factory marked ${pending.length} step${pending.length > 1 ? "s" : ""} done. Confirm ${pending.length > 1 ? "them" : "it"} at the top of the order.` });
   if (!items.length) items.push({ ok: true, text: "Nothing is blocking this order right now." });
   return { title, items };
+}
+
+async function qualityItems(orderId: string, lines: { id: string; style: string; factory_id: string | null }[]) {
+  const supabase = await createClient();
+  const factoryIds = [...new Set(lines.flatMap((l) => (l.factory_id ? [l.factory_id] : [])))];
+  const [{ data: facs }, { data: pos }, { data: stages }, { data: checks }, { data: floor }, { data: pending }] = await Promise.all([
+    factoryIds.length ? supabase.from("factories").select("id, name").in("id", factoryIds) : Promise.resolve({ data: [] as { id: string; name: string }[] }),
+    supabase.from("factory_pos").select("factory_id, released_at").eq("order_id", orderId),
+    supabase.from("line_stages").select("line_id, stage, planned_on, done_on").eq("order_id", orderId).eq("not_needed", false),
+    supabase.from("qc_checks").select("line_id, kind, result, checked_on").eq("order_id", orderId).is("cancelled_at", null).in("kind", ["inline", "midline", "final", "recheck"]),
+    supabase.from("floor_updates").select("line_id, stage, visited_on").eq("order_id", orderId),
+    supabase.from("step_updates").select("id").eq("order_id", orderId).eq("status", "pending"),
+  ]);
+  const name = new Map((facs ?? []).map((f) => [f.id, f.name as string]));
+  return qcCheck({
+    today: todayIST(), freshDays: FRESH_DAYS,
+    lines: lines.map((l) => ({ id: l.id, style: l.style, factoryId: l.factory_id })),
+    factories: factoryIds.map((id) => ({ id, name: name.get(id) ?? "The factory", released: (pos ?? []).some((p) => p.factory_id === id && !!p.released_at) })),
+    stages: (stages ?? []).map((s) => ({ lineId: s.line_id, stage: s.stage, plannedOn: s.planned_on, doneOn: s.done_on })),
+    checks: (checks ?? []).map((c) => ({ lineId: c.line_id, kind: c.kind, result: c.result, checkedOn: c.checked_on })),
+    floor: (floor ?? []).map((u) => ({ lineId: u.line_id, stage: u.stage, visitedOn: u.visited_on })),
+    pendingUpdates: pending?.length ?? 0,
+  });
 }

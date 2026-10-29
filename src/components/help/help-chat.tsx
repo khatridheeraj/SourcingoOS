@@ -4,14 +4,14 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
 import { toast } from "@/components/toast";
-import type { Role } from "@/lib/auth-roles";
+import { canEditOrders, type Role } from "@/lib/auth-roles";
 import { guessKind, pageTitle, searchScored, suggestions, type Audience, type NoteKind, type Topic } from "@/lib/help-guide";
 import { ATTACH_ACCEPT, uploadAttachments } from "@/lib/photos";
 import { checkOrder, loadNotes, logAsk, markSeen, rateAsk, sendNote, type NoteFile, type OrderCheck, type TeamNote } from "./actions";
 
 // An order's own page (or a page inside it) gets Help's live check of that order.
 const orderOf = (path: string) => (/^\/orders\/([0-9a-f-]{36})(\/|$)/.exec(path) ?? [])[1] ?? null;
-// Questions that read as "why can't I…" on an order get the live check before anything else.
+// Questions that read as "why can't I…" on an order are offered the live check, which runs only when tapped.
 const STUCK = /can'?t|cannot|unable|not able|nahi|why|block|lock|stuck|disabled|grey|done date|release|approv|after po/i;
 
 type Lang = "en" | "hi";
@@ -44,7 +44,8 @@ const T = {
     } as Record<NoteKind, string>,
     stagedHint: "Say what's wrong, then send.", stagedPlaceholder: "What's wrong in this screenshot?",
     stillStuck: (o: string) => `Still stuck? Send it to ${o} with your screenshot.`,
-    checkChip: "What's blocking this order?", checking: "Checking this order…", checkFail: "Couldn't check this order. Check the internet and try again.",
+    checkChip: "What's blocking this order?", checkChipQc: "What QC is due on this order?",
+    checkOffer: "I can check this order live and say what is open right now.", checkRun: "Check this order", checking: "Checking this order…", checkFail: "Couldn't check this order. Check the internet and try again.",
     photo: "Attach", attachTitle: "Attach a screenshot, photo or file", attachHint: "Screenshot, photo, short video, PDF or Excel. Up to 4.", removePhoto: "Remove",
     from: "Sent from", sendTo: (o: string) => `Send to ${o}`, sending: "Sending…", cancel: "Cancel",
     sent: (no: number, o: string) => `Sent to ${o} as note #${no}. The answer will show in My notes.`,
@@ -75,7 +76,8 @@ const T = {
     } as Record<NoteKind, string>,
     stagedHint: "क्या गड़बड़ है लिखें, फिर भेजें।", stagedPlaceholder: "इस स्क्रीनशॉट में क्या गड़बड़ है?",
     stillStuck: () => "फिर भी दिक्कत है? स्क्रीनशॉट के साथ Sourcingo को भेजें।",
-    checkChip: "यह ऑर्डर कहाँ रुका है?", checking: "ऑर्डर देख रहे हैं…", checkFail: "ऑर्डर नहीं देख पाए। इंटरनेट देखकर फिर कोशिश करें।",
+    checkChip: "यह ऑर्डर कहाँ रुका है?", checkChipQc: "इस ऑर्डर पर कौन सी QC बाकी है?",
+    checkOffer: "मैं यह ऑर्डर अभी देखकर बता सकता हूँ कि क्या बाकी है।", checkRun: "ऑर्डर देखें", checking: "ऑर्डर देख रहे हैं…", checkFail: "ऑर्डर नहीं देख पाए। इंटरनेट देखकर फिर कोशिश करें।",
     photo: "फोटो / फाइल जोड़ें", attachTitle: "स्क्रीनशॉट, फोटो या फाइल जोड़ें", attachHint: "फोटो, छोटा वीडियो, PDF या Excel. 4 तक.", removePhoto: "हटाएँ",
     from: "पेज", sendTo: () => "Sourcingo को भेजें", sending: "भेज रहे हैं…", cancel: "रहने दें",
     sent: (no: number) => `Sourcingo को भेज दिया (संदेश #${no})। जवाब "मेरे संदेश" में दिखेगा।`,
@@ -91,7 +93,7 @@ type Msg =
   | { id: number; from: "me"; text: string }
   | { id: number; from: "bot"; kind: "hello" }
   | { id: number; from: "bot"; kind: "answer"; topic: Topic; others: Topic[]; askId: string | null; question: string; rated?: boolean }
-  | { id: number; from: "bot"; kind: "text"; text: string; offer?: { kind: NoteKind; body: string }; guide?: Topic }
+  | { id: number; from: "bot"; kind: "text"; text: string; offer?: { kind: NoteKind; body: string }; guide?: Topic; check?: boolean }
   | { id: number; from: "bot"; kind: "check"; check: OrderCheck | null }
   | { id: number; from: "bot"; kind: "compose"; note: NoteKind; body: string; files?: File[]; done?: boolean };
 
@@ -118,7 +120,18 @@ export function HelpChat({ who, role, name, userId, companyId, ownerName = "Dhee
   const viewer = { who, role };
   const owner = who === "staff" ? ownerName : "Sourcingo";
   const here = pageTitle(path);
-  const orderId = who === "staff" ? orderOf(path) : null;
+  // The live check is for the people whose work it lists: the orders team, and Quality with its own visits and QC.
+  const orderId = who === "staff" && (canEditOrders(role) || role === "quality") ? orderOf(path) : null;
+  const checkChip = role === "quality" ? w.checkChipQc : w.checkChip;
+
+  // Help speaks about the screen it is opened on: a new page starts a quiet chat again, so nothing from the last
+  // order (a check, an answer) shows up unasked somewhere else.
+  const shown = useRef(path);
+  useEffect(() => {
+    if (shown.current === path) return;
+    shown.current = path;
+    setMsgs([{ id: 0, from: "bot", kind: "hello" }]);
+  }, [path]);
 
   useEffect(() => {
     const on = (e: Event) => {
@@ -155,13 +168,19 @@ export function HelpChat({ who, role, name, userId, companyId, ownerName = "Dhee
     else el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
   }, [msgs]);
 
-  const push = (...m: NewMsg[]) => setMsgs((all) => [...all, ...m.map((x) => ({ ...x, id: next.current++ }) as Msg)]);
+  // Ids are handed out here, not inside the state update: React may run that update later, and an id read in the
+  // meantime would point at the wrong message (a check once replaced the person's own question).
+  const push = (...m: NewMsg[]) => {
+    const made = m.map((x) => ({ ...x, id: next.current++ }) as Msg);
+    setMsgs((all) => [...all, ...made]);
+    return made.map((x) => x.id);
+  };
   const patch = (id: number, p: Partial<Msg>) => setMsgs((all) => all.map((m) => (m.id === id ? ({ ...m, ...p } as Msg) : m)));
 
   // Reads the order's live state and says what blocks it, in the same words the order screen's own rules use.
+  // Only ever from a tap: the chip on the first screen, or the button under a stuck question.
   function runCheck(id: string) {
-    const at = next.current;
-    push({ from: "bot", kind: "text", text: w.checking });
+    const [at] = push({ from: "bot", kind: "text", text: w.checking });
     void checkOrder(id).then(
       (check) => setMsgs((all) => all.map((m) => (m.id === at ? { id: at, from: "bot", kind: "check", check } : m))),
       () => patch(at, { text: w.checkFail }),
@@ -175,10 +194,10 @@ export function HelpChat({ who, role, name, userId, companyId, ownerName = "Dhee
     push({ from: "me", text: q });
     const scored = searchScored(q, viewer, path);
     if (orderId && STUCK.test(q)) {
-      // A question the guide clearly answers (why a date won't pick, say) gets that answer first; the live check follows.
+      // A question the guide clearly answers (why a date won't pick, say) gets that answer; the live check waits for a tap.
       const strong = scored[0] && scored[0].score >= 10 ? scored[0].t : null;
       if (strong) push({ from: "bot", kind: "answer", topic: strong, others: [], askId: null, question: q });
-      runCheck(orderId);
+      push({ from: "bot", kind: "text", text: w.checkOffer, check: true });
       void logAsk(q, path, strong?.id ?? "order-check");
       return;
     }
@@ -197,8 +216,7 @@ export function HelpChat({ who, role, name, userId, companyId, ownerName = "Dhee
       push({ from: "bot", kind: "text", text: w.noAnswer(owner), offer: { kind: "question", body: q } });
       return;
     }
-    const id = next.current;
-    push({ from: "bot", kind: "answer", topic: top, others: found.slice(1), askId: null, question: q });
+    const [id] = push({ from: "bot", kind: "answer", topic: top, others: found.slice(1), askId: null, question: q });
     if (staged.length) push({ from: "bot", kind: "text", text: w.stillStuck(owner), offer: { kind: "problem", body: q } });
     void logAsk(q, path, top.id).then((askId) => patch(id, { askId }));
   }
@@ -206,8 +224,7 @@ export function HelpChat({ who, role, name, userId, companyId, ownerName = "Dhee
   function pickTopic(t: Topic) {
     const q = lang === "hi" && t.hi ? t.hi.q : t.q;
     push({ from: "me", text: q });
-    const id = next.current;
-    push({ from: "bot", kind: "answer", topic: t, others: [], askId: null, question: q });
+    const [id] = push({ from: "bot", kind: "answer", topic: t, others: [], askId: null, question: q });
     void logAsk(q, path, t.id).then((askId) => patch(id, { askId }));
   }
 
@@ -281,7 +298,7 @@ export function HelpChat({ who, role, name, userId, companyId, ownerName = "Dhee
                     <p className="help-label">{w.here(here)}</p>
                     <div className="help-sugs">
                       {orderId && (
-                        <button type="button" className="help-sug" onClick={() => { push({ from: "me", text: w.checkChip }); runCheck(orderId); }}>{w.checkChip}<span aria-hidden>›</span></button>
+                        <button type="button" className="help-sug" onClick={() => { push({ from: "me", text: checkChip }); runCheck(orderId); }}>{checkChip}<span aria-hidden>›</span></button>
                       )}
                       {suggestions(viewer, path).map((t) => (
                         <button key={t.id} type="button" className="help-sug" onClick={() => pickTopic(t)}>{ownTopic(t).q}<span aria-hidden>›</span></button>
@@ -330,6 +347,9 @@ export function HelpChat({ who, role, name, userId, companyId, ownerName = "Dhee
                 if (m.kind === "text") return (
                   <div key={m.id} className="bub bot">
                     {m.text}
+                    {m.check && orderId && (
+                      <div className="mt-2"><button type="button" className="btn primary sm" onClick={() => { patch(m.id, { check: false }); runCheck(orderId); }}>{w.checkRun}</button></div>
+                    )}
                     {m.offer && (
                       <div className="mt-2 flex flex-wrap gap-2">
                         <button type="button" className="btn primary sm" onClick={() => compose(m.offer!.kind, m.offer!.body)}>{w.sendAsNote(owner)}</button>
