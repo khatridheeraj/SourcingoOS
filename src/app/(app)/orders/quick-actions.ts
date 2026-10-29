@@ -5,7 +5,7 @@ import { canEditOrders, canEnterDone, getMe } from "@/lib/auth";
 import { buyerName, loadBuyers, loadFactories, loadTeam, personName } from "@/lib/data";
 import { friendly } from "@/lib/errors";
 import { TNA_STEPS, todayIST } from "@/lib/format";
-import { addDays, andList, dm, EMAIL_OK, pastTarget, startTargets, type QGroup, type QOrder, type QStyle } from "@/lib/quick";
+import { addDays, andList, dm, EMAIL_OK, emptySteps, pastTarget, startTargets, type QGroup, type QOrder, type QStyle } from "@/lib/quick";
 import { createClient } from "@/lib/supabase/server";
 import { saveLineStages, type LineStageInput } from "./actions";
 
@@ -99,6 +99,8 @@ export type StartInput = {
   reason?: string;
   // The factory's email, typed in the sheet when it has none: the approved PO is emailed there.
   factoryEmail?: string;
+  // The merchandiser chose to move her dates that fall after the finish date onto it. Never done without asking.
+  moveLate?: boolean;
 };
 
 // Starts a factory's production in one go: missing factory and rates, targets for every step, the request to the
@@ -144,7 +146,12 @@ export async function startProduction(orderId: string, input: StartInput): Promi
   if (g.released) return { done: `${g.factoryName}'s production has already started.`, factoryId };
   if (!order.due) return { error: "Enter the order's ship date first." };
   const target = addDays(order.due, -b);
-  if (target < today) return { error: `With ${b} days' buffer the factory would have to finish by ${target}, which has passed. Use a smaller buffer or a new ship date.` };
+  if (target < today) return { error: `With ${b} days' buffer the factory would have to finish by ${dm(target)}, which has passed. Use a smaller buffer or a new ship date.` };
+  // The merchandiser's saved dates are never changed behind her back: dates after the finish date move only when she says so.
+  const late = pastTarget(g.styles, target);
+  if (late.rows.length && !input.moveLate) return { error: `${andList(late.labels)} ${late.labels.length === 1 ? "is" : "are"} set after ${dm(target)}, the day the factory must finish by. Use a smaller buffer, or move ${late.labels.length === 1 ? "it" : "them"} to ${dm(target)}.` };
+  // No day left to plan the steps with no date: every one of them on the same day would be no plan at all.
+  if (target <= today && emptySteps(g.styles)) return { error: `With ${b} days' buffer the factory would have to finish today, leaving no days for the steps with no date yet. Use a smaller buffer or a new ship date.` };
   if (input.agreed && !order.hasBuyerPo) return { error: NO_BUYER_PO };
   if (g.styles.some((s) => !s.hasRate)) return { error: `Enter ${g.factoryName}'s rate for ${g.styles.filter((s) => !s.hasRate).map((s) => s.style).join(", ")}.` };
   // What would stop the PO going for approval is checked before anything is saved, so nothing is left half done.
@@ -153,8 +160,8 @@ export async function startProduction(orderId: string, input: StartInput): Promi
     if (block) return { error: block as string };
   }
 
-  // Targets: fill the empty ones and move the impossible ones, then save them with what was loaded.
-  const plan = startTargets(g.styles, target, today);
+  // Targets: fill the empty ones (and move the late ones, when asked), then save them with what was loaded.
+  const plan = startTargets(g.styles, target, today, !!input.moveLate);
   const rows: LineStageInput[] = g.styles.flatMap((s) => Object.entries(plan[s.id] ?? {}).map(([stage, on]) => {
     const x = s.steps.find((y) => y.key === stage)!;
     return { line_id: s.id, stage, planned_on: on, done_on: x.done_on, not_needed: false, ...(x.extra ? { label: x.label } : {}),

@@ -1,7 +1,7 @@
 // Helpers behind the quick sheets: an order's steps per style, what to mark done, the plan to start production with,
 // and the WhatsApp chase for a factory. Pure functions, used on the server and in the browser alike.
 import { daysBetween, qtyTotal, qtyU, TNA_STEPS } from "@/lib/format";
-import { fillEmptyTargets, stepDays } from "@/lib/tna-plan";
+export { emptySteps, startBuffer, startTargets } from "@/lib/tna-plan";
 
 // factory_on: the factory's own date for the step, when it has sent one.
 export type QStep = { key: string; label: string; planned_on: string; done_on: string; not_needed: boolean; extra: boolean; factory_on?: string };
@@ -83,25 +83,6 @@ export function catchUpRows(styles: QStyle[], upTo: string, today: string, onTar
       was: { planned_on: x.planned_on, done_on: x.done_on, not_needed: x.not_needed },
     }));
   });
-}
-
-// Targets for a factory's styles, ready to start production: empty ones filled from the standard days, and any
-// open target that is already past or after the target date moved into the days that are left. Done steps stay.
-// Returns the changes only, per style.
-export function startTargets(styles: QStyle[], target: string, today: string): Record<string, Record<string, string>> {
-  const out: Record<string, Record<string, string>> = {};
-  for (const s of styles) {
-    const std = TNA_STEPS.map((t) => s.steps.find((x) => x.key === t.key) ?? { key: t.key, label: t.label, planned_on: "", done_on: "", not_needed: false, extra: false })
-      .filter((x) => !x.not_needed);
-    const keep = (x: QStep) => !!x.done_on || (!!x.planned_on && x.planned_on >= today && x.planned_on <= target);
-    const plan = fillEmptyTargets(std.map((x) => ({ stage: x.key, on: keep(x) ? x.planned_on || x.done_on : null })), target, today, stepDays(s.fabric));
-    const changes: Record<string, string> = {};
-    for (const x of std) if (plan[x.key] && plan[x.key] !== x.planned_on) changes[x.key] = plan[x.key];
-    // Extra steps have no standard days: one without a usable target goes on the target date.
-    for (const x of s.steps.filter((y) => y.extra && !y.not_needed && !keep(y))) changes[x.key] = target;
-    out[s.id] = changes;
-  }
-  return out;
 }
 
 // Open targets after the date a factory has to finish by (the ship date less the buffer), which stop the approval.
