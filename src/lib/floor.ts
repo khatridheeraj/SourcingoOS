@@ -43,11 +43,15 @@ export function visitedText(last: string | null | undefined, today: string) {
 }
 
 // "Inline QC failed", "Final QC failed": how a failed inspection from a visit reads on the floor.
-export const qcFailed = (step: string) => `${/QC$/.test(step) ? step : `${step} QC`} failed`;
+const qcName = (step: string) => (/QC$/.test(step) ? step : `${step} QC`);
+export const qcFailed = (step: string) => `${qcName(step)} failed`;
+// "Inline QC re-check passed": a re-check after a fail that came out right.
+export const qcRechecked = (step: string) => `${qcName(step)} re-check passed`;
 
 // One line saying what an update found: "Cutting on track · 300 of 500 pcs", "Stitching late, ready 29 Oct".
 export function floorLine(u: { status: string; qty_done: number | null; expected_on: string | null; note?: string | null }, step: string, total: string, dm: (d: string) => string) {
   const failed = u.status === "issue" && !!u.note?.startsWith(`${qcFailed(step)}:`);
+  if (u.status !== "issue" && u.note?.startsWith(qcRechecked(step))) return qcRechecked(step);
   const s = u.status === "done" ? `${step} done` : u.status === "behind" ? `${step} running late${u.expected_on ? `, ready ${dm(u.expected_on)}` : ""}`
     : failed ? `${qcFailed(step)}${u.expected_on ? `, re-check ${dm(u.expected_on)}` : ""}`
     : u.status === "issue" ? `${step}: problem${u.expected_on ? `, ready ${dm(u.expected_on)}` : ""}` : `${step} on track`;

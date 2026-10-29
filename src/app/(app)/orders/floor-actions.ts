@@ -5,7 +5,7 @@ import { canEnterDone, canRecordQc, getMe } from "@/lib/auth";
 import { buyerName, loadBuyers, loadFactories, loadTeam, personName } from "@/lib/data";
 import { friendly } from "@/lib/errors";
 import { fetchAll } from "@/lib/fetch-all";
-import { FLOOR_STATUS, INSPECTION_KIND, qcFailed, type FloorStatus, type VisitResult } from "@/lib/floor";
+import { FLOOR_STATUS, INSPECTION_KIND, qcFailed, qcRechecked, type FloorStatus, type VisitResult } from "@/lib/floor";
 import { TNA_STEPS, todayIST, unitOf } from "@/lib/format";
 import { PHOTO_BUCKET } from "@/lib/storage";
 import { createClient } from "@/lib/supabase/server";
@@ -138,6 +138,7 @@ export type VisitCheckInput = {
 // Records an inspection made on a visit as a QC check, exactly as Record QC does, so a fail flags the style
 // (Final QC failed, re-check due) and the merchandiser hears of it from the floor.
 // A fail also goes on the floor as a problem; a pass on Inline or Mid-line also marks the step done today.
+// After a fail, the next check is its re-check: a re-check that passes goes on the floor too, so the team hears it.
 export async function postVisitCheck(input: VisitCheckInput): Promise<{ error?: string; warning?: string }> {
   const me = await getMe();
   if (!canRecordQc(me?.role)) return { error: "Only the Quality team records QC." };
@@ -148,23 +149,28 @@ export async function postVisitCheck(input: VisitCheckInput): Promise<{ error?: 
   if (input.result === "fail" && !note) return { error: "Write what failed, so the factory knows what to fix." };
   if (input.recheckOn && !/^\d{4}-\d{2}-\d{2}$/.test(input.recheckOn)) return { error: "Pick the re-check date from the calendar." };
   const supabase = await createClient();
-  let kind = kind0;
-  if (kind0 === "final") {
-    // After a failed final, the next one is the re-check.
-    const { data: last } = await supabase.from("qc_checks").select("result").eq("line_id", input.lineId).in("kind", ["final", "recheck"])
-      .is("cancelled_at", null).order("checked_on", { ascending: false }).order("created_at", { ascending: false }).limit(1).maybeSingle();
-    if (last?.result === "fail") kind = "recheck";
-  }
+  const [{ data: last }, { data: step }] = await Promise.all([
+    supabase.from("qc_checks").select("result").eq("line_id", input.lineId).in("kind", kind0 === "final" ? ["final", "recheck"] : [kind0])
+      .is("cancelled_at", null).order("checked_on", { ascending: false }).order("created_at", { ascending: false }).limit(1).maybeSingle(),
+    supabase.from("line_stages").select("done_on").eq("line_id", input.lineId).eq("stage", input.stage).maybeSingle(),
+  ]);
+  const recheck = last?.result === "fail";
+  // A failed final's re-check is the Re-check type, which counts for shipping. Inline and Mid-line re-checks keep their
+  // own type (a Re-check would count as the final), and say so in the notes.
+  const kind = recheck && kind0 === "final" ? "recheck" : kind0;
+  const notes = recheck && kind0 !== "final" ? `Re-check${note ? `: ${note}` : ""}` : note;
   const res = await recordQc(input.orderId, input.qcId, {
-    line_id: input.lineId, kind, checked_on: todayIST(), result: input.result, pieces_checked: input.pieces, defects: input.defects, notes: note,
+    line_id: input.lineId, kind, checked_on: todayIST(), result: input.result, pieces_checked: input.pieces, defects: input.defects, notes,
   }, input.qcPhotos.map((path) => ({ path, kind: "photo" as const, file_name: "" })));
   if (res.error) return res;
   revalidatePath("/today");
   if (!input.floorPhotos.length) return {};
   const label = TNA_STEPS.find((t) => t.key === input.stage)?.label ?? "QC";
+  const markDone = input.stage !== "final_qc" && !step?.done_on;
   const floor = await postFloorUpdate({
-    lineId: input.lineId, orderId: input.orderId, stage: input.stage, status: input.result === "fail" ? "issue" : "done", qty: "",
-    expectedOn: input.result === "fail" ? input.recheckOn : "", note: input.result === "fail" ? `${qcFailed(label)}: ${note}` : note, photos: input.floorPhotos,
+    lineId: input.lineId, orderId: input.orderId, stage: input.stage, status: input.result === "fail" ? "issue" : markDone ? "done" : "on_track", qty: "",
+    expectedOn: input.result === "fail" ? input.recheckOn : "", photos: input.floorPhotos,
+    note: input.result === "fail" ? `${qcFailed(label)}: ${note}` : recheck ? `${qcRechecked(label)}${note ? `: ${note}` : ""}` : note,
   });
   return floor.error ? { warning: `The QC check is saved, but the floor update didn't post: ${floor.error}` } : {};
 }
