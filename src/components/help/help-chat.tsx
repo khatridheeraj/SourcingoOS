@@ -33,9 +33,8 @@ const T = {
     other: "Or did you mean",
     noAnswer: (o: string) => `I don't have a written answer for that yet. Send it to ${o}, and the answer will show in My notes.`,
     notHelped: (o: string) => `Sorry about that. Send your question to ${o}? The answer will show in My notes.`,
-    offer: (k: string, o: string) => `That sounds like ${k}. Add anything that helps, then send it to ${o}.`,
+    offer: (k: string, o: string) => `That sounds like ${k}. Want to send it to ${o}?`,
     kindName: { problem: "a problem", wrong_data: "wrong data", idea: "an idea", question: "a question" } as Record<NoteKind, string>,
-    meanwhile: "This might help meanwhile",
     kinds: { problem: "Not working", wrong_data: "Wrong data", idea: "Idea", question: "Question" } as Record<NoteKind, string>,
     prompts: {
       problem: "What isn't working? What did you tap, and what happened?",
@@ -65,9 +64,8 @@ const T = {
     other: "या आपका मतलब था",
     noAnswer: () => "इसका लिखा हुआ जवाब अभी नहीं है। Sourcingo को भेज दीजिए, जवाब \"मेरे संदेश\" में दिखेगा।",
     notHelped: () => "माफ़ कीजिए। सवाल Sourcingo को भेजें? जवाब \"मेरे संदेश\" में दिखेगा।",
-    offer: (k: string) => `यह ${k} लगती है। चाहें तो और लिखें, फिर Sourcingo को भेजें।`,
+    offer: (k: string) => `यह ${k} लगती है। Sourcingo को भेजें?`,
     kindName: { problem: "एक दिक्कत", wrong_data: "गलत जानकारी", idea: "एक सुझाव", question: "एक सवाल" } as Record<NoteKind, string>,
-    meanwhile: "तब तक यह देखें",
     kinds: { problem: "दिक्कत", wrong_data: "गलत जानकारी", idea: "सुझाव", question: "सवाल" } as Record<NoteKind, string>,
     prompts: {
       problem: "क्या नहीं चल रहा? आपने क्या दबाया और क्या हुआ?",
@@ -93,7 +91,7 @@ type Msg =
   | { id: number; from: "me"; text: string }
   | { id: number; from: "bot"; kind: "hello" }
   | { id: number; from: "bot"; kind: "answer"; topic: Topic; others: Topic[]; askId: string | null; question: string; rated?: boolean }
-  | { id: number; from: "bot"; kind: "text"; text: string; offer?: { kind: NoteKind; body: string } }
+  | { id: number; from: "bot"; kind: "text"; text: string; offer?: { kind: NoteKind; body: string }; guide?: Topic }
   | { id: number; from: "bot"; kind: "check"; check: OrderCheck | null }
   | { id: number; from: "bot"; kind: "compose"; note: NoteKind; body: string; files?: File[]; done?: boolean };
 
@@ -188,10 +186,10 @@ export function HelpChat({ who, role, name, userId, companyId, ownerName = "Dhee
     const kind = guessKind(q);
     const top = found[0];
     if (kind) {
-      push({ from: "bot", kind: "text", text: w.offer(w.kindName[kind], owner) }, { from: "bot", kind: "compose", note: kind, body: q });
       void logAsk(q, path, top?.id ?? null);
-      // A clear match may solve it before anyone has to look; a weak one is just noise next to the note.
-      if (top && scored[0].score >= 8) push({ from: "bot", kind: "text", text: w.meanwhile }, { from: "bot", kind: "answer", topic: top, others: [], askId: null, question: q });
+      // Nothing opens by itself: the note form waits for Send, and a clear guide match waits behind its own button.
+      const guide = top && scored[0].score >= 8 ? top : undefined;
+      push({ from: "bot", kind: "text", text: w.offer(w.kindName[kind], owner), offer: { kind, body: q }, guide });
       return;
     }
     if (!top) {
@@ -333,7 +331,10 @@ export function HelpChat({ who, role, name, userId, companyId, ownerName = "Dhee
                   <div key={m.id} className="bub bot">
                     {m.text}
                     {m.offer && (
-                      <div className="mt-2"><button type="button" className="btn primary sm" onClick={() => compose(m.offer!.kind, m.offer!.body)}>{w.sendAsNote(owner)}</button></div>
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        <button type="button" className="btn primary sm" onClick={() => compose(m.offer!.kind, m.offer!.body)}>{w.sendAsNote(owner)}</button>
+                        {m.guide && <button type="button" className="btn sm" onClick={() => pickTopic(m.guide!)}>{lang === "hi" && m.guide.hi ? m.guide.hi.q : m.guide.q}</button>}
+                      </div>
                     )}
                   </div>
                 );
