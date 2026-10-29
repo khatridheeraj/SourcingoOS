@@ -330,7 +330,7 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
         </div>
         {c.not_needed ? <span className="step-off muted">Not needed</span> : (
           <>
-            <div className="step-f"><span>Factory</span>
+            <div className="step-f step-fac"><span>Factory</span>
               <b data-testid={`${l.style} ${s.label} factory`} className={f && c.planned_on && f > c.planned_on ? "text-bad" : f ? "" : "muted font-normal"}>{f ? dm(f) : "Not given"}</b>
             </div>
             <label className="step-f"><span>Target</span>
