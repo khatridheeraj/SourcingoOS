@@ -134,7 +134,8 @@ export default async function OrdersPage({ searchParams }: PageProps<"/">) {
         billedAll: !!o.closed_short_at || lines.every((l) => (shipRows.find((r) => r.line_id === l.id)?.billed ?? 0) >= l.qty),
       } : null,
       due: dueDate(o),
-      riskDays: styleProgress(lines.map((l) => l.id), steps ?? [], dueDate(o), today, paceLookup(pace, lines, factoryName)).riskDays,
+      riskDays: styleProgress(lines.map((l) => l.id), steps ?? [], dueDate(o), today, paceLookup(pace, lines, factoryName),
+        (id) => (fpos as { order_id: string; factory_id: string; released_at: string | null }[]).some((p) => p.order_id === o.id && p.factory_id === lines.find((l) => l.id === id)?.factory_id && !!p.released_at)).riskDays,
       today,
     });
   };

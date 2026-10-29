@@ -287,10 +287,12 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
       g.target ? `\nEverything must be ready by ${day(g.target)}.` : "",
     ].filter((x, i, a) => x !== "" || (a[i - 1] ?? "") !== "").join("\n"),
   })) : [])];
-  const behind = o.status !== "open" ? 0 : lines.filter((l) => styleSteps(l.id).some((x) => !x.row?.done_on && x.row?.planned_on && x.row.planned_on < today)).length;
+  // A style counts as late, or is forecast, only once its production has started: before that its targets are a draft.
+  const started = (lineId: string) => !!groups.find((g) => g.factoryId === (lines.find((l) => l.id === lineId)?.factory_id ?? null))?.releasedAt;
+  const behind = o.status !== "open" ? 0 : lines.filter((l) => started(l.id) && styleSteps(l.id).some((x) => !x.row?.done_on && x.row?.planned_on && x.row.planned_on < today)).length;
   // Where the order is heading: its latest style, with every late step pushing the steps after it back.
   const fc = o.status === "open"
-    ? forecast(lines, stageRows, due, today, paceLookup(await paceP, lines, (fid) => opts.factories.find((f) => f.id === fid)?.name || "This factory"))
+    ? forecast(lines, stageRows, due, today, paceLookup(await paceP, lines, (fid) => opts.factories.find((f) => f.id === fid)?.name || "This factory"), started)
     : null;
   // When the order's money moves: the factory is paid its days after the goods come, the buyer its credit days after they ship.
   // Owner and Accounts only: factory terms are theirs.

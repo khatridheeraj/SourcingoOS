@@ -191,7 +191,8 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
   const latest = (lineId: string, kinds: string[]) => (checks ?? []).find((c) => c.line_id === lineId && kinds.includes(c.kind));
   // Days the order's latest style will likely miss the ship date by: each late step pushes the later ones back.
   const riskDays = (o: (typeof open)[number]) =>
-    forecast(o.order_lines ?? [], (stages ?? []).filter((s) => !s.not_needed), dueDate(o), today, paceLookup(pace, o.order_lines ?? [], (id) => factoryName.get(id) ?? "This factory"))?.daysLate ?? 0;
+    forecast(o.order_lines ?? [], (stages ?? []).filter((s) => !s.not_needed), dueDate(o), today, paceLookup(pace, o.order_lines ?? [], (id) => factoryName.get(id) ?? "This factory"),
+      (id) => (pos ?? []).some((p) => p.order_id === o.id && p.factory_id === o.order_lines?.find((l) => l.id === id)?.factory_id && !!p.released_at))?.daysLate ?? 0;
 
   const staleIds = new Set(stale.map((o) => o.id));
   const staleBlocker = new Map(await blockerP);

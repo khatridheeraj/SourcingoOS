@@ -37,9 +37,13 @@ export function openPastTarget(steps: StepRow[], today: string): number {
 }
 
 // The forecast for a set of styles: the latest one decides.
-export function forecast(lines: { id: string; style: string }[], rows: StepRow[], due: string | null | undefined, today: string, paceOf?: (lineId: string) => Pace | undefined): Forecast | null {
+// `started`: whether a style's production has started (its factory PO released). Before that its targets are only a
+// draft that Start production fits to the ship date, so a passed one doesn't make the style late and it isn't forecast.
+export function forecast(lines: { id: string; style: string }[], rows: StepRow[], due: string | null | undefined, today: string, paceOf?: (lineId: string) => Pace | undefined,
+  started?: (lineId: string) => boolean): Forecast | null {
   let worst: Forecast | null = null;
   for (const l of lines) {
+    if (started && !started(l.id)) continue;
     const steps = styleSteps(rows, l.id);
     const pace = paceOf?.(l.id);
     const p = project(steps, today, pace?.days ?? 0);
@@ -52,7 +56,8 @@ export function forecast(lines: { id: string; style: string }[], rows: StepRow[]
 
 // Progress of a set of styles (an order, or one factory's part of it): where the slowest styles are, and
 // whether any step is past its target. `rows` may hold steps of other styles too; only `lineIds` count.
-export function styleProgress(lineIds: string[], rows: StepRow[], due: string | null | undefined, today: string, paceOf?: (lineId: string) => Pace | undefined): Progress {
+export function styleProgress(lineIds: string[], rows: StepRow[], due: string | null | undefined, today: string, paceOf?: (lineId: string) => Pace | undefined,
+  started?: (lineId: string) => boolean): Progress {
   const ids = new Set(lineIds);
   const mine = rows.filter((s) => ids.has(s.line_id));
   const at = lineIds.map((id) => Math.max(-1, ...mine.filter((s) => s.line_id === id && s.done_on).map((s) => TNA_STEPS.findIndex((t) => t.key === s.stage))));
@@ -60,7 +65,7 @@ export function styleProgress(lineIds: string[], rows: StepRow[], due: string | 
   const n = at.filter((i) => i === slowest).length;
   const m = lineIds.length;
   const step = slowest < 0 || !Number.isFinite(slowest) ? "" : TNA_STEPS[slowest].label;
-  const fc = forecast(lineIds.map((id) => ({ id, style: "" })), mine, due, today, paceOf);
+  const fc = forecast(lineIds.map((id) => ({ id, style: "" })), mine, due, today, paceOf, started);
   return {
     // Named by the last step finished ("Cutting done"), never "At Cutting", which reads as if it were still under way.
     text: !m ? "" : m === 1 ? (step ? `${step} done` : "No step done yet")
@@ -69,7 +74,7 @@ export function styleProgress(lineIds: string[], rows: StepRow[], due: string | 
     planned: mine.filter((s) => s.planned_on).length,
     done: mine.filter((s) => s.done_on).length,
     total: mine.filter((s) => s.planned_on || s.done_on).length,
-    behind: lineIds.some((id) => openPastTarget(styleSteps(mine, id), today) > 0),
+    behind: lineIds.some((id) => (!started || started(id)) && openPastTarget(styleSteps(mine, id), today) > 0),
     // Days the latest style will likely miss the ship date by, with late steps pushing the later ones back.
     riskDays: fc?.daysLate ?? 0,
     forecast: fc,

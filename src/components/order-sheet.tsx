@@ -288,6 +288,11 @@ function StartView({ order, factoryId, onDone, onChanged }: { order: QOrder; fac
   // Something else stops the approval (the dates are handled above), so the approve button isn't offered.
   const otherBlock = waitingLock && !after?.rows.length && g.blocker ? g.blocker : "";
   const dateOf = (s: QStyle, k: string) => plan[s.id]?.[k] ?? s.steps.find((x) => x.key === k)?.planned_on ?? "";
+  // The merchandiser's own saved target where the plan replaces it: it had passed, or fell after the finish date.
+  const savedOf = (s: QStyle, k: string) => (plan[s.id]?.[k] && s.steps.find((x) => x.key === k)?.planned_on) || "";
+  const moved = live(first).filter((x) => !x.done_on && savedOf(first, x.key));
+  const movedPast = moved.some((x) => savedOf(first, x.key) < today);
+  const movedAfter = moved.some((x) => savedOf(first, x.key) > target);
   const same = g.styles.every((s) => live(s).every((x) => dateOf(s, x.key) === dateOf(first, x.key)));
   const old = order.due && order.due < addDays(today, -14);
   // The approved PO is emailed to the factory with every style's photo, so both are asked for right here.
@@ -430,10 +435,18 @@ function StartView({ order, factoryId, onDone, onChanged }: { order: QOrder; fac
             {live(first).map((x) => (
               <li key={x.key} className={x.done_on ? "done" : lateKeys.has(x.key) ? "late" : ""}>
                 <span>{x.label}</span>
-                <b className="num">{x.done_on ? `Done ${dm(x.done_on)}` : dateOf(first, x.key) ? dm(dateOf(first, x.key)) : "–"}</b>
+                <b className="num">{x.done_on ? `Done ${dm(x.done_on)}` : dateOf(first, x.key) ? dm(dateOf(first, x.key)) : "–"}
+                  {!x.done_on && savedOf(first, x.key) && <small className="qs-was">yours {dm(savedOf(first, x.key))}</small>}</b>
               </li>
             ))}
           </ol>
+          {moved.length > 0 && (
+            <p className="qs-fine qs-moved">
+              {moved.length === 1 ? `Your ${moved[0].label} date` : `${moved.length} of your dates`}{" "}
+              {movedPast && movedAfter ? `had passed or fell after ${dm(target)}` : movedPast ? "had already passed" : `fell after ${dm(target)}, the day the factory must finish by`}, so{" "}
+              {moved.length === 1 ? "it is" : "they are"} moved to fit. Every other date is the one you set.
+            </p>
+          )}
           {!waitingLock && <p className="qs-fine">You can change any date on the order page before it&apos;s locked.</p>}
         </div>
       )}
