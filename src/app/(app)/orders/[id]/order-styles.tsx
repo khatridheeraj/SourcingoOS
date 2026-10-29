@@ -6,7 +6,7 @@ import { useState, useTransition } from "react";
 import { dayAtNear, dayNear, daysBetween, defaultBuffer, planDueAt, PLAN_HOURS, qtyU, TNA_STEPS } from "@/lib/format";
 import { uploadPhotos } from "@/lib/photos";
 import { toast } from "@/components/toast";
-import { project, shipRisk, fillEmptyTargets, stepDays } from "@/lib/tna-plan";
+import { project, shipRisk, fillEmptyTargets, startBuffer, stepDays } from "@/lib/tna-plan";
 import { FactoryLink } from "../../factories/factory-link";
 import { sizeEntries } from "@/lib/sizes";
 import { StyleDetails, type StyleDetail } from "./style-details";
@@ -113,7 +113,10 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
   const [backNote, setBackNote] = useState<Record<string, string>>({});
   const [sendingBack, setSendingBack] = useState("");
   const [buffers, setBuffers] = useState<Record<string, string>>(
-    Object.fromEntries(groups.filter((g) => g.factoryId).map((g) => [g.factoryId!, String(g.bufferDays ?? defaultBuffer(g.lines.length > 0 && g.lines.every((l) => l.fabricOrder)))])));
+    // The same opening buffer as Start production: one the merchandiser's own dates fit in.
+    Object.fromEntries(groups.filter((g) => g.factoryId).map((g) => [g.factoryId!, String(startBuffer(
+      g.lines.map((l) => ({ id: l.id, steps: TNA_STEPS.map((t) => ({ key: t.key, ...(initial[key(l.id, t.key)] ?? blank), extra: false })) })),
+      dueDate, today, defaultBuffer(g.lines.length > 0 && g.lines.every((l) => l.fabricOrder)), g.bufferDays))])));
   const [pending, start] = useTransition();
   // Styles whose fabric, sizes and files are open.
   const [detailShown, setDetailShown] = useState<Set<string>>(new Set());

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { factoryPace, fillEmptyTargets, FABRIC_STEP_DAYS, project, stepDays } from "./tna-plan.ts";
+import { emptySteps, factoryPace, fillEmptyTargets, FABRIC_STEP_DAYS, project, startBuffer, startTargets, STEP_DAYS, stepDays, type StartStyle } from "./tna-plan.ts";
 
 const FABRIC = ["greige", "printing", "strike_off", "finishing", "packed", "final_qc", "ex_factory"];
 const empty = (stages: string[]) => stages.map((stage) => ({ stage, on: null }));
@@ -66,4 +66,51 @@ test("a factory's pace is learnt only from enough finished steps, never early, a
   assert.equal(pace.has("b"), false);
   assert.equal(pace.has("c"), false);
   assert.equal(pace.get("d"), 10);
+});
+
+// SO-0022 as Vidhi saved it on 27 Oct: every step planned, ending with Ex-factory on 1 Nov; the order ships 4 Nov.
+const STD = Object.keys(STEP_DAYS);
+const VIDHI: Record<string, string> = {
+  greige: "2026-10-01", fit_sample: "2026-10-04", fabric: "2026-10-03", printing: "2026-10-10", strike_off: "2026-10-06",
+  pp_sample: "2026-10-17", size_set: "2026-10-17", cutting: "2026-10-19", stitching: "2026-10-20", inline: "2026-10-23",
+  midline: "2026-10-26", finishing: "2026-10-29", packed: "2026-10-30", final_qc: "2026-10-31", ex_factory: "2026-11-01",
+};
+const style = (dates: Record<string, string>, id = "a"): StartStyle => ({
+  id, steps: STD.map((key) => ({ key, planned_on: dates[key] ?? "", done_on: "", not_needed: false, extra: false })),
+});
+const TODAY = "2026-10-29";
+
+test("start production opens with a buffer her own plan fits in, never one that pushes her dates out", () => {
+  // 4 Nov less 3 days is 1 Nov, her Ex-factory date; the standard 7 days would have put the finish before today.
+  assert.equal(startBuffer([style(VIDHI)], "2026-11-04", TODAY, 7), 3);
+  // A plan that leaves more room than the standard buffer keeps the standard one, and a saved buffer always wins.
+  assert.equal(startBuffer([style({ ...VIDHI, ex_factory: "2026-11-12" })], "2026-11-24", TODAY, 7), 7);
+  assert.equal(startBuffer([style(VIDHI)], "2026-11-04", TODAY, 7, 5), 5);
+  // No dates yet: the standard buffer.
+  assert.equal(startBuffer([style({})], "2026-11-04", TODAY, 7), 7);
+});
+
+test("starting production never changes a date the merchandiser saved, passed or not", () => {
+  const plan = startTargets([style(VIDHI), style(VIDHI, "b")], "2026-11-01", TODAY);
+  assert.deepEqual(plan, { a: {}, b: {} });
+});
+
+test("dates after the finish date move only when she asks, and then only those", () => {
+  // With 6 days' buffer the factory finishes 29 Oct: Packed, Final QC and Ex-factory are after it.
+  assert.deepEqual(startTargets([style(VIDHI)], TODAY, TODAY), { a: {} });
+  assert.deepEqual(startTargets([style(VIDHI)], TODAY, TODAY, true), { a: { packed: TODAY, final_qc: TODAY, ex_factory: TODAY } });
+});
+
+test("with no day left before the finish date the empty steps are not all squashed onto today", () => {
+  assert.deepEqual(startTargets([style({})], TODAY, TODAY), { a: {} });
+  assert.equal(emptySteps([style({})]), 15);
+  assert.equal(emptySteps([style(VIDHI)]), 0);
+});
+
+test("only the empty steps are filled, inside the days left and around her own dates", () => {
+  const { greige, fabric, cutting, ...rest } = VIDHI;
+  void greige; void fabric; void cutting;
+  const plan = startTargets([style(rest)], "2026-11-01", TODAY).a;
+  assert.deepEqual(Object.keys(plan).sort(), ["cutting", "fabric", "greige"]);
+  for (const k of Object.keys(plan)) assert.ok(plan[k] >= TODAY && plan[k] <= "2026-11-01", `${k} ${plan[k]}`);
 });

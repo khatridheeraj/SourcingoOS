@@ -90,6 +90,51 @@ export function fillEmptyTargets(steps: { stage: string; on: string | null }[], 
   return out;
 }
 
+// A style's steps as the start-production sheet has them: standard steps in order, then its extra steps.
+export type StartStep = { key: string; planned_on: string; done_on: string; not_needed: boolean; extra: boolean };
+export type StartStyle = { id: string; fabric?: boolean; steps: StartStep[] };
+
+// The plan production starts with. Every date the merchandiser saved is kept as it is, passed or not: only the
+// empty steps get a date, from the standard days, between today and the target date (the day the factory has
+// to finish by). A saved date after the target date is moved to it only when `moveLate` says so (the sheet asks).
+// With no day left before the target date (it is today or past) nothing is filled: one day for every step is no
+// plan, so the sheet asks for a smaller buffer instead. Returns the changes only, per style.
+export function startTargets(styles: StartStyle[], target: string, today: string, moveLate = false): Record<string, Record<string, string>> {
+  const out: Record<string, Record<string, string>> = {};
+  for (const s of styles) {
+    const changes: Record<string, string> = {};
+    const late = (x: StartStep) => moveLate && !x.done_on && !!x.planned_on && x.planned_on > target;
+    for (const x of s.steps) if (!x.not_needed && late(x)) changes[x.key] = target;
+    if (target > today) {
+      const std = s.steps.filter((x) => !x.extra && !x.not_needed);
+      // Saved dates after the target date count as the target date here, so the empty steps around them stay inside it.
+      const on = (x: StartStep) => x.done_on || (x.planned_on && x.planned_on > target ? target : x.planned_on) || null;
+      const fill = fillEmptyTargets(std.map((x) => ({ stage: x.key, on: on(x) })), target, today, stepDays(s.fabric));
+      for (const x of std) if (!x.planned_on && !x.done_on && fill[x.key]) changes[x.key] = fill[x.key];
+      // Extra steps have no standard days: an empty one goes on the target date.
+      for (const x of s.steps) if (x.extra && !x.not_needed && !x.planned_on && !x.done_on) changes[x.key] = target;
+    }
+    out[s.id] = changes;
+  }
+  return out;
+}
+
+// Steps with no date at all, which starting production has to fill.
+export const emptySteps = (styles: StartStyle[]) =>
+  styles.reduce((n, s) => n + s.steps.filter((x) => !x.not_needed && !x.planned_on && !x.done_on).length, 0);
+
+// The buffer the sheet opens with: the one saved with the factory's request, else the standard one, but never so
+// big that the merchandiser's own plan no longer fits. Her last date sets the finish date when it is later than
+// the standard buffer allows (a plan ending 1 Nov on a 4 Nov ship date opens with 3 days, not 7).
+// A plan whose dates have all passed is planned from today.
+export function startBuffer(styles: StartStyle[], due: string, today: string, standardDays: number, saved?: number | null): number {
+  if (saved != null) return saved;
+  if (!due) return standardDays;
+  const last = styles.flatMap((s) => s.steps.filter((x) => !x.not_needed && !x.done_on && x.planned_on).map((x) => x.planned_on)).sort().pop();
+  const room = last ? diff(last > today ? last : today, due) : -1;
+  return room >= 0 && room < standardDays ? room : standardDays;
+}
+
 // `stage` is the step's key; a standard step marked done shows the standard steps before it are finished too.
 export type PlanStep = { planned_on: string | null | undefined; done_on: string | null | undefined; stage?: string };
 // Why a style will finish late: the step that added the most days. `done_late`: it was finished after its target;
