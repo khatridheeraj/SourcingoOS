@@ -16,9 +16,15 @@ export default async function PublicPoPage({ params }: PageProps<"/po/[token]">)
   if (!d) {
     return (
       <main className="mx-auto w-full max-w-[420px] px-4 py-16">
-        <div className="panel !p-8">
+        <div className="panel !p-8 shadow-[var(--shadow-md)]">
+          <div className="brand !p-0 mb-6"><span className="brand-mark" aria-hidden>S</span>Sourcingo<small>Purchase order</small></div>
           <h1 className="text-[20px] tracking-tight">This PO link doesn&apos;t open</h1>
-          <p className="muted mt-2 text-[14px]">{error === "Unknown PO." ? "Ask Sourcingo for the PO again." : error}</p>
+          {error === "Unknown PO." ? (
+            <>
+              <p className="muted mt-2 text-[14px]">Ask Sourcingo for the PO again.</p>
+              <p className="muted mt-1 text-[14px]">यह PO लिंक नहीं खुलता। Sourcingo से PO दोबारा माँगें।</p>
+            </>
+          ) : <p className="muted mt-2 text-[14px]">{error}</p>}
         </div>
       </main>
     );
