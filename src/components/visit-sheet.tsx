@@ -1,0 +1,309 @@
+"use client";
+
+import { useRouter } from "next/navigation";
+import { useEffect, useRef, useState, useTransition } from "react";
+import { loadVisit, postFloorUpdate, postVisitCheck, postVisitReject, type VisitData, type VisitStyle } from "@/app/(app)/orders/floor-actions";
+import { PhotoPicker, type Picked } from "@/components/photo-picker";
+import { toast } from "@/components/toast";
+import { FLOOR_STATUS, floorLine, INSPECTION_KIND, NOT_DONE_ON_VISIT, REJECT, VISIT_RESULT, type FloorStatus, type VisitResult } from "@/lib/floor";
+import { uploadPhotos } from "@/lib/photos";
+import { dm, when } from "@/lib/quick";
+
+type Open = { factoryId?: string; orderId?: string };
+const EVENT = "sourcingo:visit";
+const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;
+const at = new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit", timeZone: "Asia/Kolkata" });
+
+// Opens the factory visit from anywhere: every style in production at a factory (or on one order), one update each.
+export function openVisit(scope: Open) {
+  window.dispatchEvent(new CustomEvent<Open>(EVENT, { detail: scope }));
+}
+
+export function VisitButton({ factoryId, orderId, className = "btn sm", children }: Open & { className?: string; children: React.ReactNode }) {
+  return <button type="button" className={className} onClick={() => openVisit({ factoryId, orderId })}>{children}</button>;
+}
+
+// A style's open steps, the one it is on first: the earliest target, then its place in the TNA.
+// Quality's own checks stay in view on every style, whatever their target, so a problem can be posted against them.
+const INSPECTION = ["inline", "midline", "final_qc"];
+// Inline and Mid-line are repeated while the line runs: once done they stay on the visit, after the open steps.
+const REPEAT = ["inline", "midline"];
+const openSteps = (s: VisitStyle) => s.steps.map((x, i) => ({ ...x, i })).filter((x) => !x.done)
+  .sort((a, b) => (a.planned || "9999").localeCompare(b.planned || "9999") || a.i - b.i);
+const visitSteps = (s: VisitStyle) => [...openSteps(s), ...s.steps.map((x, i) => ({ ...x, i })).filter((x) => x.done && REPEAT.includes(x.key))];
+
+// The visit, mounted once in the app layout. On a phone it rises from the bottom like the other sheets.
+export function VisitSheet() {
+  const box = useRef<HTMLDialogElement>(null);
+  const [scope, setScope] = useState<Open | null>(null);
+  const [visit, setVisit] = useState<VisitData | null>(null);
+  const [error, setError] = useState("");
+  const [picking, setPicking] = useState(false);
+  const [openId, setOpenId] = useState("");
+  // Styles updated while the sheet is open.
+  const [posted, setPosted] = useState<Set<string>>(new Set());
+
+  function load(s: Open) {
+    setScope(s);
+    setVisit(null);
+    setError("");
+    setPicking(false);
+    loadVisit(s).then((r) => {
+      if (!r.visit) return setError(r.error ?? "Couldn't load the visit.");
+      setVisit(r.visit);
+      if (!r.visit.styles.length) setPicking(!s.orderId);
+      setOpenId(r.visit.styles[0]?.id ?? "");
+    }).catch(() => setError("Couldn't load the visit. Check the connection and try again."));
+  }
+  useEffect(() => {
+    const on = (e: Event) => {
+      setPosted(new Set());
+      load((e as CustomEvent<Open>).detail);
+      box.current?.showModal();
+    };
+    window.addEventListener(EVENT, on);
+    return () => window.removeEventListener(EVENT, on);
+  }, []);
+  const close = () => box.current?.close();
+  const styles = visit?.styles ?? [];
+  const orders = new Set(styles.map((s) => s.orderId)).size;
+
+  function done(id: string) {
+    setPosted((p) => new Set(p).add(id));
+    // On to the next style not yet updated, so a visit is one tap after another.
+    const i = styles.findIndex((s) => s.id === id);
+    const next = [...styles.slice(i + 1), ...styles.slice(0, i)].find((s) => !posted.has(s.id) && s.id !== id);
+    setOpenId(next?.id ?? "");
+    if (scope) loadVisit(scope).then((r) => r.visit && setVisit(r.visit));
+  }
+
+  return (
+    <dialog ref={box} className="sheet qs vs" aria-labelledby="vs-h" onClick={(e) => { if (e.target === box.current) close(); }} onClose={() => setScope(null)}>
+      <div className="sheet-body">
+        <span className="grabber" aria-hidden />
+        <header className="qs-head">
+          <div className="min-w-0">
+            <span className="vs-kicker">Factory visit · {visit ? dm(visit.today) : "today"}</span>
+            <h2 id="vs-h">{!visit ? "Loading…" : picking || (!visit.factoryName && !scope?.orderId) ? "Which factory are you at?" : visit.factoryName || `${styles[0]?.orderNo ?? "Order"} · ${styles[0]?.buyer ?? ""}`}</h2>
+            {visit && !picking && styles.length > 0 && (
+              <p>
+                {plural(styles.length, "style")}{orders > 1 ? ` · ${plural(orders, "order")}` : ""}
+                {posted.size > 0 && <> · <b className="text-ok">{posted.size} updated</b></>}
+                {visit.factories.length > 1 && !scope?.orderId && <> · <button type="button" className="link" onClick={() => setPicking(true)}>Another factory</button></>}
+              </p>
+            )}
+          </div>
+          <button type="button" className="qs-x" aria-label="Close" onClick={close}>
+            <svg viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden><path d="m5 5 10 10M15 5 5 15" /></svg>
+          </button>
+        </header>
+
+        {error ? <p className="errbox mt-3">{error}</p> : !visit ? (
+          <div className="qs-skel" aria-hidden><i /><i /><i /><i /></div>
+        ) : picking || (!visit.factoryName && !scope?.orderId) ? (
+          visit.factories.length === 0 ? <p className="qs-note">No factory has production running yet. Updates start once a factory PO is released.</p> : (
+            <ul className="vs-pick">
+              {visit.factories.map((f) => (
+                <li key={f.id}>
+                  <button type="button" onClick={() => load({ factoryId: f.id })} aria-current={f.id === visit.factoryId || undefined}>
+                    <b>{f.name}</b><small>{plural(f.styles, "style")} in production</small>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )
+        ) : styles.length === 0 ? (
+          <p className="qs-note">Nothing in production here yet. Updates start once the factory PO is released.</p>
+        ) : (
+          <div className="vs-list">
+            {styles.map((s) => (
+              <StyleCard key={`${s.id}:${s.steps.filter((x) => x.done).length}`} s={s} companyId={visit.companyId} today={visit.today} canQc={visit.canQc} open={openId === s.id} posted={posted.has(s.id)}
+                onToggle={() => setOpenId(openId === s.id ? "" : s.id)} onPosted={() => done(s.id)} />
+            ))}
+          </div>
+        )}
+
+        <footer className="qs-foot">
+          <button type="button" className="btn qs-go" onClick={close}>{posted.size ? `Finish visit · ${plural(posted.size, "update")} posted` : "Close"}</button>
+        </footer>
+      </div>
+    </dialog>
+  );
+}
+
+// One style on the visit: where it is, and the update for it.
+function StyleCard({ s, companyId, today, canQc, open, posted, onToggle, onPosted }: {
+  s: VisitStyle; companyId: string; today: string; canQc: boolean; open: boolean; posted: boolean; onToggle: () => void; onPosted: () => void;
+}) {
+  const router = useRouter();
+  const steps = visitSteps(s);
+  const first = steps.find((x) => !x.done);
+  const [stage, setStage] = useState((first ?? steps[0])?.key ?? "");
+  const [all, setAll] = useState(false);
+  const [status, setStatus] = useState<FloorStatus | VisitResult | "reject" | "">("");
+  const [pieces, setPieces] = useState("");
+  const [defects, setDefects] = useState("");
+  const [qty, setQty] = useState("");
+  const [ready, setReady] = useState("");
+  const [note, setNote] = useState("");
+  const [files, setFiles] = useState<Picked[]>([]);
+  const [error, setError] = useState("");
+  const [pending, start] = useTransition();
+  const card = useRef<HTMLElement>(null);
+  // The style that opens next comes into view, so the visit flows down the list.
+  useEffect(() => { if (open) card.current?.scrollIntoView({ block: "nearest", behavior: "smooth" }); }, [open]);
+  const cur = s.steps.find((x) => x.key === stage);
+  const w = first ? when(first.planned, today) : null;
+  const noDone = cur?.done ? `Done on ${dm(cur.done)}` : NOT_DONE_ON_VISIT[stage];
+  // Quality records Inline, Mid-line and Final QC as a check that passed or was rejected, in place of Done and Problem.
+  // On every other step Quality can reject the goods too.
+  const inspect = canQc && !!INSPECTION_KIND[stage];
+  const choices: { key: FloorStatus | VisitResult | "reject"; label: string; hint: string; tone: string }[] = inspect
+    ? [...VISIT_RESULT, ...FLOOR_STATUS.filter((x) => x.key === "on_track" || x.key === "behind")] : canQc ? [...FLOOR_STATUS, REJECT] : FLOOR_STATUS;
+  const checked = status === "pass" || status === "fail";
+  const rejecting = status === "fail" || status === "reject";
+  // After a rejection, the next check is its re-check.
+  const recheck = inspect && cur?.qc?.result === "fail";
+  const reRejected = !inspect && canQc && !!cur?.rejected;
+  const checkName = recheck ? (stage === "final_qc" ? "Re-check" : `${cur?.label} re-check`) : cur?.label ?? "QC";
+  const total = `${s.qty.toLocaleString("en-IN")} ${s.unit}`;
+  const shown = all ? steps : steps.filter((x, i) => i < 4 || x.key === stage || INSPECTION.includes(x.key));
+  const missing = !stage ? "Pick the step" : !status ? "Pick how it is" : status === "behind" && !ready ? "Give the ready date"
+    : status === "issue" && !note.trim() ? "Say what the problem is" : rejecting && !note.trim() ? "Say what was rejected"
+    : !files.length ? "Add a photo" : "";
+  const pick = (k: string) => {
+    setStage(k);
+    const qc = canQc && !!INSPECTION_KIND[k];
+    if ((status === "pass" || status === "fail") && !qc) setStatus("");
+    else if ((status === "done" || status === "issue" || status === "reject") && qc) setStatus("");
+    else if (status === "done" && (steps.find((x) => x.key === k)?.done || NOT_DONE_ON_VISIT[k])) setStatus("");
+  };
+
+  function save() {
+    if (!status || missing) return;
+    setError("");
+    start(async () => {
+      try {
+        if (status === "pass" || status === "fail") {
+          const qcId = crypto.randomUUID();
+          // A fail is also posted on the floor, and a pass marks Inline or Mid-line done, each with its own copy of the photos.
+          const toFloor = status === "fail" || recheck || (stage !== "final_qc" && !cur?.done);
+          const [qcPhotos, floorPhotos] = await Promise.all([
+            uploadPhotos(`${companyId}/${s.orderId}/qc/${qcId}`, files.map((f) => f.file)),
+            toFloor ? uploadPhotos(`${companyId}/${s.orderId}/visits/${s.id}`, files.map((f) => f.file)) : Promise.resolve([]),
+          ]);
+          const res = await postVisitCheck({ lineId: s.id, orderId: s.orderId, stage, result: status, qcId, pieces, defects, note, recheckOn: status === "fail" ? ready : "", qcPhotos, floorPhotos });
+          if (res.error) { setError(res.error); return; }
+          toast(res.warning ?? `${s.style}: ${checkName}${recheck || /QC$/.test(checkName) ? "" : " QC"} ${status === "pass" ? "passed" : "rejected"}`, res.warning || status === "fail" ? "bad" : "ok");
+          setStatus(""); setPieces(""); setDefects(""); setReady(""); setNote(""); setFiles([]);
+          onPosted();
+          router.refresh();
+          return;
+        }
+        const photos = await uploadPhotos(`${companyId}/${s.orderId}/visits/${s.id}`, files.map((f) => f.file));
+        if (status === "reject") {
+          const res = await postVisitReject({ lineId: s.id, orderId: s.orderId, stage, note, recheckOn: ready, photos });
+          if (res.error) { setError(res.error); return; }
+          toast(`${s.style}: ${cur?.label ?? "goods"} rejected`, "bad");
+          setStatus(""); setReady(""); setNote(""); setFiles([]);
+          onPosted();
+          router.refresh();
+          return;
+        }
+        const res = await postFloorUpdate({ lineId: s.id, orderId: s.orderId, stage, status, qty: status === "done" ? "" : qty, expectedOn: ready, note, photos });
+        if (res.error) { setError(res.error); return; }
+        toast(status === "done" ? `${s.style} ${cur?.label ?? "step"} done today` : `${s.style}: update posted`);
+        setStatus(""); setQty(""); setReady(""); setNote(""); setFiles([]);
+        onPosted();
+        router.refresh();
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "The photos didn't upload. Try again.");
+      }
+    });
+  }
+
+  return (
+    <article ref={card} className={`vs-style ${open ? "open" : ""} ${posted ? "posted" : ""}`}>
+      <button type="button" className="vs-head" aria-expanded={open} onClick={onToggle}>
+        <span className="vs-ph">
+          {/* eslint-disable-next-line @next/next/no-img-element -- short-lived signed links, not for the image optimiser */}
+          {s.photoUrl ? <img src={s.photoUrl} alt="" /> : <span aria-hidden>{s.style.slice(0, 2)}</span>}
+        </span>
+        <span className="vs-id">
+          <b><span className="code">{s.orderNo}</span>{s.style}{s.colour && <small> · {s.colour}</small>}</b>
+          <span className={`vs-now ${w?.cls ?? ""}`}>{first ? `${first.label} · ${w?.text}` : "Every step done"}</span>
+          {s.last && <small className="vs-last">{floorLine({ status: s.last.status, qty_done: s.last.qtyDone, expected_on: s.last.expectedOn || null, note: s.last.note }, s.last.step, `${s.qty.toLocaleString("en-IN")} ${s.unit}`, dm)} · {at.format(new Date(s.last.at))} · {s.last.by.split(" ")[0]}</small>}
+        </span>
+        {posted ? <span className="vs-tick" aria-label="Updated">✓</span> : <span className="vs-chev" aria-hidden />}
+      </button>
+
+      {open && steps.length > 0 && (
+        <div className="vs-form">
+          <div className="field"><span>Step</span>
+            <div className="vs-steps" role="radiogroup" aria-label={`${s.style} step`}>
+              {shown.map((x) => {
+                const ww = x.qc?.result === "fail" ? { text: canQc ? "Re-check due" : `Rejected ${dm(x.qc.on)}`, cls: "bad" }
+                  : x.rejected ? { text: canQc ? "Re-check due" : `Rejected ${dm(x.rejected)}`, cls: "bad" } : x.done ? { text: `Done ${dm(x.done)}`, cls: "ok" }
+                  : x.qc ? { text: `Passed ${dm(x.qc.on)}`, cls: "ok" } : when(x.planned, today);
+                return (
+                  <button key={x.key} type="button" role="radio" aria-checked={stage === x.key} onClick={() => pick(x.key)}>
+                    {x.label}<small className={ww.cls}>{ww.text}</small>
+                  </button>
+                );
+              })}
+              {!all && shown.length < steps.length && <button type="button" className="vs-more" onClick={() => setAll(true)}>All {steps.length} steps</button>}
+            </div>
+          </div>
+
+          <div className="field"><span>{recheck || reRejected ? `${recheck ? checkName : `${cur?.label} re-check`}: how is it now?` : "How is it?"}</span>
+            {(recheck || reRejected) && <small className="vs-re">{cur?.label} rejected on {dm(recheck ? cur!.qc!.on : cur!.rejected!)}. Check the fixed goods again.</small>}
+            <div className="vs-status" role="radiogroup" aria-label={`How ${cur?.label ?? "the step"} is`}>
+              {choices.map((x) => {
+                const off = x.key === "done" && !!noDone;
+                return (
+                  <button key={x.key} type="button" role="radio" aria-checked={status === x.key} className={`tone-${x.tone || "plain"}`} disabled={off} onClick={() => setStatus(x.key)}>
+                    <i aria-hidden /><b>{x.label}</b><small>{off ? noDone : recheck && x.key === "pass" ? "Fixed: goods now meet the standard" : (recheck && x.key === "fail") || (reRejected && x.key === "reject") ? "Still not right: say what" : x.hint}</small>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {checked && (
+            <div className="vs-pair">
+              <label className="field"><span>Pieces checked</span>
+                <input className="inp num" inputMode="numeric" value={pieces} placeholder={`of ${total}`} onChange={(e) => setPieces(e.target.value)} />
+              </label>
+              <label className="field"><span>Defects found</span>
+                <input className="inp num" inputMode="numeric" value={defects} placeholder="0" onChange={(e) => setDefects(e.target.value)} />
+              </label>
+            </div>
+          )}
+          {(status === "behind" || status === "issue" || rejecting) && (
+            <label className="field"><span>{rejecting ? "Re-check on" : "Ready by"}{status === "behind" && <i> *</i>}</span>
+              <input className="inp" type="date" min={today} value={ready} onChange={(e) => setReady(e.target.value)} />
+              {rejecting ? <small>When the factory will have it fixed for checking again.</small> : cur?.planned && <small>Target was {dm(cur.planned)}.</small>}
+            </label>
+          )}
+          {status && status !== "done" && status !== "reject" && !checked && !noDone && (
+            <label className="field"><span>{s.unit === "m" ? "Metres" : "Pieces"} done so far</span>
+              <span className="vs-qty"><input className="inp num" inputMode="numeric" value={qty} placeholder="0" onChange={(e) => setQty(e.target.value)} /><small>of {total}</small></span>
+            </label>
+          )}
+          {status && (
+            <label className="field"><span>{rejecting ? "What was rejected" : "Note"}{(status === "issue" || rejecting) && <i> *</i>}</span>
+              <textarea className="inp" rows={2} maxLength={450} value={note} onChange={(e) => setNote(e.target.value)}
+                placeholder={rejecting ? "What is wrong and what the factory must fix, e.g. 12 pcs open seams, redo" : status === "issue" ? "What is wrong, e.g. shade difference on 40 pcs" : status === "behind" ? "Why, e.g. fabric came 3 days late" : "Anything the team should know"} />
+            </label>
+          )}
+          {status && <PhotoPicker files={files} onChange={setFiles} disabled={pending} label={checked ? "Photos of the check" : "Photos from the floor"} />}
+
+          {error && <p className="qs-err" role="alert">{error}</p>}
+          <button type="button" className={`btn primary qs-go ${rejecting ? "danger" : status === "done" || status === "pass" ? "" : "vs-go"}`} disabled={pending || !!missing} onClick={save}>
+            {pending ? "Saving…" : missing || (rejecting ? `Reject ${cur?.label ?? "the goods"}` : checked ? `Save ${checkName} pass` : status === "done" ? `Mark ${cur?.label ?? "it"} done` : "Post update")}
+          </button>
+        </div>
+      )}
+    </article>
+  );
+}

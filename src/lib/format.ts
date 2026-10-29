@@ -26,6 +26,15 @@ export const dayAt = (ts: string | null | undefined) => (ts ? day(date.format(ne
 
 // Today's date in India as YYYY-MM-DD.
 export const todayIST = () => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(new Date());
+// "24 Oct" when the date falls in this year, else "24 Oct 2025": near dates read faster without the year.
+export const dayNear = (d: string | null | undefined, today: string = todayIST()) =>
+  d && d.slice(0, 4) === today.slice(0, 4) ? `${Number(d.slice(8, 10))} ${MONTHS[Number(d.slice(5, 7)) - 1]}` : day(d);
+// dayNear for a timestamp, on its India date.
+export const dayAtNear = (ts: string | null | undefined, today: string = todayIST()) => (ts ? dayNear(date.format(new Date(ts)), today) : "");
+const clock = new Intl.DateTimeFormat("en-IN", { timeZone: "Asia/Kolkata", hour: "numeric", minute: "2-digit" });
+// "24 Oct, 3:49 am" in India time, with the year only when it isn't this year.
+export const dayTimeNear = (ts: string | null | undefined, today: string = todayIST()) =>
+  ts ? `${dayAtNear(ts, today)}, ${clock.format(new Date(ts))}` : "";
 
 export const STATUS: Record<string, { label: string; cls: string }> = {
   open: { label: "Open", cls: "chip info" },

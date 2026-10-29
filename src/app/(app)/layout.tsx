@@ -6,12 +6,12 @@ import { Toaster } from "@/components/toast";
 import { OrderSheet } from "@/components/order-sheet";
 import { SearchPalette } from "@/components/search";
 import { QcSheet } from "@/components/qc-sheet";
+import { VisitSheet } from "@/components/visit-sheet";
 import { SegScroll } from "@/components/seg-scroll";
 import { canEditOrders, canEnterDone, canRecordQc, getMe, roleLabel } from "@/lib/auth";
 import { todayIST } from "@/lib/format";
 import { heldSince } from "@/lib/goods";
 import { createClient } from "@/lib/supabase/server";
-import { MARKERS_ON } from "@/lib/features";
 
 export default async function AppLayout({ children }: LayoutProps<"/">) {
   const me = await getMe();
@@ -64,7 +64,7 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
     { label: "Records", items: [
       ...(edit ? [{ href: "/buyers", label: "Buyers", icon: "buyers" as const }, { href: "/factories", label: "Factories", icon: "factories" as const },
         { href: "/styles", label: "Style catalogue", icon: "styles" as const },
-        ...(MARKERS_ON ? [{ href: "/markers", label: "Markers", icon: "markers" as const }] : [])] : []),
+        { href: "/markers", label: "Markers", icon: "markers" as const }] : []),
       edit ? { href: "/reports", label: "Reports", icon: "chart" as const, also: ["/brief"] } : { href: "/brief", label: "Morning brief", icon: "sun" as const },
     ] },
     ...(me.role === "owner" ? [{ label: "Admin", items: [{ href: "/team", label: "Team", icon: "team" as const }, { href: "/activity", label: "Activity log", icon: "activity" as const },
@@ -109,6 +109,7 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
         <HelpChat who="staff" role={me.role} name={me.fullName ?? ""} userId={me.id} companyId={me.companyId} ownerName={me.role === "owner" ? "Claude" : help.owner || "the owner"} unseen={help.unseen ?? 0} />
       )}
       {canEnterDone(me.role) && <OrderSheet />}
+      {canEnterDone(me.role) && <VisitSheet />}
       <SearchPalette groups={[...groups, pages]} />
       {canRecordQc(me.role) && <QcSheet />}
       <Toaster />

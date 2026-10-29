@@ -53,4 +53,5 @@ echo "Running: app http://localhost:3100, gateway :54321, PostgREST :54322, Post
 status=0
 node --experimental-strip-types --test src/lib/*.test.ts >"$WORK/unit.log" 2>&1 && echo "Unit tests passed." || { echo "UNIT TESTS FAILED:"; tail -40 "$WORK/unit.log"; status=1; }
 node e2e/crawl.mjs ${1:-} || status=1
+node e2e/help.mjs || status=1
 exit $status

@@ -2,6 +2,7 @@
 
 import { openOrderSheet } from "@/components/order-sheet";
 import { openQcSheet } from "@/components/qc-sheet";
+import { openVisit } from "@/components/visit-sheet";
 import { areaOf, type Journey, STAGES, stageIndex } from "@/lib/journey";
 import { MarkShipped } from "../mark-shipped";
 
@@ -18,6 +19,7 @@ export function OrderJourney({ orderId, orderNo, j, canEdit, canRecordQc, shipBl
   function act() {
     if (a.kind === "start") openOrderSheet(orderId, "start", a.factoryId);
     else if (a.kind === "update") openOrderSheet(orderId, "update");
+    else if (a.kind === "visit") openVisit({ orderId });
     else if (a.kind === "qc") { if (canRecordQc) openQcSheet(orderId, "final"); else go("qc"); }
     else if (a.kind === "po") go("details-po");
     else if (a.kind === "date") go("ship");

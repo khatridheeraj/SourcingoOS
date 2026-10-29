@@ -95,7 +95,18 @@ test("an order past its ship date asks the orders team for a new date first", ()
 });
 test("a ship date today or ahead, Quality, and packed orders keep their usual next step", () => {
   assert.equal(j({ due: today }).next.action.kind, "update");
-  assert.equal(j({ due: "2026-09-10", role: "quality" }).next.action.kind, "update");
+  assert.equal(j({ due: "2026-09-10", role: "quality" }).next.action.kind, "visit");
   assert.equal(j({ due: "2026-09-10", packedAll: true }).next.action.kind, "qc");
   assert.equal(j({ due: "2026-09-10", status: "shipped" }).next.action.kind, "none");
+});
+test("Quality posts production from the floor, and confirms the factory's own updates", () => {
+  const r = j({ role: "quality", steps: steps(3, "2026-10-10") });
+  assert.equal(r.stage, "make");
+  assert.equal(r.next.action.kind, "visit");
+  assert.equal(r.next.label, "Post update");
+  assert.equal(r.next.tone, "bad");
+  assert.equal(j({ role: "quality", steps: steps(3, "2026-10-10"), riskDays: 0 }).next.tone, "warn");
+  assert.equal(j({ role: "quality" }).next.title, "Next: Printing / dyeing by 10 Nov");
+  assert.equal(j({ role: "quality", pendingUpdates: 2 }).next.action.kind, "review");
+  assert.equal(j({ pendingUpdates: 2 }).next.action.kind, "review");
 });

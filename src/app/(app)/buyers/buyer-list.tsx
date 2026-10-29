@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import type { Buyer } from "@/lib/data";
 import { saveBuyer, type BuyerInput } from "./actions";
+import { BuyerLink } from "./buyer-link";
 import { GrnDays } from "./grn-days";
 
 const blank: BuyerInput = { code: "", realName: "", city: "", notes: "", active: true, senders: "" };
@@ -78,7 +79,7 @@ export function BuyerList({ buyers, owner, openOrders, senders }: {
                   <td><GrnDays buyerId={b.id} code={b.realName ?? b.code} value={b.grn_days} owner={owner} /></td>
                   <td className="muted">{b.notes}</td>
                   {owner && <td className="muted text-xs">{(senders[b.id] ?? []).join(", ") || "None yet"}</td>}
-                  <td>{!b.active && <span className="chip">Inactive</span>}</td>
+                  <td>{!b.active ? <span className="chip">Inactive</span> : <BuyerLink buyerId={b.id} name={b.realName ?? b.code} />}</td>
                   {owner && (
                     <td className="r">
                       <button className="btn sm" onClick={() => { setError(""); setEditing({ id: b.id, code: b.code, realName: b.realName ?? "", city: b.city ?? "", notes: b.notes ?? "", active: b.active, senders: (senders[b.id] ?? []).join(", ") }); }}>Edit</button>

@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { canEditOrders, getMe } from "@/lib/auth";
 import { buyerName, loadBuyers, loadTeam, personName } from "@/lib/data";
-import { day, dayAt, daysBetween, money, qty, todayIST } from "@/lib/format";
+import { day, dayAt, dayNear, daysBetween, money, qty, todayIST } from "@/lib/format";
 import { INQUIRY_COLUMNS, INQUIRY_STATUS, isOpenInquiry, sourceLabel, stageOf, type Inquiry } from "@/lib/inquiries";
 import { suggestBuyerCode } from "@/lib/names";
 import { PHOTO_BUCKET } from "@/lib/storage";
@@ -67,7 +67,7 @@ export default async function InquiryPage({ params }: PageProps<"/inquiries/[id]
             {[i.est_qty ? `${qty(i.est_qty)} ${i.unit}` : "", i.quoted_price != null ? `${money(i.quoted_price)} a ${unit} quoted` : i.target_price != null ? `${money(i.target_price)} a ${unit} target` : ""]
               .filter(Boolean).map((t) => <span key={t}>{t}</span>)}
             {due && <span className="chip bad">{i.next_follow_up! < today ? (() => { const n = daysBetween(i.next_follow_up!, today); return `Follow-up ${n} ${n === 1 ? "day" : "days"} late`; })() : "Follow up today"}</span>}
-            {open && !due && i.next_follow_up && <span className="chip">Follow up {day(i.next_follow_up).replace(/ \d{4}$/, "")}</span>}
+            {open && !due && i.next_follow_up && <span className="chip">Follow up {dayNear(i.next_follow_up, today)}</span>}
           </p>
         </div>
         {open && <Link href={`/inquiries/${i.id}/edit`} className="btn sm">Edit details</Link>}

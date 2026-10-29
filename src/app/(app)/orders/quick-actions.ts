@@ -5,7 +5,7 @@ import { canEditOrders, canEnterDone, getMe } from "@/lib/auth";
 import { buyerName, loadBuyers, loadFactories, loadTeam, personName } from "@/lib/data";
 import { friendly } from "@/lib/errors";
 import { TNA_STEPS, todayIST } from "@/lib/format";
-import { addDays, EMAIL_OK, startTargets, type QGroup, type QOrder, type QStyle } from "@/lib/quick";
+import { addDays, andList, dm, EMAIL_OK, pastTarget, startTargets, type QGroup, type QOrder, type QStyle } from "@/lib/quick";
 import { createClient } from "@/lib/supabase/server";
 import { saveLineStages, type LineStageInput } from "./actions";
 
@@ -21,7 +21,7 @@ export async function loadQuick(orderId: string): Promise<{ error?: string; orde
   const [{ data: o, error }, { data: stages }, { data: pos }, { data: prices }, buyers, factories, team, { data: withPo }] = await Promise.all([
     supabase.from("orders").select("id, order_no, buyer_id, buyer_po, ship_date, revised_ship_date, status, order_lines(id, style, colour, qty, factory_id, position, product, photo_path)")
       .eq("id", orderId).is("order_lines.removed_at", null).maybeSingle(),
-    supabase.from("line_stages").select("line_id, stage, label, planned_on, done_on, not_needed, added_at").eq("order_id", orderId).order("added_at").order("id"),
+    supabase.from("line_stages").select("line_id, stage, label, planned_on, done_on, factory_on, not_needed, added_at").eq("order_id", orderId).order("added_at").order("id"),
     supabase.from("factory_pos").select("factory_id, plan_requested_at, plan_requested_on, factory_sent_at, released_at, lock_requested_at, lock_note, buffer_days").eq("order_id", orderId),
     supabase.rpc("line_prices", { p_orders: [orderId] }),
     loadBuyers(),
@@ -37,7 +37,7 @@ export async function loadQuick(orderId: string): Promise<{ error?: string; orde
     const rows = (stages ?? []).filter((s) => s.line_id === l.id);
     const step = (key: string, label: string, extra: boolean) => {
       const r = rows.find((s) => s.stage === key);
-      return { key, label, planned_on: str(r?.planned_on), done_on: str(r?.done_on), not_needed: !!r?.not_needed, extra };
+      return { key, label, planned_on: str(r?.planned_on), done_on: str(r?.done_on), factory_on: str(r?.factory_on), not_needed: !!r?.not_needed, extra };
     };
     return {
       id: l.id, style: l.style, colour: str(l.colour), qty: l.qty, hasRate: rate.get(l.id) != null, hasPhoto: !!l.photo_path, factoryId: l.factory_id, fabric: l.product === "fabric",
@@ -60,6 +60,11 @@ export async function loadQuick(orderId: string): Promise<{ error?: string; orde
     }
     g.styles.push(styleOf(l));
   }
+  // A plan waiting for approval can have changed since it was sent: say what stops it, so nobody presses a button that fails.
+  await Promise.all(groups.filter((g) => g.factoryId && g.lockRequestedAt && !g.released).map(async (g) => {
+    const { data } = await supabase.rpc("release_blocker", { p_order: orderId, p_factory: g.factoryId });
+    g.blocker = friendly({ message: str(data) });
+  }));
   const owner = team.find((m) => m.role === "owner" && m.active);
   const b = buyers.find((x) => x.id === o.buyer_id);
   return {
@@ -194,6 +199,37 @@ export async function lockPlan(orderId: string, factoryId: string): Promise<{ er
   revalidatePath("/today");
   revalidatePath(`/orders/${orderId}`);
   return {};
+}
+
+// Moves the open targets that sit after the factory's finish date back to that date, when the factory's own dates
+// already meet it; the owner can approve in the same tap.
+export async function moveLateTargets(orderId: string, factoryId: string, approve: boolean): Promise<{ error?: string; done?: string }> {
+  const me = await getMe();
+  if (!canEditOrders(me?.role)) return { error: "Only the orders team can change the plan." };
+  const { order, error: loadError } = await loadQuick(orderId);
+  if (!order) return { error: loadError ?? "That order wasn't found." };
+  const g = order.groups.find((x) => x.factoryId === factoryId);
+  if (!g || g.released) return { error: "This factory's PO is already approved." };
+  if (!order.due) return { error: "Enter the order's ship date first." };
+  const target = addDays(order.due, -(g.bufferDays ?? 0));
+  const late = pastTarget(g.styles, target);
+  if (late.rows.length && !late.movable) return { error: `The factory's own dates for ${andList(late.labels)} are after ${dm(target)}. Ask the factory for earlier dates, or move the ship date.` };
+  if (late.rows.length) {
+    const res = await saveLineStages(orderId, late.rows.map(({ style, step }) => ({
+      line_id: style.id, stage: step.key, planned_on: target, done_on: step.done_on, not_needed: false, ...(step.extra ? { label: step.label } : {}),
+      was: { planned_on: step.planned_on, done_on: step.done_on, not_needed: step.not_needed },
+    })));
+    if (res.error) return res;
+  }
+  const moved = late.rows.length ? `${andList(late.labels)} moved to ${dm(target)}.` : "";
+  if (approve && me?.role === "owner") {
+    const res = await lockPlan(orderId, factoryId);
+    if (res.error) return res;
+    return { done: `${moved} Approved: the PO is emailed to ${g.factoryName}.`.trim() };
+  }
+  revalidatePath(`/orders/${orderId}`);
+  revalidatePath("/");
+  return { done: moved || "Nothing to move." };
 }
 
 // Closes an order that shipped before the app was in use: nothing in Dispatch, ship date two weeks past.

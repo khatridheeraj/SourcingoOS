@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { canEditOrders, getMe } from "@/lib/auth";
 import { buyerName, loadBuyers, loadTeam, personName } from "@/lib/data";
 import { fetchAll } from "@/lib/fetch-all";
-import { day, daysBetween, money, qty, todayIST } from "@/lib/format";
+import { dayNear, daysBetween, money, qty, todayIST } from "@/lib/format";
 import { INQUIRY_COLUMNS, isOpenInquiry, QUIET_DAYS, STAGES, stageOf, type Inquiry } from "@/lib/inquiries";
 import { addDays } from "@/lib/payments";
 import { createClient } from "@/lib/supabase/server";
@@ -98,8 +98,8 @@ export default async function InquiriesPage({ searchParams }: PageProps<"/inquir
     const when = i.status === "converted" ? null
       : i.status === "lost" ? <span key="w" className="!whitespace-normal">Lost: {i.lost_reason}</span>
       : isDue ? <span key="w" className="text-bad">{late ? `${plural(late, "day")} late` : "Due today"}</span>
-      : i.next_follow_up ? <span key="w">Follow up {day(i.next_follow_up).replace(/ \d{4}$/, "")}</span>
-      : <span key="w">Quiet since {day(lastTouch(i)).replace(/ \d{4}$/, "")}</span>;
+      : i.next_follow_up ? <span key="w">Follow up {dayNear(i.next_follow_up, today)}</span>
+      : <span key="w">Quiet since {dayNear(lastTouch(i), today)}</span>;
     return (
       <li className="inq-row">
         <span className={`sev ${isDue ? "bad" : i.status === "converted" ? "ok" : ""}`} aria-hidden />

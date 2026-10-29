@@ -85,6 +85,10 @@ begin
     elsif v_others > 0 then
       raise exception 'Invoice % is already on another dispatch. Its ₹% in % doesn''t cover this part too (₹% with GST all together). Check the invoice number.',
         e.invoice_no, v_amount, case when v_tally is not null then 'Tally' else 'Payments' end, round(v_others + v_total, 2);
+    elsif v_tally is not null and v_tally > v_total + 1 and exists (select 1 from public.dispatches x where x.order_id = d.order_id
+          and x.id <> d.id and x.invoice_id is null and x.cancelled_at is null) then
+      raise exception 'Invoice % is ₹% in Tally, more than this part (₹% with GST). If it also covers other parts of this order, don''t type it: it fills in by itself on all of them once their values add up to it.',
+        v_no, v_tally, v_total;
     elsif v_tally is not null then
       raise exception 'Invoice % is ₹% in Tally, but the value here with GST comes to ₹%. Check the value before GST.', v_no, v_tally, v_total;
     else
@@ -212,3 +216,19 @@ revoke execute on function public.take_invoices_from_tally() from public, anon, 
 
 -- Parts already waiting take their shared invoices now.
 select public.take_invoices_from_tally();
+
+-- SO-0020, 29 Oct: before this went live, SPL/26-27/202 was typed in by hand on part 1 (Shree Shai bill 812) with the
+-- whole invoice's value, ₹31,834 before GST, so part 2 (Ritika bill 354) still waited. Part 1 goes back to its own value
+-- at its sale rate (₹13,260 + ₹663 GST) and part 2 joins the same invoice with its own (₹18,574 + ₹928.70). Only these
+-- two dispatches, and only while they are exactly as found.
+do $$
+begin
+  if exists (select 1 from public.dispatches where id = '1c7f9512-900d-49e6-8f2f-506d64f73e33'
+               and invoice_no = 'SPL/26-27/202' and invoice_taxable = 31834 and cancelled_at is null)
+     and exists (select 1 from public.dispatches where id = 'f68bd6e9-902a-4d4e-a330-e9fe4ae07eb9'
+               and invoice_id is null and cancelled_at is null) then
+    update public.dispatches set invoice_taxable = 13260, invoice_gst = 663 where id = '1c7f9512-900d-49e6-8f2f-506d64f73e33';
+    perform public.invoice_dispatch('f68bd6e9-902a-4d4e-a330-e9fe4ae07eb9', 'SPL/26-27/202', '2026-10-23', 18574);
+    perform public.take_eway_bills_from_tally();
+  end if;
+end $$;

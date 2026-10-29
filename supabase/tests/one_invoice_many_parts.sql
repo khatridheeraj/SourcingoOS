@@ -100,3 +100,16 @@ do $$ begin
     if sqlerrm not like '%is ₹5000.00 in Tally, but%' then raise; end if;
   end;
 end $$;
+
+-- 5. Typing a shared invoice on one part while another part of the order waits says it fills in by itself.
+select public.record_purchase(jsonb_build_object('order_id', :'ord2', 'factory_id', '20000000-0000-0000-0000-000000000001', 'bill_no', '951',
+  'bill_date', '2026-10-24', 'lines', jsonb_build_array(jsonb_build_object('line_id', :'l9', 'qty', 10, 'purchase_rate', 90, 'sale_rate', 100)))) as d10 \gset
+do $$ begin
+  begin
+    perform public.record_dispatch_invoice((select id from public.dispatches where purchase_bill_no = '950'),
+      '{"invoice_no":"SPL/26-27/210","invoice_date":"2026-10-24","taxable":1000}');
+    raise exception 'bigger Tally total accepted on one part by hand';
+  exception when others then
+    if sqlerrm not like '%more than this part%fills in by itself%' then raise; end if;
+  end;
+end $$;

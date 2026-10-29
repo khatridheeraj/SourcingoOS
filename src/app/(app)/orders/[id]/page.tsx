@@ -4,10 +4,10 @@ import { Fragment } from "react";
 import { notFound } from "next/navigation";
 import { canEditOrders, canEnterDone, canRecordQc, getMe } from "@/lib/auth";
 import { fetchAll } from "@/lib/fetch-all";
-import { day, dayAt, money, moneyShort, qty, qtyTotal, qtyU, riskLate, unitOf, unitOfAll, SHIP_QC, stageReached, STATUS, TNA_STEPS, todayIST } from "@/lib/format";
+import { day, dayAt, dayAtNear, dayNear, money, moneyShort, qty, qtyTotal, qtyU, unitOf, unitOfAll, SHIP_QC, stageReached, STATUS, TNA_STEPS, todayIST } from "@/lib/format";
 import { areaOf, journey, shipClock } from "@/lib/journey";
 import { fileNamesStyle, styleKey } from "@/lib/po-match";
-import { PhotoStack, ShipClock } from "@/components/order-ui";
+import { Outlook, PhotoStack, ShipClock } from "@/components/order-ui";
 import { OrderJourney } from "./order-journey";
 import { createClient } from "@/lib/supabase/server";
 import { OrderForm } from "../order-form";
@@ -18,8 +18,9 @@ import { OrderMargin } from "./order-margin";
 import { OrderProduction } from "./order-production";
 import { OrderQc, type QcCheck } from "./order-qc";
 import { OrderStyles, type Baseline, type ExtraStep, type FactoryGroup, type StepQc } from "./order-styles";
-import { project, shipRisk } from "@/lib/tna-plan";
-import { loadTeam, personName } from "@/lib/data";
+import { forecast, paceLookup } from "@/lib/progress";
+import { loadPace, loadTeam, loadTerms, personName } from "@/lib/data";
+import { isFinance } from "../../payments/load";
 import { PHOTO_BUCKET } from "@/lib/storage";
 import { OrderSections, type SectionTab } from "./order-sections";
 import { ShareUpdate, type ShareOption } from "./share-update";
@@ -32,6 +33,9 @@ import { SampleThreadCard } from "../../samples/sample-thread";
 import { PO_BUCKET, type StoredFile } from "@/lib/po-files";
 import { BuyerPo, type FoundPo, type PoDoc } from "./buyer-po";
 import { DeletePo } from "./delete-po";
+import { OrderFloor, type FloorUpdate } from "./order-floor";
+import { floorLine, floorStatus } from "@/lib/floor";
+import { BuyerLink } from "../../buyers/buyer-link";
 
 const str = (v: unknown) => (v == null ? "" : String(v));
 
@@ -53,7 +57,9 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
   const priceOf = new Map(((prices ?? []) as LinePrice[]).map((p) => [p.id, p]));
   const lines = [...(o.order_lines ?? [])].sort((a, b) => a.position - b.position)
     .map((l) => ({ ...l, buyer_rate: priceOf.get(l.id)?.buyer_rate ?? null, factory_rate: priceOf.get(l.id)?.factory_rate ?? null }));
-  const [{ data: qc }, team, me, { data: lineStages }, { data: factoryPos }, { data: stepUps }, { data: lineFiles }, { data: shipRows }] = await Promise.all([
+  // How late each factory usually runs, for the forecast; read alongside everything else.
+  const paceP = loadPace();
+  const [{ data: qc }, team, me, { data: lineStages }, { data: factoryPos }, { data: stepUps }, { data: lineFiles }, { data: shipRows }, { data: floorRows }] = await Promise.all([
     supabase
       .from("qc_checks")
       .select("id, line_id, kind, checked_on, result, pieces_checked, defects, notes, checked_by, cancelled_at, cancel_reason")
@@ -72,6 +78,9 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
     supabase.from("line_files").select("id, line_id, kind, path, file_name").eq("order_id", id).is("removed_at", null).order("created_at"),
     // Each style's pieces bought, billed and shipped across the order's dispatches.
     loadShipProgress(supabase, [id]),
+    // What Quality saw on its factory visits, newest first.
+    supabase.from("floor_updates").select("id, line_id, stage, status, qty_done, expected_on, note, photos, created_by, created_at").eq("order_id", id)
+      .order("created_at", { ascending: false }).limit(60),
   ]);
   const ship = orderShip(shipRows);
   const canEdit = canEditOrders(me?.role);
@@ -110,7 +119,8 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
     : [{ data: [] }, { data: [] }];
   const stylePaths = lines.map((l) => l.photo_path).filter(Boolean) as string[];
   const dispatchPaths = [...(dRows ?? []).flatMap((d) => [d.bill_path, d.invoice_path, d.eway_path, d.lr_path, d.grn_path]), ...dispatchPhotos.map((p) => p.path)].filter(Boolean) as string[];
-  const allPaths = [...(photoRows ?? []).map((p) => p.path), ...stylePaths, ...dispatchPaths, ...(stepUps ?? []).flatMap((u) => u.photos as string[]), ...(lineFiles ?? []).map((f) => f.path)];
+  const allPaths = [...(photoRows ?? []).map((p) => p.path), ...stylePaths, ...dispatchPaths, ...(stepUps ?? []).flatMap((u) => u.photos as string[]), ...(lineFiles ?? []).map((f) => f.path),
+    ...(floorRows ?? []).flatMap((u) => u.photos as string[])];
   const { data: signed } = allPaths.length
     ? await supabase.storage.from(PHOTO_BUCKET).createSignedUrls(allPaths, 3600)
     : { data: [] };
@@ -174,6 +184,26 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
       photos: (u.photos as string[]).map((p) => urlByPath.get(p)).filter((x): x is string => !!x),
     };
   });
+  const stepName = (lineId: string, stage: string) => TNA_STEPS.find((t) => t.key === stage)?.label
+    || str((lineStages ?? []).find((r) => r.line_id === lineId && r.stage === stage)?.label) || "Extra step";
+  const floor: FloorUpdate[] = (floorRows ?? []).filter((u) => lines.some((l) => l.id === u.line_id)).map((u) => {
+    const l = lines.find((x) => x.id === u.line_id)!;
+    return {
+      id: u.id, style: l.style, step: stepName(u.line_id, u.stage), status: u.status, qtyDone: u.qty_done, total: qtyU(l.qty, l.product), expectedOn: u.expected_on,
+      note: str(u.note), at: u.created_at, by: (u.created_by && people.get(u.created_by)) || "Quality",
+      photos: (u.photos as string[]).map((p) => urlByPath.get(p)).filter((x): x is string => !!x),
+    };
+  });
+  // Each style's latest word from the floor, while its step is still open (a problem stays: a failed Inline can follow its done date).
+  const floorByStyle: Record<string, { text: string; cls: string }> = {};
+  const seenFloor = new Set<string>();
+  for (const u of floorRows ?? []) {
+    if (seenFloor.has(u.line_id)) continue;
+    seenFloor.add(u.line_id);
+    const l = lines.find((x) => x.id === u.line_id);
+    if (!l || (lineStages ?? []).some((r) => r.line_id === u.line_id && r.stage === u.stage && r.done_on && u.status !== "done" && u.status !== "issue")) continue;
+    floorByStyle[u.line_id] = { text: `${dayAtNear(u.created_at)}: ${floorLine(u, stepName(u.line_id, u.stage), qtyU(l.qty, l.product), (d) => dayNear(d))}`, cls: floorStatus(u.status).tone };
+  }
   const dispatchFactories: DispatchFactory[] = groups.filter((g) => g.factoryId).map((g) => ({
     id: g.factoryId!, name: g.factoryName,
     lines: lines.filter((l) => l.factory_id === g.factoryId).map((l) => ({
@@ -257,10 +287,22 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
       g.target ? `\nEverything must be ready by ${day(g.target)}.` : "",
     ].filter((x, i, a) => x !== "" || (a[i - 1] ?? "") !== "").join("\n"),
   })) : [])];
-  const behind = o.status !== "open" ? 0 : lines.filter((l) => styleSteps(l.id).some((x) => !x.row?.done_on && x.row?.planned_on && x.row.planned_on < today)).length;
+  // A style counts as late, or is forecast, only once its production has started: before that its targets are a draft.
+  const started = (lineId: string) => !!groups.find((g) => g.factoryId === (lines.find((l) => l.id === lineId)?.factory_id ?? null))?.releasedAt;
+  const behind = o.status !== "open" ? 0 : lines.filter((l) => started(l.id) && styleSteps(l.id).some((x) => !x.row?.done_on && x.row?.planned_on && x.row.planned_on < today)).length;
   // Where the order is heading: its latest style, with every late step pushing the steps after it back.
-  const outlook = o.status === "open" ? lines.map((l) => shipRisk(project(styleSteps(l.id).map((x) => ({ planned_on: x.row?.planned_on, done_on: x.row?.done_on })), today), due))
-    .reduce((w, r) => (r.daysLate > w.daysLate || (w.level === "ok" && r.level === "behind") ? r : w), { level: "ok" as "ok" | "behind" | "risk", daysLate: 0 }) : null;
+  const fc = o.status === "open"
+    ? forecast(lines, stageRows, due, today, paceLookup(await paceP, lines, (fid) => opts.factories.find((f) => f.id === fid)?.name || "This factory"), started)
+    : null;
+  // When the order's money moves: the factory is paid its days after the goods come, the buyer its credit days after they ship.
+  // Owner and Accounts only: factory terms are theirs.
+  const terms = isFinance(me?.role) && o.status === "open" && due ? await loadTerms() : null;
+  const shipsOn = terms ? [today, due!, fc?.finish ?? due!].sort().at(-1)! : null;
+  const cash = terms && shipsOn ? {
+    ships: shipsOn, buyerDays: terms.buyerDays(o.buyer_id),
+    factoryDays: Math.min(...lines.map((l) => terms.factoryDays(l.factory_id ?? null))),
+  } : null;
+  const outlook = fc ? { level: (fc.daysLate > 0 ? "risk" : fc.slip > 0 ? "behind" : "ok") as "ok" | "behind" | "risk", daysLate: fc.daysLate } : null;
   // The road from buyer PO to shipped, and the one next step on it.
   const lineIds = new Set(lines.map((l) => l.id));
   const j = journey({
@@ -329,10 +371,10 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
               : <a href="#details-po" className="chip warn" title="A factory PO is locked only once the buyer's PO is on file">No buyer PO yet</a>)}
             {ship.part && o.status === "open" && <a href="#dispatch" className="chip info">Part shipped · {qty(ship.shipped)} of {qty(ship.ordered)} {unitOfAll(lines)}</a>}
             {o.closed_short_at && <span className="chip warn" title={o.short_reason ?? undefined}>Closed short · {qty(ship.billed)} of {qty(ship.ordered)} {unitOfAll(lines)}</span>}
-            {!ship.part && outlook?.level === "risk" && <span className="chip bad" title="A late step pushes back every step after it">{riskLate(outlook.daysLate)}</span>}
           </p>
+          {!ship.part && fc && <Outlook f={fc} due={due ?? null} styles={lines.length} />}
         </div>
-        <ShipClock c={shipClock(due ?? null, today, o.status)} date={due ? `${o.revised_ship_date && o.revised_ship_date !== o.ship_date ? "New date " : ""}${day(due).replaceAll(" ", "\u00a0")}` : undefined} />
+        <ShipClock c={shipClock(due ?? null, today, o.status)} date={due ? `${o.revised_ship_date && o.revised_ship_date !== o.ship_date ? "New date " : ""}${dayNear(due, today).replaceAll(" ", "\u00a0")}` : undefined} />
       </header>
       <OrderJourney orderId={o.id} orderNo={o.order_no} j={j} canEdit={canEdit} canRecordQc={canRecordQc(me?.role)} shipBlocker={shipBlocker as string | null}>
         {/* The journey card carries the main next step; these stay for any time. */}
@@ -340,12 +382,14 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
           <SheetButton orderId={o.id} mode="update" className="btn">Update progress</SheetButton>
         )}
         {/* Keyed like the styles below, so the message is worded afresh after every save. */}
+        {canEdit && o.status === "open" && <BuyerLink buyerId={o.buyer_id} name={buyerLabel || "the buyer"} size="md" />}
         <ShareUpdate key={`${(lineStages ?? []).length}:${(lineStages ?? []).reduce((a, r) => (r.updated_at > a ? r.updated_at : a), "")}`} options={share} />
       </OrderJourney>
       {saved && <div className="okbox">Order saved as {o.order_no}.</div>}
       <OrderSections tabs={tabs} start={areaOf(j.stage, canEdit)}>
       <div data-sec="tna">
       <FactoryUpdates orderId={o.id} updates={pendingUpdates} canReview={canEnterDone(me?.role) && o.status === "open"} />
+      <OrderFloor orderId={o.id} updates={floor} canPost={canEnterDone(me?.role) && o.status === "open"} />
       <OrderStyles
         // Start again from the saved dates whenever anyone's save changes them, so stale dates on this screen can't
         // be saved over someone else's newer ones.
@@ -369,6 +413,7 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
         initial={Object.fromEntries((lineStages ?? []).map((r) => [`${r.line_id}:${r.stage}`, { planned_on: str(r.planned_on), done_on: str(r.done_on), not_needed: !!r.not_needed }]))}
         baselines={Object.fromEntries((lineStages ?? []).filter((r) => r.baseline_on).map((r): [string, Baseline] => [`${r.line_id}:${r.stage}`, { on: String(r.baseline_on), note: str(r.target_note) }]))}
         qc={stepQc}
+        floor={floorByStyle}
         hasBuyerPo={poDocs.length > 0}
       />
       </div>
@@ -409,7 +454,7 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
             id: l.id, style: l.style, colour: str(l.colour), qty: l.qty, product: l.product,
             buyerRate: l.buyer_rate == null ? null : Number(l.buyer_rate), factoryRate: l.factory_rate == null ? null : Number(l.factory_rate),
           }))}
-          dispatches={dispatches}
+          dispatches={dispatches} cash={cash}
         /></div>
       )}
       <div data-sec="details">{canEdit && <BuyerPo orderId={o.id} companyId={o.company_id} docs={poDocs} found={foundPos} canEdit={canEdit} />}{canEdit ? <OrderForm
