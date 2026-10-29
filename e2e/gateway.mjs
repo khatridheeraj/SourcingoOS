@@ -91,6 +91,12 @@ http.createServer(async (req, res) => {
       return json(res, 200, { Key: key, Id: crypto.randomUUID() });
     }
     if (p.startsWith("/storage/v1/")) return json(res, 200, []);
+    // A factory PO link is never real here, so it answers as the live po-inbox does for an unknown token.
+    if (p === "/functions/v1/po-inbox") {
+      const body = JSON.parse((await readBody(req)).toString() || "{}");
+      if (body.action === "po_doc" || body.action === "po_accept") return json(res, 404, { error: "Unknown PO." });
+      return json(res, 200, { ok: true });
+    }
     if (p.startsWith("/functions/v1/")) return json(res, 200, { ok: true });
     json(res, 404, { msg: `gateway: nothing at ${p}` });
   } catch (e) {

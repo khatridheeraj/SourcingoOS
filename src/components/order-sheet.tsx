@@ -412,7 +412,10 @@ function StartView({ order, factoryId, onDone, onChanged }: { order: QOrder; fac
           )}
           {pastDue && (
             <div className="qs-banner warn">
-              <b>{order.due ? `The ship date (${dm(order.due)}) is too close or past.` : "This order has no ship date."}</b> Set the new one to plan against.
+              <b>{!order.due ? "This order has no ship date."
+                : order.due < today ? `The ship date (${dm(order.due)}) has passed.`
+                : order.due === today ? `The ship date (${dm(order.due)}) is today.`
+                : `The ship date (${dm(order.due)}) is ${plural(daysBetween(today, order.due), "day")} away, inside the ${buffer}-day buffer.`}</b> Set the new one to plan against.
               <div className="qs-two mt-2">
                 <input className="inp" type="date" min={addDays(today, 1)} value={newShip} aria-label="New ship date" onChange={(e) => setNewShip(e.target.value)} />
                 <input className="inp" value={reason} maxLength={300} placeholder="Why it moves" aria-label="Why the ship date moves" onChange={(e) => setReason(e.target.value)} />

@@ -161,7 +161,7 @@ export function OrderForm({ initial, initialLines, buyers, factories, team, inco
           </label>
           <label className="field">
             <span>Ship date</span>
-            <input className="inp" type="date" value={order.ship_date} onChange={set("ship_date")} />
+            <input className="inp" type="date" min={order.po_date || undefined} value={order.ship_date} onChange={set("ship_date")} />
           </label>
           <label className="field">
             <span>Merchandiser</span>
