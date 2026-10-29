@@ -160,7 +160,9 @@ function StyleCard({ s, companyId, today, canQc, open, posted, onToggle, onPoste
   const choices: { key: FloorStatus | VisitResult; label: string; hint: string; tone: string }[] = inspect
     ? [...VISIT_RESULT, ...FLOOR_STATUS.filter((x) => x.key === "on_track" || x.key === "behind")] : FLOOR_STATUS;
   const checked = status === "pass" || status === "fail";
-  const checkName = stage === "final_qc" && cur?.qc?.result === "fail" ? "Re-check" : cur?.label ?? "QC";
+  // After a fail, the next check is its re-check.
+  const recheck = inspect && cur?.qc?.result === "fail";
+  const checkName = recheck ? (stage === "final_qc" ? "Re-check" : `${cur?.label} re-check`) : cur?.label ?? "QC";
   const total = `${s.qty.toLocaleString("en-IN")} ${s.unit}`;
   const shown = all ? steps : steps.filter((x, i) => i < 4 || x.key === stage || INSPECTION.includes(x.key));
   const missing = !stage ? "Pick the step" : !status ? "Pick how it is" : status === "behind" && !ready ? "Give the ready date"
@@ -182,14 +184,14 @@ function StyleCard({ s, companyId, today, canQc, open, posted, onToggle, onPoste
         if (status === "pass" || status === "fail") {
           const qcId = crypto.randomUUID();
           // A fail is also posted on the floor, and a pass marks Inline or Mid-line done, each with its own copy of the photos.
-          const toFloor = status === "fail" || (stage !== "final_qc" && !cur?.done);
+          const toFloor = status === "fail" || recheck || (stage !== "final_qc" && !cur?.done);
           const [qcPhotos, floorPhotos] = await Promise.all([
             uploadPhotos(`${companyId}/${s.orderId}/qc/${qcId}`, files.map((f) => f.file)),
             toFloor ? uploadPhotos(`${companyId}/${s.orderId}/visits/${s.id}`, files.map((f) => f.file)) : Promise.resolve([]),
           ]);
           const res = await postVisitCheck({ lineId: s.id, orderId: s.orderId, stage, result: status, qcId, pieces, defects, note, recheckOn: status === "fail" ? ready : "", qcPhotos, floorPhotos });
           if (res.error) { setError(res.error); return; }
-          toast(res.warning ?? `${s.style}: ${checkName} QC ${status === "pass" ? "passed" : "failed"}`, res.warning || status === "fail" ? "bad" : "ok");
+          toast(res.warning ?? `${s.style}: ${checkName}${recheck ? "" : " QC"} ${status === "pass" ? "passed" : "failed"}`, res.warning || status === "fail" ? "bad" : "ok");
           setStatus(""); setPieces(""); setDefects(""); setReady(""); setNote(""); setFiles([]);
           onPosted();
           router.refresh();
@@ -228,7 +230,7 @@ function StyleCard({ s, companyId, today, canQc, open, posted, onToggle, onPoste
           <div className="field"><span>Step</span>
             <div className="vs-steps" role="radiogroup" aria-label={`${s.style} step`}>
               {shown.map((x) => {
-                const ww = x.qc?.result === "fail" ? { text: `Failed ${dm(x.qc.on)}`, cls: "bad" } : x.done ? { text: `Done ${dm(x.done)}`, cls: "ok" }
+                const ww = x.qc?.result === "fail" ? { text: canQc ? "Re-check due" : `Failed ${dm(x.qc.on)}`, cls: "bad" } : x.done ? { text: `Done ${dm(x.done)}`, cls: "ok" }
                   : x.qc ? { text: `Passed ${dm(x.qc.on)}`, cls: "ok" } : when(x.planned, today);
                 return (
                   <button key={x.key} type="button" role="radio" aria-checked={stage === x.key} onClick={() => pick(x.key)}>
@@ -240,13 +242,14 @@ function StyleCard({ s, companyId, today, canQc, open, posted, onToggle, onPoste
             </div>
           </div>
 
-          <div className="field"><span>How is it?</span>
+          <div className="field"><span>{recheck ? `${checkName}: how is it now?` : "How is it?"}</span>
+            {recheck && <small className="vs-re">{cur?.label} failed on {dm(cur!.qc!.on)}. Check the fixed goods again.</small>}
             <div className="vs-status" role="radiogroup" aria-label={`How ${cur?.label ?? "the step"} is`}>
               {choices.map((x) => {
                 const off = x.key === "done" && !!noDone;
                 return (
                   <button key={x.key} type="button" role="radio" aria-checked={status === x.key} className={`tone-${x.tone || "plain"}`} disabled={off} onClick={() => setStatus(x.key)}>
-                    <i aria-hidden /><b>{x.label}</b><small>{off ? noDone : x.hint}</small>
+                    <i aria-hidden /><b>{x.label}</b><small>{off ? noDone : recheck && x.key === "pass" ? "Fixed: goods now meet the standard" : recheck && x.key === "fail" ? "Still not right: say what" : x.hint}</small>
                   </button>
                 );
               })}

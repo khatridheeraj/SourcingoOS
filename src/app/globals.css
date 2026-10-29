@@ -2267,6 +2267,7 @@ h1, h2, h3 { font-family: var(--font-display); text-wrap: balance; font-weight: 
   .vs-qty { display: flex; align-items: center; gap: 10px; }
   .vs-qty .inp { width: 120px; }
   .vs-qty small { font-size: 13px; color: var(--muted); }
+  .vs-re { margin: -2px 0 8px; font-size: 12.5px; color: var(--muted); }
   .vs-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
   .qs-go.primary.vs-go:not(:disabled) { background: var(--accent); border-color: var(--accent); box-shadow: none; }
   .qs-go.primary.vs-go:not(:disabled):hover { background: var(--accent-hover); }
