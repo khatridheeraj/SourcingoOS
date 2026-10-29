@@ -2,10 +2,10 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
-import { closeOldOrder, loadQuick, lockPlan, logChase, markStepsDone, startProduction } from "@/app/(app)/orders/quick-actions";
+import { closeOldOrder, loadQuick, lockPlan, logChase, markStepsDone, moveLateTargets, startProduction } from "@/app/(app)/orders/quick-actions";
 import { daysBetween, defaultBuffer, TNA_STEPS } from "@/lib/format";
 import { ErrorFix } from "@/components/fix-link";
-import { addDays, byNextStep, catchUpRows, dm, EMAIL_OK, live, sharedSteps, startTargets, when, type QOrder, type QStyle } from "@/lib/quick";
+import { addDays, andList, byNextStep, catchUpRows, dm, EMAIL_OK, live, pastTarget, sharedSteps, startTargets, when, type QOrder, type QStyle } from "@/lib/quick";
 import { toast } from "@/components/toast";
 import { uploadPhotos } from "@/lib/photos";
 import { setStylePhoto } from "@/app/(app)/orders/actions";
@@ -279,11 +279,16 @@ function StartView({ order, factoryId, onDone, onChanged }: { order: QOrder; fac
   const target = due ? addDays(due, -buffer) : "";
   const pastDue = !order.due || addDays(order.due, -buffer) < today;
   const noRate = g.styles.filter((s) => !s.hasRate);
-  const plan = target && target >= today ? startTargets(g.styles, target, today) : {};
   const first = g.styles[0];
+  const waitingLock = !!g.lockRequestedAt;
+  // Waiting for approval, the plan shown is the one saved, exactly what the approval would lock.
+  const plan = !waitingLock && target && target >= today ? startTargets(g.styles, target, today) : {};
+  const after = waitingLock && target ? pastTarget(g.styles, target) : null;
+  const lateKeys = new Set(after?.rows.filter((r) => r.style.id === first?.id).map((r) => r.step.key));
+  // Something else stops the approval (the dates are handled above), so the approve button isn't offered.
+  const otherBlock = waitingLock && !after?.rows.length && g.blocker ? g.blocker : "";
   const dateOf = (s: QStyle, k: string) => plan[s.id]?.[k] ?? s.steps.find((x) => x.key === k)?.planned_on ?? "";
   const same = g.styles.every((s) => live(s).every((x) => dateOf(s, x.key) === dateOf(first, x.key)));
-  const waitingLock = !!g.lockRequestedAt;
   const old = order.due && order.due < addDays(today, -14);
   // The approved PO is emailed to the factory with every style's photo, so both are asked for right here.
   const onFile = g.factoryId ? g.email : order.factories.find((f) => f.id === pickFactory)?.email;
@@ -311,9 +316,19 @@ function StartView({ order, factoryId, onDone, onChanged }: { order: QOrder; fac
     start(async () => {
       const res = await lockPlan(order.id, g.factoryId!);
       if (res.error) { setError(res.error); return; }
-      toast(`Locked. ${g.factoryName}'s production has started.`);
+      toast(`Approved. ${g.factoryName}'s production has started and the PO is emailed to them.`);
       router.refresh();
       onDone();
+    });
+  }
+  function moveBack() {
+    setError("");
+    start(async () => {
+      const res = await moveLateTargets(order.id, g.factoryId!, order.isOwner);
+      if (res.error) { setError(res.error); return; }
+      toast(res.done ?? "Done");
+      router.refresh();
+      if (order.isOwner) onDone(); else onChanged();
     });
   }
   function closeOld() {
@@ -337,8 +352,17 @@ function StartView({ order, factoryId, onDone, onChanged }: { order: QOrder; fac
       <h3 className="qs-title">Start production{g.factoryId ? ` at ${g.factoryName}` : ""}</h3>
       <p className="qs-note">{plural(g.styles.length, "style")}: {g.styles.map((s) => s.style).join(", ")}</p>
 
-      {waitingLock ? (
-        <div className={`qs-banner ${order.isOwner ? "bad" : "info"}`}>
+      {waitingLock && after?.rows.length ? (
+        <div className="qs-banner warn">
+          <b>{andList(after.labels)} {after.labels.length === 1 ? "is" : "are"} set for {andList(after.dates.map(dm))}{g.styles.length > 1 ? (after.styleCount === g.styles.length ? ` on ${g.styles.length === 2 ? "both" : "all"} styles` : ` on ${plural(after.styleCount, "style")}`) : ""}, after {dm(target)}.</b>{" "}
+          The factory has to finish by {dm(target)}: the ship date {dm(due)} less {plural(buffer, "day")} buffer.{" "}
+          {after.movable ? `The factory's own dates are on time, so ${after.rows.length === 1 ? "it" : "they"} can simply move back to ${dm(target)}.`
+            : "The factory's own dates are later too: ask it for earlier dates, or move the ship date on the order page."}
+        </div>
+      ) : otherBlock ? (
+        <div className="qs-banner warn"><b>It can&apos;t be approved yet.</b> <ErrorFix error={otherBlock} orderId={order.id} factoryId={g.factoryId ?? undefined} className="inline" /></div>
+      ) : waitingLock ? (
+        <div className={`qs-banner ${order.isOwner ? "warn" : "info"}`}>
           {order.isOwner ? <><b>Sent for your approval.</b> Check the dates below, then approve it: the PO is emailed to the factory.</> : <><b>Waiting for {order.ownerName}&apos;s approval.</b> Nothing else to do. Once approved, the PO is emailed to the factory.</>}
         </div>
       ) : g.lockNote ? (
@@ -399,12 +423,12 @@ function StartView({ order, factoryId, onDone, onChanged }: { order: QOrder; fac
         </div>
       )}
 
-      {target && target >= today && (
+      {target && (waitingLock || target >= today) && (
         <div className="qs-plan">
           <div className="qs-plan-h"><b>The plan</b><small>{same ? (g.styles.length > 1 ? `Same for all ${g.styles.length} styles` : "") : `Shown for ${first.style}; the others are close`}</small></div>
           <ol>
             {live(first).map((x) => (
-              <li key={x.key} className={x.done_on ? "done" : ""}>
+              <li key={x.key} className={x.done_on ? "done" : lateKeys.has(x.key) ? "late" : ""}>
                 <span>{x.label}</span>
                 <b className="num">{x.done_on ? `Done ${dm(x.done_on)}` : dateOf(first, x.key) ? dm(dateOf(first, x.key)) : "–"}</b>
               </li>
@@ -453,8 +477,14 @@ function StartView({ order, factoryId, onDone, onChanged }: { order: QOrder; fac
 
       <footer className="qs-foot">
         {error && <ErrorFix error={error} orderId={order.id} factoryId={g.factoryId ?? (pickFactory || undefined)} className="qs-err" />}
-        {waitingLock ? (order.isOwner ? (
-          <button type="button" className="btn primary qs-go" disabled={pending || !order.hasBuyerPo} onClick={lock}>{pending ? "Locking…" : "Lock and start production"}</button>
+        {waitingLock && after?.movable ? (
+          <button type="button" className="btn primary qs-go" disabled={pending} onClick={moveBack}>
+            {pending ? "Saving…" : order.isOwner ? `Move to ${dm(target)} and approve` : `Move to ${dm(target)}`}
+          </button>
+        ) : waitingLock && (otherBlock || after?.rows.length) ? (
+          <a href={`/orders/${order.id}#tna`} className="btn qs-go">Open the plan</a>
+        ) : waitingLock ? (order.isOwner ? (
+          <button type="button" className="btn primary qs-go" disabled={pending || !order.hasBuyerPo} onClick={lock}>{pending ? "Approving…" : "Approve and start production"}</button>
         ) : <button type="button" className="btn qs-go" onClick={onDone}>OK</button>) : (
           <button type="button" className="btn primary qs-go" onClick={go}
             disabled={pending || blocked || (agreed && !order.hasBuyerPo) || (!g.factoryId && !pickFactory) || noRate.some((s) => !(rates[s.id] ?? "").trim()) || (pastDue && (!newShip || !reason.trim()))}>
