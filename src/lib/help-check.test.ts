@@ -2,7 +2,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { qcCheck, type QcCheckInput } from "./help-check.ts";
-import { suggestions, TOPICS } from "./help-guide.ts";
+import { searchScored, suggestions, TOPICS } from "./help-guide.ts";
 
 const today = "2026-10-29";
 const base: QcCheckInput = {
@@ -65,5 +65,11 @@ test("every topic Quality can see stays clear of the orders team's buttons", () 
   const ORDERS_ONLY = /Send (the )?PO for approval|Start production|Tap \+ New|Add buyer|Fill every target/;
   for (const t of TOPICS.filter((x) => x.who === "staff" && (!x.roles || x.roles.includes("quality")))) {
     assert.doesNotMatch(t.a.join(" "), ORDERS_ONLY, t.id);
+  }
+});
+
+test("Quality asking where reject is finds the Rejected answer first", () => {
+  for (const q of ["where is reject option", "reject karna hai", "how do I reject goods", "rejected"]) {
+    assert.equal(searchScored(q, { who: "staff", role: "quality" }, "/today")[0]?.t.id, "reject-goods", q);
   }
 });

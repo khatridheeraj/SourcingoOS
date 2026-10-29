@@ -2,10 +2,10 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
-import { loadVisit, postFloorUpdate, postVisitCheck, type VisitData, type VisitStyle } from "@/app/(app)/orders/floor-actions";
+import { loadVisit, postFloorUpdate, postVisitCheck, postVisitReject, type VisitData, type VisitStyle } from "@/app/(app)/orders/floor-actions";
 import { PhotoPicker, type Picked } from "@/components/photo-picker";
 import { toast } from "@/components/toast";
-import { FLOOR_STATUS, floorLine, INSPECTION_KIND, NOT_DONE_ON_VISIT, VISIT_RESULT, type FloorStatus, type VisitResult } from "@/lib/floor";
+import { FLOOR_STATUS, floorLine, INSPECTION_KIND, NOT_DONE_ON_VISIT, REJECT, VISIT_RESULT, type FloorStatus, type VisitResult } from "@/lib/floor";
 import { uploadPhotos } from "@/lib/photos";
 import { dm, when } from "@/lib/quick";
 
@@ -140,7 +140,7 @@ function StyleCard({ s, companyId, today, canQc, open, posted, onToggle, onPoste
   const first = steps.find((x) => !x.done);
   const [stage, setStage] = useState((first ?? steps[0])?.key ?? "");
   const [all, setAll] = useState(false);
-  const [status, setStatus] = useState<FloorStatus | VisitResult | "">("");
+  const [status, setStatus] = useState<FloorStatus | VisitResult | "reject" | "">("");
   const [pieces, setPieces] = useState("");
   const [defects, setDefects] = useState("");
   const [qty, setQty] = useState("");
@@ -155,24 +155,27 @@ function StyleCard({ s, companyId, today, canQc, open, posted, onToggle, onPoste
   const cur = s.steps.find((x) => x.key === stage);
   const w = first ? when(first.planned, today) : null;
   const noDone = cur?.done ? `Done on ${dm(cur.done)}` : NOT_DONE_ON_VISIT[stage];
-  // Quality records Inline, Mid-line and Final QC as a check that passed or failed, in place of Done and Problem.
+  // Quality records Inline, Mid-line and Final QC as a check that passed or was rejected, in place of Done and Problem.
+  // On every other step Quality can reject the goods too.
   const inspect = canQc && !!INSPECTION_KIND[stage];
-  const choices: { key: FloorStatus | VisitResult; label: string; hint: string; tone: string }[] = inspect
-    ? [...VISIT_RESULT, ...FLOOR_STATUS.filter((x) => x.key === "on_track" || x.key === "behind")] : FLOOR_STATUS;
+  const choices: { key: FloorStatus | VisitResult | "reject"; label: string; hint: string; tone: string }[] = inspect
+    ? [...VISIT_RESULT, ...FLOOR_STATUS.filter((x) => x.key === "on_track" || x.key === "behind")] : canQc ? [...FLOOR_STATUS, REJECT] : FLOOR_STATUS;
   const checked = status === "pass" || status === "fail";
-  // After a fail, the next check is its re-check.
+  const rejecting = status === "fail" || status === "reject";
+  // After a rejection, the next check is its re-check.
   const recheck = inspect && cur?.qc?.result === "fail";
+  const reRejected = !inspect && canQc && !!cur?.rejected;
   const checkName = recheck ? (stage === "final_qc" ? "Re-check" : `${cur?.label} re-check`) : cur?.label ?? "QC";
   const total = `${s.qty.toLocaleString("en-IN")} ${s.unit}`;
   const shown = all ? steps : steps.filter((x, i) => i < 4 || x.key === stage || INSPECTION.includes(x.key));
   const missing = !stage ? "Pick the step" : !status ? "Pick how it is" : status === "behind" && !ready ? "Give the ready date"
-    : status === "issue" && !note.trim() ? "Say what the problem is" : status === "fail" && !note.trim() ? "Say what failed"
+    : status === "issue" && !note.trim() ? "Say what the problem is" : rejecting && !note.trim() ? "Say what was rejected"
     : !files.length ? "Add a photo" : "";
   const pick = (k: string) => {
     setStage(k);
     const qc = canQc && !!INSPECTION_KIND[k];
     if ((status === "pass" || status === "fail") && !qc) setStatus("");
-    else if ((status === "done" || status === "issue") && qc) setStatus("");
+    else if ((status === "done" || status === "issue" || status === "reject") && qc) setStatus("");
     else if (status === "done" && (steps.find((x) => x.key === k)?.done || NOT_DONE_ON_VISIT[k])) setStatus("");
   };
 
@@ -191,13 +194,22 @@ function StyleCard({ s, companyId, today, canQc, open, posted, onToggle, onPoste
           ]);
           const res = await postVisitCheck({ lineId: s.id, orderId: s.orderId, stage, result: status, qcId, pieces, defects, note, recheckOn: status === "fail" ? ready : "", qcPhotos, floorPhotos });
           if (res.error) { setError(res.error); return; }
-          toast(res.warning ?? `${s.style}: ${checkName}${recheck ? "" : " QC"} ${status === "pass" ? "passed" : "failed"}`, res.warning || status === "fail" ? "bad" : "ok");
+          toast(res.warning ?? `${s.style}: ${checkName}${recheck || /QC$/.test(checkName) ? "" : " QC"} ${status === "pass" ? "passed" : "rejected"}`, res.warning || status === "fail" ? "bad" : "ok");
           setStatus(""); setPieces(""); setDefects(""); setReady(""); setNote(""); setFiles([]);
           onPosted();
           router.refresh();
           return;
         }
         const photos = await uploadPhotos(`${companyId}/${s.orderId}/visits/${s.id}`, files.map((f) => f.file));
+        if (status === "reject") {
+          const res = await postVisitReject({ lineId: s.id, orderId: s.orderId, stage, note, recheckOn: ready, photos });
+          if (res.error) { setError(res.error); return; }
+          toast(`${s.style}: ${cur?.label ?? "goods"} rejected`, "bad");
+          setStatus(""); setReady(""); setNote(""); setFiles([]);
+          onPosted();
+          router.refresh();
+          return;
+        }
         const res = await postFloorUpdate({ lineId: s.id, orderId: s.orderId, stage, status, qty: status === "done" ? "" : qty, expectedOn: ready, note, photos });
         if (res.error) { setError(res.error); return; }
         toast(status === "done" ? `${s.style} ${cur?.label ?? "step"} done today` : `${s.style}: update posted`);
@@ -230,7 +242,8 @@ function StyleCard({ s, companyId, today, canQc, open, posted, onToggle, onPoste
           <div className="field"><span>Step</span>
             <div className="vs-steps" role="radiogroup" aria-label={`${s.style} step`}>
               {shown.map((x) => {
-                const ww = x.qc?.result === "fail" ? { text: canQc ? "Re-check due" : `Failed ${dm(x.qc.on)}`, cls: "bad" } : x.done ? { text: `Done ${dm(x.done)}`, cls: "ok" }
+                const ww = x.qc?.result === "fail" ? { text: canQc ? "Re-check due" : `Rejected ${dm(x.qc.on)}`, cls: "bad" }
+                  : x.rejected ? { text: canQc ? "Re-check due" : `Rejected ${dm(x.rejected)}`, cls: "bad" } : x.done ? { text: `Done ${dm(x.done)}`, cls: "ok" }
                   : x.qc ? { text: `Passed ${dm(x.qc.on)}`, cls: "ok" } : when(x.planned, today);
                 return (
                   <button key={x.key} type="button" role="radio" aria-checked={stage === x.key} onClick={() => pick(x.key)}>
@@ -242,14 +255,14 @@ function StyleCard({ s, companyId, today, canQc, open, posted, onToggle, onPoste
             </div>
           </div>
 
-          <div className="field"><span>{recheck ? `${checkName}: how is it now?` : "How is it?"}</span>
-            {recheck && <small className="vs-re">{cur?.label} failed on {dm(cur!.qc!.on)}. Check the fixed goods again.</small>}
+          <div className="field"><span>{recheck || reRejected ? `${recheck ? checkName : `${cur?.label} re-check`}: how is it now?` : "How is it?"}</span>
+            {(recheck || reRejected) && <small className="vs-re">{cur?.label} rejected on {dm(recheck ? cur!.qc!.on : cur!.rejected!)}. Check the fixed goods again.</small>}
             <div className="vs-status" role="radiogroup" aria-label={`How ${cur?.label ?? "the step"} is`}>
               {choices.map((x) => {
                 const off = x.key === "done" && !!noDone;
                 return (
                   <button key={x.key} type="button" role="radio" aria-checked={status === x.key} className={`tone-${x.tone || "plain"}`} disabled={off} onClick={() => setStatus(x.key)}>
-                    <i aria-hidden /><b>{x.label}</b><small>{off ? noDone : recheck && x.key === "pass" ? "Fixed: goods now meet the standard" : recheck && x.key === "fail" ? "Still not right: say what" : x.hint}</small>
+                    <i aria-hidden /><b>{x.label}</b><small>{off ? noDone : recheck && x.key === "pass" ? "Fixed: goods now meet the standard" : (recheck && x.key === "fail") || (reRejected && x.key === "reject") ? "Still not right: say what" : x.hint}</small>
                   </button>
                 );
               })}
@@ -266,28 +279,28 @@ function StyleCard({ s, companyId, today, canQc, open, posted, onToggle, onPoste
               </label>
             </div>
           )}
-          {(status === "behind" || status === "issue" || status === "fail") && (
-            <label className="field"><span>{status === "fail" ? "Re-check on" : "Ready by"}{status === "behind" && <i> *</i>}</span>
+          {(status === "behind" || status === "issue" || rejecting) && (
+            <label className="field"><span>{rejecting ? "Re-check on" : "Ready by"}{status === "behind" && <i> *</i>}</span>
               <input className="inp" type="date" min={today} value={ready} onChange={(e) => setReady(e.target.value)} />
-              {status === "fail" ? <small>When the factory will have it fixed for checking again.</small> : cur?.planned && <small>Target was {dm(cur.planned)}.</small>}
+              {rejecting ? <small>When the factory will have it fixed for checking again.</small> : cur?.planned && <small>Target was {dm(cur.planned)}.</small>}
             </label>
           )}
-          {status && status !== "done" && !checked && !noDone && (
+          {status && status !== "done" && status !== "reject" && !checked && !noDone && (
             <label className="field"><span>{s.unit === "m" ? "Metres" : "Pieces"} done so far</span>
               <span className="vs-qty"><input className="inp num" inputMode="numeric" value={qty} placeholder="0" onChange={(e) => setQty(e.target.value)} /><small>of {total}</small></span>
             </label>
           )}
           {status && (
-            <label className="field"><span>Note{(status === "issue" || status === "fail") && <i> *</i>}</span>
-              <textarea className="inp" rows={2} maxLength={500} value={note} onChange={(e) => setNote(e.target.value)}
-                placeholder={status === "fail" ? "What failed and what the factory must fix, e.g. open seams on 12 pcs" : status === "issue" ? "What is wrong, e.g. shade difference on 40 pcs" : status === "behind" ? "Why, e.g. fabric came 3 days late" : "Anything the team should know"} />
+            <label className="field"><span>{rejecting ? "What was rejected" : "Note"}{(status === "issue" || rejecting) && <i> *</i>}</span>
+              <textarea className="inp" rows={2} maxLength={450} value={note} onChange={(e) => setNote(e.target.value)}
+                placeholder={rejecting ? "What is wrong and what the factory must fix, e.g. 12 pcs open seams, redo" : status === "issue" ? "What is wrong, e.g. shade difference on 40 pcs" : status === "behind" ? "Why, e.g. fabric came 3 days late" : "Anything the team should know"} />
             </label>
           )}
           {status && <PhotoPicker files={files} onChange={setFiles} disabled={pending} label={checked ? "Photos of the check" : "Photos from the floor"} />}
 
           {error && <p className="qs-err" role="alert">{error}</p>}
-          <button type="button" className={`btn primary qs-go ${status === "fail" ? "danger" : status === "done" || status === "pass" ? "" : "vs-go"}`} disabled={pending || !!missing} onClick={save}>
-            {pending ? "Saving…" : missing || (checked ? `Save ${checkName} ${status}` : status === "done" ? `Mark ${cur?.label ?? "it"} done` : "Post update")}
+          <button type="button" className={`btn primary qs-go ${rejecting ? "danger" : status === "done" || status === "pass" ? "" : "vs-go"}`} disabled={pending || !!missing} onClick={save}>
+            {pending ? "Saving…" : missing || (rejecting ? `Reject ${cur?.label ?? "the goods"}` : checked ? `Save ${checkName} pass` : status === "done" ? `Mark ${cur?.label ?? "it"} done` : "Post update")}
           </button>
         </div>
       )}
