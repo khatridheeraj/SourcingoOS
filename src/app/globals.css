@@ -2248,6 +2248,7 @@ h1, h2, h3 { font-family: var(--font-display); text-wrap: balance; font-weight: 
   .vs-steps button small { font-size: 11.5px; font-weight: 400; color: var(--muted); }
   .vs-steps button small.bad { color: var(--bad); }
   .vs-steps button small.warn { color: var(--warn); }
+  .vs-steps button small.ok { color: var(--ok); }
   .vs-steps button[aria-checked="true"] { background: var(--surface); box-shadow: inset 0 0 0 1.5px var(--accent); }
   .vs-steps .vs-more { justify-content: center; color: var(--accent); background: transparent; box-shadow: inset 0 0 0 1px var(--line); }
   .vs-status { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }

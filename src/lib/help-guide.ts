@@ -276,7 +276,7 @@ export const TOPICS: Topic[] = [
   { id: "floor-visit", who: "staff", q: "How do I post a factory visit update?",
     a: ["At the factory, tap Start visit on Home (or Post update on an order). Every style in production there is listed.",
         "Tap a style, pick its step, then tap how it is: Done, On track, Running late (give the ready date) or Problem (say what).",
-        "Inline, Mid-line and Final QC are always in the step list. For any other step further ahead, tap All steps.",
+        "Inline, Mid-line and Final QC are always in the step list, even after Inline or Mid-line is done, so you can post every inspection. For any other step further ahead, tap All steps.",
         "Add the pieces done so far if you counted them, and take at least one photo. Tap Post update. The next style opens by itself.",
         "Done marks the step done today on the TNA. Everyone sees the update on the order under From the factory floor.",
         "Hindi: factory mein Home par Start visit dabao, style chuno, step chuno, haal batao (Done, On track, Late, Problem), photo lo aur Post update dabao."],

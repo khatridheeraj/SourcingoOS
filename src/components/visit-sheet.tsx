@@ -26,8 +26,11 @@ export function VisitButton({ factoryId, orderId, className = "btn sm", children
 // A style's open steps, the one it is on first: the earliest target, then its place in the TNA.
 // Quality's own checks stay in view on every style, whatever their target, so a problem can be posted against them.
 const INSPECTION = ["inline", "midline", "final_qc"];
+// Inline and Mid-line are repeated while the line runs: once done they stay on the visit, after the open steps.
+const REPEAT = ["inline", "midline"];
 const openSteps = (s: VisitStyle) => s.steps.map((x, i) => ({ ...x, i })).filter((x) => !x.done)
   .sort((a, b) => (a.planned || "9999").localeCompare(b.planned || "9999") || a.i - b.i);
+const visitSteps = (s: VisitStyle) => [...openSteps(s), ...s.steps.map((x, i) => ({ ...x, i })).filter((x) => x.done && REPEAT.includes(x.key))];
 
 // The visit, mounted once in the app layout. On a phone it rises from the bottom like the other sheets.
 export function VisitSheet() {
@@ -133,9 +136,9 @@ function StyleCard({ s, companyId, today, open, posted, onToggle, onPosted }: {
   s: VisitStyle; companyId: string; today: string; open: boolean; posted: boolean; onToggle: () => void; onPosted: () => void;
 }) {
   const router = useRouter();
-  const steps = openSteps(s);
-  const first = steps[0];
-  const [stage, setStage] = useState(first?.key ?? "");
+  const steps = visitSteps(s);
+  const first = steps.find((x) => !x.done);
+  const [stage, setStage] = useState((first ?? steps[0])?.key ?? "");
   const [all, setAll] = useState(false);
   const [status, setStatus] = useState<FloorStatus | "">("");
   const [qty, setQty] = useState("");
@@ -149,7 +152,7 @@ function StyleCard({ s, companyId, today, open, posted, onToggle, onPosted }: {
   useEffect(() => { if (open) card.current?.scrollIntoView({ block: "nearest", behavior: "smooth" }); }, [open]);
   const cur = s.steps.find((x) => x.key === stage);
   const w = first ? when(first.planned, today) : null;
-  const noDone = NOT_DONE_ON_VISIT[stage];
+  const noDone = cur?.done ? `Done on ${dm(cur.done)}` : NOT_DONE_ON_VISIT[stage];
   const total = `${s.qty.toLocaleString("en-IN")} ${s.unit}`;
   const shown = all ? steps : steps.filter((x, i) => i < 4 || x.key === stage || INSPECTION.includes(x.key));
   const missing = !stage ? "Pick the step" : !status ? "Pick how it is" : status === "behind" && !ready ? "Give the ready date"
@@ -188,14 +191,14 @@ function StyleCard({ s, companyId, today, open, posted, onToggle, onPosted }: {
         {posted ? <span className="vs-tick" aria-label="Updated">✓</span> : <span className="vs-chev" aria-hidden />}
       </button>
 
-      {open && first && (
+      {open && steps.length > 0 && (
         <div className="vs-form">
           <div className="field"><span>Step</span>
             <div className="vs-steps" role="radiogroup" aria-label={`${s.style} step`}>
               {shown.map((x) => {
-                const ww = when(x.planned, today);
+                const ww = x.done ? { text: `Done ${dm(x.done)}`, cls: "ok" } : when(x.planned, today);
                 return (
-                  <button key={x.key} type="button" role="radio" aria-checked={stage === x.key} onClick={() => { setStage(x.key); if (NOT_DONE_ON_VISIT[x.key] && status === "done") setStatus(""); }}>
+                  <button key={x.key} type="button" role="radio" aria-checked={stage === x.key} onClick={() => { setStage(x.key); if ((x.done || NOT_DONE_ON_VISIT[x.key]) && status === "done") setStatus(""); }}>
                     {x.label}<small className={ww.cls}>{ww.text}</small>
                   </button>
                 );
