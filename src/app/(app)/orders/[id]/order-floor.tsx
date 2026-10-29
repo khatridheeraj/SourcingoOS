@@ -1,6 +1,6 @@
 import { VisitButton } from "@/components/visit-sheet";
 import { dayAt } from "@/lib/format";
-import { floorLine, floorStatus } from "@/lib/floor";
+import { floorLine, floorNote, floorStatus } from "@/lib/floor";
 
 export type FloorUpdate = {
   id: string; style: string; step: string; status: string; qtyDone: number | null; total: string; expectedOn: string | null; note: string;
@@ -19,7 +19,7 @@ export function OrderFloor({ orderId, updates, canPost }: { orderId: string; upd
       <div className="floor-what min-w-0">
         <b><span className="code">{u.style}</span>{floorLine({ status: u.status, qty_done: u.qtyDone, expected_on: u.expectedOn, note: u.note }, u.step, u.total, dm)}</b>
         <small>{u.by} · {dayAt(u.at)}</small>
-        {u.note && <p className="floor-note">&ldquo;{u.note}&rdquo;</p>}
+        {floorNote(u.note, u.step) && <p className="floor-note">&ldquo;{floorNote(u.note, u.step)}&rdquo;</p>}
         {u.photos.length > 0 && (
           <div className="floor-photos">
             {u.photos.map((url, i) => (

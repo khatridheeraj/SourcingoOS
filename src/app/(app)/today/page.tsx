@@ -17,7 +17,7 @@ import { buildUpdates } from "@/lib/updates";
 import { appOrigin } from "@/lib/origin";
 import { QcButton } from "@/components/qc-sheet";
 import { VisitButton } from "@/components/visit-sheet";
-import { FRESH_DAYS, floorLine, VISIT_DAYS, visitedText } from "@/lib/floor";
+import { FRESH_DAYS, floorLine, floorNote, INSPECTION_KIND, isRejection, VISIT_DAYS, visitedText } from "@/lib/floor";
 import { Ring } from "@/components/order-ui";
 import { WhatsNew } from "@/components/whats-new";
 import { MarkShipped } from "../orders/mark-shipped";
@@ -41,7 +41,7 @@ type Item = {
   // The action opens the quick QC sheet for this check.
   qc?: { orderId: string; kind: string };
   // The action starts a factory visit.
-  visit?: { factoryId: string };
+  visit?: { factoryId?: string; orderId?: string };
 };
 
 const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;
@@ -452,6 +452,31 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
     }
   }
 
+  // Goods Quality rejected on a visit, until the step is checked again (QC, 29 Oct 2026): one line per style and step.
+  // A later update on the step, a passed re-check or its Done date clears it.
+  if (quality) {
+    const seen = new Set<string>();
+    for (const u of floorRecent) {
+      const k = `${u.line_id}:${u.stage}`;
+      if (seen.has(k)) continue;
+      seen.add(k);
+      const o = active.find((x) => x.id === u.order_id);
+      const l = o?.order_lines?.find((x) => x.id === u.line_id);
+      const step = stepLabel(u.stage);
+      if (!o || !l || !isRejection(u, step)) continue;
+      const kind = INSPECTION_KIND[u.stage];
+      if (kind ? latest(l.id, kind === "final" ? SHIP_QC : [kind])?.result === "pass"
+        : live.some((s) => s.line_id === l.id && s.stage === u.stage && s.done_on && s.done_on >= u.visited_on)) continue;
+      const note = floorNote(u.note ?? "", step);
+      const due = !!u.expected_on && u.expected_on <= today;
+      now_.push({
+        key: `reject:${k}`, href: `/orders/${o.id}#floor`, sev: "warn", ...base(o),
+        detail: `${l.style} · ${floorLine(u, step, `${qty(l.qty)} ${l.product === "fabric" ? "m" : "pcs"}`, dm)} on ${dm(u.visited_on)}${note ? `: ${note}` : ""}`,
+        chip: { text: due ? "Re-check due" : "Rejected", cls: "warn" }, action: "Re-check", sort: u.expected_on ?? u.visited_on, visit: { orderId: o.id },
+      });
+    }
+  }
+
   // Shipping within two weeks without a passed final QC.
   for (const o of active) {
     const due = dueDate(o);
@@ -796,7 +821,7 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
                         <div className="task-acts">
                           {i.chase && <ChaseLink {...i.chase} compact />}
                           {i.visit
-                            ? <VisitButton factoryId={i.visit.factoryId} className="btn sm">{i.action}</VisitButton>
+                            ? <VisitButton {...i.visit} className="btn sm">{i.action}</VisitButton>
                             : i.qc
                             ? <QcButton orderId={i.qc.orderId} kind={i.qc.kind} className="btn sm">{i.action}</QcButton>
                             : i.sheet
