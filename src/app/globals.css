@@ -2267,8 +2267,11 @@ h1, h2, h3 { font-family: var(--font-display); text-wrap: balance; font-weight: 
   .vs-qty { display: flex; align-items: center; gap: 10px; }
   .vs-qty .inp { width: 120px; }
   .vs-qty small { font-size: 13px; color: var(--muted); }
+  .vs-pair { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
   .qs-go.primary.vs-go:not(:disabled) { background: var(--accent); border-color: var(--accent); box-shadow: none; }
   .qs-go.primary.vs-go:not(:disabled):hover { background: var(--accent-hover); }
+  .qs-go.primary.danger:not(:disabled) { background: var(--bad); border-color: var(--bad); box-shadow: none; }
+  .qs-go.primary.danger:not(:disabled):hover { background: color-mix(in srgb, var(--bad) 88%, #000); }
 
   /* Live updates from the floor on an order. */
   .floor-list { display: flex; flex-direction: column; }

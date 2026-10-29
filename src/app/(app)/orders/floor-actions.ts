@@ -1,18 +1,20 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { canEnterDone, getMe } from "@/lib/auth";
+import { canEnterDone, canRecordQc, getMe } from "@/lib/auth";
 import { buyerName, loadBuyers, loadFactories, loadTeam, personName } from "@/lib/data";
 import { friendly } from "@/lib/errors";
 import { fetchAll } from "@/lib/fetch-all";
-import { FLOOR_STATUS, type FloorStatus } from "@/lib/floor";
+import { FLOOR_STATUS, INSPECTION_KIND, qcFailed, type FloorStatus, type VisitResult } from "@/lib/floor";
 import { TNA_STEPS, todayIST, unitOf } from "@/lib/format";
 import { PHOTO_BUCKET } from "@/lib/storage";
 import { createClient } from "@/lib/supabase/server";
+import { recordQc } from "./actions";
 
 const str = (v: unknown) => (v == null ? "" : String(v));
 
-export type VisitStep = { key: string; label: string; planned: string; done: string };
+// qc: the latest QC check on an inspection step (Inline, Mid-line, Final QC with its re-checks).
+export type VisitStep = { key: string; label: string; planned: string; done: string; qc?: { result: VisitResult; on: string } };
 export type VisitLast = { stage: string; step: string; status: FloorStatus; qtyDone: number | null; expectedOn: string; note: string; at: string; by: string };
 export type VisitStyle = {
   id: string; orderId: string; orderNo: string; buyer: string; style: string; colour: string; qty: number; unit: string; photoUrl: string | null;
@@ -20,6 +22,8 @@ export type VisitStyle = {
 };
 export type VisitData = {
   companyId: string; today: string; factoryId: string; factoryName: string;
+  // Quality and the owner record inspections as Pass or Fail; the orders team posts updates only.
+  canQc: boolean;
   // Factories with production running, for switching the visit to another one.
   factories: { id: string; name: string; styles: number }[];
   styles: VisitStyle[];
@@ -51,7 +55,7 @@ export async function loadVisit(scope: { factoryId?: string; orderId?: string })
 
   const inScope = running.filter(({ o, l }) => (scope.orderId ? o.id === scope.orderId : true) && (scope.factoryId ? l.factory_id === scope.factoryId : !!scope.orderId));
   const ids = inScope.map(({ l }) => l.id);
-  const [{ data: stages }, { data: ups }, { data: signed }] = ids.length
+  const [{ data: stages }, { data: ups }, { data: signed }, { data: checks }] = ids.length
     ? await Promise.all([
         fetchAll((a, z) => supabase.from("line_stages").select("line_id, stage, label, planned_on, done_on, not_needed, added_at").in("line_id", ids).order("added_at").order("id").range(a, z)),
         supabase.from("floor_updates").select("line_id, stage, status, qty_done, expected_on, note, created_by, created_at").in("line_id", ids).order("created_at", { ascending: false }).limit(500),
@@ -59,8 +63,10 @@ export async function loadVisit(scope: { factoryId?: string; orderId?: string })
           const paths = inScope.map(({ l }) => l.photo_path).filter(Boolean) as string[];
           return paths.length ? supabase.storage.from(PHOTO_BUCKET).createSignedUrls(paths, 3600) : Promise.resolve({ data: [] as { path: string | null; signedUrl: string }[] });
         })(),
+        supabase.from("qc_checks").select("line_id, kind, result, checked_on").in("line_id", ids).in("kind", ["inline", "midline", "final", "recheck"])
+          .is("cancelled_at", null).order("checked_on", { ascending: false }).order("created_at", { ascending: false }).limit(1000),
       ])
-    : [{ data: [] }, { data: [] }, { data: [] }];
+    : [{ data: [] }, { data: [] }, { data: [] }, { data: [] }];
   const urlOf = new Map((signed ?? []).filter((s) => s.signedUrl).map((s) => [s.path, s.signedUrl]));
   const people = new Map(team.map((m) => [m.user_id, personName(m)]));
   const buyerOf = new Map(buyers.map((b) => [b.id, buyerName(b)]));
@@ -71,7 +77,12 @@ export async function loadVisit(scope: { factoryId?: string; orderId?: string })
     const rows = (stages ?? []).filter((s) => s.line_id === l.id);
     const step = (key: string, label: string) => {
       const r = rows.find((s) => s.stage === key);
-      return r?.not_needed ? null : { key, label, planned: str(r?.planned_on), done: str(r?.done_on) };
+      const kinds = key === "final_qc" ? ["final", "recheck"] : [INSPECTION_KIND[key]];
+      const q = INSPECTION_KIND[key] ? (checks ?? []).find((c) => c.line_id === l.id && kinds.includes(c.kind)) : undefined;
+      return r?.not_needed ? null : {
+        key, label, planned: str(r?.planned_on), done: str(r?.done_on),
+        ...(q ? { qc: { result: q.result as VisitResult, on: str(q.checked_on) } } : {}),
+      };
     };
     const u = (ups ?? []).find((x) => x.line_id === l.id);
     return {
@@ -89,7 +100,7 @@ export async function loadVisit(scope: { factoryId?: string; orderId?: string })
   const fid = scope.factoryId ?? (new Set(inScope.map(({ l }) => l.factory_id)).size === 1 ? inScope[0].l.factory_id! : "");
   return {
     visit: {
-      companyId: me.companyId, today: todayIST(), factoryId: fid, factoryName: fid ? factoryName.get(fid) ?? "Factory" : "",
+      companyId: me.companyId, today: todayIST(), canQc: canRecordQc(me.role), factoryId: fid, factoryName: fid ? factoryName.get(fid) ?? "Factory" : "",
       factories: list, styles,
     },
   };
@@ -116,4 +127,44 @@ export async function postFloorUpdate(input: FloorInput): Promise<{ error?: stri
   revalidatePath(`/orders/${input.orderId}`);
   if (input.status === "done") revalidatePath("/");
   return {};
+}
+
+export type VisitCheckInput = {
+  lineId: string; orderId: string; stage: string; result: VisitResult; qcId: string; pieces: string; defects: string; note: string; recheckOn: string;
+  // The check's photos, in its own QC folder; and a copy for the floor, when the visit also posts an update.
+  qcPhotos: string[]; floorPhotos: string[];
+};
+
+// Records an inspection made on a visit as a QC check, exactly as Record QC does, so a fail flags the style
+// (Final QC failed, re-check due) and the merchandiser hears of it from the floor.
+// A fail also goes on the floor as a problem; a pass on Inline or Mid-line also marks the step done today.
+export async function postVisitCheck(input: VisitCheckInput): Promise<{ error?: string; warning?: string }> {
+  const me = await getMe();
+  if (!canRecordQc(me?.role)) return { error: "Only the Quality team records QC." };
+  const kind0 = INSPECTION_KIND[input.stage];
+  if (!kind0) return { error: "Pass and Fail are for Inline, Mid-line and Final QC." };
+  if (input.result !== "pass" && input.result !== "fail") return { error: "Pick Pass or Fail." };
+  const note = input.note.trim();
+  if (input.result === "fail" && !note) return { error: "Write what failed, so the factory knows what to fix." };
+  if (input.recheckOn && !/^\d{4}-\d{2}-\d{2}$/.test(input.recheckOn)) return { error: "Pick the re-check date from the calendar." };
+  const supabase = await createClient();
+  let kind = kind0;
+  if (kind0 === "final") {
+    // After a failed final, the next one is the re-check.
+    const { data: last } = await supabase.from("qc_checks").select("result").eq("line_id", input.lineId).in("kind", ["final", "recheck"])
+      .is("cancelled_at", null).order("checked_on", { ascending: false }).order("created_at", { ascending: false }).limit(1).maybeSingle();
+    if (last?.result === "fail") kind = "recheck";
+  }
+  const res = await recordQc(input.orderId, input.qcId, {
+    line_id: input.lineId, kind, checked_on: todayIST(), result: input.result, pieces_checked: input.pieces, defects: input.defects, notes: note,
+  }, input.qcPhotos.map((path) => ({ path, kind: "photo" as const, file_name: "" })));
+  if (res.error) return res;
+  revalidatePath("/today");
+  if (!input.floorPhotos.length) return {};
+  const label = TNA_STEPS.find((t) => t.key === input.stage)?.label ?? "QC";
+  const floor = await postFloorUpdate({
+    lineId: input.lineId, orderId: input.orderId, stage: input.stage, status: input.result === "fail" ? "issue" : "done", qty: "",
+    expectedOn: input.result === "fail" ? input.recheckOn : "", note: input.result === "fail" ? `${qcFailed(label)}: ${note}` : note, photos: input.floorPhotos,
+  });
+  return floor.error ? { warning: `The QC check is saved, but the floor update didn't post: ${floor.error}` } : {};
 }
