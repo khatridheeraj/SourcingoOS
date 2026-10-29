@@ -11,7 +11,8 @@ Its job: find glitches and rough edges before the team does, and fix the safe on
 ## 2. Checks (all of them, every hour)
 1. **App on made-up data**: `e2e/run.sh` (about 10 minutes). It builds a fresh local database from every
    migration plus `e2e/seed.sql`, runs the unit tests, and opens every screen as all 7 roles on phone and
-   computer, light and dark. Every `PROBLEM` line is a finding.
+   computer, light and dark, then `e2e/help.mjs` checks that Help shows nothing unasked and fits each role.
+   Every `PROBLEM` line is a finding.
 2. **Build health**: `npm run lint`, `npm run typecheck`, and the database rule tests
    (`PGHOST=127.0.0.1 PGPORT=54329 PGUSER=postgres supabase/tests/run.sh`, after `e2e/run.sh --up`).
 3. **Live system, read only**, with the Supabase connector (project `zwqoogevoxpafzbdnptz`):
