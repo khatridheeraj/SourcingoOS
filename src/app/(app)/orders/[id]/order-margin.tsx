@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { carryDays } from "@/lib/cash";
-import { day, money, qty, unitOfAll } from "@/lib/format";
+import { day, money, qty, qtyU, unitOfAll } from "@/lib/format";
 import { marginCls, pct, planMargin, THIN_MARGIN_PCT } from "@/lib/margin";
 
 export type MarginStyle = { id: string; style: string; colour: string; qty: number; product?: string; buyerRate: number | null; factoryRate: number | null };
@@ -19,6 +19,7 @@ export function OrderMargin({ styles, dispatches, cash }: { styles: MarginStyle[
   // An order sent in parts earns part by part.
   const pcsInvoiced = invoiced.reduce((t, d) => t + d.lines.reduce((u, l) => u + l.qty, 0), 0);
   const pcsOrdered = styles.reduce((t, s) => t + s.qty, 0);
+  const unit = unitOfAll(styles);
   const thin = styles.filter((s) => {
     if (s.buyerRate == null || s.factoryRate == null || s.buyerRate === 0) return false;
     return ((s.buyerRate - s.factoryRate) / s.buyerRate) * 100 < THIN_MARGIN_PCT;
@@ -39,7 +40,7 @@ export function OrderMargin({ styles, dispatches, cash }: { styles: MarginStyle[
           <div className="tile">
             <span>Earned on invoiced goods</span>
             <b className={marginCls(actualPct)}>{money(sold - bought)}</b>
-            <span className="mt-1">{pct(actualPct)} on {money(sold)} invoiced{pcsInvoiced < pcsOrdered && ` · ${qty(pcsInvoiced)} of ${qty(pcsOrdered)} ${unitOfAll(styles)}`}</span>
+            <span className="mt-1">{pct(actualPct)} on {money(sold)} invoiced{pcsInvoiced < pcsOrdered && ` · ${qty(pcsInvoiced)} of ${qty(pcsOrdered)} ${unit}`}</span>
           </div>
         )}
       </div>
@@ -56,7 +57,7 @@ export function OrderMargin({ styles, dispatches, cash }: { styles: MarginStyle[
         <div className="table-wrap mt-3">
           <table className="tbl">
             <thead>
-              <tr><th>Style</th><th className="r">Pieces</th><th className="r">Buyer rate</th><th className="r">Factory rate</th><th className="r">Per piece</th><th className="r">Margin</th><th className="r">%</th></tr>
+              <tr><th>Style</th><th className="r">{unit === "m" ? "Metres" : unit === "pcs" ? "Pieces" : "Quantity"}</th><th className="r">Buyer rate</th><th className="r">Factory rate</th><th className="r">{unit === "m" ? "Per metre" : unit === "pcs" ? "Per piece" : "Per unit"}</th><th className="r">Margin</th><th className="r">%</th></tr>
             </thead>
             <tbody>
               {styles.map((s) => {
@@ -66,7 +67,7 @@ export function OrderMargin({ styles, dispatches, cash }: { styles: MarginStyle[
                 return (
                   <tr key={s.id}>
                     <td><span className="code">{s.style}</span>{s.colour && <span className="muted"> · {s.colour}</span>}</td>
-                    <td className="r num">{qty(s.qty)}</td>
+                    <td className="r num">{unit === "units" ? qtyU(s.qty, s.product) : qty(s.qty)}</td>
                     <td className="r num">{money(s.buyerRate)}</td>
                     <td className="r num">{money(s.factoryRate)}</td>
                     <td className="r num">{money(per)}</td>

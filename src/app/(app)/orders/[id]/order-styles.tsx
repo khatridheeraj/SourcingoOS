@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { dayAtNear, dayNear, daysBetween, defaultBuffer, planDueAt, PLAN_HOURS, qtyU, TNA_STEPS } from "@/lib/format";
+import { dayAtNear, dayNear, daysBetween, defaultBuffer, planDueAt, PLAN_HOURS, qtyU, TNA_STEPS, dayTimeAt } from "@/lib/format";
 import { uploadPhotos } from "@/lib/photos";
 import { toast } from "@/components/toast";
 import { project, shipRisk, fillEmptyTargets, startBuffer, stepDays } from "@/lib/tna-plan";
@@ -53,7 +53,6 @@ type Dates = Record<string, Cell>;
 const blank: Cell = { planned_on: "", done_on: "", not_needed: false };
 const key = (lineId: string, stage: string) => `${lineId}:${stage}`;
 const plural = (n: number) => `${n} ${n === 1 ? "day" : "days"}`;
-const at = new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit", timeZone: "Asia/Kolkata" });
 const addDays = (d: string, n: number) => new Date(Date.parse(d) + n * 86_400_000).toISOString().slice(0, 10);
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 // "10 Sep" from YYYY-MM-DD, without the year (the order's dates sit within a few months).
@@ -275,7 +274,7 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
 
   async function copyRequest(g: FactoryGroup) {
     const text = [
-      `Please enter your TNA for order ${orderNo} in your Sourcingo factory panel${g.planRequestedAt ? ` by ${at.format(planDueAt(g.planRequestedAt))}` : ` within ${PLAN_HOURS} hours`}. We release the PO only after that.`,
+      `Please enter your TNA for order ${orderNo} in your Sourcingo factory panel${g.planRequestedAt ? ` by ${dayTimeAt(planDueAt(g.planRequestedAt))}` : ` within ${PLAN_HOURS} hours`}. We release the PO only after that.`,
       `Styles: ${g.lines.map((l) => `${l.style}${l.colour ? ` (${l.colour})` : ""}, ${qtyU(l.qty, l.fabricOrder ? "fabric" : null)}`).join("; ")}.`,
       g.target ? `Every date must be on or before ${dayNear(g.target)}.` : "",
     ].filter(Boolean).join("\n");
@@ -457,9 +456,9 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
           : !gaps.length && g.lockRequestedAt ? { text: isOwner ? "Waiting for your approval" : `Sent for approval ${dayAtNear(g.lockRequestedAt)}`, cls: isOwner ? "warn" : "info" }
           : !gaps.length && g.lockNote ? { text: "Sent back by the owner", cls: "warn" }
           : !gaps.length ? { text: isOwner ? "Plan complete, ready to approve" : "Plan complete, send the PO for approval", cls: "info" }
-          : critical ? { text: `Critical: no TNA from the factory, due ${at.format(dueAt!)}`, cls: "bad" }
+          : critical ? { text: `Critical: no TNA from the factory, due ${dayTimeAt(dueAt!)}`, cls: "bad" }
           : sent ? { text: g.planEnteredBy ? `Factory's TNA entered by ${g.planEnteredBy} ${dayAtNear(sent)}` : `Factory sent its TNA ${dayAtNear(sent)}`, cls: "warn" }
-          : dueAt ? { text: `Waiting for the factory's TNA, due ${at.format(dueAt)}`, cls: "warn" }
+          : dueAt ? { text: `Waiting for the factory's TNA, due ${dayTimeAt(dueAt)}`, cls: "warn" }
           : toAsk.length ? (asked ? { text: "Plan not complete", cls: "warn" } : null)
           : { text: "Targets set, ask the factory", cls: "warn" };
         return (

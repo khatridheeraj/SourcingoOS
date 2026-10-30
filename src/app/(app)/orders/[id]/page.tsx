@@ -476,12 +476,12 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
           <h2 className="mb-3 font-bold text-base">Order details</h2>
           <div className="table-wrap">
             <table className="tbl">
-              <thead><tr><th>Style</th><th>Colour</th><th>Description</th><th className="r">Pieces</th><th>Factory</th></tr></thead>
+              <thead><tr><th>Style</th><th>Colour</th><th>Description</th><th className="r">Quantity</th><th>Factory</th></tr></thead>
               <tbody>
                 {lines.map((l) => (
                   <tr key={l.id}>
                     <td className="code">{l.style}</td><td>{l.colour}</td><td>{l.description}</td>
-                    <td className="r num">{qty(l.qty)}</td><td>{opts.factories.find((f) => f.id === l.factory_id)?.label}</td>
+                    <td className="r num">{qtyU(l.qty, l.product)}</td><td>{opts.factories.find((f) => f.id === l.factory_id)?.label}</td>
                   </tr>
                 ))}
               </tbody>

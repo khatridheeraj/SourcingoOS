@@ -27,12 +27,14 @@ How to use it:
 |---|---|---|
 | Crawl flags a page "slow" or ERR_CONNECTION_* on a cold or reloading dev server | Fast on reload; only a finding if it stays slow on recheck | 2026-10-29 |
 | Second `e2e/run.sh` on a stack that is still running: crawl shows 404s everywhere (PostgREST keeps the dropped database's grants) | Stop ports 3100, 54321, 54322 (`fuser -k`) and run it again; not an app glitch | 2026-10-30 |
-| Live Tally reader: last snapshot ~10 h old overnight while the PC agent is seen | Tally is closed after office hours; the agent still checks in | 2026-10-30 |
+| Live Tally reader: last snapshot ~10 h old overnight while the PC agent is seen (30 Oct 14:00 IST: 18 h, Tally not opened yet that day) | Tally is closed after office hours; the agent still checks in | 2026-10-30 |
 | Postgres log errors whose query ends in `-- source: POST /mcp` | Come from the run's own checks, not the app | 2026-10-30 |
 | Gmail pickup has found no new buyer PO for days | No buyer has emailed a PO; not a glitch | 2026-10-30 |
 | Factory PO emails all go to merchandiser@sourcingo.in | Test inbox mode, on purpose until Dheeraj says switch | 2026-10-30 |
 | Markers screen paused | MARKERS_ON flag, on purpose | 2026-10-30 |
 | Supabase advisors: security-definer functions callable by anon/authenticated, RLS on with no policy, one mutable search_path, leaked-password check off | Long-standing by design (the app's RPCs are security definer and check the role inside); not new | 2026-10-30 |
+| Supabase performance advisors: unindexed foreign keys, unused indexes, auth RLS initplan, multiple permissive policies, one table without a primary key | Long-standing INFO/WARN on a 33 MB database; nothing slow in the logs | 2026-10-30 |
+| Morning brief "shipped in part" / "closed short" lines and Home's deleted-PO line say "pcs" even for a fabric order | The numbers come from database functions that don't return the unit; fix with the next migration a thread makes, not a check run | 2026-10-30 |
 | Local stack: Next dev logs "The destination stream closed early" after a save that redirects | Dev-server noise when a page is left mid-stream; not seen in production | 2026-10-29 |
 | Factory PO routine asking for database permission | He granted it on 2026-10-29 14:22Z. If a read or write is blocked, log it here and stay quiet | 2026-10-29 |
 
@@ -66,15 +68,20 @@ made-up token (/po, /f, /s), print and PDF views (A4, many styles).
 | 2026-10-30 | Order page, Orders, Styles, Reports, factory panel | large order (25 styles, 65,000 pcs, Rs 8 Cr) + Hindi and 130-character style names, phone + desk, light + dark | Order hero left a stray "·" when a long PO wrapped; catalogue showed "No step done yet" chips (DESIGN.md says no), shuffled one order's styles, and let long names flood the card; Reports "Which steps run late" showed red 0% that read as "0% late" on a phone. All fixed (this run's PR). Orders list, factory panel fine |
 | 2026-10-30 | Factory PO print / PDF | 25 styles with long names, A4 (exploration: print view) | Design no. never wrapped, so Rate, Qty, Total, Colour and Image fell off the printed page: fixed (this run's PR). Hindi prints fine; the Total row repeats on every page, fine |
 
-Not yet looked at from any angle beyond the crawl: slow network, two people editing,
+| 2026-10-30 | Goods with us, challan print, dispatch bill form, Margin, QC order details | fabric order (metres), phone + desk, light + dark | A fabric lot showed "2,000 pcs"; "Pieces with us" added metres to pieces; the printed challan headed the column "Pieces" with no unit; the bill form said "Pieces bought" and the margin table "Pieces"/"Per piece" for cambric. All fixed (this run's PR) |
+| 2026-10-30 | Every screen with a date and time (Goods, dispatch, Today, QC, history, feedback, inquiries, factory panel, factory PO send) | date edges (September, last year's times) | Times were written "30 Sept" (dates elsewhere say "Sep") and dropped the year for last year's times: now one shared `dayTimeAt` (this run's PR) |
+| 2026-10-30 | Challan number | slow network (1.5 s latency) + double tap, phone (exploration) | Second tap blocked while saving, one number given: fine |
+
+Not yet looked at from any angle beyond the crawl: two people editing,
 date edges, keyboard only, empty states, Reports, Styles, Updates, Activity, Team, Tally, Feedback, login,
 factory PO accept link with a real token (accept twice, accept after approval withdrawn; needs the po-inbox function, the local stand-in can't test it).
-Print views not yet looked at: challan, buyer PO PDF, morning brief.
+Print views not yet looked at: buyer PO PDF, morning brief. Angles never tried: slow network on a whole save flow (only the challan number so far), keyboard only, two tabs.
 
 ## Closed
 | Item | How | Date |
 |---|---|---|
 | New order: ship date before PO date showed a raw database error; negative rate said "must be a number" | Plain messages + ship date can't be picked before the PO date (this run's PR) | 2026-10-29 |
 | Order hero stray dot, catalogue "No step done yet" chips and shuffled styles, long names flooding catalogue cards, Reports step bars reading as "0% late", factory PO print losing columns with long style names | Fixed (this run's PR) | 2026-10-30 |
+| Fabric lots and challans counted metres as pieces; date-times wrote "Sept" and dropped last year's year | Fixed (this run's PR) | 2026-10-30 |
 | Hourly runs could not merge their own PRs | Allow rule added; runs merge on green since #190 | 2026-10-29 |
 | Factory PO routine blocked on database permission | Dheeraj granted it | 2026-10-29 |

@@ -61,7 +61,9 @@ set role authenticated;
 select pg_temp.as_user(:'link_user');
 select public.buyer_orders() as seen \gset
 select pg_temp.expect(jsonb_array_length(:'seen'::jsonb -> 'orders') = 1 and (:'seen'::jsonb -> 'orders' -> 0 ->> 'buyer_po') = 'AFH07', 'the buyer sees other buyers'' orders');
-select pg_temp.expect(position('Kkora' in :'seen') = 0 and position('450' in :'seen') = 0, 'the buyer sees the factory or its rate');
+-- The rate 450 as a value, not as three digits inside a random id (a UUID like 6b65645a-...-45012b... once failed this).
+select pg_temp.expect(position('Kkora' in :'seen') = 0 and :'seen' !~ '(^|[^0-9a-f-])450([^0-9a-f-]|$)' and position('factory_rate' in :'seen') = 0 and position('factory_id' in :'seen') = 0,
+  'the buyer sees the factory or its rate');
 select pg_temp.expect((select count(*) = 0 from public.buyer_links), 'a buyer reads the links');
 select pg_temp.expect_error(format($$select public.buyer_link('%s', true)$$, :'ah'), 'Only the orders team can send a buyer its link.');
 

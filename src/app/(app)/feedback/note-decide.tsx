@@ -7,6 +7,7 @@ import { decideNote, type TeamNote } from "@/components/help/actions";
 import { NoteFiles, STATUS_TONE } from "@/components/help/help-chat";
 import { toast } from "@/components/toast";
 import { roleLabel, type Role } from "@/lib/auth-roles";
+import { dayTimeAt } from "@/lib/format";
 
 const KIND = { problem: "Not working", wrong_data: "Wrong data", idea: "Idea", question: "Question" };
 const STATUS = { new: "Waiting", planned: "Going ahead", later: "Later", done: "Done", declined: "Not doing" };
@@ -16,7 +17,6 @@ const OUTCOMES: { status: TeamNote["status"]; label: string; done: string }[] = 
   { status: "later", label: "Later", done: "Kept for later." },
   { status: "declined", label: "Not doing", done: "Closed as not doing." },
 ];
-const at = new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit", timeZone: "Asia/Kolkata" });
 
 // One note for the owner: what was sent, from where, Claude's suggestion, and the decision with a reply.
 export function NoteDecide({ n }: { n: TeamNote }) {
@@ -41,7 +41,7 @@ export function NoteDecide({ n }: { n: TeamNote }) {
       <div className="note-h">
         <span className={`chip ${n.kind === "idea" ? "ok" : n.kind === "question" ? "info" : "warn"}`}>{KIND[n.kind]}</span>
         {n.status !== "new" && <span className={`chip ${STATUS_TONE[n.status]}`}>{STATUS[n.status]}</span>}
-        <span className="note-when">#{n.no} · {at.format(new Date(n.created_at))}</span>
+        <span className="note-when">#{n.no} · {dayTimeAt(new Date(n.created_at))}</span>
       </div>
       <div className="text-[13px] text-muted">
         <b className="font-medium text-foreground">{n.sender ?? "Someone"}</b>

@@ -35,6 +35,8 @@ const clock = new Intl.DateTimeFormat("en-IN", { timeZone: "Asia/Kolkata", hour:
 // "24 Oct, 3:49 am" in India time, with the year only when it isn't this year.
 export const dayTimeNear = (ts: string | null | undefined, today: string = todayIST()) =>
   ts ? `${dayAtNear(ts, today)}, ${clock.format(new Date(ts))}` : "";
+// dayTimeNear for a Date: "30 Sep, 1:30 pm", never "Sept", with the year only when it isn't this year.
+export const dayTimeAt = (d: Date, today: string = todayIST()) => dayTimeNear(d.toISOString(), today);
 
 export const STATUS: Record<string, { label: string; cls: string }> = {
   open: { label: "Open", cls: "chip info" },

@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { day, money, qty } from "@/lib/format";
+import { day, money, qty, dayTimeAt } from "@/lib/format";
 import { garmentBill, gstLabel, gstRate } from "@/lib/gst";
 import { uploadPhotos, uploadReports } from "@/lib/photos";
 import {
@@ -16,6 +16,8 @@ import { closeShort } from "../actions";
 export type ShipLine = { id: string; style: string; colour: string; ordered: number; bought: number; billed: number; shipped: number; unit: string };
 // One unit for a sum over several styles.
 const unitOver = (units: string[]) => (new Set(units).size > 1 ? "units" : units[0] ?? "pcs");
+// The bill form's quantity heading: metres for fabric, pieces for garments.
+const boughtLabel = (unit: string) => (unit === "m" ? "Metres bought" : unit === "pcs" ? "Pieces bought" : "Quantity bought");
 export type DispatchFactory = { id: string; name: string; lines: { id: string; style: string; colour: string; qty: number; factoryRate: string; buyerRate: string }[] };
 // Bills in Tally that no dispatch has taken yet (the order's factories' purchase bills and its buyer's invoices),
 // to check a typed number against. Not shown as a list. buyerInTally: the buyer has a Tally ledger, so its invoice is picked up by itself.
@@ -36,7 +38,6 @@ export type Dispatch = {
   qcNotPassed?: string[];
 };
 
-const at = new Intl.DateTimeFormat("en-IN", { timeZone: "Asia/Kolkata", day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
 const n = (s: string) => Number(s.replace(/[,₹\s]/g, "")) || 0;
 const STEPS = ["Purchase", "Invoice", "E-way bill", "Shipped", "GRN"];
 const DOC_ACCEPT = "image/*,.pdf";
@@ -181,7 +182,7 @@ export function OrderDispatch({ orderId, orderNo, companyId, open, owner, factor
               <Copies d={d} pending={pending} onAttach={(kind, file) => attach(d.id, kind, file)} />
 
               {d.invoicedAt && (
-                <p className="mt-2 text-[13px]">Invoice <b>{d.invoiceNo}</b>{d.invoiceTaxable != null && `: ${money(Math.round(d.invoiceTaxable + (d.invoiceGst ?? 0)))} with GST`}, made {at.format(new Date(d.invoicedAt))}.</p>
+                <p className="mt-2 text-[13px]">Invoice <b>{d.invoiceNo}</b>{d.invoiceTaxable != null && `: ${money(Math.round(d.invoiceTaxable + (d.invoiceGst ?? 0)))} with GST`}, made {dayTimeAt(new Date(d.invoicedAt))}.</p>
               )}
               {d.ewayNo && (
                 <p className="text-[13px]">E-way bill <b className="num">{d.ewayNo}</b>{d.ewayDate && ` of ${day(d.ewayDate)}`}{d.ewayValidUntil && `, valid till ${day(d.ewayValidUntil)}`}{d.ewayFromTally && ", from Tally"}. {d.ewayUrl && <a className="link" href={d.ewayUrl} target="_blank" rel="noreferrer">Open</a>}</p>
@@ -320,7 +321,7 @@ function PurchaseForm({ p, setP, blank, factories, ship, bills, today, pending, 
         <div>
           <p className="mb-1.5 text-[12.5px] font-medium">What the bill is for</p>
           <div className="bill-lines">
-            <div className="bill-line hidden text-[12px] text-muted sm:grid" aria-hidden><span>Style</span><span>Pieces bought</span><span>Purchase rate ₹</span><span>Sale rate ₹</span></div>
+            <div className="bill-line hidden text-[12px] text-muted sm:grid" aria-hidden><span>Style</span><span>{boughtLabel(unitOver(p.lines.map((l) => ship.find((x) => x.id === l.line_id)?.unit ?? "pcs")))}</span><span>Purchase rate ₹</span><span>Sale rate ₹</span></div>
             {p.lines.map((l, i) => {
               const line = factory.lines.find((x) => x.id === l.line_id);
               const set = (k: "qty" | "purchase_rate" | "sale_rate", v: string) => setP({ ...p, lines: p.lines.map((x, j) => (j === i ? { ...x, [k]: v } : x)) });
@@ -336,7 +337,7 @@ function PurchaseForm({ p, setP, blank, factories, ship, bills, today, pending, 
                     </span>
                     {over > 0 && <span className="text-[12px] font-semibold text-warn">{qty(over)} more than ordered</span>}
                   </div>
-                  <label><span className="sm:hidden">Pieces bought</span><input className="inp" inputMode="numeric" value={l.qty} onChange={(e) => set("qty", e.target.value)} aria-label={`${line?.style} pieces bought`} /></label>
+                  <label><span className="sm:hidden">{boughtLabel(sh?.unit ?? "pcs")}</span><input className="inp" inputMode="numeric" value={l.qty} onChange={(e) => set("qty", e.target.value)} aria-label={`${line?.style} ${boughtLabel(sh?.unit ?? "pcs").toLowerCase()}`} /></label>
                   <label><span className="sm:hidden">Purchase rate ₹</span><input className="inp" inputMode="decimal" value={l.purchase_rate} onChange={(e) => set("purchase_rate", e.target.value)} aria-label={`${line?.style} purchase rate`} /></label>
                   <label><span className="sm:hidden">Sale rate ₹</span><input className="inp" inputMode="decimal" value={l.sale_rate} onChange={(e) => set("sale_rate", e.target.value)} aria-label={`${line?.style} sale rate`} /></label>
                 </div>
@@ -350,7 +351,7 @@ function PurchaseForm({ p, setP, blank, factories, ship, bills, today, pending, 
           <BillSum taxable={bill.taxable} gst={bill.gst} rates={bill.rates} total={bill.total} label="Bill total" />
           <TallyMatch what="Bill" no={tally?.no ?? ""} total={bill.total} tally={tally}
             none={p.bill_no.trim() ? `Not in Tally yet. It links by itself once Accounts books bill ${p.bill_no.trim()} in Tally.` : "Enter the bill number to check it against Tally."}
-            fix="Check the pieces and rates against the paper bill." />
+            fix="Check the quantities and rates against the paper bill." />
         </div>
       )}
       <div>
@@ -377,7 +378,7 @@ function InvoiceStep({ d, unit, bills, buyerInTally, today, late, pending, onSav
   const [manual, setManual] = useState(false);
   const due = (
     <p className={`text-[13px] font-semibold ${late ? "text-bad" : "text-warn"}`}>
-      {late ? `Emergency: the invoice was due by ${at.format(new Date(d.invoiceDueAt))}.` : `Invoice the buyer by ${at.format(new Date(d.invoiceDueAt))}.`}
+      {late ? `Emergency: the invoice was due by ${dayTimeAt(new Date(d.invoiceDueAt))}.` : `Invoice the buyer by ${dayTimeAt(new Date(d.invoiceDueAt))}.`}
     </p>
   );
   if (auto && !manual) {
@@ -602,7 +603,7 @@ function ShipSummary({ orderId, orderNo, ship, open, closedShort, pending, start
         ))}
       </ul>
       {closedShort && (
-        <p className="mt-2 text-[13px]">Closed short with {qty(billed)} of {qty(ordered)} {unit} by {closedShort.by}, {at.format(new Date(closedShort.at))}: {closedShort.reason}</p>
+        <p className="mt-2 text-[13px]">Closed short with {qty(billed)} of {qty(ordered)} {unit} by {closedShort.by}, {dayTimeAt(new Date(closedShort.at))}: {closedShort.reason}</p>
       )}
       {open && unbilled > 0 && billed > 0 && !closing && (
         <div className="row mt-2">

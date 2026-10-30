@@ -8,11 +8,11 @@ import { toast } from "@/components/toast";
 import { FLOOR_STATUS, floorLine, INSPECTION_KIND, NOT_DONE_ON_VISIT, REJECT, VISIT_RESULT, type FloorStatus, type VisitResult } from "@/lib/floor";
 import { uploadPhotos } from "@/lib/photos";
 import { dm, when } from "@/lib/quick";
+import { dayTimeAt } from "@/lib/format";
 
 type Open = { factoryId?: string; orderId?: string };
 const EVENT = "sourcingo:visit";
 const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;
-const at = new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit", timeZone: "Asia/Kolkata" });
 
 // Opens the factory visit from anywhere: every style in production at a factory (or on one order), one update each.
 export function openVisit(scope: Open) {
@@ -232,7 +232,7 @@ function StyleCard({ s, companyId, today, canQc, open, posted, onToggle, onPoste
         <span className="vs-id">
           <b><span className="code">{s.orderNo}</span>{s.style}{s.colour && <small> · {s.colour}</small>}</b>
           <span className={`vs-now ${w?.cls ?? ""}`}>{first ? `${first.label} · ${w?.text}` : "Every step done"}</span>
-          {s.last && <small className="vs-last">{floorLine({ status: s.last.status, qty_done: s.last.qtyDone, expected_on: s.last.expectedOn || null, note: s.last.note }, s.last.step, `${s.qty.toLocaleString("en-IN")} ${s.unit}`, dm)} · {at.format(new Date(s.last.at))} · {s.last.by.split(" ")[0]}</small>}
+          {s.last && <small className="vs-last">{floorLine({ status: s.last.status, qty_done: s.last.qtyDone, expected_on: s.last.expectedOn || null, note: s.last.note }, s.last.step, `${s.qty.toLocaleString("en-IN")} ${s.unit}`, dm)} · {dayTimeAt(new Date(s.last.at))} · {s.last.by.split(" ")[0]}</small>}
         </span>
         {posted ? <span className="vs-tick" aria-label="Updated">✓</span> : <span className="vs-chev" aria-hidden />}
       </button>
