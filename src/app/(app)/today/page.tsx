@@ -2,7 +2,7 @@ import type { LinePrice } from "@/lib/margin";
 import Link from "next/link";
 import { canEditOrders, canRecordQc, getMe } from "@/lib/auth";
 import { fetchAll } from "@/lib/fetch-all";
-import { buyerName, loadBuyers, loadFactories, loadPace } from "@/lib/data";
+import { buyerName, loadBuyers, loadFactories, loadPace, loadTeam, personName } from "@/lib/data";
 import { day, dayNear, daysBetween, money, riskLate, dueDate, nowMs, planDueAt, PLAN_HOURS, qcKindLabel, qty, qtyTotal, SHIP_QC, stageReached, TNA_STEPS, todayIST, unitOfAll, dayTimeAt } from "@/lib/format";
 import { NO_COMPANY } from "@/lib/names";
 import { poWaitDays, PO_WAIT_DAYS } from "@/lib/order-checks";
@@ -28,6 +28,7 @@ import { loadPayables } from "../payables/load";
 import { bySupplier, dueOf, lakh as rupees, totals } from "@/lib/payables";
 import { PageTabs } from "@/components/page-tabs";
 import { HOME_TABS } from "@/lib/page-groups";
+import { type Approval, Approvals } from "./approvals";
 
 type Sev = "bad" | "warn" | "ok" | "";
 // One line of the to-do list: what it is, why, and the one button that deals with it.
@@ -58,6 +59,11 @@ const when = (date: string, today: string): { text: string; cls: Sev } => {
 };
 // Order values in lakh and crore, as the team says them.
 const lakh = (n: number) => (n >= 1e7 ? `₹${(n / 1e7).toFixed(2)} Cr` : `₹${(n / 1e5).toFixed(1)} L`);
+// How long something has waited: "40 min", "3 hours", "2 days".
+const waitedText = (since: string, now: number) => {
+  const min = Math.max(0, Math.floor((now - Date.parse(since)) / 60_000));
+  return min < 60 ? `${Math.max(min, 1)} min` : min < 1440 ? plural(Math.floor(min / 60), "hour") : plural(Math.floor(min / 1440), "day");
+};
 const rank = (s: Sev) => ({ bad: 0, warn: 1, ok: 2, "": 3 })[s];
 const bySev = (a: Item, b: Item) => rank(a.sev) - rank(b.sev) || a.sort.localeCompare(b.sort);
 
@@ -76,6 +82,7 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
   const today = todayIST();
   const week = addDays(today, 7);
   const team = canEditOrders(me?.role);
+  const owner = me?.role === "owner";
   // Bills to pay, for the owner and Accounts: read alongside everything else.
   const payP = isFinance(me?.role) ? loadPayables(supabase) : null;
   // Money to collect from buyers (cheques to deposit, Tally settlements, overdue invoices), for the same people.
@@ -158,7 +165,7 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
 
   const [{ data: pos }, { data: stages }, { data: checks }, { data: shipRows }] = ids.length
     ? await Promise.all([
-        fetchAll((a, z) => supabase.from("factory_pos").select("order_id, factory_id, plan_requested_on, plan_requested_at, factory_sent_at, released_at, buffer_days, lock_requested_at, lock_note")
+        fetchAll((a, z) => supabase.from("factory_pos").select("order_id, factory_id, plan_requested_on, plan_requested_at, factory_sent_at, released_at, buffer_days, lock_requested_at, lock_requested_by, lock_note")
           .in("order_id", ids).order("id").range(a, z)).then(keep),
         fetchAll((a, z) => supabase.from("line_stages").select("order_id, line_id, stage, label, planned_on, done_on, not_needed, factory_on").in("order_id", ids).order("id").range(a, z)).then(keep),
         fetchAll((a, z) => supabase.from("qc_checks").select("line_id, kind, result, checked_on").in("order_id", ids).is("cancelled_at", null)
@@ -260,6 +267,8 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
         ...(stages ?? []).filter((s) => s.line_id === l.id && s.stage.startsWith("extra_")),
       ]).filter((r) => !r.not_needed);
       const noTarget = rows.filter((r) => !r.planned_on).length;
+      // A PO sent for the owner's approval sits in the owner's own list, Your approvals, not in To do.
+      if (owner && po?.lock_requested_at && !po.released_at) continue;
       if (po?.released_at) {
         // A released PO's steps without a target can't show as late, so ask for the missing targets.
         const untracked = rows.filter((r) => !r.planned_on && !r.done_on).length;
@@ -302,10 +311,8 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
           chip: { text: hours ? `${plural(hours, "hour")} past deadline` : "Just past deadline", cls: "bad" }, action: "Factory agreed", sort: dueAt.toISOString(),
           chase: chaseFor(o, f, `*${o.order_no}${o.buyer_po ? ` · PO ${o.buyer_po}` : ""} · ${fname}*\nPlease send your dates for these styles today, or tell us you agree to ours: ${fl.map((l) => l.style).join(", ")}.${linkOf.get(f) ? `\n\n${panelLine(linkOf.get(f))}` : ""}`) });
       } else if (!gaps && po?.lock_requested_at) {
-        // Every factory PO waits for the owner's lock (Dheeraj, 20 Oct 2026); the owner sees these first.
-        if (me?.role === "owner") now_.push({ ...item, sev: "warn", detail: `${fname} · PO sent for your approval ${dayTimeAt(new Date(po.lock_requested_at))}. Approving emails it to the factory.`,
-          chip: { text: "Waiting for your approval", cls: "warn" }, action: "Check and approve", sort: `0${po.lock_requested_at}` });
-        else waiting.push({ ...item, sev: "", detail: `${fname} · sent for approval ${dayTimeAt(new Date(po.lock_requested_at))}`, action: "See plan" });
+        // Every factory PO waits for the owner's lock (Dheeraj, 20 Oct 2026); the owner sees these under Your approvals.
+        waiting.push({ ...item, sev: "", detail: `${fname} · sent for approval ${dayTimeAt(new Date(po.lock_requested_at))}`, action: "See plan" });
       } else if (!gaps && po?.lock_note && me?.role !== "owner") {
         now_.push({ ...item, sev: "warn", detail: `${fname} · the owner sent the PO back: ${po.lock_note}`, action: "Fix and send again" });
       } else if (!gaps) {
@@ -562,7 +569,8 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
     });
   }
   const held = (incoming ?? []).filter((p) => p.status === "held");
-  if (held.length) {
+  // The owner accepts or ignores these under Your approvals.
+  if (held.length && !owner) {
     now_.push({
       key: "incoming-held", href: held.length === 1 ? `/pos/${held[0].id}` : "/pos?show=held", sev: "warn",
       title: held.length === 1 ? "1 email from an unknown sender" : `${held.length} emails from unknown senders`,
@@ -632,6 +640,51 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
     }
   }
 
+  // What waits on the owner personally, in a list of its own above To do (Dheeraj, 30 Oct 2026): factory POs the
+  // team sent for approval, and emails from unknown senders. Each says what it is, who asked and how long it has waited.
+  const approvals: Approval[] = [];
+  if (owner) {
+    const asks = (pos ?? []).filter((p) => p.lock_requested_at && !p.released_at).sort((a, b) => a.lock_requested_at!.localeCompare(b.lock_requested_at!));
+    const [people, blocks, { data: co }] = await Promise.all([
+      asks.length ? loadTeam() : Promise.resolve([]),
+      // What stops the approval (the plan, the buyer's PO) or the email after it (photos, the factory's email).
+      Promise.all(asks.map(async (p) => {
+        const [{ data: r }, { data: s }] = await Promise.all([
+          supabase.rpc("release_blocker", { p_order: p.order_id, p_factory: p.factory_id }),
+          supabase.rpc("po_send_blocker", { p_order: p.order_id, p_factory: p.factory_id }),
+        ]);
+        // The first sentence says it; the PO page has the rest and the fix.
+        const why = (r as string | null) || (s as string | null);
+        return why ? why.split(/(?<=\.) /)[0] : null;
+      })),
+      asks.length ? supabase.from("companies").select("po_mail_test_to").eq("id", companyId).maybeSingle() : Promise.resolve({ data: null }),
+    ]);
+    const nameOf = new Map(people.map((m) => [m.user_id, personName(m)]));
+    asks.forEach((p, i) => {
+      const o = open.find((x) => x.id === p.order_id);
+      if (!o) return;
+      const fl = (o.order_lines ?? []).filter((l) => l.factory_id === p.factory_id);
+      const value = fl.reduce((v, l) => v + l.qty * Number(priceOf.get(l.id)?.factory_rate ?? 0), 0);
+      const fname = factoryName.get(p.factory_id) ?? "the factory";
+      const due = dueDate(o);
+      approvals.push({
+        key: `po:${p.order_id}:${p.factory_id}`, kind: "po", href: `/orders/${o.id}/factory-po/${p.factory_id}`, ...base(o),
+        what: `Factory PO to ${fname} · ${plural(fl.length, "style")} · ${qtyTotal(fl)}${value ? ` · ${lakh(value)}` : ""}${due ? ` · ships ${dm(due)}` : ""}`,
+        who: `sent by ${(p.lock_requested_by && nameOf.get(p.lock_requested_by)) || "the orders team"}`,
+        waited: waitedText(p.lock_requested_at!, now), old: now - Date.parse(p.lock_requested_at!) > 86_400_000,
+        orderId: o.id, factoryId: p.factory_id, factoryName: fname, blocker: blocks[i], testTo: (co as { po_mail_test_to: string | null } | null)?.po_mail_test_to ?? null,
+      });
+    });
+    for (const p of held) {
+      approvals.push({
+        key: `held:${p.id}`, kind: "email", href: `/pos/${p.id}`, title: p.email_subject || "Email with an attachment",
+        what: "Email from an unknown sender. Accept it to read it as a buyer PO, or ignore it.",
+        who: `from ${p.email_from ?? "an unknown address"}`,
+        waited: waitedText(p.received_at, now), old: now - Date.parse(p.received_at) > 86_400_000,
+      });
+    }
+  }
+
   const lists = { now: now_.sort(bySev), soon: soon.sort(bySev), waiting: waiting.sort(bySev) };
   const tab = TABS.some((t) => t.key === sp.tab) ? (sp.tab as keyof typeof lists) : lists.now.length || !lists.soon.length ? "now" : "soon";
   const qs = (t: string) => `/today?${new URLSearchParams({ ...(sp.who ? { who: String(sp.who) } : {}), tab: t })}`;
@@ -657,7 +710,7 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
   const first = (me?.fullName ?? me?.email.split("@")[0] ?? "").split(" ")[0];
   const nowCount = lists.now.length;
   // The greeting counts money jobs that can't wait too, for the owner and Accounts.
-  const headCount = nowCount + collect.filter((a) => a.sev === "bad").length;
+  const headCount = nowCount + approvals.length + collect.filter((a) => a.sev === "bad").length;
   const toChase = chaseList.filter((f) => !f.chased).length;
 
   // One block per order: everything an order needs sits together under its name, worst first, so the same order
@@ -753,6 +806,8 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
       </section>
 
       {me?.role && <WhatsNew role={me.role} />}
+
+      {owner && <Approvals items={approvals} />}
 
       {moneyFirst && moneyCards}
 
