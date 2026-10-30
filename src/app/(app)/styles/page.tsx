@@ -37,7 +37,7 @@ export default async function StylesPage({ searchParams }: PageProps<"/styles">)
   if (buyer) query = query.eq("orders.buyer_id", buyer);
   if (factory) query = query.eq("factory_id", factory);
   if (q) query = query.or(["style", "description", "colour", "fabric"].map((c) => `${c}.ilike.*${q}*`).join(","));
-  const { data, count, error } = await query.order("created_at", { ascending: false }).order("id").range((page - 1) * PAGE, page * PAGE - 1);
+  const { data, count, error } = await query.order("created_at", { ascending: false }).order("position").order("id").range((page - 1) * PAGE, page * PAGE - 1);
   const rows = (data ?? []) as unknown as Row[];
 
   const paths = rows.map((r) => r.photo_path).filter(Boolean) as string[];
@@ -106,7 +106,8 @@ export default async function StylesPage({ searchParams }: PageProps<"/styles">)
                   <div className="cat-img">
                     {/* eslint-disable-next-line @next/next/no-img-element -- short-lived signed links, not for the image optimiser */}
                     {url ? <img src={url} alt={`${r.style} ${r.colour ?? ""}`} loading="lazy" /> : <span>{r.style}</span>}
-                    {pr ? <em className={`chip ${pr.behind ? "warn" : "info"}`}>{pr.text}</em> : st ? <em className={st.cls}>{st.label}</em> : null}
+                    {/* No chip for a style with no step done and nothing late: a "not done yet" chip tells nobody anything. */}
+                    {pr ? (pr.behind || pr.done > 0) && <em className={`chip ${pr.behind ? "warn" : "info"}`}>{pr.text}</em> : st ? <em className={st.cls}>{st.label}</em> : null}
                   </div>
                   <div className="cat-body">
                     <b className="code">{r.style}</b>

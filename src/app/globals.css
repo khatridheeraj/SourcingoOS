@@ -1264,10 +1264,11 @@ h1, h2, h3 { font-family: var(--font-display); text-wrap: balance; font-weight: 
   .cat-card:hover { border-color: var(--line-strong); box-shadow: var(--shadow-md); }
   .cat-img { position: relative; aspect-ratio: 4 / 5; background: var(--surface-2); display: grid; place-items: center; overflow: hidden; }
   .cat-img img { width: 100%; height: 100%; object-fit: cover; }
-  .cat-img > span { font: 600 15px var(--font-mono-face, ui-monospace), monospace; color: var(--faint); }
+  .cat-img > span { max-width: 100%; padding: 0 12px; font: 600 15px var(--font-mono-face, ui-monospace), monospace; color: var(--faint); text-align: center; overflow-wrap: anywhere;
+    display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 4; overflow: hidden; }
   .cat-img em { position: absolute; left: 8px; top: 8px; font-style: normal; box-shadow: var(--shadow); }
   .cat-body { display: grid; gap: 3px; padding: 10px 12px 12px; min-width: 0; }
-  .cat-body b { font-size: 13.5px; }
+  .cat-body b { font-size: 13.5px; overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; }
   .cat-desc { font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .cat-meta { font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .cat-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
@@ -1802,6 +1803,8 @@ h1, h2, h3 { font-family: var(--font-display); text-wrap: balance; font-weight: 
   .fpo-tbl th:last-child, .fpo-tbl td:last-child { border-right: 0; }
   .fpo-tbl td small { display: block; margin-top: 2px; font-size: 11px; color: var(--muted); }
   .fpo-tbl .nw { white-space: nowrap; }
+  /* A style code stays on one line; a long style name wraps instead of pushing Rate, Qty and Image off the printed page. */
+  .fpo-style { min-width: 88px; max-width: 220px; overflow-wrap: break-word; }
   .fpo-qty { max-width: 120px; font-size: 11.5px; line-height: 1.35; }
   .fpo-qty .nw { display: block; }
   .fpo-img-h { width: 120px; }
@@ -2021,8 +2024,9 @@ h1, h2, h3 { font-family: var(--font-display); text-wrap: balance; font-weight: 
   .oh { display: flex; align-items: flex-end; gap: 16px 32px; padding: 4px 0 2px; }
   .oh-main { flex: 1; min-width: 0; }
   .oh h1 { font-size: 30px; line-height: 1.15; letter-spacing: -0.03em; font-weight: 650; }
-  .oh-sub { display: flex; flex-wrap: wrap; gap: 4px 0; margin-top: 4px; font-size: 14px; color: var(--muted); }
-  .oh-sub span + span::before { content: "·"; margin: 0 8px; color: var(--faint); }
+  /* The dot before each part is clipped at the start of a line, so a long PO number that wraps leaves no stray dot. */
+  .oh-sub { display: flex; flex-wrap: wrap; gap: 4px 0; margin: 4px 0 0 -18px; font-size: 14px; color: var(--muted); clip-path: inset(-4px -4px -4px 18px); }
+  .oh-sub span::before { content: "·"; display: inline-block; width: 18px; text-align: center; color: var(--faint); }
   .oh-facts { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 18px; margin-top: 14px; font-size: 13.5px; color: var(--muted); }
   .oh-facts b { font-size: 15px; font-weight: 650; color: var(--foreground); }
   .oh-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }

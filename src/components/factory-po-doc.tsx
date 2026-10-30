@@ -84,7 +84,7 @@ export function FactoryPoDoc({ d, photoSlot }: { d: FpoDocData; photoSlot?: (lin
                     <td>{i + 1}</td>
                     <td>{r.description || "—"}{r.fabric && <small>{r.fabric}</small>}</td>
                     <td>{sizes.length ? sizes.map(([s]) => s).join(", ") : "—"}</td>
-                    <td className="nw">{r.style}</td>
+                    <td className="fpo-style">{r.style}</td>
                     <td className="num">{r.rate == null ? "—" : money(r.rate)}</td>
                     <td className="fpo-qty">{counted ? sizes.map(([s, k]) => <span key={s} className="nw">{s} {qty(k)}</span>) : r.product === "fabric" ? qtyU(r.qty, r.product) : "Size-wise qty will be confirmed before cutting"}</td>
                     <td className="num nw">{qtyU(r.qty, r.product)}</td>
