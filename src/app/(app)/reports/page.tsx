@@ -98,7 +98,7 @@ export default async function ReportsPage({ searchParams }: PageProps<"/reports"
 
       <div className="grid gap-4 lg:grid-cols-2">
         <section className="card" aria-labelledby="step-h">
-          <header className="card-h"><div className="min-w-0"><h2 id="step-h">Which steps run late</h2><p>Each TNA step across all styles done in this range.</p></div></header>
+          <header className="card-h"><div className="min-w-0"><h2 id="step-h">Steps on time, by step</h2><p>How many of each TNA step were done by their target, across all styles, in this range.</p></div></header>
           {r.steps.length === 0 ? <p className="card-empty">No steps done in this range yet.</p> : (
             <ul className="bars">
               {r.steps.map((s) => (

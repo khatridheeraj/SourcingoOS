@@ -20,17 +20,19 @@ How to use it:
 | Tally invoices not syncing (SO-0020 invoice): fix waits on his go and a Supabase approval, in its own thread | 2026-10-27 | 2026-10-29 |
 | Flavia AV-135 (PO 101) has no order: where should it go? In its own thread | 2026-10-26 | 2026-10-29 |
 | Nightly database backup needs a GitHub secret from him | 2026-10-24 | 2026-10-29 |
-| One buyer PO in "To check" and one held, both over 2 days old (live data, team's job). 29 Oct 17:00Z: only the held one is left | 2026-10-29 | 2026-10-29 |
+| One buyer PO in "To check" and one held, both over 2 days old (live data, team's job). 29 Oct 17:00Z: only the held one is left | 2026-10-29 | 2026-10-30 |
 
 ## Known (not new, never report)
 | Item | Why it is not a finding | Last seen |
 |---|---|---|
 | Crawl flags a page "slow" or ERR_CONNECTION_* on a cold or reloading dev server | Fast on reload; only a finding if it stays slow on recheck | 2026-10-29 |
-| Postgres log errors whose query ends in `-- source: POST /mcp` | Come from the run's own checks, not the app | 2026-10-29 |
-| Gmail pickup has found no new buyer PO for days | No buyer has emailed a PO; not a glitch | 2026-10-29 |
-| Factory PO emails all go to merchandiser@sourcingo.in | Test inbox mode, on purpose until Dheeraj says switch | 2026-10-29 |
-| Markers screen paused | MARKERS_ON flag, on purpose | 2026-10-29 |
-| Supabase advisors: security-definer functions callable by anon/authenticated, RLS on with no policy, one mutable search_path, leaked-password check off | Long-standing by design (the app's RPCs are security definer and check the role inside); not new | 2026-10-29 |
+| Second `e2e/run.sh` on a stack that is still running: crawl shows 404s everywhere (PostgREST keeps the dropped database's grants) | Stop ports 3100, 54321, 54322 (`fuser -k`) and run it again; not an app glitch | 2026-10-30 |
+| Live Tally reader: last snapshot ~10 h old overnight while the PC agent is seen | Tally is closed after office hours; the agent still checks in | 2026-10-30 |
+| Postgres log errors whose query ends in `-- source: POST /mcp` | Come from the run's own checks, not the app | 2026-10-30 |
+| Gmail pickup has found no new buyer PO for days | No buyer has emailed a PO; not a glitch | 2026-10-30 |
+| Factory PO emails all go to merchandiser@sourcingo.in | Test inbox mode, on purpose until Dheeraj says switch | 2026-10-30 |
+| Markers screen paused | MARKERS_ON flag, on purpose | 2026-10-30 |
+| Supabase advisors: security-definer functions callable by anon/authenticated, RLS on with no policy, one mutable search_path, leaked-password check off | Long-standing by design (the app's RPCs are security definer and check the role inside); not new | 2026-10-30 |
 | Local stack: Next dev logs "The destination stream closed early" after a save that redirects | Dev-server noise when a page is left mid-stream; not seen in production | 2026-10-29 |
 | Factory PO routine asking for database permission | He granted it on 2026-10-29 14:22Z. If a read or write is blocked, log it here and stay quiet | 2026-10-29 |
 
@@ -46,7 +48,7 @@ order already late, large order (20+ styles, 50,000+ pieces, long names), fabric
 Hindi or long text in names and notes, zero and huge money amounts, slow network (throttle in a short Playwright script) and double taps,
 browser back after saving, two people editing the same order, date edges (month end, year end, today vs
 tomorrow), keyboard only, form errors (blank, wrong format, negative numbers), public links with a wrong or
-made-up token (/po, /f, /s).
+made-up token (/po, /f, /s), print and PDF views (A4, many styles).
 
 | Date | Area | Angle | Result |
 |---|---|---|---|
@@ -61,14 +63,18 @@ made-up token (/po, /f, /s).
 | 2026-10-29 | New order | form errors (negative qty and rate, ship before PO date), double tap Create | Raw database error for ship before PO, "must be a number" for a negative rate: fixed (this run's PR). Double tap made one order, fine |
 | 2026-10-29 | Start production | rush order (ships in 2 days), merch phone | Banner said "too close or past": now says how many days and the buffer (this run's PR) |
 | 2026-10-29 | Public links /po, /f, /s | wrong and made-up tokens, phone light + dark (exploration) | /f and /s fine; /po bad link had no brand and no Hindi: fixed. Local stand-in answered any PO token, so /po/<uuid> crashed only locally: gateway now answers like live |
+| 2026-10-30 | Order page, Orders, Styles, Reports, factory panel | large order (25 styles, 65,000 pcs, Rs 8 Cr) + Hindi and 130-character style names, phone + desk, light + dark | Order hero left a stray "·" when a long PO wrapped; catalogue showed "No step done yet" chips (DESIGN.md says no), shuffled one order's styles, and let long names flood the card; Reports "Which steps run late" showed red 0% that read as "0% late" on a phone. All fixed (this run's PR). Orders list, factory panel fine |
+| 2026-10-30 | Factory PO print / PDF | 25 styles with long names, A4 (exploration: print view) | Design no. never wrapped, so Rate, Qty, Total, Colour and Image fell off the printed page: fixed (this run's PR). Hindi prints fine; the Total row repeats on every page, fine |
 
-Not yet looked at from any angle beyond the crawl: large order, Hindi text, slow network, two people editing,
+Not yet looked at from any angle beyond the crawl: slow network, two people editing,
 date edges, keyboard only, empty states, Reports, Styles, Updates, Activity, Team, Tally, Feedback, login,
-factory PO accept link with a real token (accept twice, accept after approval withdrawn).
+factory PO accept link with a real token (accept twice, accept after approval withdrawn; needs the po-inbox function, the local stand-in can't test it).
+Print views not yet looked at: challan, buyer PO PDF, morning brief.
 
 ## Closed
 | Item | How | Date |
 |---|---|---|
 | New order: ship date before PO date showed a raw database error; negative rate said "must be a number" | Plain messages + ship date can't be picked before the PO date (this run's PR) | 2026-10-29 |
+| Order hero stray dot, catalogue "No step done yet" chips and shuffled styles, long names flooding catalogue cards, Reports step bars reading as "0% late", factory PO print losing columns with long style names | Fixed (this run's PR) | 2026-10-30 |
 | Hourly runs could not merge their own PRs | Allow rule added; runs merge on green since #190 | 2026-10-29 |
 | Factory PO routine blocked on database permission | Dheeraj granted it | 2026-10-29 |
