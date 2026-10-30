@@ -1,6 +1,7 @@
 import { type EmailOtpType } from "@supabase/supabase-js";
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@/lib/supabase/server";
+import { NEXT_COOKIE, safeNext } from "@/lib/next-path";
 
 // Landing point for the email sign-in link.
 export async function GET(request: NextRequest) {
@@ -16,5 +17,10 @@ export async function GET(request: NextRequest) {
       ? await supabase.auth.verifyOtp({ type, token_hash: tokenHash })
       : { error: new Error("missing token") };
 
-  return NextResponse.redirect(new URL(error ? "/login?error=link" : "/today", origin));
+  // A link tapped twice, or opened first by the mail app's link checker, is spent; if this browser is already
+  // signed in, that's no reason to show "expired".
+  const signedIn = !error || !!(await supabase.auth.getClaims()).data?.claims;
+  const res = NextResponse.redirect(new URL(signedIn ? safeNext(request.cookies.get(NEXT_COOKIE)?.value) : "/login?error=link", origin));
+  if (signedIn) res.cookies.delete(NEXT_COOKIE);
+  return res;
 }

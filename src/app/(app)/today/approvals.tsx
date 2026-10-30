@@ -27,6 +27,9 @@ export type Approval = {
   testTo?: string | null;
 };
 
+// Moves focus into a confirm panel when it opens (a stable ref, so it doesn't steal focus on every render).
+const focusOnce = (el: HTMLElement | null) => el?.focus();
+
 // Everything waiting on the owner, in one list at the top of Home, with approve and send back on each line
 // (Dheeraj, 30 Oct 2026: "pending approvals from my end placed separately").
 export function Approvals({ items }: { items: Approval[] }) {
@@ -83,7 +86,8 @@ function Row({ a }: { a: Approval }) {
       </div>
       {mode === "approve" && a.orderId && a.factoryId && (
         <div className="appr-confirm">
-          <p>Approving locks the plan and emails the PO to {a.testTo ? `the test inbox ${a.testTo}` : a.factoryName} within the hour.</p>
+          {/* Focus lands on the question, not the button, so a second Enter can't approve by accident. */}
+          <p tabIndex={-1} ref={focusOnce} style={{ outline: "none" }}>Approving locks the plan and emails the PO to {a.testTo ? `the test inbox ${a.testTo}` : a.factoryName} within the hour.</p>
           <div className="row">
             <button type="button" className="btn primary" disabled={pending}
               onClick={() => act(() => releaseFactoryPo(a.orderId!, a.factoryId!), `Approved. The PO goes to ${a.testTo ? "the test inbox" : a.factoryName} within the hour`)}>
@@ -95,15 +99,18 @@ function Row({ a }: { a: Approval }) {
         </div>
       )}
       {mode === "back" && a.orderId && a.factoryId && (
-        <div className="appr-confirm">
+        <form className="appr-confirm" onSubmit={(e) => {
+          e.preventDefault();
+          if (!pending && note.trim()) act(() => sendBackPoLock(a.orderId!, a.factoryId!, note), "Sent back to the team");
+        }}>
+          {/* Enter sends it back, Escape closes it, so it works from the keyboard alone. */}
           <input className="inp" value={note} maxLength={300} autoFocus aria-label="What to change" onChange={(e) => setNote(e.target.value)}
-            placeholder="What should change?" />
+            onKeyDown={(e) => { if (e.key === "Escape" && !pending) setMode(""); }} placeholder="What should change?" />
           <div className="row">
-            <button type="button" className="btn danger" disabled={pending || !note.trim()}
-              onClick={() => act(() => sendBackPoLock(a.orderId!, a.factoryId!, note), "Sent back to the team")}>{pending ? "Sending…" : "Send back"}</button>
+            <button type="submit" className="btn danger" disabled={pending || !note.trim()}>{pending ? "Sending…" : "Send back"}</button>
             <button type="button" className="btn" disabled={pending} onClick={() => setMode("")}>Cancel</button>
           </div>
-        </div>
+        </form>
       )}
       {error && a.orderId && <ErrorFix error={error} orderId={a.orderId} factoryId={a.factoryId} className="appr-err text-[13px] font-semibold text-bad" />}
     </li>

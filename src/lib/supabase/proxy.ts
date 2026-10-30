@@ -31,7 +31,11 @@ export async function updateSession(request: NextRequest) {
   if (!data?.claims && !PUBLIC_PATHS.some((p) => path === p || path.startsWith(p + "/"))) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
-    url.search = "";
+    // Remember the page they opened, so the sign-in link brings them back to it.
+    const back = new URLSearchParams(request.nextUrl.search);
+    back.delete("_rsc");
+    const q = back.toString();
+    url.search = path === "/" || request.method !== "GET" ? "" : `?next=${encodeURIComponent(path + (q ? `?${q}` : ""))}`;
     return NextResponse.redirect(url);
   }
   return response;
