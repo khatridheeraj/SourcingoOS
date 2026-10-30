@@ -7,13 +7,14 @@ import { uploadPhotos } from "@/lib/photos";
 import { ErrorFix } from "@/components/fix-link";
 import { releaseFactoryPo, requestPoLock, sendBackPoLock, setStylePhoto } from "../../../actions";
 import { emailPo, markAccepted } from "./actions";
+import { dayTimeNear } from "@/lib/format";
 
 export type PoMailState = {
   to: string | null; cc: string | null; requestedAt: string | null; mailedAt: string | null; lastMailedAt: string | null; followUps: number;
   replyAt: string | null; replyText: string | null; acceptedAt: string | null; acceptedVia: string | null; acceptNote: string | null;
 };
 
-const at = (ts: string) => new Intl.DateTimeFormat("en-IN", { timeZone: "Asia/Kolkata", day: "numeric", month: "short", hour: "numeric", minute: "2-digit" }).format(new Date(ts));
+const at = (ts: string) => dayTimeNear(ts);
 const VIA: Record<string, string> = { email: "by email", link: "on the PO link", team: "marked by the team" };
 
 // Before release: who has the PO now. The merchandiser sends it for approval; the owner approves (and it is emailed) or sends it back.

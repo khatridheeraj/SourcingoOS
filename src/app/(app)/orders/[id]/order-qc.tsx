@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { day, QC_KINDS, qcKindLabel, qtyU, SHIP_QC, todayIST } from "@/lib/format";
+import { day, QC_KINDS, qcKindLabel, qtyU, SHIP_QC, todayIST, dayTimeAt } from "@/lib/format";
 import { REPORT_ACCEPT, REPORT_MAX_MB, uploadPhotos, uploadReports } from "@/lib/photos";
 import { addQcComment, addQcFiles, cancelQc, recordQc, removeQcPhoto, type QcFile, type QcInput } from "../actions";
 
@@ -15,7 +15,6 @@ export type QcCheck = {
 };
 
 const pct = (d: number, p: number | null) => (p ? `${((d / p) * 100).toFixed(1)}%` : "");
-const time = new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit", timeZone: "Asia/Kolkata" });
 
 // Uploads photos and reports into a check's folder. Photos are shrunk first; reports go up as they are.
 async function upload(folder: string, photos: File[], reports: File[]): Promise<QcFile[]> {
@@ -322,7 +321,7 @@ export function OrderQc({ orderId, companyId, open, canRecord, today, checks, fi
                   <ul className="mt-3 flex flex-col gap-2 border-t border-line pt-3">
                     {c.comments.map((m) => (
                       <li key={m.id}>
-                        <span className="muted text-xs">{m.by} · {time.format(new Date(m.at))}</span>
+                        <span className="muted text-xs">{m.by} · {dayTimeAt(new Date(m.at))}</span>
                         <div className="whitespace-pre-line">{m.body}</div>
                       </li>
                     ))}

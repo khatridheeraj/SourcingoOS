@@ -3,7 +3,7 @@ import Link from "next/link";
 import { canEditOrders, canRecordQc, getMe } from "@/lib/auth";
 import { fetchAll } from "@/lib/fetch-all";
 import { buyerName, loadBuyers, loadFactories, loadPace } from "@/lib/data";
-import { day, dayNear, daysBetween, money, riskLate, dueDate, nowMs, planDueAt, PLAN_HOURS, qcKindLabel, qty, qtyTotal, SHIP_QC, stageReached, TNA_STEPS, todayIST, unitOfAll } from "@/lib/format";
+import { day, dayNear, daysBetween, money, riskLate, dueDate, nowMs, planDueAt, PLAN_HOURS, qcKindLabel, qty, qtyTotal, SHIP_QC, stageReached, TNA_STEPS, todayIST, unitOfAll, dayTimeAt } from "@/lib/format";
 import { NO_COMPANY } from "@/lib/names";
 import { poWaitDays, PO_WAIT_DAYS } from "@/lib/order-checks";
 import { forecast, paceLookup } from "@/lib/progress";
@@ -45,7 +45,6 @@ type Item = {
 };
 
 const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;
-const at = new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit", timeZone: "Asia/Kolkata" });
 const longDay = new Intl.DateTimeFormat("en-IN", { weekday: "long", day: "numeric", month: "long", timeZone: "Asia/Kolkata" });
 const hourIST = new Intl.DateTimeFormat("en-GB", { hour: "numeric", hourCycle: "h23", timeZone: "Asia/Kolkata" });
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -304,9 +303,9 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
           chase: chaseFor(o, f, `*${o.order_no}${o.buyer_po ? ` · PO ${o.buyer_po}` : ""} · ${fname}*\nPlease send your dates for these styles today, or tell us you agree to ours: ${fl.map((l) => l.style).join(", ")}.${linkOf.get(f) ? `\n\n${panelLine(linkOf.get(f))}` : ""}`) });
       } else if (!gaps && po?.lock_requested_at) {
         // Every factory PO waits for the owner's lock (Dheeraj, 20 Oct 2026); the owner sees these first.
-        if (me?.role === "owner") now_.push({ ...item, sev: "warn", detail: `${fname} · PO sent for your approval ${at.format(new Date(po.lock_requested_at))}. Approving emails it to the factory.`,
+        if (me?.role === "owner") now_.push({ ...item, sev: "warn", detail: `${fname} · PO sent for your approval ${dayTimeAt(new Date(po.lock_requested_at))}. Approving emails it to the factory.`,
           chip: { text: "Waiting for your approval", cls: "warn" }, action: "Check and approve", sort: `0${po.lock_requested_at}` });
-        else waiting.push({ ...item, sev: "", detail: `${fname} · sent for approval ${at.format(new Date(po.lock_requested_at))}`, action: "See plan" });
+        else waiting.push({ ...item, sev: "", detail: `${fname} · sent for approval ${dayTimeAt(new Date(po.lock_requested_at))}`, action: "See plan" });
       } else if (!gaps && po?.lock_note && me?.role !== "owner") {
         now_.push({ ...item, sev: "warn", detail: `${fname} · the owner sent the PO back: ${po.lock_note}`, action: "Fix and send again" });
       } else if (!gaps) {
@@ -316,8 +315,8 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
       } else if (sent) {
         soon.push({ ...item, sheet: undefined, sev: "warn", detail: `${fname} sent its TNA · ${plural(gaps, "item")} to sort before release`, action: "Review TNA" });
       } else {
-        waiting.push({ ...item, sev: "", detail: `${fname} asked for its TNA${po?.plan_requested_at ? ` ${at.format(new Date(po.plan_requested_at))}` : ` on ${day(po?.plan_requested_on)}`}`,
-          chip: dueAt ? { text: `Due ${at.format(dueAt)}`, cls: "warn" } : undefined, action: "Factory agreed" });
+        waiting.push({ ...item, sev: "", detail: `${fname} asked for its TNA${po?.plan_requested_at ? ` ${dayTimeAt(new Date(po.plan_requested_at))}` : ` on ${day(po?.plan_requested_on)}`}`,
+          chip: dueAt ? { text: `Due ${dayTimeAt(dueAt)}`, cls: "warn" } : undefined, action: "Factory agreed" });
       }
     }
     if (lines.some((l) => !l.factory_id)) {
@@ -618,7 +617,7 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
     if (!d.invoiced_at) {
       const late = Date.parse(d.invoice_due_at) < now;
       (late ? now_ : soon).push({ ...item, key: `inv:${d.id}`, sev: late ? "bad" : "warn",
-        detail: `Buyer invoice ${late ? "was due" : "due"} ${at.format(new Date(d.invoice_due_at))} (within 4 hours of the purchase)`,
+        detail: `Buyer invoice ${late ? "was due" : "due"} ${dayTimeAt(new Date(d.invoice_due_at))} (within 4 hours of the purchase)`,
         chip: late ? { text: "Emergency", cls: "bad" } : { text: "Invoice within 4 hours", cls: "warn" }, action: "Make invoice", sort: d.invoice_due_at });
     } else if ((!d.eway_at || !d.shipped_at) && heldHours(d.purchased_at, now) >= HOLD_HOURS) {
       // Goods bought should leave within a day; past that they are held up with us.

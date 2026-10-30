@@ -60,6 +60,7 @@ export async function saveOrder(order: OrderInput, lines: LineInput[], incomingI
   if (!canEditOrders(me.role)) return { error: "Only the orders team can change orders." };
   if (!order.buyer_id) return { error: "Pick the buyer." };
   if (!order.buyer_po.trim()) return { error: "Enter the buyer's PO number." };
+  if (order.po_date && order.ship_date && order.ship_date < order.po_date) return { error: "The ship date can't be before the PO date." };
 
   const filled = lines.filter((l) => l.style.trim() || l.qty.trim());
   if (filled.length === 0) return { error: "Add at least one style." };
@@ -69,7 +70,9 @@ export async function saveOrder(order: OrderInput, lines: LineInput[], incomingI
     const q = Number(num(l.qty));
     if (!Number.isInteger(q) || q <= 0) return { error: `Line ${n}: quantity must be a whole number above zero.` };
     for (const [k, label] of [["buyer_rate", "buyer rate"], ["factory_rate", "factory rate"]] as const) {
-      if (l[k].trim() && !(Number(num(l[k])) >= 0)) return { error: `Line ${n}: the ${label} must be a number.` };
+      const r = Number(num(l[k]));
+      if (l[k].trim() && Number.isNaN(r)) return { error: `Line ${n}: the ${label} must be a number.` };
+      if (l[k].trim() && r < 0) return { error: `Line ${n}: the ${label} can't be below zero.` };
     }
   }
 

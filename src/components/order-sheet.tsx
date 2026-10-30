@@ -5,7 +5,7 @@ import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { closeOldOrder, loadQuick, lockPlan, logChase, markStepsDone, moveLateTargets, startProduction } from "@/app/(app)/orders/quick-actions";
 import { daysBetween, defaultBuffer, TNA_STEPS } from "@/lib/format";
 import { ErrorFix } from "@/components/fix-link";
-import { addDays, andList, byNextStep, catchUpRows, dm, EMAIL_OK, live, pastTarget, sharedSteps, startTargets, when, type QOrder, type QStyle } from "@/lib/quick";
+import { addDays, andList, byNextStep, catchUpRows, dm, EMAIL_OK, emptySteps, live, pastTarget, sharedSteps, startBuffer, startTargets, when, type QOrder, type QStyle } from "@/lib/quick";
 import { toast } from "@/components/toast";
 import { uploadPhotos } from "@/lib/photos";
 import { setStylePhoto } from "@/app/(app)/orders/actions";
@@ -261,7 +261,9 @@ function StartView({ order, factoryId, onDone, onChanged }: { order: QOrder; fac
   const open = order.groups.filter((g) => !g.released);
   const [fid, setFid] = useState<string>(() => (open.find((g) => (g.factoryId ?? "") === (factoryId ?? "")) ?? open[0])?.factoryId ?? "");
   const g = open.find((x) => (x.factoryId ?? "") === fid) ?? open[0];
-  const [buffer, setBuffer] = useState(g?.bufferDays ?? defaultBuffer(!!g?.styles.length && g.styles.every((s) => s.fabric)));
+  // Opens with a buffer the merchandiser's own plan fits in, so none of her dates has to move.
+  const [buffer, setBuffer] = useState(() => g ? startBuffer(g.styles, order.due, today, defaultBuffer(!!g.styles.length && g.styles.every((s) => s.fabric)), g.bufferDays) : 0);
+  const [moveLate, setMoveLate] = useState(false);
   const [agreed, setAgreed] = useState(true);
   const [pickFactory, setPickFactory] = useState("");
   const [rates, setRates] = useState<Record<string, string>>({});
@@ -282,30 +284,36 @@ function StartView({ order, factoryId, onDone, onChanged }: { order: QOrder; fac
   const first = g.styles[0];
   const waitingLock = !!g.lockRequestedAt;
   // Waiting for approval, the plan shown is the one saved, exactly what the approval would lock.
-  const plan = !waitingLock && target && target >= today ? startTargets(g.styles, target, today) : {};
-  const after = waitingLock && target ? pastTarget(g.styles, target) : null;
+  const plan = !waitingLock && target && target >= today ? startTargets(g.styles, target, today, moveLate) : {};
+  const after = target && (waitingLock || !moveLate) ? pastTarget(g.styles, target) : null;
   const lateKeys = new Set(after?.rows.filter((r) => r.style.id === first?.id).map((r) => r.step.key));
+  // Before it starts: the merchandiser's dates after the finish date, and the buffer that would fit them instead.
+  const lateNow = !waitingLock && !pastDue && after?.rows.length ? after : null;
+  const fitBuffer = lateNow && due ? daysBetween(lateNow.dates[lateNow.dates.length - 1], due) : -1;
+  // The finish date is today, with steps still to plan: no days to put them in.
+  const cramped = !waitingLock && !pastDue && target === today && emptySteps(g.styles) > 0;
+  // Half the days to the ship date for the factory, half kept as buffer.
+  const roomy = Math.floor(daysBetween(today, order.due || today) / 2);
   // Something else stops the approval (the dates are handled above), so the approve button isn't offered.
   const otherBlock = waitingLock && !after?.rows.length && g.blocker ? g.blocker : "";
   const dateOf = (s: QStyle, k: string) => plan[s.id]?.[k] ?? s.steps.find((x) => x.key === k)?.planned_on ?? "";
-  // The merchandiser's own saved target where the plan replaces it: it had passed, or fell after the finish date.
+  // The merchandiser's own saved target where the plan replaces it: only one after the finish date, when she chose to move it.
   const savedOf = (s: QStyle, k: string) => (plan[s.id]?.[k] && s.steps.find((x) => x.key === k)?.planned_on) || "";
   const moved = live(first).filter((x) => !x.done_on && savedOf(first, x.key));
-  const movedPast = moved.some((x) => savedOf(first, x.key) < today);
-  const movedAfter = moved.some((x) => savedOf(first, x.key) > target);
+  const passed = live(first).filter((x) => !x.done_on && x.planned_on && x.planned_on < today).length;
   const same = g.styles.every((s) => live(s).every((x) => dateOf(s, x.key) === dateOf(first, x.key)));
   const old = order.due && order.due < addDays(today, -14);
   // The approved PO is emailed to the factory with every style's photo, so both are asked for right here.
   const onFile = g.factoryId ? g.email : order.factories.find((f) => f.id === pickFactory)?.email;
   const needEmail = agreed && !EMAIL_OK.test(onFile?.trim() ?? "") && (!!g.factoryId || !!pickFactory);
   const noPhoto = agreed ? g.styles.filter((s) => s.hasPhoto === false && !added.includes(s.id)) : [];
-  const blocked = !order.isOwner && ((needEmail && !EMAIL_OK.test(email.trim())) || noPhoto.length > 0);
+  const blocked = (!order.isOwner && ((needEmail && !EMAIL_OK.test(email.trim())) || noPhoto.length > 0)) || !!lateNow || cramped;
 
   function go() {
     setError("");
     start(async () => {
       const res = await startProduction(order.id, {
-        factoryId: g.factoryId ?? "", bufferDays: buffer, agreed,
+        factoryId: g.factoryId ?? "", bufferDays: buffer, agreed, moveLate,
         styles: g.styles.map((s) => ({ line_id: s.id, ...(g.factoryId ? {} : { factory_id: pickFactory }), ...(rates[s.id] ? { factory_rate: rates[s.id] } : {}) })),
         ...(pastDue && newShip ? { newShipDate: newShip, reason } : {}),
         ...(needEmail && email.trim() ? { factoryEmail: email } : {}),
@@ -404,7 +412,10 @@ function StartView({ order, factoryId, onDone, onChanged }: { order: QOrder; fac
           )}
           {pastDue && (
             <div className="qs-banner warn">
-              <b>{order.due ? `The ship date (${dm(order.due)}) is too close or past.` : "This order has no ship date."}</b> Set the new one to plan against.
+              <b>{!order.due ? "This order has no ship date."
+                : order.due < today ? `The ship date (${dm(order.due)}) has passed.`
+                : order.due === today ? `The ship date (${dm(order.due)}) is today.`
+                : `The ship date (${dm(order.due)}) is ${plural(daysBetween(today, order.due), "day")} away, inside the ${buffer}-day buffer.`}</b> Set the new one to plan against.
               <div className="qs-two mt-2">
                 <input className="inp" type="date" min={addDays(today, 1)} value={newShip} aria-label="New ship date" onChange={(e) => setNewShip(e.target.value)} />
                 <input className="inp" value={reason} maxLength={300} placeholder="Why it moves" aria-label="Why the ship date moves" onChange={(e) => setReason(e.target.value)} />
@@ -425,6 +436,29 @@ function StartView({ order, factoryId, onDone, onChanged }: { order: QOrder; fac
               <button type="button" aria-label="More days" disabled={buffer >= 30} onClick={() => setBuffer((b) => Math.min(30, b + 1))}>+</button>
             </span>
           </div>
+          {lateNow && (
+            <div className="qs-banner warn">
+              <b>Your {andList(lateNow.labels)} {lateNow.labels.length === 1 ? "date is" : "dates are"} {andList(lateNow.dates.map(dm))}, after {dm(target)}.</b>{" "}
+              With {plural(buffer, "day")} buffer the factory has to finish by {dm(target)}. Nothing is changed until you pick one:
+              <div className="qs-opts">
+                {fitBuffer >= 0 && <button type="button" className="link text-left" onClick={() => setBuffer(fitBuffer)}>Use {plural(fitBuffer, "day")} buffer, so all your dates stay</button>}
+                <button type="button" className="link text-left" onClick={() => setMoveLate(true)}>Move {lateNow.rows.length === 1 ? "it" : "them"} to {dm(target)}</button>
+              </div>
+            </div>
+          )}
+          {cramped && (
+            <div className="qs-banner warn">
+              <b>With {plural(buffer, "day")} buffer the factory would have to finish today.</b>{" "}
+              That leaves no days for the steps with no date yet. Use a smaller buffer to give them room.
+              {order.due > today && (
+                <div className="qs-opts">
+                  <button type="button" className="link text-left" onClick={() => setBuffer(roomy)}>
+                    Use {plural(roomy, "day")} buffer: the factory finishes by {dm(addDays(order.due, -roomy))}
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
 
@@ -442,9 +476,13 @@ function StartView({ order, factoryId, onDone, onChanged }: { order: QOrder; fac
           </ol>
           {moved.length > 0 && (
             <p className="qs-fine qs-moved">
-              {moved.length === 1 ? `Your ${moved[0].label} date` : `${moved.length} of your dates`}{" "}
-              {movedPast && movedAfter ? `had passed or fell after ${dm(target)}` : movedPast ? "had already passed" : `fell after ${dm(target)}, the day the factory must finish by`}, so{" "}
-              {moved.length === 1 ? "it is" : "they are"} moved to fit. Every other date is the one you set.
+              {moved.length === 1 ? `Your ${moved[0].label} date moves` : `${moved.length} of your dates move`} to {dm(target)}, as you chose.{" "}
+              <button type="button" className="link" onClick={() => setMoveLate(false)}>Undo</button>
+            </p>
+          )}
+          {!waitingLock && passed > 0 && (
+            <p className="qs-fine qs-moved">
+              {passed === 1 ? "One of your dates has" : `${passed} of your dates have`} passed. {passed === 1 ? "It stays" : "They stay"} as you set {passed === 1 ? "it" : "them"}: mark {passed === 1 ? "it" : "them"} done once production starts.
             </p>
           )}
           {!waitingLock && <p className="qs-fine">You can change any date on the order page before it&apos;s locked.</p>}

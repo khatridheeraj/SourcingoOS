@@ -16,6 +16,7 @@ export function friendly(error: { message: string; code?: string } | null | unde
   if (m.includes("qc_fail_needs_notes")) return "Write what failed in the notes, so the factory knows what to fix.";
   if (m.includes("qc_defects_within_checked")) return "Defects can't be more than the pieces checked.";
   if (m.includes("qc_cancel_needs_reason")) return "Say why this QC check is being cancelled.";
+  if (m.includes("orders_ship_after_po")) return "The ship date can't be before the PO date.";
   if (m.includes("qty_check") || m.includes("order_lines_qty")) return "Every line needs a quantity above zero.";
   if (m.includes("violates foreign key") && m.includes("buyer")) return "This buyer has orders, so it can't be deleted. Mark it inactive instead.";
   if (m.includes("violates foreign key") && m.includes("factor")) return "This factory is on orders, so it can't be deleted. Mark it inactive instead.";

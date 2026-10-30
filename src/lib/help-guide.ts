@@ -220,7 +220,7 @@ export const TOPICS: Topic[] = [
   { id: "reports", who: "staff", roles: ORDERS_TEAM, q: "How do I see which factory is late or failing QC?",
     a: ["Open Reports in the menu and pick 30 days, 90 days or 1 year.",
         "The factory scorecard shows, for each factory: TNA steps done on time, average days late, steps overdue now, final QC passed, plans sent within 24 hours, and lots shipped on time. Green is 90% or more, amber from 80%, red below.",
-        "Which steps run late shows the TNA steps that slip most across all styles. Download CSV gives the scorecard for Excel."],
+        "Steps on time, by step shows which TNA steps slip most across all styles: the lower the share, the later that step runs. Download CSV gives the scorecard for Excel."],
     words: "reports report scorecard factory score late on time percent qc pass rate plans 24 hours shipped on time csv excel download", pages: ["/reports"] },
   { id: "move-target", who: "staff", q: "Can a target date be moved after the PO is released?",
     a: ["Only the owner can move a target after release, and must say why.", "The step keeps showing where it started, so slips stay visible."],

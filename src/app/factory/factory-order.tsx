@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 // Dates in this year read without the year ("9 Sep"), like the rest of the app.
-import { dayAtNear as dayAt, dayNear as day, PLAN_HOURS, qty, TNA_STEPS } from "@/lib/format";
+import { dayAtNear as dayAt, dayNear as day, PLAN_HOURS, qty, TNA_STEPS, dayTimeAt } from "@/lib/format";
 import { saveFactoryTna, type FactoryDateInput } from "./actions";
 import { stepName, words, type Lang } from "./i18n";
 import { sizeEntries } from "@/lib/sizes";
@@ -44,7 +44,6 @@ function Info({ info, lang }: { info?: StyleInfo; lang: Lang }) {
     </div>
   );
 }
-const at = new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit", timeZone: "Asia/Kolkata" });
 
 // One order in the factory's panel: its styles, and the factory's date for every TNA step.
 export function FactoryOrder({ order, now, companyId, updates, rounds, lang, info }: {
@@ -112,7 +111,7 @@ export function FactoryOrder({ order, now, companyId, updates, rounds, lang, inf
   const late = !released && !sentAt && !!order.plan_due_at && order.plan_due_at < now;
   const beyond = order.target ? Object.values(dates).some((d) => d && d > order.target!) : false;
   const status = released ? { text: w.released(dayAt(order.released_at!)), cls: "ok" }
-    : late ? { text: w.overdue(at.format(new Date(order.plan_due_at!))), cls: "bad" }
+    : late ? { text: w.overdue(dayTimeAt(new Date(order.plan_due_at!))), cls: "bad" }
     : sentAt && !missing ? { text: w.sentWaiting(dayAt(sentAt)), cls: "info" }
     : { text: missing ? w.toFill(missing) : w.readyToSend, cls: "warn" };
 
@@ -151,7 +150,7 @@ export function FactoryOrder({ order, now, companyId, updates, rounds, lang, inf
       {!released && (
         <p className="muted mb-3 text-[13px]">
           {order.target && <>{w.targetDate} <b className="text-foreground">{day(order.target)}</b>{w.targetRule} </>}
-          {!sentAt && order.plan_due_at && <>{w.sendBy} <b className="text-foreground">{at.format(new Date(order.plan_due_at))}</b>.</>}
+          {!sentAt && order.plan_due_at && <>{w.sendBy} <b className="text-foreground">{dayTimeAt(new Date(order.plan_due_at))}</b>.</>}
         </p>
       )}
       {!released && fillable > 0 && (

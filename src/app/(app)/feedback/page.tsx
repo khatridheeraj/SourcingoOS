@@ -5,6 +5,7 @@ import { getMe } from "@/lib/auth";
 import { topicById } from "@/lib/help-guide";
 import { createClient } from "@/lib/supabase/server";
 import { NoteDecide } from "./note-decide";
+import { dayTimeAt } from "@/lib/format";
 
 const TABS = [
   { key: "new", label: "Waiting", has: (n: TeamNote) => n.status === "new" },
@@ -15,8 +16,6 @@ const TABS = [
 ];
 
 type Ask = { id: string; question: string; page: string | null; topic: string | null; helpful: boolean | null; created_at: string; sender: string };
-
-const at = new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit", timeZone: "Asia/Kolkata" });
 
 // What the team, factories and buyers tell the owner through Help, and what they asked it. The owner decides on each note
 // and the sender sees the answer in Help. Claude reads new notes every morning and writes a suggested fix on each.
@@ -84,7 +83,7 @@ export default async function FeedbackPage({ searchParams }: PageProps<"/feedbac
                     <div className="min-w-0">
                       <div className="font-medium">{a.question}</div>
                       <div className="text-[12.5px] text-muted">
-                        {a.sender} · {at.format(new Date(a.created_at))}{a.page ? ` · ${a.page}` : ""}
+                        {a.sender} · {dayTimeAt(new Date(a.created_at))}{a.page ? ` · ${a.page}` : ""}
                         {t ? ` · answered with "${t.q}"` : ""}
                       </div>
                     </div>
