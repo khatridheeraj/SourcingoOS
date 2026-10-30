@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { dayAtNear, dayNear, dayTimeNear, qtyTotal, qtyU, unitOf, unitOfAll } from "./format.ts";
+import { dayAtNear, dayNear, dayTimeAt, dayTimeNear, qtyTotal, qtyU, unitOf, unitOfAll } from "./format.ts";
 
 test("fabric is counted in metres, garments in pieces", () => {
   assert.equal(unitOf("fabric"), "m");
@@ -29,4 +29,7 @@ test("near dates drop the year, other years keep it", () => {
   assert.equal(dayTimeNear("2026-10-23T22:19:00Z", "2026-10-26"), "24 Oct, 3:49 am");
   assert.equal(dayTimeNear("2025-10-23T22:19:00Z", "2026-10-26"), "24 Oct 2025, 3:49 am");
   assert.equal(dayTimeNear(null, "2026-10-26"), "");
+  // September is "Sep" like every other date, and a time from last year keeps its year (31 Dec 2025 seen on 2 Jan 2026).
+  assert.equal(dayTimeAt(new Date("2026-09-30T08:00:00Z"), "2026-10-30"), "30 Sep, 1:30 pm");
+  assert.equal(dayTimeAt(new Date("2025-12-31T12:00:00Z"), "2026-01-02"), "31 Dec 2025, 5:30 pm");
 });

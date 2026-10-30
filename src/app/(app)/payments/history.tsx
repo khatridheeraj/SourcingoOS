@@ -1,5 +1,5 @@
 import { loadTeam, personName } from "@/lib/data";
-import { day, money } from "@/lib/format";
+import { day, money, dayTimeAt } from "@/lib/format";
 import { CHEQUE_LABEL, type ChequeStatus } from "@/lib/payments";
 import { createClient } from "@/lib/supabase/server";
 
@@ -10,7 +10,6 @@ const FIELDS: Record<string, Record<string, string>> = {
   credit_notes: { credit_note_no: "number", note_date: "date", amount: "amount", notes: "reason" },
   cheques: { cheque_no: "number", cheque_date: "cheque date", amount: "amount", bank: "bank", received_on: "received date", notes: "notes" },
 };
-const time = new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit", timeZone: "Asia/Kolkata" });
 
 const show = (k: string, v: unknown) => {
   if (v == null || v === "") return "blank";
@@ -64,7 +63,7 @@ export async function PaymentHistory({ rowIds, view }: { rowIds: string[]; view:
       <ul className="mt-3 flex flex-col gap-2 text-[13px]">
         {rows.map((r) => (
           <li key={r.id} className="border-l-2 border-line pl-3">
-            <span className="muted text-xs">{time.format(new Date(r.at))} · {r.actor ? people.get(r.actor) ?? "Someone" : "Brought over from the old app"}</span>
+            <span className="muted text-xs">{dayTimeAt(new Date(r.at))} · {r.actor ? people.get(r.actor) ?? "Someone" : "Brought over from the old app"}</span>
             <div>{r.text}</div>
           </li>
         ))}

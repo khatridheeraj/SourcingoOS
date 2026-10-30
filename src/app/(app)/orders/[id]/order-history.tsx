@@ -1,5 +1,5 @@
 import { loadFactories, loadTeam } from "@/lib/data";
-import { day, qcKindLabel, stageLabel, STATUS, TNA_STEPS } from "@/lib/format";
+import { day, qcKindLabel, stageLabel, STATUS, TNA_STEPS, dayTimeAt } from "@/lib/format";
 import { personName } from "@/lib/names";
 import { createClient } from "@/lib/supabase/server";
 
@@ -12,8 +12,6 @@ const ORDER_FIELDS: Record<string, string> = {
 const LINE_FIELDS: Record<string, string> = {
   style: "style", description: "description", colour: "colour", qty: "quantity", buyer_rate: "buyer rate", factory_id: "factory", factory_rate: "factory rate",
 };
-
-const time = new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit", timeZone: "Asia/Kolkata" });
 
 // Every change to this order and its styles, newest first, from the permanent history.
 export async function OrderHistory({ orderId }: { orderId: string }) {
@@ -97,7 +95,7 @@ export async function OrderHistory({ orderId }: { orderId: string }) {
       <ul className="mt-3 flex flex-col gap-2 text-[13px]">
         {rows.map((r) => (
           <li key={r.id} className="border-l-2 border-line pl-3">
-            <span className="muted text-xs">{time.format(new Date(r.at))} · {r.actor ? people.get(r.actor) ?? "Someone" : "System"}</span>
+            <span className="muted text-xs">{dayTimeAt(new Date(r.at))} · {r.actor ? people.get(r.actor) ?? "Someone" : "System"}</span>
             <div>{r.text}</div>
           </li>
         ))}

@@ -2,15 +2,13 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { canEditOrders, getMe } from "@/lib/auth";
 import { buyerName, loadBuyers, loadTeam, personName } from "@/lib/data";
-import { day, dayAt, dayNear, daysBetween, money, qty, todayIST } from "@/lib/format";
+import { day, dayAt, dayNear, daysBetween, money, qty, todayIST, dayTimeAt } from "@/lib/format";
 import { INQUIRY_COLUMNS, INQUIRY_STATUS, isOpenInquiry, sourceLabel, stageOf, type Inquiry } from "@/lib/inquiries";
 import { suggestBuyerCode } from "@/lib/names";
 import { PHOTO_BUCKET } from "@/lib/storage";
 import { createClient } from "@/lib/supabase/server";
 import { InquiryActions } from "./inquiry-actions";
 import { ChaseButton, InquiryNext, StageBar, type StepInquiry } from "../inquiry-step";
-
-const at = new Intl.DateTimeFormat("en-IN", { timeZone: "Asia/Kolkata", day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
 
 export default async function InquiryPage({ params }: PageProps<"/inquiries/[id]">) {
   const { id } = await params;
@@ -123,7 +121,7 @@ export default async function InquiryPage({ params }: PageProps<"/inquiries/[id]
         <ol className="timeline">
           {events.map((e) => (
             <li key={e.key} className={e.sys ? "sys" : ""}>
-              <time>{at.format(new Date(e.at))}{e.by && ` · ${e.by}`}</time>
+              <time>{dayTimeAt(new Date(e.at))}{e.by && ` · ${e.by}`}</time>
               <p>{e.text}</p>
             </li>
           ))}

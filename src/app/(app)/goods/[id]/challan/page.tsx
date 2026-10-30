@@ -1,12 +1,12 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { canEditOrders, getMe } from "@/lib/auth";
-import { day, dayAt, qty } from "@/lib/format";
+import { day, dayAt, qty, qtyTotal, unitOf } from "@/lib/format";
 import { sizeEntries } from "@/lib/sizes";
 import { createClient } from "@/lib/supabase/server";
 import { AddressFix, ChallanBar } from "./challan-tools";
 
-type Line = { id: string; style: string; description: string | null; colour: string | null; qty: number; sizes: Record<string, number> | null };
+type Line = { id: string; style: string; description: string | null; colour: string | null; qty: number; sizes: Record<string, number> | null; product: string | null };
 
 // The delivery challan for one lot of goods: a packing list that travels with the goods and the buyer signs for.
 export default async function ChallanPage({ params }: PageProps<"/goods/[id]/challan">) {
@@ -20,7 +20,7 @@ export default async function ChallanPage({ params }: PageProps<"/goods/[id]/cha
     .eq("id", id).maybeSingle();
   if (!d || d.cancelled_at) notFound();
   const [{ data: o }, { data: dl }, { data: co }] = await Promise.all([
-    supabase.from("orders").select("id, order_no, buyer_id, buyer_po, po_date, order_lines(id, style, description, colour, qty, sizes)").eq("id", d.order_id).maybeSingle(),
+    supabase.from("orders").select("id, order_no, buyer_id, buyer_po, po_date, order_lines(id, style, description, colour, qty, sizes, product)").eq("id", d.order_id).maybeSingle(),
     supabase.from("dispatch_lines").select("line_id, qty").eq("dispatch_id", id),
     supabase.from("companies").select("name, address, gstin").eq("id", me.companyId).maybeSingle(),
   ]);
@@ -32,7 +32,8 @@ export default async function ChallanPage({ params }: PageProps<"/goods/[id]/cha
   const buyer = bn?.real_name ?? b?.code ?? "Buyer";
   const lineOf = new Map(((o.order_lines ?? []) as Line[]).map((l) => [l.id, l]));
   const rows = (dl ?? []).map((x) => ({ ...lineOf.get(x.line_id)!, sent: x.qty })).filter((r) => r.id).sort((a, b) => a.style.localeCompare(b.style));
-  const total = rows.reduce((s, r) => s + r.sent, 0);
+  // Fabric goes by the metre and garments by the piece, so the total keeps them apart.
+  const total = qtyTotal(rows.map((r) => ({ qty: r.sent, product: r.product })));
   const owner = me.role === "owner";
 
   return (
@@ -92,7 +93,7 @@ export default async function ChallanPage({ params }: PageProps<"/goods/[id]/cha
 
         <div className="table-wrap">
           <table className="tbl challan-tbl">
-            <thead><tr><th>#</th><th>Style</th><th>Description</th><th>Colour</th><th>Sizes</th><th className="text-right">Pieces</th></tr></thead>
+            <thead><tr><th>#</th><th>Style</th><th>Description</th><th>Colour</th><th>Sizes</th><th className="text-right">Quantity</th></tr></thead>
             <tbody>
               {rows.map((r, i) => {
                 // The size split is the style's; it applies only when the whole style goes in this lot.
@@ -104,13 +105,13 @@ export default async function ChallanPage({ params }: PageProps<"/goods/[id]/cha
                     <td>{r.description || "—"}</td>
                     <td>{r.colour || "—"}</td>
                     <td>{sizes.length ? sizes.map(([s, n]) => `${s} ${qty(n)}`).join(" · ") : "—"}</td>
-                    <td className="num text-right">{qty(r.sent)}</td>
+                    <td className="num text-right">{qty(r.sent)} {unitOf(r.product)}</td>
                   </tr>
                 );
               })}
             </tbody>
             <tfoot>
-              <tr><td colSpan={5}>Total{d.cartons ? ` · ${d.cartons} cartons` : ""}</td><td className="num text-right">{qty(total)}</td></tr>
+              <tr><td colSpan={5}>Total{d.cartons ? ` · ${d.cartons} cartons` : ""}</td><td className="num text-right">{total}</td></tr>
             </tfoot>
           </table>
         </div>
