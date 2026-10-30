@@ -17,10 +17,8 @@ How to use it:
 | Item | First reported | Last seen |
 |---|---|---|
 | Buyer status page after the ship date has passed: say "N days past" or stay quiet? | 2026-10-26 | 2026-10-29 |
-| Tally invoices not syncing (SO-0020 invoice): fix waits on his go and a Supabase approval, in its own thread | 2026-10-27 | 2026-10-29 |
-| Flavia AV-135 (PO 101) has no order: where should it go? In its own thread | 2026-10-26 | 2026-10-29 |
 | Nightly database backup needs a GitHub secret from him | 2026-10-24 | 2026-10-29 |
-| One buyer PO in "To check" and one held, both over 2 days old (live data, team's job). 29 Oct 17:00Z: only the held one is left | 2026-10-29 | 2026-10-30 |
+| One buyer PO in "To check" and one held, both over 2 days old (live data, team's job). 29 Oct 17:00Z: only the held one is left | 2026-10-29 | 2026-10-30 (16:30Z) |
 
 ## Known (not new, never report)
 | Item | Why it is not a finding | Last seen |
@@ -36,6 +34,7 @@ How to use it:
 | Supabase performance advisors: unindexed foreign keys, unused indexes, auth RLS initplan, multiple permissive policies, one table without a primary key | Long-standing INFO/WARN on a 33 MB database; nothing slow in the logs | 2026-10-30 |
 | Morning brief "shipped in part" / "closed short" lines and Home's deleted-PO line say "pcs" even for a fabric order | The numbers come from database functions that don't return the unit; fix with the next migration a thread makes, not a check run | 2026-10-30 |
 | Local stack: Next dev logs "The destination stream closed early" after a save that redirects | Dev-server noise when a page is left mid-stream; not seen in production | 2026-10-29 |
+| Live auth log: "One-time token not found" on /verify (a sign-in link opened twice, or first by the mail app's link checker) | Someone already signed in now lands on the app instead of "expired" (2026-10-30 PR); a stray one is not a glitch | 2026-10-30 |
 | Factory PO routine asking for database permission | He granted it on 2026-10-29 14:22Z. If a read or write is blocked, log it here and stay quiet | 2026-10-29 |
 
 ## Coverage
@@ -50,7 +49,7 @@ order already late, large order (20+ styles, 50,000+ pieces, long names), fabric
 Hindi or long text in names and notes, zero and huge money amounts, slow network (throttle in a short Playwright script) and double taps,
 browser back after saving, two people editing the same order, date edges (month end, year end, today vs
 tomorrow), keyboard only, form errors (blank, wrong format, negative numbers), public links with a wrong or
-made-up token (/po, /f, /s), print and PDF views (A4, many styles).
+made-up token (/po, /f, /s), print and PDF views (A4, many styles), signed out / spent sign-in links.
 
 | Date | Area | Angle | Result |
 |---|---|---|---|
@@ -71,11 +70,13 @@ made-up token (/po, /f, /s), print and PDF views (A4, many styles).
 | 2026-10-30 | Goods with us, challan print, dispatch bill form, Margin, QC order details | fabric order (metres), phone + desk, light + dark | A fabric lot showed "2,000 pcs"; "Pieces with us" added metres to pieces; the printed challan headed the column "Pieces" with no unit; the bill form said "Pieces bought" and the margin table "Pieces"/"Per piece" for cambric. All fixed (this run's PR) |
 | 2026-10-30 | Every screen with a date and time (Goods, dispatch, Today, QC, history, feedback, inquiries, factory panel, factory PO send) | date edges (September, last year's times) | Times were written "30 Sept" (dates elsewhere say "Sep") and dropped the year for last year's times: now one shared `dayTimeAt` (this run's PR) |
 | 2026-10-30 | Challan number | slow network (1.5 s latency) + double tap, phone (exploration) | Second tap blocked while saving, one number given: fine |
+| 2026-10-30 | Login and the email sign-in link | signed out deep link, link tapped twice, signed in visiting /login, typo in the email, phone light + dark (exploration: sign-in) | A signed-in person opening /login got the sign-in form again; a spent link showed "expired" even when already signed in; a link from a chat or email to an order dropped them on Home after signing in; a typo'd email had no way back but reload; Supabase's rate-limit wording shown raw. All fixed (this run's PR) |
+| 2026-10-30 | Your approvals (Home, owner) | keyboard only, desk dark | Enter in "What should change?" did nothing and Escape didn't close it; after Approve, keyboard focus fell to the page top. Fixed (this run's PR): Enter sends back, Escape closes, focus moves to the approve question (not the button, so a second Enter can't approve) |
 
 Not yet looked at from any angle beyond the crawl: two people editing,
-date edges, keyboard only, empty states, Reports, Styles, Updates, Activity, Team, Tally, Feedback, login,
+date edges, empty states, Reports, Styles, Updates, Activity, Team, Tally, Feedback,
 factory PO accept link with a real token (accept twice, accept after approval withdrawn; needs the po-inbox function, the local stand-in can't test it).
-Print views not yet looked at: buyer PO PDF, morning brief. Angles never tried: slow network on a whole save flow (only the challan number so far), keyboard only, two tabs.
+Print views not yet looked at: buyer PO PDF, morning brief. Angles never tried: slow network on a whole save flow (only the challan number so far), two tabs, keyboard only on any screen but Your approvals.
 
 ## Closed
 | Item | How | Date |
@@ -83,5 +84,8 @@ Print views not yet looked at: buyer PO PDF, morning brief. Angles never tried: 
 | New order: ship date before PO date showed a raw database error; negative rate said "must be a number" | Plain messages + ship date can't be picked before the PO date (this run's PR) | 2026-10-29 |
 | Order hero stray dot, catalogue "No step done yet" chips and shuffled styles, long names flooding catalogue cards, Reports step bars reading as "0% late", factory PO print losing columns with long style names | Fixed (this run's PR) | 2026-10-30 |
 | Fabric lots and challans counted metres as pieces; date-times wrote "Sept" and dropped last year's year | Fixed (this run's PR) | 2026-10-30 |
+| Sign-in: /login showed the form to someone signed in; spent link said "expired" while signed in; deep links lost after sign-in; no way to fix a typo'd email; raw rate-limit text. Your approvals: Enter/Escape and focus by keyboard | Fixed (this run's PR) | 2026-10-30 |
+| Tally invoices not syncing (SO-0020) | He ran the index change in the SQL editor; both parts show invoice SPL/26-27/202 | 2026-10-30 |
+| Flavia AV-135 (PO 101) had no order | It is SO-0021; Flavia mix-up settled | 2026-10-30 |
 | Hourly runs could not merge their own PRs | Allow rule added; runs merge on green since #190 | 2026-10-29 |
 | Factory PO routine blocked on database permission | Dheeraj granted it | 2026-10-29 |
