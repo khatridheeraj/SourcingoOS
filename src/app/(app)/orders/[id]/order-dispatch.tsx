@@ -159,6 +159,8 @@ export function OrderDispatch({ orderId, orderNo, companyId, open, owner, factor
           const billTotal = Math.round(d.purchaseTaxable + d.purchaseGst);
           const tallyOff = d.purchaseTallyAmount != null && Math.abs(d.purchaseTallyAmount - billTotal) > 1;
           const grnLate = !!d.shippedAt && !d.grnAt && !!d.grnDueOn && d.grnDueOn < today;
+          // Accounts can make one Tally invoice for several parts.
+          const shared = d.invoiceNo ? dispatches.flatMap((x, xi) => xi !== di && x.invoiceNo?.toLowerCase() === d.invoiceNo!.toLowerCase() ? [xi] : []) : [];
           return (
             <article key={d.id} className="rounded-[10px] border border-line p-3" aria-label={`Dispatch ${d.billNo}`}>
               <div className="row">
@@ -182,7 +184,7 @@ export function OrderDispatch({ orderId, orderNo, companyId, open, owner, factor
               <Copies d={d} pending={pending} onAttach={(kind, file) => attach(d.id, kind, file)} />
 
               {d.invoicedAt && (
-                <p className="mt-2 text-[13px]">Invoice <b>{d.invoiceNo}</b>{d.invoiceTaxable != null && `: ${money(Math.round(d.invoiceTaxable + (d.invoiceGst ?? 0)))} with GST`}, made {dayTimeAt(new Date(d.invoicedAt))}.</p>
+                <p className="mt-2 text-[13px]">Invoice <b>{d.invoiceNo}</b>{shared.length > 0 && ` (one invoice with ${shared.map((i) => `part ${i + 1}`).join(" and ")})`}{d.invoiceTaxable != null && `: ${money(Math.round(d.invoiceTaxable + (d.invoiceGst ?? 0)))} with GST${shared.length ? " for this part" : ""}`}, made {dayTimeAt(new Date(d.invoicedAt))}.</p>
               )}
               {d.ewayNo && (
                 <p className="text-[13px]">E-way bill <b className="num">{d.ewayNo}</b>{d.ewayDate && ` of ${day(d.ewayDate)}`}{d.ewayValidUntil && `, valid till ${day(d.ewayValidUntil)}`}{d.ewayFromTally && ", from Tally"}. {d.ewayUrl && <a className="link" href={d.ewayUrl} target="_blank" rel="noreferrer">Open</a>}</p>
