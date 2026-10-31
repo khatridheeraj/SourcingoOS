@@ -18,20 +18,21 @@ How to use it:
 |---|---|---|
 | Buyer status page after the ship date has passed: say "N days past" or stay quiet? | 2026-10-26 | 2026-10-29 |
 | Nightly database backup needs a GitHub secret from him | 2026-10-24 | 2026-10-29 |
-| One buyer PO in "To check" and one held, both over 2 days old (live data, team's job). 29 Oct 17:00Z: only the held one is left | 2026-10-29 | 2026-10-30 (16:30Z) |
+| One buyer PO in "To check" and one held, both over 2 days old (live data, team's job). 29 Oct 17:00Z: only the held one is left | 2026-10-29 | 2026-10-31 |
+| Live order SO-0004 is still open 31 days after its 30 Sep ship date: mark it shipped, close it short, or set a new ship date (team's job) | 2026-10-31 | 2026-10-31 |
 
 ## Known (not new, never report)
 | Item | Why it is not a finding | Last seen |
 |---|---|---|
 | Crawl flags a page "slow" or ERR_CONNECTION_* on a cold or reloading dev server | Fast on reload; only a finding if it stays slow on recheck | 2026-10-29 |
 | Second `e2e/run.sh` on a stack that is still running: crawl shows 404s everywhere (PostgREST keeps the dropped database's grants) | Stop ports 3100, 54321, 54322 (`fuser -k`) and run it again; not an app glitch | 2026-10-30 |
-| Live Tally reader: last snapshot ~10 h old overnight while the PC agent is seen (30 Oct 14:00 IST: 18 h, Tally not opened yet that day) | Tally is closed after office hours; the agent still checks in | 2026-10-30 |
-| Postgres log errors whose query ends in `-- source: POST /mcp` | Come from the run's own checks, not the app | 2026-10-30 |
-| Gmail pickup has found no new buyer PO for days | No buyer has emailed a PO; not a glitch | 2026-10-30 |
-| Factory PO emails all go to merchandiser@sourcingo.in | Test inbox mode, on purpose until Dheeraj says switch | 2026-10-30 |
-| Markers screen paused | MARKERS_ON flag, on purpose | 2026-10-30 |
-| Supabase advisors: security-definer functions callable by anon/authenticated, RLS on with no policy, one mutable search_path, leaked-password check off | Long-standing by design (the app's RPCs are security definer and check the role inside); not new | 2026-10-30 |
-| Supabase performance advisors: unindexed foreign keys, unused indexes, auth RLS initplan, multiple permissive policies, one table without a primary key | Long-standing INFO/WARN on a 33 MB database; nothing slow in the logs | 2026-10-30 |
+| Live Tally reader: last snapshot ~10 h old overnight while the PC agent is seen (30 Oct 14:00 IST: 18 h, Tally not opened yet that day) | Tally is closed after office hours; the agent still checks in | 2026-10-31 |
+| Postgres log errors whose query ends in `-- source: POST /mcp` | Come from the run's own checks, not the app | 2026-10-31 |
+| Gmail pickup has found no new buyer PO for days | No buyer has emailed a PO; not a glitch | 2026-10-31 |
+| Factory PO emails all go to merchandiser@sourcingo.in | Test inbox mode, on purpose until Dheeraj says switch | 2026-10-31 |
+| Markers screen paused | MARKERS_ON flag, on purpose | 2026-10-31 |
+| Supabase advisors: security-definer functions callable by anon/authenticated, RLS on with no policy, one mutable search_path, leaked-password check off | Long-standing by design (the app's RPCs are security definer and check the role inside); not new | 2026-10-31 |
+| Supabase performance advisors: unindexed foreign keys, unused indexes, auth RLS initplan, multiple permissive policies, one table without a primary key | Long-standing INFO/WARN on a 33 MB database; nothing slow in the logs | 2026-10-31 |
 | Morning brief "shipped in part" / "closed short" lines and Home's deleted-PO line say "pcs" even for a fabric order | The numbers come from database functions that don't return the unit; fix with the next migration a thread makes, not a check run | 2026-10-30 |
 | Local stack: Next dev logs "The destination stream closed early" after a save that redirects | Dev-server noise when a page is left mid-stream; not seen in production | 2026-10-29 |
 | Live auth log: "One-time token not found" on /verify (a sign-in link opened twice, or first by the mail app's link checker) | Someone already signed in now lands on the app instead of "expired" (2026-10-30 PR); a stray one is not a glitch | 2026-10-30 |
@@ -49,7 +50,7 @@ order already late, large order (20+ styles, 50,000+ pieces, long names), fabric
 Hindi or long text in names and notes, zero and huge money amounts, slow network (throttle in a short Playwright script) and double taps,
 browser back after saving, two people editing the same order, date edges (month end, year end, today vs
 tomorrow), keyboard only, form errors (blank, wrong format, negative numbers), public links with a wrong or
-made-up token (/po, /f, /s), print and PDF views (A4, many styles), signed out / spent sign-in links.
+made-up token (/po, /f, /s), print and PDF views (A4, many styles), printing from dark mode, a brand-new company with nothing in it, signed out / spent sign-in links.
 
 | Date | Area | Angle | Result |
 |---|---|---|---|
@@ -72,11 +73,14 @@ made-up token (/po, /f, /s), print and PDF views (A4, many styles), signed out /
 | 2026-10-30 | Challan number | slow network (1.5 s latency) + double tap, phone (exploration) | Second tap blocked while saving, one number given: fine |
 | 2026-10-30 | Login and the email sign-in link | signed out deep link, link tapped twice, signed in visiting /login, typo in the email, phone light + dark (exploration: sign-in) | A signed-in person opening /login got the sign-in form again; a spent link showed "expired" even when already signed in; a link from a chat or email to an order dropped them on Home after signing in; a typo'd email had no way back but reload; Supabase's rate-limit wording shown raw. All fixed (this run's PR) |
 | 2026-10-30 | Your approvals (Home, owner) | keyboard only, desk dark | Enter in "What should change?" did nothing and Escape didn't close it; after Approve, keyboard focus fell to the page top. Fixed (this run's PR): Enter sends back, Escape closes, focus moves to the approve question (not the button, so a second Enter can't approve) |
+| 2026-10-31 | Every screen (Home, Orders, Styles, Reports, Brief, Activity, Team, Payments, Bills, Goods, Samples, Inquiries, Buyer POs, Buyers, Factories, Updates, Tally, Team notes) | empty state: a brand-new company with no orders, buyers or factories, owner phone | Factories "Work" told you to pick a factory on an order when none exist: now says add them in the Factory list first. Buyer POs "No file for a PO? Type it in" split into three columns: now one sentence. Brief help text sat open under the work: now a closed "How the brief works". The "page couldn't load" box ran its code into the sentence ("doing.Code"). All fixed (this run's PR). Other screens fine |
+| 2026-10-31 | Order page Details | two tabs / two people saving the same order, phone | The older copy is refused with a plain message, fine. But the person whose save went through saw no "Saved" (the form reloads and drops it): now a "Order saved" toast (this run's PR) |
+| 2026-10-31 | Brief, Reports, order page, Home, Payments | print / PDF from a phone or computer in dark mode (exploration) | Printed with the dark theme's near-white text on white paper (titles and rows faint grey), and the brief printed its tabs and WhatsApp/Copy buttons. Fixed (this run's PR): dark theme is screen-only, print always uses light ink; page tabs and the brief buttons don't print |
 
-Not yet looked at from any angle beyond the crawl: two people editing,
-date edges, empty states, Reports, Styles, Updates, Activity, Team, Tally, Feedback,
+Not yet looked at from any angle beyond the crawl: date edges (month and year end),
+two people on the style sizes and QC record (only order Details so far), empty states for roles other than owner,
 factory PO accept link with a real token (accept twice, accept after approval withdrawn; needs the po-inbox function, the local stand-in can't test it).
-Print views not yet looked at: buyer PO PDF, morning brief. Angles never tried: slow network on a whole save flow (only the challan number so far), two tabs, keyboard only on any screen but Your approvals.
+Print views not yet looked at: buyer PO PDF. Primary buttons print as blank outlines (white text, no background) on any printed screen. Angles never tried: slow network on a whole save flow (only the challan number so far), keyboard only on any screen but Your approvals.
 
 ## Closed
 | Item | How | Date |
@@ -85,6 +89,7 @@ Print views not yet looked at: buyer PO PDF, morning brief. Angles never tried: 
 | Order hero stray dot, catalogue "No step done yet" chips and shuffled styles, long names flooding catalogue cards, Reports step bars reading as "0% late", factory PO print losing columns with long style names | Fixed (this run's PR) | 2026-10-30 |
 | Fabric lots and challans counted metres as pieces; date-times wrote "Sept" and dropped last year's year | Fixed (this run's PR) | 2026-10-30 |
 | Sign-in: /login showed the form to someone signed in; spent link said "expired" while signed in; deep links lost after sign-in; no way to fix a typo'd email; raw rate-limit text. Your approvals: Enter/Escape and focus by keyboard | Fixed (this run's PR) | 2026-10-30 |
+| Dark-mode print came out faint; brief printed its buttons; Factories and Buyer POs empty states; brief help open; error-page code ran into its sentence; no "Saved" after editing an order | Fixed (this run's PR) | 2026-10-31 |
 | Tally invoices not syncing (SO-0020) | He ran the index change in the SQL editor; both parts show invoice SPL/26-27/202 | 2026-10-30 |
 | Flavia AV-135 (PO 101) had no order | It is SO-0021; Flavia mix-up settled | 2026-10-30 |
 | Hourly runs could not merge their own PRs | Allow rule added; runs merge on green since #190 | 2026-10-29 |

@@ -35,7 +35,7 @@ export async function FactoryBoard({ factories }: { factories: Factory[] }) {
 
   const today = todayIST();
   const board = buildBoard({ factories, orders, pos, steps, buyers: new Map(buyers.map((b) => [b.id, buyerName(b)])), today, now: nowMs() });
-  return <BoardView board={board} today={today} loadError={[error, posError, stepsError].find(Boolean)?.message} />;
+  return <BoardView board={board} today={today} noFactories={factories.length === 0} loadError={[error, posError, stepsError].find(Boolean)?.message} />;
 }
 
 type BoardInput = {
@@ -118,7 +118,7 @@ export function buildBoard({ factories, orders, pos, steps, buyers: buyerById, t
 }
 
 // The board itself: totals, a jump bar, then one card per factory.
-export function BoardView({ board: { cards, total, noFactory }, today, loadError }: { board: Board; today: string; loadError?: string }) {
+export function BoardView({ board: { cards, total, noFactory }, today, noFactories, loadError }: { board: Board; today: string; noFactories?: boolean; loadError?: string }) {
 
   return (
     <div className="stack">
@@ -140,7 +140,9 @@ export function BoardView({ board: { cards, total, noFactory }, today, loadError
       )}
 
       {cards.length === 0 && !loadError ? (
-        <div className="empty"><b>No factory has open work</b>Choose a factory for each style on an order and it shows up here.</div>
+        noFactories
+          ? <div className="empty"><b>No factories yet</b>Add your factories in the <Link href="/factories?view=list" className="link">Factory list</Link>, then choose one for each style on an order.</div>
+          : <div className="empty"><b>No factory has open work</b>Choose a factory for each style on an order and it shows up here.</div>
       ) : cards.map((c) => (
         <section key={c.f.id} id={`f-${c.f.id}`} className="card fac-card">
           <div className="card-h">

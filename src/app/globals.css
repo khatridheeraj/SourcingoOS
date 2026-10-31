@@ -43,7 +43,8 @@
   --sidebar: #fbfbfc;
 }
 
-@media (prefers-color-scheme: dark) {
+/* Screens only: a page printed from a phone or computer in dark mode still prints dark ink on white paper. */
+@media screen and (prefers-color-scheme: dark) {
   :root {
     --background: #0d0e11;
     --foreground: #ececef;
@@ -1238,7 +1239,8 @@ h1, h2, h3 { font-family: var(--font-display); text-wrap: balance; font-weight: 
 }
 
 @media print {
-  .no-print, .sidebar, .topbar, .tabbar, .scrim, .help-btn, [data-help], .toasts { display: none !important; }
+  :root { color-scheme: light; }
+  .no-print, .page-tabs, .sidebar, .topbar, .tabbar, .scrim, .help-btn, [data-help], .toasts { display: none !important; }
   body, .shell, .page { background: #fff !important; margin: 0 !important; padding: 0 !important; display: block !important; }
   .challan { border: 0; box-shadow: none; padding: 0; color: #000; }
   .challan * { color: #000 !important; }

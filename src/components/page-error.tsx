@@ -22,7 +22,7 @@ export function PageError({ error, retry, home, words }: {
     <div className="empty" role="alert">
       <b>{w.title}</b>
       {w.body}
-      {error.digest && <small className="muted">Code {error.digest}</small>}
+      {error.digest && <small className="muted mt-1 block">Code {error.digest}</small>}
       <div className="mt-3 flex flex-wrap justify-center gap-2">
         <button type="button" className="btn" onClick={() => retry()}>{w.retry}</button>
         <Link href={home} className="btn ghost">{w.home}</Link>
