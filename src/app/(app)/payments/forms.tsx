@@ -49,7 +49,8 @@ export function InvoiceForm({ initial, buyers, today, locked }: { initial: Invoi
     start(async () => {
       const r = await saveInvoice(f);
       if (r.error) return setError(r.error);
-      if (!f.id) router.push(`/payments/invoices/${r.id}`);
+      // Replace, so Back goes to the list, not to an empty "new invoice" form.
+      if (!f.id) router.replace(`/payments/invoices/${r.id}`);
       else { setOk(r.ok!); router.refresh(); }
     });
   }
@@ -190,7 +191,7 @@ export function ChequeForm({ initial, buyers, invoices, today, fixed }: { initia
         allocations: Object.entries(f.split).filter(([, v]) => num(v) > 0).map(([invoice_id, a]) => ({ invoice_id, amount: a })),
       });
       if (r.error) return setError(r.error);
-      router.push(`/payments/cheques/${r.id}?saved=1`);
+      router.replace(`/payments/cheques/${r.id}?saved=1`);
       router.refresh();
     });
   }

@@ -56,6 +56,9 @@ export default async function StylesPage({ searchParams }: PageProps<"/styles">)
   const factoryOf = new Map(factories.map((f) => [f.id, f.name]));
   const total = count ?? rows.length;
   const pages = Math.max(1, Math.ceil(total / PAGE));
+  // Nothing to search yet (a new company, or no open orders): no search box and filters over an empty page.
+  const filtered = !!(q || buyer || factory);
+  const bare = !filtered && total === 0;
   const qs = (patch: Record<string, string>) => {
     const p = new URLSearchParams({ ...(q ? { q } : {}), ...(buyer ? { buyer } : {}), ...(factory ? { factory } : {}), ...(all ? { show: "all" } : {}), ...patch });
     for (const [k, v] of [...p.entries()]) if (!v) p.delete(k);
@@ -67,7 +70,7 @@ export default async function StylesPage({ searchParams }: PageProps<"/styles">)
       <div className="head">
         <div className="grow">
           <h1>Style catalogue</h1>
-          <p>{qty(total)} {total === 1 ? "style" : "styles"}{all ? "" : " on open orders"}. Tap one to open its order and TNA.</p>
+          <p>{qty(total)} {total === 1 ? "style" : "styles"}{all ? "" : " on open orders"}.{total ? " Tap one to open its order and TNA." : ""}</p>
         </div>
         <nav className="seg" aria-label="Show">
           <Link href={qs({ show: "", page: "" })} aria-current={!all ? "page" : undefined}>Open orders</Link>
@@ -75,7 +78,7 @@ export default async function StylesPage({ searchParams }: PageProps<"/styles">)
         </nav>
       </div>
 
-      <form className="cat-filters" action="/styles">
+      {!bare && <form className="cat-filters" action="/styles">
         {all && <input type="hidden" name="show" value="all" />}
         <input className="inp" type="search" name="q" defaultValue={q} placeholder="Search style, description, colour or fabric" aria-label="Search styles" enterKeyHint="search" />
         <select className="inp" name="buyer" defaultValue={buyer} aria-label="Buyer">
@@ -87,11 +90,14 @@ export default async function StylesPage({ searchParams }: PageProps<"/styles">)
           {factories.filter((f) => f.active || f.id === factory).map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
         </select>
         <button className="btn">Show</button>
-      </form>
+      </form>}
 
       {error && <div className="errbox">{error.message}</div>}
       {rows.length === 0 ? (
-        <div className="empty"><b>No styles found</b>{q || buyer || factory ? "Try another search, or clear the filters." : "Styles appear here as orders are entered."}</div>
+        <div className="empty">
+          <b>{filtered ? "No styles found" : "No styles yet"}</b>
+          {filtered ? <>Try another search, or <Link href={qs({ q: "", buyer: "", factory: "", page: "" })} className="link">clear the filters</Link>.</> : all ? "Styles appear here as orders are entered." : "Styles appear here as orders are entered. Shipped orders' styles are under All orders."}
+        </div>
       ) : (
         <ul className="cat-grid">
           {rows.map((r) => {
