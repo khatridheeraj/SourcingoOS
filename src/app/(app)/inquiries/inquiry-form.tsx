@@ -41,7 +41,7 @@ export function InquiryForm({ id, companyId, initial, buyers, team }: {
         const res = await updateInquiry(id, input);
         if (res.error) return setError(res.error);
         toast("Inquiry saved");
-        router.push(`/inquiries/${id}`);
+        router.replace(`/inquiries/${id}`);
         return;
       }
       const res = await createInquiry(input);

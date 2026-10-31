@@ -18,7 +18,7 @@ How to use it:
 |---|---|---|
 | Buyer status page after the ship date has passed: say "N days past" or stay quiet? | 2026-10-26 | 2026-10-29 |
 | Nightly database backup needs a GitHub secret from him | 2026-10-24 | 2026-10-29 |
-| One buyer PO in "To check" and one held, both over 2 days old (live data, team's job). 29 Oct 17:00Z: only the held one is left | 2026-10-29 | 2026-10-31 |
+| One buyer PO in "To check" and one held, both over 2 days old (live data, team's job). 29 Oct 17:00Z: only the held one is left; 31 Oct: 4 held (unknown senders, in Your approvals) | 2026-10-29 | 2026-10-31 |
 | Live order SO-0004 is still open 31 days after its 30 Sep ship date: mark it shipped, close it short, or set a new ship date (team's job) | 2026-10-31 | 2026-10-31 |
 
 ## Known (not new, never report)
@@ -27,6 +27,7 @@ How to use it:
 | Crawl flags a page "slow" or ERR_CONNECTION_* on a cold or reloading dev server | Fast on reload; only a finding if it stays slow on recheck | 2026-10-29 |
 | Second `e2e/run.sh` on a stack that is still running: crawl shows 404s everywhere (PostgREST keeps the dropped database's grants) | Stop ports 3100, 54321, 54322 (`fuser -k`) and run it again; not an app glitch | 2026-10-30 |
 | Live Tally reader: last snapshot ~10 h old overnight while the PC agent is seen (30 Oct 14:00 IST: 18 h, Tally not opened yet that day) | Tally is closed after office hours; the agent still checks in | 2026-10-31 |
+| Live Tally PC agent not seen for a day (31 Oct, Saturday evening: 25 h) | The office PC is off; only a finding if it stays unseen on a working day | 2026-10-31 |
 | Postgres log errors whose query ends in `-- source: POST /mcp` | Come from the run's own checks, not the app | 2026-10-31 |
 | Gmail pickup has found no new buyer PO for days | No buyer has emailed a PO; not a glitch | 2026-10-31 |
 | Factory PO emails all go to merchandiser@sourcingo.in | Test inbox mode, on purpose until Dheeraj says switch | 2026-10-31 |
@@ -79,11 +80,14 @@ made-up token (/po, /f, /s), print and PDF views (A4, many styles), printing fro
 | 2026-10-31 | New order (and every screen's menu) | keyboard only, desk light + dark | Enter on Create with a look-alike PO left focus in the form while "Save anyway" appeared above, so Enter did nothing; "Add style" left focus on the button, not the new row; removing a style dropped focus; 15 menu stops before every page. Fixed (this run's PR): focus goes to Save anyway, to the new or next style, and a "Skip to content" link comes first |
 | 2026-10-31 | Help notes, Activity log and its download, factory PO accept page (/po) | date edges (September, last year) | Three last places still formatted dates with Intl's short month: "10 Sept", and Help notes dropped last year's year. Now the shared format helpers, and a unit test fails if any file does it again (this run's PR) |
 | 2026-10-31 | Every printed screen | print, primary buttons and coloured dots/badges (exploration: browser drops background fills) | White text on indigo/green/red printed blank. Fixed (this run's PR): print keeps fills |
+| 2026-10-31 | Factory panel (Mark step done sheet), and every photo picker | keyboard only, desk light | Sheet opens, Escape closes and focus returns: fine. But Tab onto Camera / Gallery (and every other photo or file picker, 18 of them) showed no focus ring, because the real input is hidden. Fixed (this run's PR): the picker's box shows the ring |
+| 2026-10-31 | Home, Orders, Styles, Goods, Reports, Samples, Inquiries, Buyer POs, Updates, Payments, Bills | empty state for merch, quality and accounts (a brand-new company) | Style catalogue showed search, two filters and a Show button over nothing, then "No styles found"; "clear the filters" was not a link. Fixed (this run's PR): no filters until there are styles, "No styles yet", clear link. Other screens fine |
+| 2026-10-31 | Delete PO, new cheque, new invoice, edit inquiry | browser back after saving (exploration) | Back after deleting a PO opened a bare Next.js "404 This page could not be found"; any missing order, PO, invoice or wrong web address showed the same. Back after recording a cheque or invoice reopened an empty "new" form, and after editing an inquiry the edit form. Fixed (this run's PR): plain "This isn't here any more" page with Orders, Cancelled and Home; saves replace the spent form in history. No duplicate was possible (the reopened form is blank) |
 
 Not yet looked at from any angle beyond the crawl: date edges (month and year end),
 two people on the style sizes and QC record (only order Details so far), empty states for roles other than owner,
 factory PO accept link with a real token (accept twice, accept after approval withdrawn; needs the po-inbox function, the local stand-in can't test it).
-Print views not yet looked at: buyer PO PDF; a printed form's Styles table is cut at the right edge (nobody prints a blank form, low value). Angles never tried: slow network on a whole save flow (only the challan number so far), keyboard only on any screen but Your approvals and New order (next: order page Details, QC record, factory panel).
+Print views not yet looked at: buyer PO PDF; a printed form's Styles table is cut at the right edge (nobody prints a blank form, low value). Angles never tried: slow network on a whole save flow (only the challan number so far), keyboard only on order page Details and the QC record (factory panel done 31 Oct), empty states for the factory and buyer roles, browser back on the order page's own forms (plan, QC, dispatch).
 
 ## Closed
 | Item | How | Date |
@@ -93,6 +97,7 @@ Print views not yet looked at: buyer PO PDF; a printed form's Styles table is cu
 | Fabric lots and challans counted metres as pieces; date-times wrote "Sept" and dropped last year's year | Fixed (this run's PR) | 2026-10-30 |
 | Sign-in: /login showed the form to someone signed in; spent link said "expired" while signed in; deep links lost after sign-in; no way to fix a typo'd email; raw rate-limit text. Your approvals: Enter/Escape and focus by keyboard | Fixed (this run's PR) | 2026-10-30 |
 | New order by keyboard: Save anyway, Add style and Remove style lost focus; no skip link past the menu. "Sept" in Help notes, Activity and /po; printed buttons blank | Fixed (this run's PR) | 2026-10-31 |
+| Bare 404 for a deleted or missing record; photo pickers showed no keyboard focus; empty Style catalogue showed filters; Back reopened spent cheque, invoice and inquiry forms | Fixed (this run's PR) | 2026-10-31 |
 | Dark-mode print came out faint; brief printed its buttons; Factories and Buyer POs empty states; brief help open; error-page code ran into its sentence; no "Saved" after editing an order | Fixed (this run's PR) | 2026-10-31 |
 | Tally invoices not syncing (SO-0020) | He ran the index change in the SQL editor; both parts show invoice SPL/26-27/202 | 2026-10-30 |
 | Flavia AV-135 (PO 101) had no order | It is SO-0021; Flavia mix-up settled | 2026-10-30 |

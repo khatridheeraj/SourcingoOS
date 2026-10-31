@@ -24,7 +24,8 @@ export function DeletePo({ orderId, orderNo, buyerPo, warnings, blocked }: {
       const res = await deleteOrder(orderId, reason);
       if (res.error) return setError(res.error);
       toast(`${orderNo} deleted. Bring it back from Orders, Cancelled.`);
-      router.push("/?status=cancelled#deleted");
+      // Replace, so Back doesn't open the deleted order.
+      router.replace("/?status=cancelled#deleted");
     });
   }
 
