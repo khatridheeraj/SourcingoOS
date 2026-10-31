@@ -101,8 +101,9 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
 
   return (
     <div className={me.role ? "shell" : undefined}>
+      {me.role && <a href="#main" className="skip-link">Skip to content</a>}
       {me.role && <Sidebar groups={groups} tabs={tabs} create={create} user={me.fullName || me.email} role={roleLabel(me.role)} company={me.companyName ?? ""} helpUnseen={help.unseen ?? 0} />}
-      <main className="page">
+      <main id="main" tabIndex={-1} className="page">
         {me.role ? children : (
           <div className="empty mx-auto mt-10 w-full max-w-[560px]">
             <b>You haven&apos;t been added to a company yet</b>

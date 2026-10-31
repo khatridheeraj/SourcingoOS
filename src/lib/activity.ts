@@ -1,4 +1,4 @@
-import { day, money } from "@/lib/format";
+import { day, dayAt, money } from "@/lib/format";
 
 // One entry of the permanent history (public.history).
 export type Entry = {
@@ -99,8 +99,9 @@ function fmtObject(v: object): string {
   return s.length > 140 ? `${s.slice(0, 140)}…` : s;
 }
 
-const stamp = new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "numeric", minute: "2-digit", timeZone: "Asia/Kolkata" });
-export const when = (at: string) => stamp.format(new Date(at));
+// "10 Sep 2026, 3:49 pm" in India time, always with the year (the log is also downloaded); never "Sept".
+const clock = new Intl.DateTimeFormat("en-IN", { hour: "numeric", minute: "2-digit", timeZone: "Asia/Kolkata" });
+export const when = (at: string) => `${dayAt(at)}, ${clock.format(new Date(at))}`;
 
 // What the record is called: its number or name where it has one.
 export function recordName(e: Entry, n: Names) {

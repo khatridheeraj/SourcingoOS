@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
 import { toast } from "@/components/toast";
+import { dayAtNear } from "@/lib/format";
 import { canEditOrders, type Role } from "@/lib/auth-roles";
 import { guessKind, pageTitle, searchScored, suggestions, type Audience, type NoteKind, type Topic } from "@/lib/help-guide";
 import { ATTACH_ACCEPT, uploadAttachments } from "@/lib/photos";
@@ -495,7 +496,8 @@ function pastedFiles(e: React.ClipboardEvent): File[] {
   return Array.from(e.clipboardData?.files ?? []);
 }
 
-const dm = (t: string, lang: Lang) => new Intl.DateTimeFormat(lang === "hi" ? "hi-IN" : "en-IN", { day: "numeric", month: "short", timeZone: "Asia/Kolkata" }).format(new Date(t));
+// "10 Sep" (never "Sept"), with the year when it isn't this year; Hindi keeps its own month names.
+const dm = (t: string, lang: Lang) => (lang === "hi" ? new Intl.DateTimeFormat("hi-IN", { day: "numeric", month: "short", timeZone: "Asia/Kolkata" }).format(new Date(t)) : dayAtNear(t));
 export const STATUS_TONE: Record<TeamNote["status"], string> = { new: "", planned: "info", later: "warn", done: "ok", declined: "bad" };
 
 function NoteCard({ n, w, lang }: { n: TeamNote; w: Words; lang: Lang }) {
