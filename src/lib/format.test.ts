@@ -33,3 +33,22 @@ test("near dates drop the year, other years keep it", () => {
   assert.equal(dayTimeAt(new Date("2026-09-30T08:00:00Z"), "2026-10-30"), "30 Sep, 1:30 pm");
   assert.equal(dayTimeAt(new Date("2025-12-31T12:00:00Z"), "2026-01-02"), "31 Dec 2025, 5:30 pm");
 });
+
+test("no screen formats an English date with Intl's short month (it writes \"Sept\")", async () => {
+  const { readdirSync, readFileSync, statSync } = await import("node:fs");
+  const { join } = await import("node:path");
+  const bad: string[] = [];
+  const walk = (dir: string) => {
+    for (const f of readdirSync(dir)) {
+      const p = join(dir, f);
+      if (statSync(p).isDirectory()) walk(p);
+      else if (/\.tsx?$/.test(f) && !f.endsWith(".test.ts")) {
+        readFileSync(p, "utf8").split("\n").forEach((l, i) => {
+          if (/"en-IN"/.test(l) && /month: "short"/.test(l)) bad.push(`${p}:${i + 1}`);
+        });
+      }
+    }
+  };
+  walk(new URL("..", import.meta.url).pathname);
+  assert.deepEqual(bad, [], "use day/dayNear/dayTimeNear from format.ts instead");
+});

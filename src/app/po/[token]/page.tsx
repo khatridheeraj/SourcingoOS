@@ -3,10 +3,12 @@ import { FactoryPoDoc } from "@/components/factory-po-doc";
 import { PrintPo } from "@/app/(app)/orders/[id]/factory-po/[factoryId]/print-po";
 import { AcceptPo } from "./accept";
 import { poByToken } from "./data";
+import { dayTimeNear } from "@/lib/format";
 
 export const metadata: Metadata = { title: "Purchase order", robots: { index: false, follow: false } };
 
-const at = (ts: string) => new Intl.DateTimeFormat("en-IN", { timeZone: "Asia/Kolkata", day: "numeric", month: "short", year: "2-digit", hour: "numeric", minute: "2-digit" }).format(new Date(ts));
+// "30 Sep, 1:30 pm" (never "Sept"), with the year only when it isn't this year.
+const at = (ts: string) => dayTimeNear(ts);
 
 // A factory PO as the factory sees it from the email: the PO with its style photos and terms, Save as PDF,
 // and Accept. Only someone with the link can open it, and it never names the buyer.

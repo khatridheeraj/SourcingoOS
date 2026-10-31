@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState, useTransition } from "react";
+import { flushSync } from "react-dom";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { money, qtyTotal } from "@/lib/format";
 import { toast } from "@/components/toast";
 import { NO_WARNINGS, overdueText, type OrderWarnings, type Overdue } from "@/lib/order-checks";
@@ -126,6 +127,18 @@ export function OrderForm({ initial, initialLines, buyers, factories, team, inco
     save(false);
   }
 
+  // By keyboard, Enter on Create leaves focus where it was while "Save anyway" appears above; take it there
+  // once saving has finished (a disabled button can't take focus).
+  const anywayRef = useRef<HTMLButtonElement>(null);
+  useEffect(() => { if (confirming && !pending) anywayRef.current?.focus(); }, [confirming, pending]);
+  // A style added from the keyboard is typed into straight away, not hunted for above the button;
+  // after a style is removed, focus moves to the one that took its place.
+  const tableRef = useRef<HTMLTableSectionElement>(null);
+  const changeLines = (next: LineInput[], focusAt: number) => {
+    flushSync(() => setLines(next));
+    tableRef.current?.querySelectorAll<HTMLInputElement>("tr > td:first-child input")[focusAt]?.focus();
+  };
+
   const w = shown.warnings;
   const orderLink = (o: { id: string; order_no: string }) => <Link href={`/orders/${o.id}`} className="link code" target="_blank">{o.order_no}</Link>;
   // On an order already confirmed the warning only matters when its buyer is being changed.
@@ -232,7 +245,7 @@ export function OrderForm({ initial, initialLines, buyers, factories, team, inco
                 <th>Buyer rate ₹</th>{fac && <><th>Factory</th><th>Factory rate ₹</th></>}<th></th>
               </tr>
             </thead>
-            <tbody>
+            <tbody ref={tableRef}>
               {lines.map((l, i) => (
                 <tr key={i}>
                   <td data-label="Style no."><input className="inp min-w-[110px]" value={l.style} onChange={(e) => setLine(i, "style", e.target.value)} aria-label={`Line ${i + 1} style`} /></td>
@@ -248,7 +261,7 @@ export function OrderForm({ initial, initialLines, buyers, factories, team, inco
                   </td>
                   <td data-label="Factory rate ₹"><input className="inp w-[90px]" inputMode="decimal" value={l.factory_rate} onChange={(e) => setLine(i, "factory_rate", e.target.value)} aria-label={`Line ${i + 1} factory rate`} /></td></>}
                   <td>
-                    <button type="button" className="btn sm danger" disabled={lines.length === 1} onClick={() => setLines(lines.filter((_, j) => j !== i))} aria-label={`Remove line ${i + 1}`}>✕</button>
+                    <button type="button" className="btn sm danger" disabled={lines.length === 1} onClick={() => changeLines(lines.filter((_, j) => j !== i), Math.min(i, lines.length - 2))} aria-label={`Remove line ${i + 1}`}>✕</button>
                   </td>
                 </tr>
               ))}
@@ -256,7 +269,7 @@ export function OrderForm({ initial, initialLines, buyers, factories, team, inco
           </table>
         </div>
         <div className="row mt-3">
-          <button type="button" className="btn sm" onClick={() => setLines([...lines, blankLine()])}>Add style</button>
+          <button type="button" className="btn sm" onClick={() => changeLines([...lines, blankLine()], lines.length)}>Add style</button>
           {fac ? <span className="muted text-xs">Factory missing from the list? <Link href="/factories" className="link">Add it in Factories</Link>.</span>
             : <span className="muted text-xs">The factory and its rate come next, when you start production.</span>}
         </div>
@@ -277,7 +290,7 @@ export function OrderForm({ initial, initialLines, buyers, factories, team, inco
               {" "}Check it is not the same PO before saving.
               {confirming && (
                 <div className="row mt-2">
-                  <button type="button" className="btn primary sm" disabled={pending} onClick={() => save(true)}>{pending ? "Saving…" : "Save anyway"}</button>
+                  <button ref={anywayRef} type="button" className="btn primary sm" disabled={pending} onClick={() => save(true)}>{pending ? "Saving…" : "Save anyway"}</button>
                   <button type="button" className="btn sm" disabled={pending} onClick={() => setConfirming(false)}>Cancel</button>
                 </div>
               )}
