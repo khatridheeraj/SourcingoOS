@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
 import { money, qtyTotal } from "@/lib/format";
+import { toast } from "@/components/toast";
 import { NO_WARNINGS, overdueText, type OrderWarnings, type Overdue } from "@/lib/order-checks";
 import { PO_ACCEPT, poFileProblem, uploadPoFiles } from "@/lib/po-upload";
 import { checkOrder, saveOrder, type LineInput, type OrderInput } from "./actions";
@@ -98,9 +99,12 @@ export function OrderForm({ initial, initialLines, buyers, factories, team, inco
         return setError(res.error);
       }
       setSaved(true);
+      // Saving an open order reloads the form from the saved copy, which clears "Saved" and any warning on it;
+      // a toast outlives that reload, so the person still sees the save went through.
       if (res.error) {
         setWarning(res.error);
         if (!order.id && res.id) return setCreated(res.id);
+        toast(res.error, "bad");
         return router.refresh();
       }
       if (!order.id && res.id && withFile && poFiles.length) {
@@ -111,7 +115,10 @@ export function OrderForm({ initial, initialLines, buyers, factories, team, inco
         }
       }
       if (!order.id && res.id) router.replace(`/orders/${res.id}?saved=1`);
-      else router.refresh();
+      else {
+        toast("Order saved");
+        router.refresh();
+      }
     });
   }
   function submit(e: React.FormEvent) {

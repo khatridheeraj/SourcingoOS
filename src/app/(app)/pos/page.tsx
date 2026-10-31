@@ -84,8 +84,11 @@ export default async function IncomingPosPage({ searchParams }: PageProps<"/pos"
 
         {rows.length === 0 ? (
           <p className="card-empty">
-            {tab === "to_check" ? "All checked. New buyer POs from email show up here on their own." : "Nothing here yet."}
-            {tab === "to_check" && <> No file for a PO? <Link href="/orders/new" className="link">Type it in as a new order</Link>.</>}
+            {/* One span, so the sentence and its link wrap as text instead of standing in separate columns. */}
+            <span>
+              {tab === "to_check" ? "All checked. New buyer POs from email show up here on their own." : "Nothing here yet."}
+              {tab === "to_check" && <> No file for a PO? <Link href="/orders/new" className="link">Type it in as a new order</Link>.</>}
+            </span>
           </p>
         ) : (
           <ul className="todo">

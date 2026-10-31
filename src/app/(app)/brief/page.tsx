@@ -27,7 +27,7 @@ export default async function BriefPage() {
           <p className="text-[12.5px] font-semibold uppercase tracking-wide text-muted">Morning brief · {b.title}</p>
           <h1>{first ? `${first}, ` : ""}{b.headline.charAt(0).toLowerCase() + b.headline.slice(1)}</h1>
         </div>
-        <div className="head-acts"><BriefShare text={briefText(teamCopy(b), d.company)} /></div>
+        <div className="head-acts no-print"><BriefShare text={briefText(teamCopy(b), d.company)} /></div>
       </div>
       {b.sections.length === 0 ? (
         <section className="card"><p className="card-empty">Nothing is late, at risk or waiting on you.</p></section>
@@ -50,10 +50,13 @@ export default async function BriefPage() {
           </ul>
         </section>
       ))}
-      <p className="muted text-[12.5px]">
-        Late steps push back the steps after them, so &quot;at risk&quot; means a style will likely be ready after its ship date unless the factory catches up.
-        The same brief comes by email at 9 am to mailboxes where the Sourcingo Gmail script runs.
-      </p>
+      <details className="howto no-print">
+        <summary>How the brief works</summary>
+        <p>
+          Late steps push back the steps after them, so &quot;at risk&quot; means a style will likely be ready after its ship date unless the factory catches up.
+          The same brief comes by email at 9 am to mailboxes where the Sourcingo Gmail script runs.
+        </p>
+      </details>
     </>
   );
 }
