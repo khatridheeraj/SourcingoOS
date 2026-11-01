@@ -48,9 +48,8 @@ type Item = {
 const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;
 const longDay = new Intl.DateTimeFormat("en-IN", { weekday: "long", day: "numeric", month: "long", timeZone: "Asia/Kolkata" });
 const hourIST = new Intl.DateTimeFormat("en-GB", { hour: "numeric", hourCycle: "h23", timeZone: "Asia/Kolkata" });
-const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 // "10 Sep" from a YYYY-MM-DD date.
-const dm = (d: string) => `${Number(d.slice(8, 10))} ${MONTHS[Number(d.slice(5, 7)) - 1]}`;
+const dm = (d: string) => dayNear(d);
 const ist = (d: string) => new Date(`${d}T00:00:00+05:30`);
 const addDays = (d: string, n: number) => new Date(Date.parse(d) + n * 86_400_000).toISOString().slice(0, 10);
 const when = (date: string, today: string): { text: string; cls: Sev } => {

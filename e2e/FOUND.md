@@ -18,21 +18,21 @@ How to use it:
 |---|---|---|
 | Buyer status page after the ship date has passed: say "N days past" or stay quiet? | 2026-10-26 | 2026-10-29 |
 | Nightly database backup needs a GitHub secret from him | 2026-10-24 | 2026-10-29 |
-| One buyer PO in "To check" and one held, both over 2 days old (live data, team's job). 29 Oct 17:00Z: only the held one is left; 31 Oct: 4 held (unknown senders, in Your approvals) | 2026-10-29 | 2026-10-31 |
-| Live order SO-0004 is still open 31 days after its 30 Sep ship date: mark it shipped, close it short, or set a new ship date (team's job) | 2026-10-31 | 2026-10-31 |
+| One buyer PO in "To check" and one held, both over 2 days old (live data, team's job). 29 Oct 17:00Z: only the held one is left; 31 Oct: 4 held (unknown senders, in Your approvals); 1 Nov: 3 held | 2026-10-29 | 2026-11-01 |
+| Live order SO-0004 is still open 31 days after its 30 Sep ship date: mark it shipped, close it short, or set a new ship date (team's job) | 2026-10-31 | 2026-11-01 |
 
 ## Known (not new, never report)
 | Item | Why it is not a finding | Last seen |
 |---|---|---|
 | Crawl flags a page "slow" or ERR_CONNECTION_* on a cold or reloading dev server | Fast on reload; only a finding if it stays slow on recheck | 2026-10-29 |
 | Second `e2e/run.sh` on a stack that is still running: crawl shows 404s everywhere (PostgREST keeps the dropped database's grants) | Stop ports 3100, 54321, 54322 (`fuser -k`) and run it again; not an app glitch | 2026-10-30 |
-| Live Tally reader: last snapshot ~10 h old overnight while the PC agent is seen (30 Oct 14:00 IST: 18 h, Tally not opened yet that day) | Tally is closed after office hours; the agent still checks in | 2026-10-31 |
-| Live Tally PC agent not seen for a day (31 Oct, Saturday evening: 25 h) | The office PC is off; only a finding if it stays unseen on a working day | 2026-10-31 |
+| Live Tally reader: last snapshot ~10 h old overnight while the PC agent is seen (30 Oct 14:00 IST: 18 h, Tally not opened yet that day) | Tally is closed after office hours; the agent still checks in | 2026-11-01 |
+| Live Tally PC agent not seen for a day (31 Oct, Saturday evening: 25 h) | The office PC is off; only a finding if it stays unseen on a working day (1 Nov, Sunday: 33 h) | 2026-11-01 |
 | Postgres log errors whose query ends in `-- source: POST /mcp` | Come from the run's own checks, not the app | 2026-10-31 |
-| Gmail pickup has found no new buyer PO for days | No buyer has emailed a PO; not a glitch | 2026-10-31 |
+| Gmail pickup has found no new buyer PO for days | No buyer has emailed a PO; not a glitch | 2026-11-01 |
 | Factory PO emails all go to merchandiser@sourcingo.in | Test inbox mode, on purpose until Dheeraj says switch | 2026-10-31 |
 | Markers screen paused | MARKERS_ON flag, on purpose | 2026-10-31 |
-| Supabase advisors: security-definer functions callable by anon/authenticated, RLS on with no policy, one mutable search_path, leaked-password check off | Long-standing by design (the app's RPCs are security definer and check the role inside); not new | 2026-10-31 |
+| Supabase advisors: security-definer functions callable by anon/authenticated, RLS on with no policy, one mutable search_path, leaked-password check off | Long-standing by design (the app's RPCs are security definer and check the role inside); not new | 2026-11-01 |
 | Supabase performance advisors: unindexed foreign keys, unused indexes, auth RLS initplan, multiple permissive policies, one table without a primary key | Long-standing INFO/WARN on a 33 MB database; nothing slow in the logs | 2026-10-31 |
 | Morning brief "shipped in part" / "closed short" lines and Home's deleted-PO line say "pcs" even for a fabric order | The numbers come from database functions that don't return the unit; fix with the next migration a thread makes, not a check run | 2026-10-30 |
 | Local stack: Next dev logs "The destination stream closed early" after a save that redirects | Dev-server noise when a page is left mid-stream; not seen in production | 2026-10-29 |
@@ -51,7 +51,7 @@ order already late, large order (20+ styles, 50,000+ pieces, long names), fabric
 Hindi or long text in names and notes, zero and huge money amounts, slow network (throttle in a short Playwright script) and double taps,
 browser back after saving, two people editing the same order, date edges (month end, year end, today vs
 tomorrow), keyboard only, form errors (blank, wrong format, negative numbers), public links with a wrong or
-made-up token (/po, /f, /s), print and PDF views (A4, many styles), printing from dark mode, a brand-new company with nothing in it, signed out / spent sign-in links.
+made-up token (/po, /f, /s), print and PDF views (A4, many styles), printing from dark mode, a brand-new company with nothing in it, signed out / spent sign-in links, a very old order (a year past its ship date).
 
 | Date | Area | Angle | Result |
 |---|---|---|---|
@@ -83,15 +83,19 @@ made-up token (/po, /f, /s), print and PDF views (A4, many styles), printing fro
 | 2026-10-31 | Factory panel (Mark step done sheet), and every photo picker | keyboard only, desk light | Sheet opens, Escape closes and focus returns: fine. But Tab onto Camera / Gallery (and every other photo or file picker, 18 of them) showed no focus ring, because the real input is hidden. Fixed (this run's PR): the picker's box shows the ring |
 | 2026-10-31 | Home, Orders, Styles, Goods, Reports, Samples, Inquiries, Buyer POs, Updates, Payments, Bills | empty state for merch, quality and accounts (a brand-new company) | Style catalogue showed search, two filters and a Show button over nothing, then "No styles found"; "clear the filters" was not a link. Fixed (this run's PR): no filters until there are styles, "No styles yet", clear link. Other screens fine |
 | 2026-10-31 | Delete PO, new cheque, new invoice, edit inquiry | browser back after saving (exploration) | Back after deleting a PO opened a bare Next.js "404 This page could not be found"; any missing order, PO, invoice or wrong web address showed the same. Back after recording a cheque or invoice reopened an empty "new" form, and after editing an inquiry the edit form. Fixed (this run's PR): plain "This isn't here any more" page with Orders, Cancelled and Home; saves replace the spent form in history. No duplicate was possible (the reopened form is blank) |
+| 2026-11-01 | Order page, Brief, Today, Orders | a very old order (ship date a year ago, part shipped), owner + merch phone (exploration: very old order) | The Brief said "ship date 28 Oct has passed, 369 days ago" with no year, and the next step "It was due 10 Sep" never said which year: nine screens wrote day and month by hand. Now they all use `dayNear` (adds the year for another year), a unit test fails if any file does it again, and journey.test checks an old due date (this run's PR). Orders list and ship clock already showed the year |
+| 2026-11-01 | Order page next-step card | phone light + dark, owner and merch, three extra buttons (Update progress, Status link, Share update) | At 390px the three sat in equal columns and "Update progress" spilled out of its button on every order showing all three. Now two to a row, the third below (this run's PR) |
+| 2026-11-01 | QC record (Record QC sheet) | keyboard only, desk light, quality | Opens with focus on Close, Tab walks style, type, Pass/Fail, fields; Escape closes and focus returns to Record QC: fine |
 
-Not yet looked at from any angle beyond the crawl: date edges (month and year end),
+Not yet looked at from any angle beyond the crawl: date edges (month and year end; a year-old order done 1 Nov),
 two people on the style sizes and QC record (only order Details so far), empty states for roles other than owner,
 factory PO accept link with a real token (accept twice, accept after approval withdrawn; needs the po-inbox function, the local stand-in can't test it).
-Print views not yet looked at: buyer PO PDF; a printed form's Styles table is cut at the right edge (nobody prints a blank form, low value). Angles never tried: slow network on a whole save flow (only the challan number so far), keyboard only on order page Details and the QC record (factory panel done 31 Oct), empty states for the factory and buyer roles, browser back on the order page's own forms (plan, QC, dispatch).
+Print views not yet looked at: buyer PO PDF; a printed form's Styles table is cut at the right edge (nobody prints a blank form, low value). Angles never tried: slow network on a whole save flow (only the challan number so far), keyboard only on order page Details (QC record done 1 Nov, factory panel 31 Oct), empty states for the factory and buyer roles, browser back on the order page's own forms (plan, QC, dispatch).
 
 ## Closed
 | Item | How | Date |
 |---|---|---|
+| Dates written without their year on nine screens (Brief, next step, Today, styles, samples, bills); order page extra buttons overflowing on a phone | Fixed (this run's PR) | 2026-11-01 |
 | New order: ship date before PO date showed a raw database error; negative rate said "must be a number" | Plain messages + ship date can't be picked before the PO date (this run's PR) | 2026-10-29 |
 | Order hero stray dot, catalogue "No step done yet" chips and shuffled styles, long names flooding catalogue cards, Reports step bars reading as "0% late", factory PO print losing columns with long style names | Fixed (this run's PR) | 2026-10-30 |
 | Fabric lots and challans counted metres as pieces; date-times wrote "Sept" and dropped last year's year | Fixed (this run's PR) | 2026-10-30 |

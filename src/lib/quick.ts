@@ -1,6 +1,6 @@
 // Helpers behind the quick sheets: an order's steps per style, what to mark done, the plan to start production with,
 // and the WhatsApp chase for a factory. Pure functions, used on the server and in the browser alike.
-import { daysBetween, qtyTotal, qtyU, TNA_STEPS } from "@/lib/format";
+import { dayNear, daysBetween, qtyTotal, qtyU, TNA_STEPS } from "@/lib/format";
 export { emptySteps, startBuffer, startTargets } from "@/lib/tna-plan";
 
 // factory_on: the factory's own date for the step, when it has sent one.
@@ -26,9 +26,8 @@ export type QOrder = {
 // An email the PO can be sent to.
 export const EMAIL_OK = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 // "10 Sep" from YYYY-MM-DD.
-export const dm = (d: string) => `${Number(d.slice(8, 10))} ${MONTHS[Number(d.slice(5, 7)) - 1]}`;
+export const dm = (d: string) => dayNear(d);
 export const addDays = (d: string, n: number) => new Date(Date.parse(d) + n * 86_400_000).toISOString().slice(0, 10);
 const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;
 

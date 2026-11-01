@@ -1,5 +1,5 @@
 import { VisitButton } from "@/components/visit-sheet";
-import { dayAt } from "@/lib/format";
+import { dayAt, dayNear } from "@/lib/format";
 import { floorLine, floorNote, floorStatus } from "@/lib/floor";
 
 export type FloorUpdate = {
@@ -7,8 +7,7 @@ export type FloorUpdate = {
   at: string; by: string; photos: string[];
 };
 
-const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-const dm = (d: string) => `${Number(d.slice(8, 10))} ${MONTHS[Number(d.slice(5, 7)) - 1]}`;
+const dm = (d: string) => dayNear(d);
 
 // What Quality saw on its factory visits, newest first: each style's step, how it is, and the photos.
 export function OrderFloor({ orderId, updates, canPost }: { orderId: string; updates: FloorUpdate[]; canPost: boolean }) {

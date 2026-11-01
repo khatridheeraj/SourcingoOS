@@ -4,14 +4,13 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { toast } from "@/components/toast";
-import { day, money } from "@/lib/format";
+import { day, dayNear, money } from "@/lib/format";
 import { type Due, GROUPS, isMsme45, MSME_DAYS, MSME_LABEL, type Payable } from "@/lib/payables";
 import { saveBillNote } from "./actions";
 
 export type BillRow = Payable & { key: string; name: string; due: Due };
 
-const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-const dm = (d: string) => `${Number(d.slice(8, 10))} ${MONTHS[Number(d.slice(5, 7)) - 1]}`;
+const dm = (d: string) => dayNear(d);
 
 // The text of a payment list, one supplier a line, ready for WhatsApp or the bank.
 function listText(rows: BillRow[], today: string) {

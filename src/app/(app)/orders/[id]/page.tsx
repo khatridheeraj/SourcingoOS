@@ -240,8 +240,7 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
 
   // Ready-to-send updates: one for the buyer (no factories, no prices) and one per factory to chase its styles.
   const today = todayIST();
-  const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-  const dm = (d: string) => `${Number(d.slice(8, 10))} ${MONTHS[Number(d.slice(5, 7)) - 1]}`;
+  const dm = (d: string) => dayNear(d);
   const stageRows = lineStages ?? [];
   const styleSteps = (lineId: string) => [
     ...TNA_STEPS.map((t) => ({ key: t.key, label: t.label, row: stageRows.find((r) => r.line_id === lineId && r.stage === t.key) })),

@@ -1,3 +1,4 @@
+import { dayNear } from "@/lib/format";
 import { type Clock, STAGES, type StageKey, stageIndex } from "@/lib/journey";
 import type { Forecast } from "@/lib/progress";
 
@@ -58,8 +59,7 @@ export function Ring({ done, total, size = 56, children }: { done: number; total
   );
 }
 
-const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-const dm = (d: string) => `${Number(d.slice(8, 10))} ${MONTHS[Number(d.slice(5, 7)) - 1]}`;
+const dm = (d: string) => dayNear(d);
 const days = (n: number) => `${n} ${n === 1 ? "day" : "days"}`;
 
 // Where the order is heading, worked out from its steps and how its factory usually runs: the day it will likely be
