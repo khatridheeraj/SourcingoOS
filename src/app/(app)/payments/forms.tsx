@@ -322,6 +322,8 @@ export function ChequeTable({ rows, today }: { rows: ChequeLine[]; today: string
     (s) => chosen.length > 0 && chosen.every((r) => NEXT_STEPS[r.status].includes(s) && !(r.status === "in_hand" && (s === "deposited" || s === "cleared")
       && (r.cheque_date > on || addDays(r.cheque_date, CHEQUE_VALID_DAYS) < on))),
   );
+  // One primary button: the bank step that comes next (deposit before clear).
+  const bank = steps.find((s) => s === "deposited" || s === "cleared");
   const toggle = (id: string) => setSel((p) => { const s = new Set(p); if (s.has(id)) s.delete(id); else s.add(id); return s; });
   const all = rows.length > 0 && rows.every((r) => sel.has(r.id));
 
@@ -332,7 +334,7 @@ export function ChequeTable({ rows, today }: { rows: ChequeLine[]; today: string
           <b>{chosen.length} selected · {money(chosen.reduce((a, r) => a + r.amount, 0))}</b>
           <label className="row text-[12.5px] muted">on <input type="date" className="inp w-[150px]" value={on} max={today} onChange={(e) => setOn(e.target.value)} aria-label="Date" /></label>
           {steps.map((s) => (
-            <button key={s} type="button" disabled={pending} className={`btn sm ${s === "cleared" || s === "deposited" ? "primary" : s === "bounced" || s === "cancelled" ? "danger" : ""}`}
+            <button key={s} type="button" disabled={pending} className={`btn sm ${s === bank ? "primary" : s === "bounced" || s === "cancelled" ? "danger" : ""}`}
               onClick={() => run(chosen.map((r) => r.id), s, on, () => setSel(new Set()))}>{VERB[s]}</button>
           ))}
           {!steps.length && <span className="text-xs muted">No step fits all of these. Pick cheques at the same stage, only post-dated ones whose date has come, and no expired ones.</span>}
@@ -387,6 +389,8 @@ export function ChequeSteps({ id, status, chequeDate, expires, today, isOwner }:
   const late = (s: ChequeStatus) => banking(s) && on > expires && !isOwner;
   const steps = (isOwner ? (["in_hand", "deposited", "cleared", "paid_other", "bounced", "cancelled"] as ChequeStatus[]).filter((s) => s !== status) : NEXT_STEPS[status])
     .filter((s) => !early(s) && !late(s));
+  // One primary button: the bank step that comes next (deposit before clear); an owner's correction never is.
+  const bank = steps.find((s) => (s === "deposited" || s === "cleared") && NEXT_STEPS[status].includes(s));
   const wait = status === "in_hand" && on < chequeDate ? <span className="text-xs muted">Post-dated: it can go to the bank from {day(chequeDate)}.</span>
     : status === "in_hand" && on > expires ? <span className="text-xs muted">Expired on {day(expires)}. Ask the buyer for a new cheque{isOwner ? "" : ", or set the date it was really deposited"}.</span>
     : null;
@@ -396,7 +400,7 @@ export function ChequeSteps({ id, status, chequeDate, expires, today, isOwner }:
         <div className="row">
           <label className="row text-[12.5px] muted">Date <input type="date" className="inp w-[150px]" value={on} max={today} onChange={(e) => setOn(e.target.value)} aria-label="Date" /></label>
           {steps.map((s) => (
-            <button key={s} type="button" disabled={pending} className={`btn ${s === "cleared" || s === "deposited" ? "primary" : s === "bounced" || s === "cancelled" ? "danger" : ""}`} onClick={() => run([id], s, on)}>
+            <button key={s} type="button" disabled={pending} className={`btn ${s === bank ? "primary" : s === "bounced" || s === "cancelled" ? "danger" : ""}`} onClick={() => run([id], s, on)}>
               {NEXT_STEPS[status].includes(s) ? VERB[s] : `Correct to ${CHEQUE_LABEL[s].toLowerCase()}`}
             </button>
           ))}

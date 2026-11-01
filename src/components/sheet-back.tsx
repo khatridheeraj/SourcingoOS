@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useEffect } from "react";
 
 // On a phone, Back with a sheet open closes the sheet, like in any app. Without this, Back left the page (a factory
@@ -13,9 +14,12 @@ let leaving = false;
 export function leaveSheet() { leaving = true; }
 
 export function SheetBack() {
+  const router = useRouter();
   useEffect(() => {
     let open: HTMLDialogElement | null = null;
     let token = "";
+    // A link followed from inside a sheet waits here until the sheet's entry is gone (see click below).
+    let follow: URL | null = null;
     let at = { path: "", length: 0 };
     const here = () => window.location.pathname + window.location.search;
     const modal = () => [...document.querySelectorAll("dialog")].find((d) => d.open && d.matches(":modal")) ?? null;
@@ -39,15 +43,33 @@ export function SheetBack() {
     };
     // Back (or a swipe back) while a sheet is open: the entry is already gone, so just close the sheet.
     const pop = () => {
-      if (!open) return;
+      if (!open) {
+        const to = follow;
+        follow = null;
+        if (!to) return;
+        // Same page, another part of it (an order's #details-po): a plain hash change, so the page opens that part.
+        if (to.pathname + to.search === here()) window.location.hash = to.hash;
+        // After Next has handled this Back itself; pushing within the same event was dropped.
+        else setTimeout(() => router.push(to.pathname + to.search + to.hash), 0);
+        return;
+      }
       const d = open;
       open = null;
       if (d.open) d.close();
     };
-    // A link inside a sheet goes to another page: leave the entry for that page.
+    // A link inside a sheet (Help's "Open Brief", an inquiry's "Open the inquiry", "add the buyer's PO"): the sheet's
+    // entry is taken off first and the page opened after, so one Back returns to where the sheet was opened. Following
+    // the link straight away left the sheet's entry behind it, and the first Back from the new page did nothing.
     const click = (e: MouseEvent) => {
       const a = e.target instanceof Element ? e.target.closest("a[href]") : null;
-      if (a && open?.contains(a) && a.getAttribute("target") !== "_blank") leaving = true;
+      if (!a || !open?.contains(a) || a.getAttribute("target") === "_blank" || a.hasAttribute("download")) return;
+      const to = new URL((a as HTMLAnchorElement).href, window.location.href);
+      if (to.origin !== window.location.origin || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+      if (window.history.state?.sheet !== token) { leaving = true; return; }
+      e.preventDefault();
+      follow = to;
+      const d = open;
+      if (d.open) d.close();
     };
     const watch = new MutationObserver(sync);
     watch.observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ["open"] });
@@ -59,6 +81,6 @@ export function SheetBack() {
       window.removeEventListener("popstate", pop);
       document.removeEventListener("click", click, true);
     };
-  }, []);
+  }, [router]);
   return null;
 }

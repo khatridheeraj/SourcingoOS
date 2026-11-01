@@ -18,7 +18,7 @@ How to use it:
 |---|---|---|
 | Buyer status page after the ship date has passed: say "N days past" or stay quiet? | 2026-10-26 | 2026-10-29 |
 | Nightly database backup needs a GitHub secret from him | 2026-10-24 | 2026-10-29 |
-| One buyer PO in "To check" and one held, both over 2 days old (live data, team's job). 29 Oct 17:00Z: only the held one is left; 31 Oct: 4 held (unknown senders, in Your approvals); 1 Nov: 3 held | 2026-10-29 | 2026-11-01 |
+| One buyer PO in "To check" and one held, both over 2 days old (live data, team's job). 29 Oct 17:00Z: only the held one is left; 31 Oct: 4 held (unknown senders, in Your approvals); 1 Nov: 3 held, evening 4 | 2026-10-29 | 2026-11-01 |
 | Live order SO-0004 is still open 31 days after its 30 Sep ship date: mark it shipped, close it short, or set a new ship date (team's job) | 2026-10-31 | 2026-11-01 |
 
 ## Known (not new, never report)
@@ -27,9 +27,9 @@ How to use it:
 | Crawl flags a page "slow" or ERR_CONNECTION_* on a cold or reloading dev server | Fast on reload; only a finding if it stays slow on recheck | 2026-10-29 |
 | Second `e2e/run.sh` on a stack that is still running: crawl shows 404s everywhere (PostgREST keeps the dropped database's grants) | Stop ports 3100, 54321, 54322 (`fuser -k`) and run it again; not an app glitch | 2026-10-30 |
 | Live Tally reader: last snapshot ~10 h old overnight while the PC agent is seen (30 Oct 14:00 IST: 18 h, Tally not opened yet that day) | Tally is closed after office hours; the agent still checks in | 2026-11-01 |
-| Live Tally PC agent not seen for a day (31 Oct, Saturday evening: 25 h) | The office PC is off; only a finding if it stays unseen on a working day (1 Nov, Sunday: 33 h) | 2026-11-01 |
+| Live Tally PC agent not seen for a day (31 Oct, Saturday evening: 25 h) | The office PC is off; only a finding if it stays unseen on a working day (1 Nov, Sunday: 33 h, evening 49 h) | 2026-11-01 |
 | Postgres log errors whose query ends in `-- source: POST /mcp` | Come from the run's own checks, not the app | 2026-10-31 |
-| Gmail pickup has found no new buyer PO for days | No buyer has emailed a PO; not a glitch (1 Nov evening: 43 h) | 2026-11-01 |
+| Gmail pickup has found no new buyer PO for days | No buyer has emailed a PO; not a glitch (1 Nov evening: 50 h) | 2026-11-01 |
 | Factory PO emails all go to merchandiser@sourcingo.in | Test inbox mode, on purpose until Dheeraj says switch | 2026-10-31 |
 | Markers screen paused | MARKERS_ON flag, on purpose | 2026-10-31 |
 | Supabase advisors: security-definer functions callable by anon/authenticated, RLS on with no policy, one mutable search_path, leaked-password check off | Long-standing by design (the app's RPCs are security definer and check the role inside); not new | 2026-11-01 |
@@ -88,15 +88,18 @@ made-up token (/po, /f, /s), print and PDF views (A4, many styles), printing fro
 | 2026-11-01 | QC record (Record QC sheet) | keyboard only, desk light, quality | Opens with focus on Close, Tab walks style, type, Pass/Fail, fields; Escape closes and focus returns to Record QC: fine |
 | 2026-11-01 | Factory panel, buyer page | empty state: a factory and a buyer with no orders, phone + desk, light + dark | Plain "No open orders" in English and Hindi; a factory or buyer login without its factory or buyer can't exist (database check). Fine |
 | 2026-11-01 | Order page tabs, Details save, every sheet (Record QC, Update progress, factory Mark step done, search) | browser / phone Back (exploration: Back with a sheet open) | Order tabs and saves: Back walks the tabs, then leaves, fine. But Back with a sheet open left the page (a factory on its panel left the app) and threw away what was typed. Fixed (this run's PR): every sheet takes one history entry, Back closes it; Close, Escape and saving take the entry off; a search pick replaces it, so Back from the order returns to where search was opened |
+| 2026-11-01 | Help sheet ("Open Brief" and every topic link), Start production sheet ("add the buyer's PO"), inquiry sheet links | phone Back after following a link inside a sheet (exploration) | The new page opened, but the first Back did nothing (it landed on the sheet's leftover history entry), so it took two Backs to return. Fixed (this run's PR): `sheet-back.tsx` takes the sheet's entry off first, then opens the link (a same-page part like #details-po opens as a plain hash change); one Back returns |
+| 2026-11-01 | Record cheque, cheque page | slow network (2 s latency) + double and triple tap, accounts phone | One cheque saved, button says "Saving…" and is disabled, lands on the cheque with "saved": fine. But the cheque page and the ticked-cheques bar showed both "Mark deposited" and "Mark cleared" as primary (DESIGN.md: one primary). Now only the next bank step is primary; an owner's "Correct to" button never is (this run's PR) |
 
 Not yet looked at from any angle beyond the crawl: date edges (month and year end; a year-old order done 1 Nov),
 two people on the style sizes and QC record (only order Details so far), empty states for roles other than owner,
 factory PO accept link with a real token (accept twice, accept after approval withdrawn; needs the po-inbox function, the local stand-in can't test it).
-Print views not yet looked at: buyer PO PDF; a printed form's Styles table is cut at the right edge (nobody prints a blank form, low value). Angles never tried: slow network on a whole save flow (only the challan number so far), keyboard only on order page Details (QC record done 1 Nov, factory panel 31 Oct), Back inside the Help sheet after following one of its links, year end with the server's clock (only checked by reading the date code: India-time today, other years shown with the year).
+Print views not yet looked at: buyer PO PDF; a printed form's Styles table is cut at the right edge (nobody prints a blank form, low value). Angles never tried: slow network on a whole save flow (challan number 30 Oct, record cheque 1 Nov; not yet invoice, factory bill, QC record with photos), keyboard only on order page Details (QC record done 1 Nov, factory panel 31 Oct), a link inside a sheet opened in a new tab (long-press on a phone), year end with the server's clock (only checked by reading the date code: India-time today, other years shown with the year).
 
 ## Closed
 | Item | How | Date |
 |---|---|---|
+| First Back after a link inside a sheet (Help, Start production, inquiry) did nothing; two primary buttons on the cheque page | Fixed (this run's PR) | 2026-11-01 |
 | Phone Back with a sheet open left the page and lost the half-filled sheet | Fixed (this run's PR): `src/components/sheet-back.tsx` | 2026-11-01 |
 | Dates written without their year on nine screens (Brief, next step, Today, styles, samples, bills); order page extra buttons overflowing on a phone | Fixed (this run's PR) | 2026-11-01 |
 | New order: ship date before PO date showed a raw database error; negative rate said "must be a number" | Plain messages + ship date can't be picked before the PO date (this run's PR) | 2026-10-29 |
