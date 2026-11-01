@@ -1,5 +1,6 @@
 // Where an order is on its way from buyer PO to shipped, and the one thing to do next.
 // The order page, the orders list and its pipeline all read this, so every screen names the same next step.
+import { dayNear } from "./format.ts";
 
 export type StageKey = "factory" | "plan" | "approve" | "make" | "qc" | "ship" | "done";
 
@@ -62,10 +63,8 @@ const STEP_LABEL: Record<string, string> = {
   final_qc: "Final QC", ex_factory: "Ex-factory",
 };
 const ORDER = Object.keys(STEP_LABEL);
-const dm = (d: string) => {
-  const m = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-  return `${Number(d.slice(8, 10))} ${m[Number(d.slice(5, 7)) - 1]}`;
-};
+// "12 Sep", with the year when it isn't this year's ("12 Sep 2025"), so a very old order doesn't read as recent.
+const dm = (d: string, today: string) => dayNear(d, today);
 
 export function journey(j: JourneyInput): Journey {
   const r = route(j);
@@ -75,7 +74,7 @@ export function journey(j: JourneyInput): Journey {
   if (late > 0 && j.role !== "quality" && ["factory", "plan", "approve", "make"].includes(r.stage)) {
     return { ...r, next: {
       title: `${late} ${late === 1 ? "day" : "days"} past the ship date`,
-      detail: `It was due ${dm(j.due!)}. Agree a new ship date with the buyer and the factory, and say why it moved, so everyone works to the real date.`,
+      detail: `It was due ${dm(j.due!, j.today)}. Agree a new ship date with the buyer and the factory, and say why it moved, so everyone works to the real date.`,
       action: { kind: "date" }, label: "Set new ship date", tone: "bad",
     } };
   }
@@ -160,14 +159,14 @@ function route(j: JourneyInput): Journey {
     // Quality owns the updates from the floor (Dheeraj, 26 Oct 2026): it visits the factory and posts every step.
     if (!team) {
       return { ...base, stage: "make", next: {
-        title: late ? `${overdue} ${overdue === 1 ? "step needs" : "steps need"} an update from the floor` : nextStep ? `Next: ${nextStep.label}${nextStep.planned ? ` by ${dm(nextStep.planned)}` : ""}` : "In production",
+        title: late ? `${overdue} ${overdue === 1 ? "step needs" : "steps need"} an update from the floor` : nextStep ? `Next: ${nextStep.label}${nextStep.planned ? ` by ${dm(nextStep.planned, j.today)}` : ""}` : "In production",
         detail: `Visit the factory and post each style's step with photos: done, on track, running late or a problem. ${done} of ${total} steps done.`,
         action: { kind: "visit" }, label: "Post update", tone: late ? (catchUp ? "warn" : "bad") : "info",
       } };
     }
     return { ...base, stage: "make", next: {
       title: catchUp ? `${overdue} ${overdue === 1 ? "step needs" : "steps need"} an update`
-        : late ? `${overdue} ${overdue === 1 ? "step is" : "steps are"} past target` : nextStep ? `Next: ${nextStep.label}${nextStep.planned ? ` by ${dm(nextStep.planned)}` : ""}` : "In production",
+        : late ? `${overdue} ${overdue === 1 ? "step is" : "steps are"} past target` : nextStep ? `Next: ${nextStep.label}${nextStep.planned ? ` by ${dm(nextStep.planned, j.today)}` : ""}` : "In production",
       detail: catchUp ? `Their targets have passed with no Done date. Mark what's done, and give the rest a new target. The ship date still holds. ${done} of ${total} steps done.`
         : late ? `Mark what's done, or chase the factory for the rest.${risk > 0 ? ` At this pace it ships about ${risk} ${risk === 1 ? "day" : "days"} late.` : ""} ${done} of ${total} steps done.`
         : `${done} of ${total} steps done. Mark steps done as the factory finishes them.`,

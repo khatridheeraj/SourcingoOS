@@ -92,6 +92,9 @@ test("an order past its ship date asks the orders team for a new date first", ()
   assert.equal(r.next.title, "44 days past the ship date");
   assert.equal(r.next.tone, "bad");
   assert.equal(j({ due: "2026-10-23" }).next.title, "1 day past the ship date");
+  // A very old order says which year it was due, so it can't read as last month.
+  assert.match(r.next.detail, /It was due 10 Sep\. /);
+  assert.match(j({ due: "2025-09-10" }).next.detail, /It was due 10 Sep 2025\. /);
 });
 test("a ship date today or ahead, Quality, and packed orders keep their usual next step", () => {
   assert.equal(j({ due: today }).next.action.kind, "update");

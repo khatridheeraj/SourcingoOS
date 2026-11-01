@@ -52,3 +52,22 @@ test("no screen formats an English date with Intl's short month (it writes \"Sep
   walk(new URL("..", import.meta.url).pathname);
   assert.deepEqual(bad, [], "use day/dayNear/dayTimeNear from format.ts instead");
 });
+
+test("no screen writes a day and month by hand (a date from last year would lose its year)", async () => {
+  const { readdirSync, readFileSync, statSync } = await import("node:fs");
+  const { join } = await import("node:path");
+  const bad: string[] = [];
+  const walk = (dir: string) => {
+    for (const f of readdirSync(dir)) {
+      const p = join(dir, f);
+      if (statSync(p).isDirectory()) walk(p);
+      else if (/\.tsx?$/.test(f) && !f.endsWith(".test.ts") && f !== "format.ts") {
+        readFileSync(p, "utf8").split("\n").forEach((l, i) => {
+          if (/\[Number\(\w+\.slice\(5, 7\)\) - 1\]/.test(l)) bad.push(`${p}:${i + 1}`);
+        });
+      }
+    }
+  };
+  walk(new URL("..", import.meta.url).pathname);
+  assert.deepEqual(bad, [], "use dayNear from format.ts, which keeps the year for other years");
+});

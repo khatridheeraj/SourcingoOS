@@ -54,9 +54,8 @@ const blank: Cell = { planned_on: "", done_on: "", not_needed: false };
 const key = (lineId: string, stage: string) => `${lineId}:${stage}`;
 const plural = (n: number) => `${n} ${n === 1 ? "day" : "days"}`;
 const addDays = (d: string, n: number) => new Date(Date.parse(d) + n * 86_400_000).toISOString().slice(0, 10);
-const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 // "10 Sep" from YYYY-MM-DD, without the year (the order's dates sit within a few months).
-const dm = (d: string) => `${Number(d.slice(8, 10))} ${MONTHS[Number(d.slice(5, 7)) - 1]}`;
+const dm = (d: string) => dayNear(d);
 const same = (a: Cell, b: Cell) => a.planned_on === b.planned_on && a.done_on === b.done_on && a.not_needed === b.not_needed;
 
 // Where a step stands against its TNA date.

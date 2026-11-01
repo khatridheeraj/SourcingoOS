@@ -1,5 +1,6 @@
 // The morning brief: what is at risk, late or waiting, worked out from brief_data() in the database.
 // One source for the Brief page, its WhatsApp text and the 9 am email.
+import { dayNear } from "./format";
 import { tidyLedger } from "./payables";
 import { project, shipRisk } from "./tna-plan";
 
@@ -35,10 +36,9 @@ export type BriefItem = { text: string; sub?: string; href: string };
 export type BriefSection = { key: string; title: string; tone: "bad" | "warn" | "info" | "ok"; items: BriefItem[] };
 export type Brief = { title: string; headline: string; sections: BriefSection[] };
 
-const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 // Timestamps come in UTC; the day they fall on is India's.
 const istDay = (t: string) => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(new Date(t));
-const dm = (d: string) => `${Number(d.slice(8, 10))} ${MONTHS[Number(d.slice(5, 7)) - 1]}`;
+const dm = (d: string) => dayNear(d);
 const days = (n: number) => `${n} ${n === 1 ? "day" : "days"}`;
 const diff = (a: string, b: string) => Math.round((Date.parse(b) - Date.parse(a)) / 86_400_000);
 const inr = new Intl.NumberFormat("en-IN", { maximumFractionDigits: 0 });

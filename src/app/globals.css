@@ -1911,10 +1911,12 @@ main:focus { outline: none; }
   .jr-more { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
   .jr-more > * { flex: 1 1 auto; }
   .jr-more .btn { width: 100%; }
+  /* On a phone the extra buttons share a row while their words fit, and wrap to a second row when they don't
+     (three equal columns at 390px pushed "Update progress" out of its button): two to a row. */
   @media (max-width: 760px) {
     .jr-acts { min-width: 0; }
-    .jr-more { flex-wrap: nowrap; }
-    .jr-more > * { flex: 1 1 0; min-width: 0; }
+    .jr-more { flex-wrap: wrap; }
+    .jr-more > * { flex: 1 1 40%; min-width: 0; }
   }
 }
 @layer components {

@@ -12,8 +12,7 @@ import { waLink } from "@/lib/whatsapp";
 import { addSample, forwardSample, recordAnswer, returnSample } from "./actions";
 
 type Mode = "forward" | "return" | "answer" | "add";
-const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-const dm = (d: string) => `${Number(d.slice(8, 10))} ${MONTHS[Number(d.slice(5, 7)) - 1]}`;
+const dm = (d: string) => dayNear(d);
 const addDays = (d: string, n: number) => new Date(Date.parse(d) + n * 86_400_000).toISOString().slice(0, 10);
 const lateBy = (target: string, today: string) => { const n = Math.round((Date.parse(today) - Date.parse(target)) / 86_400_000); return `${n} ${n === 1 ? "day" : "days"}`; };
 
