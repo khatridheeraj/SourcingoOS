@@ -29,7 +29,7 @@ How to use it:
 | Live Tally reader: last snapshot ~10 h old overnight while the PC agent is seen (30 Oct 14:00 IST: 18 h, Tally not opened yet that day) | Tally is closed after office hours; the agent still checks in | 2026-11-01 |
 | Live Tally PC agent not seen for a day (31 Oct, Saturday evening: 25 h) | The office PC is off; only a finding if it stays unseen on a working day (1 Nov, Sunday: 33 h) | 2026-11-01 |
 | Postgres log errors whose query ends in `-- source: POST /mcp` | Come from the run's own checks, not the app | 2026-10-31 |
-| Gmail pickup has found no new buyer PO for days | No buyer has emailed a PO; not a glitch | 2026-11-01 |
+| Gmail pickup has found no new buyer PO for days | No buyer has emailed a PO; not a glitch (1 Nov evening: 43 h) | 2026-11-01 |
 | Factory PO emails all go to merchandiser@sourcingo.in | Test inbox mode, on purpose until Dheeraj says switch | 2026-10-31 |
 | Markers screen paused | MARKERS_ON flag, on purpose | 2026-10-31 |
 | Supabase advisors: security-definer functions callable by anon/authenticated, RLS on with no policy, one mutable search_path, leaked-password check off | Long-standing by design (the app's RPCs are security definer and check the role inside); not new | 2026-11-01 |
@@ -49,7 +49,7 @@ Angles: phone light, phone dark, desk light, desk dark, each of the 7 roles (own
 accounts, factory, buyer), empty state (no orders, no styles, no photos), rush order (ships in 1 to 3 days),
 order already late, large order (20+ styles, 50,000+ pieces, long names), fabric order (metres), part shipment,
 Hindi or long text in names and notes, zero and huge money amounts, slow network (throttle in a short Playwright script) and double taps,
-browser back after saving, two people editing the same order, date edges (month end, year end, today vs
+browser back after saving, phone Back with a sheet open, two people editing the same order, date edges (month end, year end, today vs
 tomorrow), keyboard only, form errors (blank, wrong format, negative numbers), public links with a wrong or
 made-up token (/po, /f, /s), print and PDF views (A4, many styles), printing from dark mode, a brand-new company with nothing in it, signed out / spent sign-in links, a very old order (a year past its ship date).
 
@@ -86,15 +86,18 @@ made-up token (/po, /f, /s), print and PDF views (A4, many styles), printing fro
 | 2026-11-01 | Order page, Brief, Today, Orders | a very old order (ship date a year ago, part shipped), owner + merch phone (exploration: very old order) | The Brief said "ship date 28 Oct has passed, 369 days ago" with no year, and the next step "It was due 10 Sep" never said which year: nine screens wrote day and month by hand. Now they all use `dayNear` (adds the year for another year), a unit test fails if any file does it again, and journey.test checks an old due date (this run's PR). Orders list and ship clock already showed the year |
 | 2026-11-01 | Order page next-step card | phone light + dark, owner and merch, three extra buttons (Update progress, Status link, Share update) | At 390px the three sat in equal columns and "Update progress" spilled out of its button on every order showing all three. Now two to a row, the third below (this run's PR) |
 | 2026-11-01 | QC record (Record QC sheet) | keyboard only, desk light, quality | Opens with focus on Close, Tab walks style, type, Pass/Fail, fields; Escape closes and focus returns to Record QC: fine |
+| 2026-11-01 | Factory panel, buyer page | empty state: a factory and a buyer with no orders, phone + desk, light + dark | Plain "No open orders" in English and Hindi; a factory or buyer login without its factory or buyer can't exist (database check). Fine |
+| 2026-11-01 | Order page tabs, Details save, every sheet (Record QC, Update progress, factory Mark step done, search) | browser / phone Back (exploration: Back with a sheet open) | Order tabs and saves: Back walks the tabs, then leaves, fine. But Back with a sheet open left the page (a factory on its panel left the app) and threw away what was typed. Fixed (this run's PR): every sheet takes one history entry, Back closes it; Close, Escape and saving take the entry off; a search pick replaces it, so Back from the order returns to where search was opened |
 
 Not yet looked at from any angle beyond the crawl: date edges (month and year end; a year-old order done 1 Nov),
 two people on the style sizes and QC record (only order Details so far), empty states for roles other than owner,
 factory PO accept link with a real token (accept twice, accept after approval withdrawn; needs the po-inbox function, the local stand-in can't test it).
-Print views not yet looked at: buyer PO PDF; a printed form's Styles table is cut at the right edge (nobody prints a blank form, low value). Angles never tried: slow network on a whole save flow (only the challan number so far), keyboard only on order page Details (QC record done 1 Nov, factory panel 31 Oct), empty states for the factory and buyer roles, browser back on the order page's own forms (plan, QC, dispatch).
+Print views not yet looked at: buyer PO PDF; a printed form's Styles table is cut at the right edge (nobody prints a blank form, low value). Angles never tried: slow network on a whole save flow (only the challan number so far), keyboard only on order page Details (QC record done 1 Nov, factory panel 31 Oct), Back inside the Help sheet after following one of its links, year end with the server's clock (only checked by reading the date code: India-time today, other years shown with the year).
 
 ## Closed
 | Item | How | Date |
 |---|---|---|
+| Phone Back with a sheet open left the page and lost the half-filled sheet | Fixed (this run's PR): `src/components/sheet-back.tsx` | 2026-11-01 |
 | Dates written without their year on nine screens (Brief, next step, Today, styles, samples, bills); order page extra buttons overflowing on a phone | Fixed (this run's PR) | 2026-11-01 |
 | New order: ship date before PO date showed a raw database error; negative rate said "must be a number" | Plain messages + ship date can't be picked before the PO date (this run's PR) | 2026-10-29 |
 | Order hero stray dot, catalogue "No step done yet" chips and shuffled styles, long names flooding catalogue cards, Reports step bars reading as "0% late", factory PO print losing columns with long style names | Fixed (this run's PR) | 2026-10-30 |

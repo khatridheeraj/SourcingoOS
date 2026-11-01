@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { searchAll, type Hit } from "@/app/(app)/search-actions";
 import { Icon, type IconName, type NavGroup } from "@/components/nav";
+import { leaveSheet } from "@/components/sheet-back";
 
 const EVENT = "sourcingo:search";
 export const openSearch = () => window.dispatchEvent(new Event(EVENT));
@@ -68,7 +69,13 @@ export function SearchPalette({ groups }: { groups: NavGroup[] }) {
   const term = q.trim();
   const list: (Hit & { icon?: IconName })[] = term ? hits : jump;
   const close = () => box.current?.close();
-  const go = (h: Hit) => { close(); router.push(h.href); };
+  // The search's own history entry (see sheet-back) becomes the page picked, so Back from it returns here.
+  const go = (h: Hit) => {
+    const inSheet = !!window.history.state?.sheet;
+    leaveSheet();
+    close();
+    if (inSheet) router.replace(h.href); else router.push(h.href);
+  };
   const onKey = (e: React.KeyboardEvent) => {
     if (e.key === "ArrowDown") { e.preventDefault(); setSel((s) => Math.min(list.length - 1, s + 1)); }
     else if (e.key === "ArrowUp") { e.preventDefault(); setSel((s) => Math.max(0, s - 1)); }
