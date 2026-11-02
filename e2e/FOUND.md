@@ -18,8 +18,8 @@ How to use it:
 |---|---|---|
 | Buyer status page after the ship date has passed: say "N days past" or stay quiet? | 2026-10-26 | 2026-10-29 |
 | Nightly database backup needs a GitHub secret from him | 2026-10-24 | 2026-10-29 |
-| One buyer PO in "To check" and one held, both over 2 days old (live data, team's job). 29 Oct 17:00Z: only the held one is left; 31 Oct: 4 held (unknown senders, in Your approvals); 1 Nov: 3 held, evening 4 | 2026-10-29 | 2026-11-01 |
-| Live order SO-0004 is still open 31 days after its 30 Sep ship date: mark it shipped, close it short, or set a new ship date (team's job) | 2026-10-31 | 2026-11-01 |
+| One buyer PO in "To check" and one held, both over 2 days old (live data, team's job). 29 Oct 17:00Z: only the held one is left; 31 Oct: 4 held (unknown senders, in Your approvals); 1 Nov: 3 held, evening 4; 2 Nov: 4 | 2026-10-29 | 2026-11-02 |
+| Live order SO-0004 is still open 31 days after its 30 Sep ship date: mark it shipped, close it short, or set a new ship date (team's job) | 2026-10-31 | 2026-11-02 |
 
 ## Known (not new, never report)
 | Item | Why it is not a finding | Last seen |
@@ -27,16 +27,17 @@ How to use it:
 | Crawl flags a page "slow" or ERR_CONNECTION_* on a cold or reloading dev server | Fast on reload; only a finding if it stays slow on recheck | 2026-10-29 |
 | Second `e2e/run.sh` on a stack that is still running: crawl shows 404s everywhere (PostgREST keeps the dropped database's grants) | Stop ports 3100, 54321, 54322 (`fuser -k`) and run it again; not an app glitch | 2026-10-30 |
 | Live Tally reader: last snapshot ~10 h old overnight while the PC agent is seen (30 Oct 14:00 IST: 18 h, Tally not opened yet that day) | Tally is closed after office hours; the agent still checks in | 2026-11-01 |
-| Live Tally PC agent not seen for a day (31 Oct, Saturday evening: 25 h) | The office PC is off; only a finding if it stays unseen on a working day (1 Nov, Sunday: 33 h, evening 49 h) | 2026-11-01 |
+| Live Tally PC agent not seen for a day (31 Oct, Saturday evening: 25 h) | The office PC is off; only a finding if it stays unseen on a working day (1 Nov, Sunday: 33 h, evening 49 h; Mon 2 Nov 05:55 IST before office: 57 h) | 2026-11-02 |
 | Postgres log errors whose query ends in `-- source: POST /mcp` | Come from the run's own checks, not the app | 2026-10-31 |
-| Gmail pickup has found no new buyer PO for days | No buyer has emailed a PO; not a glitch (1 Nov evening: 50 h) | 2026-11-01 |
+| Gmail pickup has found no new buyer PO for days | No buyer has emailed a PO; not a glitch (2 Nov early: 59 h) | 2026-11-02 |
 | Factory PO emails all go to merchandiser@sourcingo.in | Test inbox mode, on purpose until Dheeraj says switch | 2026-10-31 |
 | Markers screen paused | MARKERS_ON flag, on purpose | 2026-10-31 |
-| Supabase advisors: security-definer functions callable by anon/authenticated, RLS on with no policy, one mutable search_path, leaked-password check off | Long-standing by design (the app's RPCs are security definer and check the role inside); not new | 2026-11-01 |
+| Supabase advisors: security-definer functions callable by anon/authenticated, RLS on with no policy, one mutable search_path, leaked-password check off | Long-standing by design (the app's RPCs are security definer and check the role inside); not new | 2026-11-02 |
 | Supabase performance advisors: unindexed foreign keys, unused indexes, auth RLS initplan, multiple permissive policies, one table without a primary key | Long-standing INFO/WARN on a 33 MB database; nothing slow in the logs | 2026-10-31 |
 | Morning brief "shipped in part" / "closed short" lines and Home's deleted-PO line say "pcs" even for a fabric order | The numbers come from database functions that don't return the unit; fix with the next migration a thread makes, not a check run | 2026-10-30 |
 | Local stack: Next dev logs "The destination stream closed early" after a save that redirects | Dev-server noise when a page is left mid-stream; not seen in production | 2026-10-29 |
 | Live auth log: "One-time token not found" on /verify (a sign-in link opened twice, or first by the mail app's link checker) | Someone already signed in now lands on the app instead of "expired" (2026-10-30 PR); a stray one is not a glitch | 2026-10-30 |
+| Form Save buttons on a phone are content-width, not full width (dispatch steps, order Details, most forms); DESIGN.md asks full width for primary buttons | A sweep across every form, not a check-run fix; the button is easy to hit (40px+). Leave unless Dheeraj asks | 2026-11-02 |
 | Factory PO routine asking for database permission | He granted it on 2026-10-29 14:22Z. If a read or write is blocked, log it here and stay quiet | 2026-10-29 |
 
 ## Coverage
@@ -51,7 +52,7 @@ order already late, large order (20+ styles, 50,000+ pieces, long names), fabric
 Hindi or long text in names and notes, zero and huge money amounts, slow network (throttle in a short Playwright script) and double taps,
 browser back after saving, phone Back with a sheet open, two people editing the same order, date edges (month end, year end, today vs
 tomorrow), keyboard only, form errors (blank, wrong format, negative numbers), public links with a wrong or
-made-up token (/po, /f, /s), print and PDF views (A4, many styles), printing from dark mode, a brand-new company with nothing in it, signed out / spent sign-in links, a very old order (a year past its ship date).
+made-up token (/po, /f, /s), print and PDF views (A4, many styles), printing from dark mode, a brand-new company with nothing in it, signed out / spent sign-in links, a very old order (a year past its ship date), hand-edited or stale web addresses (bad filter values, page past the end, odd characters in ?next=).
 
 | Date | Area | Angle | Result |
 |---|---|---|---|
@@ -90,15 +91,19 @@ made-up token (/po, /f, /s), print and PDF views (A4, many styles), printing fro
 | 2026-11-01 | Order page tabs, Details save, every sheet (Record QC, Update progress, factory Mark step done, search) | browser / phone Back (exploration: Back with a sheet open) | Order tabs and saves: Back walks the tabs, then leaves, fine. But Back with a sheet open left the page (a factory on its panel left the app) and threw away what was typed. Fixed (this run's PR): every sheet takes one history entry, Back closes it; Close, Escape and saving take the entry off; a search pick replaces it, so Back from the order returns to where search was opened |
 | 2026-11-01 | Help sheet ("Open Brief" and every topic link), Start production sheet ("add the buyer's PO"), inquiry sheet links | phone Back after following a link inside a sheet (exploration) | The new page opened, but the first Back did nothing (it landed on the sheet's leftover history entry), so it took two Backs to return. Fixed (this run's PR): `sheet-back.tsx` takes the sheet's entry off first, then opens the link (a same-page part like #details-po opens as a plain hash change); one Back returns |
 | 2026-11-01 | Record cheque, cheque page | slow network (2 s latency) + double and triple tap, accounts phone | One cheque saved, button says "Saving…" and is disabled, lands on the cheque with "saved": fine. But the cheque page and the ticked-cheques bar showed both "Mark deposited" and "Mark cleared" as primary (DESIGN.md: one primary). Now only the next bank step is primary; an owner's "Correct to" button never is (this run's PR) |
+| 2026-11-02 | Every page that reads filters from its web address (Home, Orders, Styles, Today, Updates, Reports, Activity, Inquiries, Samples, Tally, Factories, Goods, Feedback, new order/invoice/cheque) and /login?next= | hand-edited or stale web addresses: junk, negative, huge, HTML, doubled values (exploration) | No crashes. But Style catalogue `?page=` past the last page (an old bookmark, or styles shipped since) showed PostgREST's raw "Requested range not satisfiable" over "No styles yet": now goes to the last page. And `/login?next=/<tab>/other-site` sent a signed-in person (and, after the sign-in link, anyone) off the app, because the browser drops the tab and reads `//other-site`; a line break gave a server error. `safeNext` now reads the address the way a browser does, with tests (this run's PR) |
+| 2026-11-02 | Record a purchase (factory bill) | slow network (2 s latency, slow upload) + triple tap, merch phone | Button disables, one dispatch saved, invoice step opens: fine |
+| 2026-11-02 | Order page Details | keyboard only, merch desk light + dark | Tab order follows the screen and every stop shows a ring. But after Enter (or Save changes) the form reloads from the saved copy and focus fell to the top of the page, 15 menu stops away. Fixed (this run's PR): focus goes back to the same field or to Save changes |
 
 Not yet looked at from any angle beyond the crawl: date edges (month and year end; a year-old order done 1 Nov),
-two people on the style sizes and QC record (only order Details so far), empty states for roles other than owner,
+two people on the style sizes and QC record (only order Details so far),
 factory PO accept link with a real token (accept twice, accept after approval withdrawn; needs the po-inbox function, the local stand-in can't test it).
-Print views not yet looked at: buyer PO PDF; a printed form's Styles table is cut at the right edge (nobody prints a blank form, low value). Angles never tried: slow network on a whole save flow (challan number 30 Oct, record cheque 1 Nov; not yet invoice, factory bill, QC record with photos), keyboard only on order page Details (QC record done 1 Nov, factory panel 31 Oct), a link inside a sheet opened in a new tab (long-press on a phone), year end with the server's clock (only checked by reading the date code: India-time today, other years shown with the year).
+Print views not yet looked at: buyer PO PDF; a printed form's Styles table is cut at the right edge (nobody prints a blank form, low value). Angles never tried: slow network on a whole save flow (challan number 30 Oct, record cheque 1 Nov; not yet invoice, factory bill, QC record with photos), keyboard only on Payments, Bills to pay and Inquiries, a link inside a sheet opened in a new tab (long-press on a phone), year end with the server's clock (only checked by reading the date code: India-time today, other years shown with the year).
 
 ## Closed
 | Item | How | Date |
 |---|---|---|
+| Sign-in `?next=` with a tab or line break could leave the app; Style catalogue page past the end showed a raw error; saving order Details dropped keyboard focus | Fixed (this run's PR) | 2026-11-02 |
 | First Back after a link inside a sheet (Help, Start production, inquiry) did nothing; two primary buttons on the cheque page | Fixed (this run's PR) | 2026-11-01 |
 | Phone Back with a sheet open left the page and lost the half-filled sheet | Fixed (this run's PR): `src/components/sheet-back.tsx` | 2026-11-01 |
 | Dates written without their year on nine screens (Brief, next step, Today, styles, samples, bills); order page extra buttons overflowing on a phone | Fixed (this run's PR) | 2026-11-01 |

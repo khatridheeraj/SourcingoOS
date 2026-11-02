@@ -12,4 +12,12 @@ test("after sign-in: back to the page they opened, never off the app", () => {
   assert.equal(safeNext("https://evil.com"), "/today");
   assert.equal(safeNext("/login?next=/x"), "/today");
   assert.equal(safeNext("/auth/confirm"), "/today");
+  // A browser drops tabs and line breaks and reads "\\" as "/": these all leave the app.
+  assert.equal(safeNext("/\t/evil.com"), "/today");
+  assert.equal(safeNext("/\n/evil.com"), "/today");
+  assert.equal(safeNext("/\r\n/evil.com"), "/today");
+  assert.equal(safeNext("/\t\\evil.com"), "/today");
+  assert.equal(safeNext("/%09/evil.com"), "/%09/evil.com");
+  assert.equal(safeNext("/\tlogin"), "/today");
+  assert.equal(safeNext("/orders/a b"), "/orders/a%20b");
 });
