@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { toast } from "@/components/toast";
 import { day, dayNear, money } from "@/lib/format";
 import { type Due, GROUPS, isMsme45, MSME_DAYS, MSME_LABEL, type Payable } from "@/lib/payables";
@@ -11,6 +11,10 @@ import { saveBillNote } from "./actions";
 export type BillRow = Payable & { key: string; name: string; due: Due };
 
 const dm = (d: string) => dayNear(d);
+
+// Holding or releasing a bill moves it to another group, which rebuilds its row closed, and keyboard focus fell to the
+// top of the page. The bill's key waits here until its new row mounts, which opens itself and focuses the button again.
+let reopen: string | null = null;
 
 // The text of a payment list, one supplier a line, ready for WhatsApp or the bank.
 function listText(rows: BillRow[], today: string) {
@@ -87,6 +91,15 @@ export function BillList({ rows, today }: { rows: BillRow[]; today: string }) {
 
 function Bill({ r, picked, onPick }: { r: BillRow; picked: boolean; onPick: (on: boolean) => void }) {
   const msme = isMsme45(r.msme);
+  const box = useRef<HTMLDetailsElement>(null);
+  useEffect(() => {
+    const d = box.current;
+    if (reopen !== r.key || !d) return;
+    reopen = null;
+    d.open = true;
+    d.querySelector<HTMLElement>(".bill-hold button")?.focus({ preventScroll: true });
+    d.scrollIntoView({ block: "nearest" });
+  }, [r.key, r.hold]);
   return (
     <li className={picked ? "on" : undefined}>
       {r.bill ? (
@@ -94,7 +107,7 @@ function Bill({ r, picked, onPick }: { r: BillRow; picked: boolean; onPick: (on:
           <input type="checkbox" checked={picked} onChange={(e) => onPick(e.target.checked)} />
         </label>
       ) : <span className="bill-tick" aria-hidden />}
-      <details className="bill">
+      <details className="bill" ref={box}>
         <summary>
           <span className="bill-main">
             <span className="bill-who">{r.name}</span>
@@ -130,11 +143,15 @@ function BillMore({ r }: { r: BillRow }) {
   const [note, setNote] = useState(r.note ?? "");
   const [error, setError] = useState("");
   const [pending, start] = useTransition();
+  const input = useRef<HTMLInputElement>(null);
   const save = (hold: boolean) => start(async () => {
     const res = await saveBillNote(r.ledger, r.bill!, hold, note);
     if (res.error) { setError(res.error); return; }
     setError("");
     toast(res.ok!);
+    if (hold !== r.hold) reopen = r.key;
+    // "Save note" goes away once the note is saved: keep the keyboard on the note, not the top of the page.
+    else if (document.activeElement?.closest(".bill-hold button")) input.current?.focus();
     router.refresh();
   });
   const facts: string[] = [];
@@ -156,7 +173,7 @@ function BillMore({ r }: { r: BillRow }) {
       {r.order_id && <Link className="link text-[13px]" href={`/orders/${r.order_id}#dispatch`}>Open {r.order_no}&apos;s dispatch</Link>}
       {r.bill && (
         <form className="bill-hold" onSubmit={(e) => { e.preventDefault(); save(r.hold); }}>
-          <input className="inp" value={note} maxLength={300} onChange={(e) => setNote(e.target.value)} placeholder="Note, e.g. short by 120 pcs, debit note to come" aria-label="Note on this bill" />
+          <input ref={input} className="inp" value={note} maxLength={300} onChange={(e) => setNote(e.target.value)} placeholder="Note, e.g. short by 120 pcs, debit note to come" aria-label="Note on this bill" />
           <div className="row">
             {r.hold
               ? <button type="button" className="btn sm primary" disabled={pending} onClick={() => save(false)}>Release for payment</button>

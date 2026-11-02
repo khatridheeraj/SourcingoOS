@@ -76,10 +76,17 @@ export function SearchPalette({ groups }: { groups: NavGroup[] }) {
     close();
     if (inSheet) router.replace(h.href); else router.push(h.href);
   };
+  // Ctrl or Cmd (or the middle button) opens the result in a new tab, like any link, and leaves search open here.
+  const newTab = (e: React.MouseEvent, h: Hit) => {
+    if (!(e.ctrlKey || e.metaKey || e.button === 1)) return false;
+    e.preventDefault();
+    window.open(h.href, "_blank", "noopener");
+    return true;
+  };
   const onKey = (e: React.KeyboardEvent) => {
     if (e.key === "ArrowDown") { e.preventDefault(); setSel((s) => Math.min(list.length - 1, s + 1)); }
     else if (e.key === "ArrowUp") { e.preventDefault(); setSel((s) => Math.max(0, s - 1)); }
-    else if (e.key === "Enter" && list[sel]) { e.preventDefault(); go(list[sel]); }
+    else if (e.key === "Enter" && list[sel]) { e.preventDefault(); if (e.ctrlKey || e.metaKey) window.open(list[sel].href, "_blank", "noopener"); else go(list[sel]); }
   };
   useEffect(() => { box.current?.querySelector(`[data-i="${sel}"]`)?.scrollIntoView({ block: "nearest" }); }, [sel]);
 
@@ -100,7 +107,8 @@ export function SearchPalette({ groups }: { groups: NavGroup[] }) {
           return (
             <div key={`${h.kind}:${h.href}:${i}`}>
               {head && <div className="sp-group">{head}</div>}
-              <button type="button" id={`sp-${i}`} data-i={i} role="option" aria-selected={i === sel} className="sp-row" onMouseMove={() => setSel(i)} onClick={() => go(h)}>
+              <button type="button" id={`sp-${i}`} data-i={i} role="option" aria-selected={i === sel} className="sp-row" onMouseMove={() => setSel(i)}
+                onClick={(e) => { if (!newTab(e, h)) go(h); }} onAuxClick={(e) => newTab(e, h)}>
                 <span className="sp-ic"><Icon name={h.icon ?? KIND[h.kind].icon} /></span>
                 <span className="sp-txt">
                   <span className="sp-title">{h.code && <span className="code">{h.code}</span>}{h.title}</span>

@@ -113,17 +113,23 @@ function QcForm({ order, req, onDone }: { order: QOrder; req: Open; onDone: () =
     start(async () => {
       // Each style gets its own check with its own copy of the photos, so cancelling one never touches another.
       const saved: string[] = [];
+      // When a later style fails (a dropped network, a photo that won't upload), the styles already saved come off the
+      // list, so tapping Save again records only what is left and never a second check for the same style.
+      const stop = (msg: string) => {
+        setErr(`${saved.length ? `Saved for ${saved.join(", ")}. ` : ""}${msg}`);
+        setLineIds(lineIds.filter((x) => !saved.includes(styles.find((y) => y.id === x)?.style ?? "")));
+        router.refresh();
+      };
       for (const s of picked) {
         const id = crypto.randomUUID();
         try {
           const paths = await uploadPhotos(`${order.companyId}/${order.id}/qc/${id}`, photos.map((p) => p.file));
           const res = await recordQc(order.id, id, { line_id: s.id, kind, checked_on: on, result, pieces_checked: picked.length === 1 ? pieces : "", defects: picked.length === 1 ? defects : "", notes },
             paths.map((path) => ({ path, kind: "photo" as const, file_name: "" })));
-          if (res.error) { setErr(saved.length ? `Saved for ${saved.join(", ")}. ${s.style}: ${res.error}` : res.error); setLineIds(lineIds.filter((x) => !saved.includes(styles.find((y) => y.id === x)?.style ?? ""))); router.refresh(); return; }
+          if (res.error) { stop(saved.length ? `${s.style}: ${res.error}` : res.error); return; }
           saved.push(s.style);
         } catch (e) {
-          setErr(`${saved.length ? `Saved for ${saved.join(", ")}. ` : ""}${e instanceof Error ? e.message : "The photos didn't upload. Try again."}`);
-          router.refresh();
+          stop(e instanceof Error ? e.message : "The photos didn't upload. Try again.");
           return;
         }
       }

@@ -36,7 +36,8 @@ export async function uploadPhotos(folder: string, files: File[]): Promise<strin
   for (const { name, blob } of ready) {
     const path = `${folder}/${crypto.randomUUID()}.jpg`;
     const { error } = await supabase.storage.from(PHOTO_BUCKET).upload(path, blob, { contentType: "image/jpeg" });
-    if (error) throw new Error(`Couldn't upload ${name}: ${error.message}`);
+    // The browser's own "Failed to fetch" / "NetworkError" means the connection dropped, which a person can fix.
+    if (error) throw new Error(`Couldn't upload ${name}: ${/fetch|network/i.test(error.message) ? "the connection dropped. Check the network and try again." : error.message}`);
     paths.push(path);
   }
   return paths;
