@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
 import { toast } from "@/components/toast";
 import { DEFAULT_DAYS, MSME_DAYS, type Msme } from "@/lib/payables";
 import { saveTerms } from "./actions";
@@ -13,7 +13,10 @@ export function TermsForm({ ledger, days, msme, udyam }: { ledger: string; days:
   const [v, setV] = useState(start0);
   const [error, setError] = useState("");
   const [pending, start] = useTransition();
-  const dirty = v.days !== start0.days || v.msme !== start0.msme || v.udyam !== start0.udyam;
+  const daysBox = useRef<HTMLInputElement>(null);
+  // "60" typed out, or "045", is the same as what is saved: no Save button left behind after saving it.
+  const sameDays = Number(v.days || DEFAULT_DAYS) === days;
+  const dirty = !sameDays || v.msme !== start0.msme || v.udyam.trim() !== start0.udyam;
   const small = v.msme === "micro" || v.msme === "small";
   return (
     <form className="terms" onSubmit={(e) => {
@@ -23,12 +26,14 @@ export function TermsForm({ ledger, days, msme, udyam }: { ledger: string; days:
         if (r.error) { setError(r.error); return; }
         setError("");
         toast(r.ok!);
+        // Save terms goes away once saved: keep the keyboard in the form, not the top of the page.
+        if (document.activeElement?.closest("button")) daysBox.current?.focus();
         router.refresh();
       });
     }}>
       <label>
         <span>Payment days</span>
-        <input className="inp num" inputMode="numeric" value={v.days} placeholder={String(DEFAULT_DAYS)} onChange={(e) => setV({ ...v, days: e.target.value.replace(/\D/g, "").slice(0, 3) })} />
+        <input ref={daysBox} className="inp num" inputMode="numeric" value={v.days} placeholder={String(DEFAULT_DAYS)} onChange={(e) => setV({ ...v, days: e.target.value.replace(/\D/g, "").slice(0, 3) })} />
       </label>
       <label>
         <span>MSME (Udyam)</span>
