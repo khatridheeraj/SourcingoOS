@@ -30,14 +30,24 @@ export default async function StylesPage({ searchParams }: PageProps<"/styles">)
   const supabase = await createClient();
   const [buyers, factories] = await Promise.all([loadBuyers(), loadFactories()]);
 
-  let query = supabase.from("order_lines")
-    .select("id, style, description, colour, qty, factory_id, photo_path, fabric, sizes, product, orders!inner(id, order_no, buyer_id, buyer_po, status, ship_date, revised_ship_date)", { count: "exact" })
-    .eq("company_id", me.companyId).is("removed_at", null);
-  if (!all) query = query.eq("orders.status", "open");
-  if (buyer) query = query.eq("orders.buyer_id", buyer);
-  if (factory) query = query.eq("factory_id", factory);
-  if (q) query = query.or(["style", "description", "colour", "fabric"].map((c) => `${c}.ilike.*${q}*`).join(","));
-  const { data, count, error } = await query.order("created_at", { ascending: false }).order("position").order("id").range((page - 1) * PAGE, page * PAGE - 1);
+  const styles = (head = false) => {
+    let query = supabase.from("order_lines")
+      .select("id, style, description, colour, qty, factory_id, photo_path, fabric, sizes, product, orders!inner(id, order_no, buyer_id, buyer_po, status, ship_date, revised_ship_date)", { count: "exact", head })
+      .eq("company_id", me.companyId!).is("removed_at", null);
+    if (!all) query = query.eq("orders.status", "open");
+    if (buyer) query = query.eq("orders.buyer_id", buyer);
+    if (factory) query = query.eq("factory_id", factory);
+    if (q) query = query.or(["style", "description", "colour", "fabric"].map((c) => `${c}.ilike.*${q}*`).join(","));
+    return query;
+  };
+  const { data, count, error } = await styles().order("created_at", { ascending: false }).order("position").order("id").range((page - 1) * PAGE, page * PAGE - 1);
+  // A page past the end (an old bookmark, or styles shipped since the link was made): go to the last page there is.
+  if (error?.code === "PGRST103" && page > 1) {
+    const { count: n } = await styles(true);
+    const last = Math.max(1, Math.ceil((n ?? 0) / PAGE));
+    const p = new URLSearchParams({ ...(q ? { q } : {}), ...(buyer ? { buyer } : {}), ...(factory ? { factory } : {}), ...(all ? { show: "all" } : {}), ...(last > 1 ? { page: String(last) } : {}) });
+    redirect(`/styles${p.size ? `?${p}` : ""}`);
+  }
   const rows = (data ?? []) as unknown as Row[];
 
   const paths = rows.map((r) => r.photo_path).filter(Boolean) as string[];

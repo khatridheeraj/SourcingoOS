@@ -15,6 +15,11 @@ type Option = { id: string; label: string };
 const blankLine = (): LineInput => ({ style: "", description: "", colour: "", qty: "", buyer_rate: "", factory_id: "", factory_rate: "" });
 const n = (s: string) => Number(s.replace(/[,₹\s]/g, "")) || 0;
 
+// Saving an open order reloads the form from the saved copy (a new form), and the Save button is disabled while
+// saving: either way keyboard focus fell to the top of the page, 15 menu stops away. Which field had it is kept
+// here across that reload and put back.
+let refocus: number | null = null;
+
 // overdueShown: the buyer whose overdue invoices the page already warns about, so the form doesn't say it twice.
 // inquiryId: the buyer inquiry this new order comes from.
 // companyId: given on a new order typed in by hand, so the buyer's PO file can go with it.
@@ -118,14 +123,28 @@ export function OrderForm({ initial, initialLines, buyers, factories, team, inco
       if (!order.id && res.id) router.replace(`/orders/${res.id}?saved=1`);
       else {
         toast("Order saved");
+        refocus = focusAt.current;
         router.refresh();
       }
     });
   }
   function submit(e: React.FormEvent) {
     e.preventDefault();
+    const form = e.currentTarget as HTMLFormElement;
+    const at = Array.prototype.indexOf.call(form.elements, document.activeElement);
+    focusAt.current = at >= 0 ? at : null;
     save(false);
   }
+  const formRef = useRef<HTMLFormElement>(null);
+  const focusAt = useRef<number | null>(null);
+  // After a save: the same field in the new form, or the same one here when nothing changed and it didn't reload.
+  useEffect(() => {
+    if (pending || refocus == null) return;
+    const el = formRef.current?.elements[refocus] as HTMLElement | undefined;
+    if (!el || el === document.activeElement) return;
+    refocus = null;
+    el.focus({ preventScroll: true });
+  }, [pending]);
 
   // By keyboard, Enter on Create leaves focus where it was while "Save anyway" appears above; take it there
   // once saving has finished (a disabled button can't take focus).
@@ -160,7 +179,7 @@ export function OrderForm({ initial, initialLines, buyers, factories, team, inco
   );
 
   return (
-    <form onSubmit={submit} className="stack">
+    <form ref={formRef} onSubmit={submit} className="stack">
       <div className="panel scroll-mt-20" id="details">
         <h2>Buyer PO</h2>
         <div className="fgrid">
