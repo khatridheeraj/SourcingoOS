@@ -3,7 +3,8 @@
 import { canEditOrders, getMe } from "@/lib/auth";
 import { buyerName, loadBuyers, loadFactories } from "@/lib/data";
 import { fetchAll } from "@/lib/fetch-all";
-import { day, dueDate, qtyU, todayIST } from "@/lib/format";
+import { dayNear, dueDate, qtyU, todayIST } from "@/lib/format";
+import { STAGES, stageOf } from "@/lib/inquiries";
 import { createClient } from "@/lib/supabase/server";
 
 export type Hit = { kind: "order" | "style" | "buyer" | "factory" | "inquiry" | "po"; href: string; title: string; sub: string; code?: string; state?: string; tone?: "bad" | "ok" | "" };
@@ -23,7 +24,7 @@ export async function searchAll(raw: string): Promise<{ hits: Hit[]; error?: str
     loadBuyers(),
     loadFactories(),
     team
-      ? supabase.from("inquiries").select("id, inquiry_no, buyer_id, prospect, product, status").eq("company_id", me.companyId).order("created_at", { ascending: false }).limit(500)
+      ? supabase.from("inquiries").select("id, inquiry_no, buyer_id, prospect, product, status, sample_sent_on").eq("company_id", me.companyId).order("created_at", { ascending: false }).limit(500)
       : Promise.resolve({ data: [] }),
     team
       ? supabase.from("incoming_pos").select("id, buyer_id, buyer_po, email_subject, status, received_at").eq("company_id", me.companyId)
@@ -34,17 +35,24 @@ export async function searchAll(raw: string): Promise<{ hits: Hit[]; error?: str
   const today = todayIST();
   const bName = new Map(buyers.map((b) => [b.id, buyerName(b)]));
   const fName = new Map(factories.map((f) => [f.id, f.name]));
-  const has = (text: string) => { const t = text.toLowerCase(); return words.every((w) => t.includes(w)); };
+  // A code typed loosely ("so12", "SO 12", "enq-1") still finds SO-0012 or ENQ-0001.
+  const code = codeKey(raw);
+  const isCode = (c: string | null | undefined) => !!code && !!c && codeKey(c) === code;
+  const has = (text: string, codes: (string | null | undefined)[] = []) => {
+    if (codes.some(isCode)) return true;
+    const t = text.toLowerCase();
+    return words.every((w) => t.includes(w));
+  };
   // Exact codes first (SO-0012, a PO number), then a word at the start, then anywhere.
   const score = (fields: string[]) => {
     const t = fields.join(" ").toLowerCase();
     const q = words.join(" ");
-    return fields.some((f) => f.toLowerCase() === q) ? 0 : fields.some((f) => f.toLowerCase().startsWith(q)) ? 1 : t.includes(q) ? 2 : 3;
+    return fields.some((f) => f.toLowerCase() === q || isCode(f)) ? 0 : fields.some((f) => f.toLowerCase().startsWith(q)) ? 1 : t.includes(q) ? 2 : 3;
   };
   const state = (o: { status: string; ship_date: string | null; revised_ship_date: string | null }): { text: string; tone: Hit["tone"] } => {
     const d = dueDate(o);
     if (o.status !== "open") return { text: o.status === "shipped" ? "Shipped" : o.status === "cancelled" ? "Cancelled" : o.status, tone: o.status === "shipped" ? "ok" : "" };
-    return d ? { text: `${d < today ? "Was due" : "Ships"} ${day(d)}`, tone: d < today ? "bad" : "" } : { text: "No ship date", tone: "" };
+    return d ? { text: `${d < today ? "Was due" : "Ships"} ${dayNear(d, today)}`, tone: d < today ? "bad" : "" } : { text: "No ship date", tone: "" };
   };
 
   const orderHits: (Hit & { s: number })[] = [];
@@ -56,7 +64,7 @@ export async function searchAll(raw: string): Promise<{ hits: Hit[]; error?: str
     const st = state(o);
     const href = `/orders/${o.id}`;
     const head = [o.order_no, o.buyer_po ?? "", buyer, ...facs];
-    if (has(head.join(" "))) {
+    if (has(head.join(" "), [o.order_no, o.buyer_po])) {
       orderHits.push({ kind: "order", href, code: o.order_no, title: `${buyer}${o.buyer_po ? ` · PO ${o.buyer_po}` : ""}`,
         sub: `${lines.length} ${lines.length === 1 ? "style" : "styles"}${facs.length ? ` · ${facs.join(", ")}` : ""}`, state: st.text, tone: st.tone, s: score(head) + (o.status === "open" ? 0 : 0.5) });
       continue;
@@ -80,14 +88,21 @@ export async function searchAll(raw: string): Promise<{ hits: Hit[]; error?: str
     return { kind: "factory", href: `/?q=${encodeURIComponent(f.name)}`, title: f.name,
       sub: `Factory${f.city ? ` · ${f.city}` : ""}${f.contact_name ? ` · ${f.contact_name}` : ""} · ${n} open ${n === 1 ? "order" : "orders"}`, s: score([f.name]) };
   }) : [];
-  const inqHits: (Hit & { s: number })[] = (inqs ?? []).filter((i) => has(`${i.inquiry_no} ${i.product} ${i.prospect ?? ""} ${i.buyer_id ? bName.get(i.buyer_id) ?? "" : ""}`)).map((i) => ({
+  const inqHits: (Hit & { s: number })[] = (inqs ?? []).filter((i) => has(`${i.inquiry_no} ${i.product} ${i.prospect ?? ""} ${i.buyer_id ? bName.get(i.buyer_id) ?? "" : ""}`, [i.inquiry_no])).map((i) => ({
     kind: "inquiry", href: `/inquiries/${i.id}`, code: i.inquiry_no, title: `${(i.buyer_id && bName.get(i.buyer_id)) || i.prospect || ""} · ${i.product}`,
-    sub: `Inquiry · ${i.status}`, s: score([i.inquiry_no, i.product]) + 0.2,
+    sub: `Inquiry · ${i.status === "lost" ? "Lost" : i.status === "converted" ? "Won" : STAGES[stageOf(i)]}`, s: score([i.inquiry_no, i.product]) + 0.2,
   }));
-  const poHits: (Hit & { s: number })[] = (pos ?? []).filter((p) => has(`${p.buyer_po ?? ""} ${p.email_subject ?? ""} ${p.buyer_id ? bName.get(p.buyer_id) ?? "" : ""}`)).map((p) => ({
+  const poHits: (Hit & { s: number })[] = (pos ?? []).filter((p) => has(`${p.buyer_po ?? ""} ${p.email_subject ?? ""} ${p.buyer_id ? bName.get(p.buyer_id) ?? "" : ""}`, [p.buyer_po])).map((p) => ({
     kind: "po", href: `/pos/${p.id}`, title: `${p.buyer_id ? `${bName.get(p.buyer_id) ?? ""} · ` : ""}PO ${p.buyer_po ?? p.email_subject ?? ""}`,
-    sub: `Incoming PO · ${p.status === "held" ? "unknown sender" : "to check"} · ${day(p.received_at.slice(0, 10))}`, tone: "", s: score([p.buyer_po ?? ""]) + 0.2,
+    sub: `Incoming PO · ${p.status === "held" ? "unknown sender" : "to check"} · ${dayNear(p.received_at.slice(0, 10), today)}`, tone: "", s: score([p.buyer_po ?? ""]) + 0.2,
   }));
   const top = (xs: (Hit & { s: number })[], n: number) => xs.sort((a, b) => a.s - b.s).slice(0, n).map(({ s, ...h }) => (void s, h));
   return { hits: [...top(orderHits, 8), ...top(styleHits, 8), ...top(buyerHits, 4), ...top(factoryHits, 4), ...top(inqHits, 4), ...top(poHits, 4)] };
+}
+
+// "SO-0012", "so12", "So 012" all read as "so12": letters and the number, without separators or leading zeros.
+// Only something that looks like a code (letters then a number) gets a key, so plain words never match this way.
+function codeKey(s: string): string {
+  const m = /^([a-z]+)[\s\-/_.#]*0*(\d+)$/i.exec(s.trim());
+  return m ? `${m[1].toLowerCase()}${m[2]}` : "";
 }

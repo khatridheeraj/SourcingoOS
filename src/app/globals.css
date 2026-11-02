@@ -1601,7 +1601,7 @@ main:focus { outline: none; }
   .sp-enter { flex: none; font-size: 13px; color: var(--faint); opacity: 0; }
   .sp-row[aria-selected="true"] .sp-enter { opacity: 1; }
   .sp-empty { display: flex; flex-direction: column; gap: 4px; align-items: center; padding: 36px 16px; text-align: center; font-size: 13.5px; color: var(--muted); }
-  .sp-empty b { font-size: 15px; font-weight: 600; color: var(--foreground); }
+  .sp-empty b { max-width: 100%; overflow-wrap: anywhere; font-size: 15px; font-weight: 600; color: var(--foreground); }
   .sp-foot { display: flex; gap: 16px; padding: 9px 16px; border-top: 1px solid var(--line); font-size: 12px; color: var(--faint); flex: none; }
   .sp-foot kbd { margin-right: 3px; }
   @media (max-width: 760px) {
