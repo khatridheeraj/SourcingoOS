@@ -24,7 +24,7 @@ How to use it:
 ## Known (not new, never report)
 | Item | Why it is not a finding | Last seen |
 |---|---|---|
-| Crawl flags a page "slow" or ERR_CONNECTION_* on a cold or reloading dev server | Fast on reload; only a finding if it stays slow on recheck (2 Nov: /activity reset once mid-crawl, clean on recheck) | 2026-11-02 |
+| Crawl flags a page "slow" or ERR_CONNECTION_* on a cold or reloading dev server | Fast on reload; only a finding if it stays slow on recheck (2 Nov: /activity reset once mid-crawl, clean on recheck; 2 Nov afternoon: one cheque page 8.8 s, fast on recheck) | 2026-11-02 |
 | Second `e2e/run.sh` on a stack that is still running: crawl shows 404s everywhere (PostgREST keeps the dropped database's grants) | Stop ports 3100, 54321, 54322 (`fuser -k`) and run it again; not an app glitch | 2026-10-30 |
 | Live Tally reader: last snapshot ~10 h old overnight while the PC agent is seen (30 Oct 14:00 IST: 18 h, Tally not opened yet that day) | Tally is closed after office hours; the agent still checks in | 2026-11-01 |
 | Live Tally PC agent not seen for a day (31 Oct, Saturday evening: 25 h) | The office PC is off; only a finding if it stays unseen on a working day (1 Nov, Sunday: 33 h, evening 49 h; Mon 2 Nov 05:55 IST before office: 57 h) | 2026-11-02 |
@@ -52,7 +52,7 @@ order already late, large order (20+ styles, 50,000+ pieces, long names), fabric
 Hindi or long text in names and notes, zero and huge money amounts, slow network (throttle in a short Playwright script) and double taps,
 browser back after saving, phone Back with a sheet open, two people editing the same order, date edges (month end, year end, today vs
 tomorrow), keyboard only, form errors (blank, wrong format, negative numbers), public links with a wrong or
-made-up token (/po, /f, /s), print and PDF views (A4, many styles), printing from dark mode, a brand-new company with nothing in it, signed out / spent sign-in links, a very old order (a year past its ship date), hand-edited or stale web addresses (bad filter values, page past the end, odd characters in ?next=).
+made-up token (/po, /f, /s), print and PDF views (A4, many styles), printing from dark mode, a brand-new company with nothing in it, signed out / spent sign-in links, a very old order (a year past its ship date), hand-edited or stale web addresses (bad filter values, page past the end, odd characters in ?next=), search with odd input (loose codes, long pastes, other scripts).
 
 | Date | Area | Angle | Result |
 |---|---|---|---|
@@ -94,15 +94,18 @@ made-up token (/po, /f, /s), print and PDF views (A4, many styles), printing fro
 | 2026-11-02 | Every page that reads filters from its web address (Home, Orders, Styles, Today, Updates, Reports, Activity, Inquiries, Samples, Tally, Factories, Goods, Feedback, new order/invoice/cheque) and /login?next= | hand-edited or stale web addresses: junk, negative, huge, HTML, doubled values (exploration) | No crashes. But Style catalogue `?page=` past the last page (an old bookmark, or styles shipped since) showed PostgREST's raw "Requested range not satisfiable" over "No styles yet": now goes to the last page. And `/login?next=/<tab>/other-site` sent a signed-in person (and, after the sign-in link, anyone) off the app, because the browser drops the tab and reads `//other-site`; a line break gave a server error. `safeNext` now reads the address the way a browser does, with tests (this run's PR) |
 | 2026-11-02 | Record a purchase (factory bill) | slow network (2 s latency, slow upload) + triple tap, merch phone | Button disables, one dispatch saved, invoice step opens: fine |
 | 2026-11-02 | Order page Details | keyboard only, merch desk light + dark | Tab order follows the screen and every stop shows a ring. But after Enter (or Save changes) the form reloads from the saved copy and focus fell to the top of the page, 15 menu stops away. Fixed (this run's PR): focus goes back to the same field or to Save changes |
+| 2026-11-02 | Search (Ctrl K / search button) | odd input: codes typed loosely, Hindi, quotes, %, emoji, a 300-character paste, merch phone (exploration: search with odd input) | No errors (matching is plain text, nothing reaches the database filter). But "SO12", "so-4" or "enq 1" found nothing (only "SO-0012" did); results wrote this year's dates with the year ("Ships 27 Dec 2026") unlike every other screen; inquiries showed the raw status "new"/"converted"; a long pasted term ran off the side of the phone. Fixed (this run's PR): codes match without dash or leading zeros (orders, buyer POs, inquiries), `dayNear`, the Inquiries page's words (Asked, Quoted, Sample sent, Won, Lost), the term wraps |
+| 2026-11-02 | Inquiries quick add | keyboard only, desk dark; slow network (1.5 s) + double tap Log inquiry, merch | Double tap logged one inquiry: fine. But Clear and Log inquiry vanish with the form and focus fell to the page top. Fixed (this run's PR): focus returns to the message box (after a save only on a computer, so a phone keyboard doesn't pop up) |
 
 Not yet looked at from any angle beyond the crawl: date edges (month and year end; a year-old order done 1 Nov),
 two people on the style sizes and QC record (only order Details so far),
 factory PO accept link with a real token (accept twice, accept after approval withdrawn; needs the po-inbox function, the local stand-in can't test it).
-Print views not yet looked at: buyer PO PDF; a printed form's Styles table is cut at the right edge (nobody prints a blank form, low value). Angles never tried: slow network on a whole save flow (challan number 30 Oct, record cheque 1 Nov; not yet invoice, factory bill, QC record with photos), keyboard only on Payments, Bills to pay and Inquiries, a link inside a sheet opened in a new tab (long-press on a phone), year end with the server's clock (only checked by reading the date code: India-time today, other years shown with the year).
+Print views not yet looked at: buyer PO PDF; a printed form's Styles table is cut at the right edge (nobody prints a blank form, low value). Angles never tried: slow network on a whole save flow (challan number 30 Oct, record cheque 1 Nov; not yet invoice, factory bill, QC record with photos), keyboard only on Payments and Bills to pay, a link inside a sheet opened in a new tab (long-press on a phone), year end with the server's clock (only checked by reading the date code: India-time today, other years shown with the year).
 
 ## Closed
 | Item | How | Date |
 |---|---|---|
+| Search missed loosely typed codes (SO12, so-4), showed this year's year and raw inquiry status, long term overflowed; Inquiries quick add lost keyboard focus after Clear or Log | Fixed (this run's PR) | 2026-11-02 |
 | Sign-in `?next=` with a tab or line break could leave the app; Style catalogue page past the end showed a raw error; saving order Details dropped keyboard focus | Fixed (this run's PR) | 2026-11-02 |
 | First Back after a link inside a sheet (Help, Start production, inquiry) did nothing; two primary buttons on the cheque page | Fixed (this run's PR) | 2026-11-01 |
 | Phone Back with a sheet open left the page and lost the half-filled sheet | Fixed (this run's PR): `src/components/sheet-back.tsx` | 2026-11-01 |

@@ -41,7 +41,7 @@ export function QuickAdd({ buyers, companyId, meId, today, initial = "" }: { buy
     setOwn({ ...own, buyer_id: nb ? "" : e.target.value });
   }
 
-  function reset() {
+  function reset(after: "clear" | "saved" = "clear") {
     setText("");
     setOwn({});
     setNewBuyer(null);
@@ -49,6 +49,9 @@ export function QuickAdd({ buyers, companyId, meId, today, initial = "" }: { buy
     photos.forEach((p) => URL.revokeObjectURL(p.url));
     setPhotos([]);
     setError("");
+    // Clear and Log inquiry vanish with the form, which dropped keyboard focus to the page top. Keep it in the box,
+    // ready for the next ask; after a save on a phone, don't pop the keyboard up unasked.
+    if (after === "clear" || window.matchMedia("(pointer: fine)").matches) box.current?.focus();
   }
 
   function save() {
@@ -73,7 +76,7 @@ export function QuickAdd({ buyers, companyId, meId, today, initial = "" }: { buy
         }
       }
       toast(`${res.no ?? "Inquiry"} logged. It comes back ${FOLLOW.find((f) => f.d === follow)?.label.toLowerCase()} to follow up.`);
-      reset();
+      reset("saved");
       router.refresh();
     });
   }
@@ -160,7 +163,7 @@ export function QuickAdd({ buyers, companyId, meId, today, initial = "" }: { buy
 
           {error && <p className="text-[13px] font-semibold text-bad" role="alert">{error}</p>}
           <div className="qadd-acts">
-            <button type="button" className="btn ghost" onClick={reset} disabled={pending}>Clear</button>
+            <button type="button" className="btn ghost" onClick={() => reset()} disabled={pending}>Clear</button>
             <button type="button" className="btn primary" onClick={save} disabled={pending}>{pending ? "Logging…" : "Log inquiry"}</button>
           </div>
         </div>
