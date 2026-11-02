@@ -24,7 +24,7 @@ How to use it:
 ## Known (not new, never report)
 | Item | Why it is not a finding | Last seen |
 |---|---|---|
-| Crawl flags a page "slow" or ERR_CONNECTION_* on a cold or reloading dev server | Fast on reload; only a finding if it stays slow on recheck | 2026-10-29 |
+| Crawl flags a page "slow" or ERR_CONNECTION_* on a cold or reloading dev server | Fast on reload; only a finding if it stays slow on recheck (2 Nov: /activity reset once mid-crawl, clean on recheck) | 2026-11-02 |
 | Second `e2e/run.sh` on a stack that is still running: crawl shows 404s everywhere (PostgREST keeps the dropped database's grants) | Stop ports 3100, 54321, 54322 (`fuser -k`) and run it again; not an app glitch | 2026-10-30 |
 | Live Tally reader: last snapshot ~10 h old overnight while the PC agent is seen (30 Oct 14:00 IST: 18 h, Tally not opened yet that day) | Tally is closed after office hours; the agent still checks in | 2026-11-01 |
 | Live Tally PC agent not seen for a day (31 Oct, Saturday evening: 25 h) | The office PC is off; only a finding if it stays unseen on a working day (1 Nov, Sunday: 33 h, evening 49 h; Mon 2 Nov 05:55 IST before office: 57 h) | 2026-11-02 |
