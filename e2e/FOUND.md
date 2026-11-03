@@ -112,6 +112,7 @@ Print views not yet looked at: buyer PO PDF; a printed form's Styles table is cu
 ## Closed
 | Item | How | Date |
 |---|---|---|
+| QC entered late with today's date (a first inspection's Fail typed in after the re-check's Pass) silently became the latest final QC and blocked shipping (SO-0004 MTP013, reported by Dheeraj); nothing said which check shipping goes by | Both QC forms now warn when the date makes a Fail replace a Pass; QC tab marks "Shipping goes by this one" and explains a failed latest; Dispatch block says what to do; quick sheet picks Re-check after a failed final | 2026-11-03 |
 | A dropped connection showed raw "Failed to fetch" (English on the Hindi factory panel) or "Nothing you saved is lost"; Money cheque, settle, notice and credit-days buttons dropped keyboard focus | Fixed (this run's PR) | 2026-11-03 |
 | Bills to pay lost keyboard focus on Hold, Release, Save note and Save terms ("60" left Save terms showing); QC retry after a dropped upload recorded a style twice; search results couldn't open in a new tab | Fixed (this run's PR) | 2026-11-02 |
 | Search missed loosely typed codes (SO12, so-4), showed this year's year and raw inquiry status, long term overflowed; Inquiries quick add lost keyboard focus after Clear or Log | Fixed (this run's PR) | 2026-11-02 |

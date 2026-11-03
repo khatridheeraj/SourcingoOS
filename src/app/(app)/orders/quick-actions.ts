@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { canEditOrders, canEnterDone, getMe } from "@/lib/auth";
 import { buyerName, loadBuyers, loadFactories, loadTeam, personName } from "@/lib/data";
 import { friendly } from "@/lib/errors";
-import { TNA_STEPS, todayIST } from "@/lib/format";
+import { SHIP_QC, TNA_STEPS, todayIST } from "@/lib/format";
 import { addDays, andList, dm, EMAIL_OK, emptySteps, pastTarget, startTargets, type QGroup, type QOrder, type QStyle } from "@/lib/quick";
 import { createClient } from "@/lib/supabase/server";
 import { saveLineStages, type LineStageInput } from "./actions";
@@ -18,7 +18,7 @@ export async function loadQuick(orderId: string): Promise<{ error?: string; orde
   if (!canEnterDone(me?.role)) return { error: "Only the orders team and Quality can update production." };
   if (!/^[0-9a-f-]{36}$/i.test(orderId)) return { error: "That order wasn't found." };
   const supabase = await createClient();
-  const [{ data: o, error }, { data: stages }, { data: pos }, { data: prices }, buyers, factories, team, { data: withPo }] = await Promise.all([
+  const [{ data: o, error }, { data: stages }, { data: pos }, { data: prices }, buyers, factories, team, { data: withPo }, { data: finals }] = await Promise.all([
     supabase.from("orders").select("id, order_no, buyer_id, buyer_po, ship_date, revised_ship_date, status, order_lines(id, style, colour, qty, factory_id, position, product, photo_path)")
       .eq("id", orderId).is("order_lines.removed_at", null).maybeSingle(),
     supabase.from("line_stages").select("line_id, stage, label, planned_on, done_on, factory_on, not_needed, added_at").eq("order_id", orderId).order("added_at").order("id"),
@@ -28,6 +28,9 @@ export async function loadQuick(orderId: string): Promise<{ error?: string; orde
     loadFactories(),
     loadTeam(),
     supabase.rpc("orders_with_po_file", { p_orders: [orderId] }),
+    // Newest first, in the database's own order (check date, then when entered): the first per style is what shipping goes by.
+    supabase.from("qc_checks").select("line_id, result, checked_on").eq("order_id", orderId).in("kind", SHIP_QC).is("cancelled_at", null)
+      .order("checked_on", { ascending: false }).order("created_at", { ascending: false }),
   ]);
   if (error) return { error: friendly(error) };
   if (!o) return { error: "That order wasn't found." };
@@ -39,7 +42,9 @@ export async function loadQuick(orderId: string): Promise<{ error?: string; orde
       const r = rows.find((s) => s.stage === key);
       return { key, label, planned_on: str(r?.planned_on), done_on: str(r?.done_on), factory_on: str(r?.factory_on), not_needed: !!r?.not_needed, extra };
     };
+    const fin = (finals ?? []).find((q) => q.line_id === l.id);
     return {
+      ...(fin ? { finalQc: { result: fin.result, on: str(fin.checked_on) } } : {}),
       id: l.id, style: l.style, colour: str(l.colour), qty: l.qty, hasRate: rate.get(l.id) != null, hasPhoto: !!l.photo_path, factoryId: l.factory_id, fabric: l.product === "fabric",
       steps: [...TNA_STEPS.map((t) => step(t.key, t.label, false)), ...rows.filter((s) => s.stage.startsWith("extra_")).map((s) => step(s.stage, str(s.label), true))],
     };
