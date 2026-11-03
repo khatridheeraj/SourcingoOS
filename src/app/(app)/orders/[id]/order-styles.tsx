@@ -15,6 +15,7 @@ import { openHelp } from "@/components/help/help-chat";
 import { moveLateTargets } from "../quick-actions";
 import { andList } from "@/lib/quick";
 import { acceptTargetsForFactory, releaseFactoryPo, requestPlan, requestPoLock, saveLineStages, sendBackPoLock, setLineProduct, setStylePhoto, type LineStageInput } from "../actions";
+import { caught } from "@/lib/errors";
 
 // fabricOrder: a fabric style, whose TNA skips the garment-making steps.
 export type StyleRow = { id: string; style: string; colour: string; qty: number; photoUrl: string | null; hasRate: boolean; fabricOrder: boolean; detail: StyleDetail };
@@ -296,7 +297,7 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
         const res = await setStylePhoto(orderId, lineId, path);
         if (res.error) setError(res.error);
       } catch (e) {
-        setError(e instanceof Error ? e.message : "The photo didn't upload.");
+        setError(caught(e, "The photo didn't upload."));
       } finally {
         setBusy("");
       }

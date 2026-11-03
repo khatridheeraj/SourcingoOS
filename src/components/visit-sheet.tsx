@@ -9,6 +9,7 @@ import { FLOOR_STATUS, floorLine, INSPECTION_KIND, NOT_DONE_ON_VISIT, REJECT, VI
 import { uploadPhotos } from "@/lib/photos";
 import { dm, when } from "@/lib/quick";
 import { dayTimeAt } from "@/lib/format";
+import { caught } from "@/lib/errors";
 
 type Open = { factoryId?: string; orderId?: string };
 const EVENT = "sourcingo:visit";
@@ -217,7 +218,7 @@ function StyleCard({ s, companyId, today, canQc, open, posted, onToggle, onPoste
         onPosted();
         router.refresh();
       } catch (e) {
-        setError(e instanceof Error ? e.message : "The photos didn't upload. Try again.");
+        setError(caught(e, "The photos didn't upload. Try again."));
       }
     });
   }

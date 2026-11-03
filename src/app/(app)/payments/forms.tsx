@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { day, money } from "@/lib/format";
 import { addDays, autoSplit, CHEQUE_LABEL, CHEQUE_TONE, CHEQUE_VALID_DAYS, type ChequeStatus, NEXT_STEPS, SLACK } from "@/lib/payments";
 import { type InvoiceInput, saveCheque, saveCreditNote, saveInvoice, setChequeNotice, setChequeStatus, setCreditDays } from "./actions";
@@ -21,9 +21,13 @@ function Field({ label, children, hint, wide, req }: { label: string; children: 
   );
 }
 
-function Message({ error, ok }: { error: string; ok: string }) {
+// With grab, a new "done" message takes keyboard focus: the button that was pressed has just gone or changed, and
+// focus would otherwise fall to the top of the page.
+function Message({ error, ok, grab }: { error: string; ok: string; grab?: boolean }) {
+  const box = useRef<HTMLDivElement>(null);
+  useEffect(() => { if (grab && ok) box.current?.focus(); }, [grab, ok]);
   if (error) return <div className="errbox" role="alert">{error}</div>;
-  if (ok) return <div className="okbox" role="status">{ok}</div>;
+  if (ok) return <div ref={box} tabIndex={grab ? -1 : undefined} className="okbox" role="status">{ok}</div>;
   return null;
 }
 
@@ -341,7 +345,7 @@ export function ChequeTable({ rows, today }: { rows: ChequeLine[]; today: string
           <button type="button" className="btn sm" onClick={() => setSel(new Set())}>Clear</button>
         </div>
       )}
-      <Message error={error} ok={ok} />
+      <Message error={error} ok={ok} grab />
       <div className="table-wrap">
         <table className="tbl">
           <thead>
@@ -409,7 +413,7 @@ export function ChequeSteps({ id, status, chequeDate, expires, today, isOwner }:
       ) : wait ? <p>{wait}</p> : (
         <p className="text-xs muted">This cheque is {CHEQUE_LABEL[status].toLowerCase()}. Only the owner can correct it.</p>
       )}
-      <Message error={error} ok={ok} />
+      <Message error={error} ok={ok} grab />
     </div>
   );
 }
@@ -420,15 +424,17 @@ export function NoticeSent({ id, sent, bouncedOn, today }: { id: string; sent: s
   const [on, setOn] = useState(sent ?? today);
   const [error, setError] = useState("");
   const [pending, start] = useTransition();
+  const date = useRef<HTMLInputElement>(null);
   const save = (v: string | null) => start(async () => {
     const r = await setChequeNotice(id, v);
     if (r.error) setError(r.error);
-    else { setError(""); router.refresh(); }
+    // "Not sent yet" goes away once pressed; keep keyboard focus here instead of the top of the page.
+    else { setError(""); if (v === null) date.current?.focus(); router.refresh(); }
   });
   return (
     <div className="stack">
       <div className="row">
-        <label className="row text-[12.5px] muted">Notice sent on <input type="date" className="inp w-[150px]" value={on} min={bouncedOn} max={today} onChange={(e) => setOn(e.target.value)} aria-label="Notice sent on" /></label>
+        <label className="row text-[12.5px] muted">Notice sent on <input ref={date} type="date" className="inp w-[150px]" value={on} min={bouncedOn} max={today} onChange={(e) => setOn(e.target.value)} aria-label="Notice sent on" /></label>
         <button type="button" className="btn primary" disabled={pending || !on || on === sent} onClick={() => save(on)}>{sent ? "Change date" : "Notice sent"}</button>
         {sent && <button type="button" className="btn ghost sm" disabled={pending} onClick={() => save(null)}>Not sent yet</button>}
       </div>
@@ -442,17 +448,20 @@ export function CreditDays({ buyerId, value }: { buyerId: string; value: number 
   const [v, setV] = useState(value == null ? "" : String(value));
   const [error, setError] = useState("");
   const [pending, start] = useTransition();
-  const dirty = v !== (value == null ? "" : String(value));
+  const box = useRef<HTMLInputElement>(null);
+  // "060" is the same 60 days as saved.
+  const dirty = (v === "" ? "" : String(Number(v))) !== (value == null ? "" : String(value));
   return (
     <form className="row gap-1.5" onSubmit={(e) => {
       e.preventDefault();
       start(async () => {
         const r = await setCreditDays(buyerId, v);
         if (r.error) setError(r.error);
-        else { setError(""); router.refresh(); }
+        // Save goes away once saved; keep keyboard focus on the days box.
+        else { setError(""); box.current?.focus(); router.refresh(); }
       });
     }}>
-      <input className="inp num w-[70px]" inputMode="numeric" value={v} onChange={(e) => setV(e.target.value.replace(/\D/g, ""))} placeholder="—" aria-label="Credit days" />
+      <input ref={box} className="inp num w-[70px]" inputMode="numeric" value={v} onChange={(e) => setV(e.target.value.replace(/\D/g, ""))} placeholder="—" aria-label="Credit days" />
       <span className="text-xs muted">days</span>
       {dirty && <button className="btn sm primary" disabled={pending}>Save</button>}
       {error && <span className="text-xs text-bad">{error}</span>}

@@ -5,6 +5,7 @@ import { useState, useTransition } from "react";
 import { uploadPhotos } from "@/lib/photos";
 import { toast } from "@/components/toast";
 import { addInquiryBuyer, setInquiryPhotos, setInquiryStatus } from "../actions";
+import { caught } from "@/lib/errors";
 
 type Photo = { path: string; url: string };
 
@@ -52,7 +53,7 @@ export function InquiryActions({ id, companyId, status, hasBuyer, prospect, newB
         const paths = await uploadPhotos(`${companyId}/inquiries/${id}`, files);
         return await setInquiryPhotos(id, [...allPhotos, ...paths]);
       } catch (e) {
-        return { error: e instanceof Error ? e.message : "The photos didn't upload." };
+        return { error: caught(e, "The photos didn't upload.") };
       }
     }, files.length === 1 ? "Photo added" : `${files.length} photos added`);
   }
