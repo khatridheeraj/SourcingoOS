@@ -32,3 +32,15 @@ export function friendly(error: { message: string; code?: string } | null | unde
   if (error.code === "42501" || m.includes("row-level security")) return "You don't have permission to do that.";
   return m;
 }
+
+// What the browser itself says when the connection drops in the middle of a save: Chrome, Safari, Firefox, React Native.
+export function isDropped(message: string): boolean {
+  return /^(failed to fetch|load failed|networkerror when attempting to fetch resource\.?|network request failed|network error)$/i.test(message.trim());
+}
+export const DROPPED = "The connection dropped, so this may not have saved. Check the network and try again.";
+
+// The words to show for an error a save threw: a dropped connection in plain words, anything else as it came.
+export function caught(e: unknown, fallback: string): string {
+  if (!(e instanceof Error) || !e.message) return fallback;
+  return isDropped(e.message) ? DROPPED : e.message;
+}

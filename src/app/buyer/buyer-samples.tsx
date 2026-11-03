@@ -8,6 +8,7 @@ import { dayNear as day } from "@/lib/format";
 import { uploadPhotos } from "@/lib/photos";
 import { sampleLabel, trackUrl, type SampleStatus } from "@/lib/samples";
 import { answerSample } from "./actions";
+import { caught } from "@/lib/errors";
 
 // A sample as the buyer reads it: no factory, Sourcingo's note, the courier and its AWB, and the answers so far.
 export type BuyerSample = {
@@ -65,7 +66,7 @@ export function BuyerSamples({ companyId, samples }: { companyId: string; sample
         toast(pick.approve ? `${pick.s.style} ${sampleLabel(pick.s.stage)} approved. Thank you.` : "Changes sent. Sourcingo will send the next sample.");
         router.refresh();
       } catch (e) {
-        setError(e instanceof Error ? e.message : "Couldn't send the photos. Try again.");
+        setError(caught(e, "Couldn't send the photos. Try again."));
       }
     });
   }

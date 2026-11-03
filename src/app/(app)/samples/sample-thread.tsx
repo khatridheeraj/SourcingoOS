@@ -10,6 +10,7 @@ import { COURIERS, sampleLabel, STATE_TEXT, trackUrl } from "@/lib/samples";
 import type { RoundView, SampleThread } from "@/lib/samples-server";
 import { waLink } from "@/lib/whatsapp";
 import { addSample, forwardSample, recordAnswer, returnSample } from "./actions";
+import { caught } from "@/lib/errors";
 
 type Mode = "forward" | "return" | "answer" | "add";
 const dm = (d: string) => dayNear(d);
@@ -130,7 +131,7 @@ export function SampleThreadCard({ t, today, showOrder = true, readOnly = false 
           : `${t.style} ${label} round ${nextRound} added.`);
         router.refresh();
       } catch (e) {
-        setError(e instanceof Error ? e.message : "Couldn't send the photos. Try again.");
+        setError(caught(e, "Couldn't send the photos. Try again."));
       }
     });
   }

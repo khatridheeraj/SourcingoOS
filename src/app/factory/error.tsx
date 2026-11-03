@@ -10,6 +10,9 @@ export default function FactoryError({ error, retry }: { error: Error & { digest
       body: "आपका भेजा हुआ काम सुरक्षित है। फिर से कोशिश करें। · Nothing you sent is lost. Try again.",
       retry: "फिर से कोशिश करें · Try again",
       home: "शुरुआत पर जाएं · Start",
+    }} offline={{
+      title: "इंटरनेट कट गया · The connection dropped",
+      body: "शायद आखिरी काम नहीं गया। इंटरनेट आने पर फिर से कोशिश करें और देख लें। · What you just tapped may not have saved. When the network is back, tap Try again and check it.",
     }} />
   );
 }

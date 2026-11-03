@@ -7,6 +7,7 @@ import { sizeEntries } from "@/lib/sizes";
 import { uploadAttachments } from "@/lib/photos";
 import { toast } from "@/components/toast";
 import { addLineFiles, removeLineFile, saveStyleDetails, type LineFileKind } from "../actions";
+import { caught } from "@/lib/errors";
 
 export type LineFile = { id: string; kind: LineFileKind; name: string; url: string | null };
 export type StyleDetail = { fabric: string; sizes: Record<string, number>; files: LineFile[] };
@@ -68,7 +69,7 @@ export function StyleDetails({ orderId, companyId, lineId, style, styleQty, deta
         const paths = await uploadAttachments(`${companyId}/${orderId}/files/${lineId}`, files);
         return await addLineFiles(orderId, lineId, kind, paths.map((path, i) => ({ path, file_name: files[i].name })));
       } catch (e) {
-        return { error: e instanceof Error ? e.message : "The files didn't upload." };
+        return { error: caught(e, "The files didn't upload.") };
       }
     }, files.length === 1 ? "File added" : `${files.length} files added`);
   }

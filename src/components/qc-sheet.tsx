@@ -9,6 +9,7 @@ import { toast } from "@/components/toast";
 import { addDays, dm, live, type QOrder, type QStyle } from "@/lib/quick";
 import { QC_KINDS, qcKindLabel, TNA_STEPS } from "@/lib/format";
 import { uploadPhotos } from "@/lib/photos";
+import { caught } from "@/lib/errors";
 
 type Open = { orderId: string; kind?: string; lineId?: string };
 const EVENT = "sourcingo:qc-sheet";
@@ -129,7 +130,7 @@ function QcForm({ order, req, onDone }: { order: QOrder; req: Open; onDone: () =
           if (res.error) { stop(saved.length ? `${s.style}: ${res.error}` : res.error); return; }
           saved.push(s.style);
         } catch (e) {
-          stop(e instanceof Error ? e.message : "The photos didn't upload. Try again.");
+          stop(caught(e, "The photos didn't upload. Try again."));
           return;
         }
       }

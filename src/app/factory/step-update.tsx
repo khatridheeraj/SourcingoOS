@@ -9,6 +9,7 @@ import { SAMPLE_STEPS } from "@/lib/samples";
 import { postStepUpdate } from "./actions";
 import type { PanelOrder } from "./factory-order";
 import { errorText, stepName, words, type Lang } from "./i18n";
+import { caught } from "@/lib/errors";
 
 export type FactoryUpdate = { id: string; order_id: string; line_id: string; stage: string; done_on: string; status: "pending" | "confirmed" | "declined"; review_note: string | null; photos: number; created_at: string };
 
@@ -81,7 +82,7 @@ export function FactoryProgress({ companyId, order, updates, lang }: { companyId
         toast(w.sentToast(line.style, name(line.stages.find((s) => s.stage === stage)!)));
         router.refresh();
       } catch (e) {
-        setError(e instanceof Error ? errorText(lang, e.message) : w.photoFail);
+        setError(errorText(lang, caught(e, w.photoFail)));
       }
     });
   }
