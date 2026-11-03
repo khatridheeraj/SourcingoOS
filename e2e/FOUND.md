@@ -19,7 +19,6 @@ How to use it:
 | Buyer status page after the ship date has passed: say "N days past" or stay quiet? | 2026-10-26 | 2026-10-29 |
 | Nightly database backup needs a GitHub secret from him | 2026-10-24 | 2026-10-29 |
 | One buyer PO in "To check" and one held, both over 2 days old (live data, team's job). 29 Oct 17:00Z: only the held one is left; 31 Oct: 4 held (unknown senders, in Your approvals); 1 Nov: 3 held, evening 4; 2 Nov: 4; 3 Nov: 4 | 2026-10-29 | 2026-11-03 |
-| Live order SO-0004 is still open 31 days after its 30 Sep ship date: mark it shipped, close it short, or set a new ship date (team's job) | 2026-10-31 | 2026-11-03 |
 
 ## Known (not new, never report)
 | Item | Why it is not a finding | Last seen |
@@ -39,6 +38,7 @@ How to use it:
 | Live auth log: "One-time token not found" on /verify (a sign-in link opened twice, or first by the mail app's link checker) | Someone already signed in now lands on the app instead of "expired" (2026-10-30 PR); a stray one is not a glitch | 2026-10-30 |
 | Form Save buttons on a phone are content-width, not full width (dispatch steps, order Details, most forms); DESIGN.md asks full width for primary buttons | A sweep across every form, not a check-run fix; the button is easy to hit (40px+). Leave unless Dheeraj asks | 2026-11-02 |
 | A tap on most save buttons (about 70 outside the photo flows) while the connection is down swaps the page for the error screen, which since 3 Nov says "The connection dropped" and offers Try again; anything typed in that form is lost | Each button catches its own errors; catching a dropped connection on every one is a sweep, not a check-run fix. Photo flows and factory sheets already keep the form and say it in place | 2026-11-03 |
+| Live order SO-0004 open long past its 30 Sep ship date | Dheeraj (3 Nov): it is pending, leave it open and wait | 2026-11-03 |
 | Factory PO routine asking for database permission | He granted it on 2026-10-29 14:22Z. If a read or write is blocked, log it here and stay quiet | 2026-10-29 |
 
 ## Coverage
