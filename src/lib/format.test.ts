@@ -64,6 +64,8 @@ test("no screen writes a day and month by hand (a date from last year would lose
       else if (/\.tsx?$/.test(f) && !f.endsWith(".test.ts") && f !== "format.ts") {
         readFileSync(p, "utf8").split("\n").forEach((l, i) => {
           if (/\[Number\(\w+\.slice\(5, 7\)\) - 1\]/.test(l)) bad.push(`${p}:${i + 1}`);
+          // Cutting " 2026" off day() drops the year for next year's dates too (Cash ahead's January weeks).
+          if (/\bday(At)?\([^)]*\)\.slice\(0, -5\)/.test(l)) bad.push(`${p}:${i + 1}`);
         });
       }
     }

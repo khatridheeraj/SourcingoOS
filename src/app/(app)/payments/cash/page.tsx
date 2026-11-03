@@ -2,7 +2,7 @@ import Link from "next/link";
 import { cashAhead, carryDays, type CashItem, type OpenOrder } from "@/lib/cash";
 import { buyerName, loadFactories, loadPace, loadTerms, USUAL_DAYS } from "@/lib/data";
 import { fetchAll } from "@/lib/fetch-all";
-import { day, dueDate, money, todayIST } from "@/lib/format";
+import { dayNear, dueDate, money, todayIST } from "@/lib/format";
 import type { LinePrice } from "@/lib/margin";
 import { lakh, MSME_DAYS } from "@/lib/payables";
 import { forecast, paceLookup, type StepRow } from "@/lib/progress";
@@ -13,7 +13,8 @@ import { MONEY_TABS } from "@/lib/page-groups";
 import { loadPayables } from "../../payables/load";
 import { loadBooks } from "../load";
 
-const short = (d: string) => day(d).slice(0, -5);
+// "28 Dec", and "4 Jan 2027" once the weeks run into next year. A week writes that year once: "4 Jan to 10 Jan 2027".
+const short = (d: string) => dayNear(d);
 const signed = (n: number) => (n < 0 ? `−${lakh(-n)}` : lakh(n));
 
 // Cash ahead: money in from buyers and out to factories, week by week, so a squeeze shows before it comes.
@@ -129,7 +130,7 @@ export default async function CashPage() {
             <li key={w.start}>
               <details>
                 <summary className="cash-week">
-                  <span className="cash-when">{short(w.start)} to {short(w.end)}{w.start <= today && <small>This week</small>}</span>
+                  <span className="cash-when">{dayNear(w.start, w.end)} to {short(w.end)}{w.start <= today && <small>This week</small>}</span>
                   <span className="cash-in num">{w.in ? `+${lakh(w.in)}` : ""}</span>
                   <span className="cash-out num">{w.out ? `−${lakh(w.out)}` : ""}</span>
                   <span className={`cash-bal num ${w.balance < 0 ? "text-bad" : ""}`}>{signed(w.balance)}</span>
@@ -162,7 +163,7 @@ export default async function CashPage() {
                 <Link href={`/orders/${o.id}`} className="cash-item">
                   <span className="min-w-0">
                     <b>{o.orderNo} · {o.buyer}</b>
-                    <small>Factory {money(Math.round(o.cost))} {day(addTo(o.ships, o.factoryDays))}, buyer pays {day(addTo(o.ships, o.buyerDays))}</small>
+                    <small>Factory {money(Math.round(o.cost))} {dayNear(addTo(o.ships, o.factoryDays))}, buyer pays {dayNear(addTo(o.ships, o.buyerDays))}</small>
                   </span>
                   <span className="num cash-days">{carryDays(o)} days</span>
                 </Link>
@@ -197,7 +198,7 @@ function Item({ x }: { x: CashItem }) {
     <>
       <span className="min-w-0">
         <b>{x.label}</b>
-        <small>{day(x.on)}{x.kind === "order" ? " · expected from the order" : x.kind === "bill" ? " · bill in Tally" : " · invoice"}</small>
+        <small>{dayNear(x.on)}{x.kind === "order" ? " · expected from the order" : x.kind === "bill" ? " · bill in Tally" : " · invoice"}</small>
       </span>
       <span className="num">{x.amount < 0 ? `−${money(Math.round(-x.amount))}` : `+${money(Math.round(x.amount))}`}</span>
     </>

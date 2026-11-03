@@ -97,8 +97,10 @@ export function CancelInvoice({ invoice }: { invoice: InvoiceInput }) {
         if (!confirm(`Cancel invoice ${invoice.invoice_no}? It stays on record as cancelled and stops counting in what buyers owe.`)) return;
         start(async () => {
           const r = await saveInvoice({ ...invoice, cancelled: true });
-          if (r.error) setError(r.error);
-          else router.refresh();
+          if (r.error) return setError(r.error);
+          // The edit panel goes away once cancelled; keep keyboard focus on the invoice's title, which now says Cancelled.
+          document.getElementById("invoice-title")?.focus();
+          router.refresh();
         });
       }}>Cancel this invoice</button>
       {error && <div className="errbox" role="alert">{error}</div>}
@@ -111,10 +113,12 @@ export function AddCreditNote({ invoiceId, today, max }: { invoiceId: string; to
   const blank = { credit_note_no: "", note_date: today, amount: "", notes: "" };
   const [f, setF] = useState(blank);
   const [error, setError] = useState("");
+  const [ok, setOk] = useState("");
   const [pending, start] = useTransition();
   return (
     <form className="stack" onSubmit={(e) => {
       e.preventDefault();
+      setOk("");
       if (!f.credit_note_no.trim()) return setError("Enter the credit note number.");
       if (num(f.amount) <= 0) return setError("Enter the credit note amount.");
       if (num(f.amount) > max + SLACK) return setError(`That is more than the ${money(max)} on this invoice that no cheque pays yet.`);
@@ -123,6 +127,8 @@ export function AddCreditNote({ invoiceId, today, max }: { invoiceId: string; to
         const r = await saveCreditNote({ id: null, invoice_id: invoiceId, ...f });
         if (r.error) return setError(r.error);
         setF(blank);
+        // The form empties for the next one, so say this one went in.
+        setOk(r.ok!);
         router.refresh();
       });
     }}>
@@ -132,7 +138,7 @@ export function AddCreditNote({ invoiceId, today, max }: { invoiceId: string; to
         <Field label="Amount (₹)" req><input className="inp num" inputMode="decimal" value={f.amount} onChange={(e) => setF({ ...f, amount: clean(e.target.value) })} /></Field>
         <Field label="Reason"><input className="inp" value={f.notes} onChange={(e) => setF({ ...f, notes: e.target.value })} placeholder="Short shipment, rate difference…" /></Field>
       </div>
-      {error && <div className="errbox" role="alert">{error}</div>}
+      <Message error={error} ok={ok} />
       <div><button className="btn" disabled={pending}>{pending ? "Adding…" : "Add credit note"}</button></div>
     </form>
   );
@@ -148,8 +154,10 @@ export function CancelCreditNote({ note }: { note: { id: string; credit_note_no:
         if (!confirm(`Cancel credit note ${note.credit_note_no}? The invoice goes back to its full amount.`)) return;
         start(async () => {
           const r = await saveCreditNote({ ...note, amount: String(note.amount), notes: note.notes ?? "", cancelled: true });
-          if (r.error) setError(r.error);
-          else router.refresh();
+          if (r.error) return setError(r.error);
+          // Its row goes away once cancelled; keep keyboard focus on the Credit notes heading instead of the page top.
+          document.getElementById("credit-notes")?.focus();
+          router.refresh();
         });
       }}>Cancel</button>
       {error && <span className="text-[12.5px] text-bad">{error}</span>}
