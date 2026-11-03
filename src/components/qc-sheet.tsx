@@ -8,6 +8,7 @@ import { PhotoPicker, type Picked } from "@/components/photo-picker";
 import { toast } from "@/components/toast";
 import { addDays, dm, live, type QOrder, type QStyle } from "@/lib/quick";
 import { QC_KINDS, qcKindLabel, TNA_STEPS } from "@/lib/format";
+import { shipQcNote } from "@/lib/ship-qc";
 import { uploadPhotos } from "@/lib/photos";
 import { caught } from "@/lib/errors";
 
@@ -28,9 +29,9 @@ function dueKind(s: QStyle) {
   for (const x of live(s)) {
     if (x.done_on) continue;
     const qc = TNA_STEPS.find((t) => t.key === x.key)?.qc;
-    if (qc) return qc[0];
+    if (qc) return qc[0] === "final" && s.finalQc?.result === "fail" ? "recheck" : qc[0];
   }
-  return "final";
+  return s.finalQc?.result === "fail" ? "recheck" : "final";
 }
 
 // Recording a QC from a phone in a few taps: style, check, pass or fail, photos from the camera. Pieces, defects and
@@ -98,6 +99,7 @@ function QcForm({ order, req, onDone }: { order: QOrder; req: Open; onDone: () =
   const [pending, start] = useTransition();
   const picked = styles.filter((s) => lineIds.includes(s.id));
   const today = order.today;
+  const note = shipQcNote(picked.map((s) => ({ style: s.style, latest: s.finalQc })), kind, result, on);
 
   function pickStyle(s: QStyle) {
     const next = lineIds.includes(s.id) ? lineIds.filter((x) => x !== s.id) : [...lineIds, s.id];
@@ -184,6 +186,7 @@ function QcForm({ order, req, onDone }: { order: QOrder; req: Open; onDone: () =
         </label>
       </div>
       <footer className="qs-foot">
+        {note && !err && <p className="qs-note" role="status">{note}</p>}
         {err && <p className="qs-err" role="alert">{err}</p>}
         <button type="button" className={`btn primary qs-go ${result === "fail" ? "danger" : ""}`} disabled={pending} onClick={save}>
           {pending ? "Saving…" : result ? `Save ${qcKindLabel(kind)} ${result === "pass" ? "pass" : "fail"}${picked.length === 1 ? ` · ${picked[0].style}` : picked.length ? ` · ${picked.length} styles` : ""}` : "Save QC"}

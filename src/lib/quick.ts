@@ -6,7 +6,9 @@ export { emptySteps, startBuffer, startTargets } from "@/lib/tna-plan";
 // factory_on: the factory's own date for the step, when it has sent one.
 export type QStep = { key: string; label: string; planned_on: string; done_on: string; not_needed: boolean; extra: boolean; factory_on?: string };
 // fabric: a fabric style, planned with the fabric standard days.
-export type QStyle = { id: string; style: string; colour: string; qty: number; hasRate: boolean; hasPhoto?: boolean; factoryId: string | null; fabric?: boolean; steps: QStep[] };
+export type QStyle = { id: string; style: string; colour: string; qty: number; hasRate: boolean; hasPhoto?: boolean; factoryId: string | null; fabric?: boolean; steps: QStep[];
+  // The latest final QC or re-check (by check date), the one shipping goes by.
+  finalQc?: { result: string; on: string } };
 export type QGroup = {
   factoryId: string | null; factoryName: string; phone: string | null; email: string | null;
   released: boolean; asked: boolean; sent: boolean; lockRequestedAt: string; lockNote: string; bufferDays: number | null;

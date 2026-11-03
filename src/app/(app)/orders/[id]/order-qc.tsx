@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { day, QC_KINDS, qcKindLabel, qtyU, SHIP_QC, todayIST, dayTimeAt } from "@/lib/format";
 import { REPORT_ACCEPT, REPORT_MAX_MB, uploadPhotos, uploadReports } from "@/lib/photos";
+import { shipQcNote } from "@/lib/ship-qc";
 import { addQcComment, addQcFiles, cancelQc, recordQc, removeQcPhoto, type QcFile, type QcInput } from "../actions";
 
 export type QcCheck = {
@@ -172,6 +173,8 @@ export function OrderQc({ orderId, companyId, open, canRecord, today, checks, fi
   const gone = checks.filter((c) => !styles.some((st) => st.id === c.line_id));
   const groups = gone.length ? [...styles, { id: "", style: "Styles taken off the order", colour: "", qty: 0 }] : styles;
   const styleName = (id: string) => styles.find((st) => st.id === id)?.style ?? "";
+  const cur = q.line_id ? finalOf(q.line_id) : undefined;
+  const dateNote = shipQcNote([{ style: styleName(q.line_id), latest: cur && { result: cur.result, on: cur.checked_on } }], q.kind, q.result, q.checked_on);
 
   const form = (
     <form onSubmit={submit} className="mb-4 rounded-[10px] border border-line p-3">
@@ -196,6 +199,7 @@ export function OrderQc({ orderId, companyId, open, canRecord, today, checks, fi
         <label className="field">
           <span>Date checked</span>
           <input className="inp" type="date" max={today} value={q.checked_on} onChange={(e) => set("checked_on", e.target.value)} />
+          <small>The day of the inspection, not the day you enter it.</small>
         </label>
         <label className="field">
           <span>Pieces checked</span>
@@ -223,6 +227,7 @@ export function OrderQc({ orderId, companyId, open, canRecord, today, checks, fi
           <small>{reports.length ? `${reports.length} ${reports.length === 1 ? "report" : "reports"} ready` : `Inspection reports: PDF, Excel, Word or CSV. Big PDFs are shrunk automatically; up to ${REPORT_MAX_MB} MB each.`}</small>
         </label>
       </div>
+      {dateNote && <p className="mt-3 text-[13px] font-semibold text-warn" role="status">{dateNote}</p>}
       <div className="row mt-3">
         <button className="btn primary" disabled={pending}>{pending ? (busy ? "Uploading proof…" : "Saving…") : `Save QC${q.line_id ? ` for ${styleName(q.line_id)}` : ""}`}</button>
         <button type="button" className="btn" onClick={reset}>Close</button>
@@ -255,6 +260,13 @@ export function OrderQc({ orderId, companyId, open, canRecord, today, checks, fi
                   <button type="button" className="btn sm ml-auto" onClick={() => startFor(st.id)}>Record QC</button>
                 )}
               </div>
+              {st.id && fin?.result === "fail" && open && (
+                <p className="mb-2 text-[13px] text-bad">
+                  Shipping goes by the latest final QC, the Fail of {day(fin.checked_on)}.{" "}
+                  {can ? "Record a passed re-check once the factory fixes it, or cancel a check entered with the wrong date."
+                    : "The goods can ship once Quality records a passed re-check."}
+                </p>
+              )}
               {st.id && adding && q.line_id === st.id && form}
               {mine.length === 0 ? (!(adding && q.line_id === st.id) && <p className="muted text-[13px]">No QC recorded for this style yet.</p>) : (
               <ul className="flex flex-col gap-2">
@@ -268,6 +280,9 @@ export function OrderQc({ orderId, companyId, open, canRecord, today, checks, fi
                     {c.cancelled_at ? "Cancelled" : c.result === "pass" ? "Pass" : "Fail"}
                   </span>
                   <span className="muted">{day(c.checked_on)} · {c.by}</span>
+                  {fin && c.id === fin.id && mine.filter((x) => !x.cancelled_at && SHIP_QC.includes(x.kind)).length > 1 && (
+                    <span className="muted text-xs">Shipping goes by this one</span>
+                  )}
                   {editable && (
                     <span className="qc-acts">
                       <label className={`btn sm ghost ${pending ? "pointer-events-none opacity-50" : ""}`}>

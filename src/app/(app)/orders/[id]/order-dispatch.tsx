@@ -491,7 +491,7 @@ function ShipStep({ today, pending, qcBlock, onSave }: {
   function submit(e: React.FormEvent) {
     e.preventDefault();
     // The same checks as the server, before anything is uploaded, so a refused form leaves no files behind.
-    if (qcBlock.length) return setErr(`Final QC has not passed for ${qcBlock.join(", ")}. Quality must pass it before these goods ship.`);
+    if (qcBlock.length) return setErr(`The latest final QC for ${qcBlock.join(", ")} is not a pass, so these goods can't ship yet. Quality records a passed re-check in the QC tab (or cancels a check entered with the wrong date).`);
     if (!photos.length) return setErr("Add photos of the goods.");
     if (!lr) return setErr("Attach the LR copy.");
     if (!v.transporter.trim()) return setErr("Enter the transporter.");
