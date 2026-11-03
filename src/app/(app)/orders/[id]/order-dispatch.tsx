@@ -224,7 +224,7 @@ export function OrderDispatch({ orderId, orderNo, companyId, open, owner, factor
 
 const paise = (x: number) => Math.round(x * 100) / 100;
 // Rupees with paise when there are any: ₹15,977.50, ₹3,35,528.
-const rs = (x: number) => (Number.isInteger(x) ? money(x) : `₹${x.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`);
+const rs = (x: number) => money(x);
 
 type TallyBill = { no: string; date: string; amount: number };
 

@@ -4,19 +4,29 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { day, money } from "@/lib/format";
-import { addDays, autoSplit, CHEQUE_LABEL, CHEQUE_TONE, CHEQUE_VALID_DAYS, type ChequeStatus, NEXT_STEPS, SLACK } from "@/lib/payments";
+import { addDays, amountText, autoSplit, CHEQUE_LABEL, CHEQUE_TONE, CHEQUE_VALID_DAYS, type ChequeStatus, NEXT_STEPS, SLACK } from "@/lib/payments";
 import { type InvoiceInput, saveCheque, saveCreditNote, saveInvoice, setChequeNotice, setChequeStatus, setCreditDays } from "./actions";
 
 export type BuyerOpt = { id: string; label: string; creditDays: number | null };
 const num = (s: string | number | null | undefined) => Number(String(s ?? "").replace(/[,₹\s]/g, "")) || 0;
-const clean = (s: string) => s.replace(/[^\d.]/g, "");
+const clean = amountText;
 
-function Field({ label, children, hint, wide, req }: { label: string; children: React.ReactNode; hint?: React.ReactNode; wide?: boolean; req?: boolean }) {
+// A check that failed on one field: its message shows under that field, and keyboard focus goes to it.
+type Bad = { k: string; msg: string } | null;
+function point(form: HTMLFormElement, k: string) {
+  const el = form.elements.namedItem(k);
+  if (!(el instanceof HTMLElement)) return;
+  // Centred, so the sticky top bar doesn't cover it.
+  el.focus({ preventScroll: true });
+  el.scrollIntoView({ block: "center" });
+}
+
+function Field({ label, children, hint, wide, req, err }: { label: string; children: React.ReactNode; hint?: React.ReactNode; wide?: boolean; req?: boolean; err?: string }) {
   return (
     <label className="field" style={wide ? { gridColumn: "1 / -1" } : undefined}>
       <span>{label}{req && <i> *</i>}</span>
       {children}
-      {hint && <small>{hint}</small>}
+      {err ? <small className="text-bad" role="alert">{err}</small> : hint && <small>{hint}</small>}
     </label>
   );
 }
@@ -37,19 +47,28 @@ export function InvoiceForm({ initial, buyers, today, locked }: { initial: Invoi
   const [f, setF] = useState(initial);
   const [error, setError] = useState("");
   const [ok, setOk] = useState("");
+  const [bad, setBad] = useState<Bad>(null);
   const [pending, start] = useTransition();
-  const set = (k: keyof InvoiceInput) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => setF((p) => ({ ...p, [k]: e.target.value }));
+  const set = (k: keyof InvoiceInput) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
+    setF((p) => ({ ...p, [k]: k === "amount" ? clean(e.target.value) : e.target.value }));
+    setBad((x) => (x?.k === k ? null : x));
+  };
+  const at = (k: string) => ({ name: k, "aria-invalid": bad?.k === k || undefined });
   const b = buyers.find((x) => x.id === f.buyer_id);
   const autoDue = b?.creditDays != null && f.invoice_date ? addDays(f.invoice_date, b.creditDays) : null;
 
   function save(e: React.FormEvent) {
     e.preventDefault();
     setOk("");
-    if (!f.buyer_id) return setError("Choose the buyer.");
-    if (!f.invoice_no.trim()) return setError("Enter the invoice number.");
-    if (!f.amount) return setError("Enter the invoice amount, including tax.");
-    if (f.due_date && f.due_date < f.invoice_date) return setError("The due date can't be before the invoice date.");
     setError("");
+    const form = e.currentTarget as HTMLFormElement;
+    const no = (k: string, msg: string) => { setBad({ k, msg }); point(form, k); };
+    if (!f.buyer_id) return no("buyer_id", "Choose the buyer.");
+    if (!f.invoice_no.trim()) return no("invoice_no", "Enter the invoice number.");
+    if (!f.invoice_date) return no("invoice_date", "Set the invoice date.");
+    if (num(f.amount) <= 0) return no("amount", "Enter the invoice amount, including tax.");
+    if (f.due_date && f.due_date < f.invoice_date) return no("due_date", "The due date can't be before the invoice date.");
+    setBad(null);
     start(async () => {
       const r = await saveInvoice(f);
       if (r.error) return setError(r.error);
@@ -62,19 +81,23 @@ export function InvoiceForm({ initial, buyers, today, locked }: { initial: Invoi
   return (
     <form className="stack" onSubmit={save}>
       <div className="fgrid">
-        <Field label="Buyer" hint={locked} req>
-          <select className="inp" value={f.buyer_id} onChange={set("buyer_id")} disabled={!!locked} aria-label="Buyer">
+        <Field label="Buyer" hint={locked} req err={bad?.k === "buyer_id" ? bad.msg : undefined}>
+          <select className="inp" value={f.buyer_id} onChange={set("buyer_id")} disabled={!!locked} aria-label="Buyer" {...at("buyer_id")}>
             <option value="">Choose buyer</option>
             {buyers.map((x) => <option key={x.id} value={x.id}>{x.label}</option>)}
           </select>
         </Field>
-        <Field label="Invoice number" req><input className="inp code" value={f.invoice_no} onChange={set("invoice_no")} placeholder="SPL/26-27/001" /></Field>
-        <Field label="Invoice date" req><input type="date" className="inp" value={f.invoice_date} max={addDays(today, 31)} onChange={set("invoice_date")} required /></Field>
-        <Field label="Amount with tax (₹)" hint={f.amount ? money(num(f.amount)) : undefined} req>
-          <input className="inp num" inputMode="decimal" value={f.amount} onChange={(e) => setF((p) => ({ ...p, amount: clean(e.target.value) }))} />
+        <Field label="Invoice number" req err={bad?.k === "invoice_no" ? bad.msg : undefined}>
+          <input className="inp code" value={f.invoice_no} onChange={set("invoice_no")} placeholder="SPL/26-27/001" {...at("invoice_no")} />
         </Field>
-        <Field label="Due date" hint={f.due_date ? "This invoice's own due date" : autoDue ? `Empty uses ${b!.creditDays} credit days: ${day(autoDue)}` : "Empty uses the buyer's credit days (not set yet)"}>
-          <input type="date" className="inp" value={f.due_date} min={f.invoice_date || undefined} onChange={set("due_date")} />
+        <Field label="Invoice date" req err={bad?.k === "invoice_date" ? bad.msg : undefined}>
+          <input type="date" className="inp" value={f.invoice_date} max={addDays(today, 31)} onChange={set("invoice_date")} {...at("invoice_date")} />
+        </Field>
+        <Field label="Amount with tax (₹)" hint={num(f.amount) ? money(num(f.amount)) : undefined} req err={bad?.k === "amount" ? bad.msg : undefined}>
+          <input className="inp num" inputMode="decimal" value={f.amount} onChange={set("amount")} {...at("amount")} />
+        </Field>
+        <Field label="Due date" err={bad?.k === "due_date" ? bad.msg : undefined} hint={f.due_date ? "This invoice's own due date" : autoDue ? `Empty uses ${b!.creditDays} credit days: ${day(autoDue)}` : "Empty uses the buyer's credit days (not set yet)"}>
+          <input type="date" className="inp" value={f.due_date} min={f.invoice_date || undefined} onChange={set("due_date")} {...at("due_date")} />
         </Field>
         <Field label="Notes" wide><textarea className="inp" rows={2} value={f.notes} onChange={set("notes")} /></Field>
       </div>
@@ -176,8 +199,15 @@ export function ChequeForm({ initial, buyers, invoices, today, fixed }: { initia
   const router = useRouter();
   const [f, setF] = useState(initial);
   const [error, setError] = useState("");
+  const [bad, setBad] = useState<Bad>(null);
   const [pending, start] = useTransition();
-  const set = (k: keyof ChequeDraft) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => setF((p) => ({ ...p, [k]: e.target.value }));
+  const unmark = (k: string) => setBad((x) => (x?.k === k ? null : x));
+  const set = (k: keyof ChequeDraft) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
+    setF((p) => ({ ...p, [k]: k === "amount" ? clean(e.target.value) : e.target.value }));
+    unmark(k);
+  };
+  const at = (k: string) => ({ name: k, "aria-invalid": bad?.k === k || undefined });
+  const errOf = (k: string) => (bad?.k === k ? bad.msg : undefined);
   const open = useMemo(
     () => invoices.filter((i) => i.buyer_id === f.buyer_id && (i.left > SLACK || f.split[i.id])).sort((a, z) => (a.due ?? a.invoice_date).localeCompare(z.due ?? z.invoice_date)),
     [invoices, f.buyer_id, f.split],
@@ -188,14 +218,21 @@ export function ChequeForm({ initial, buyers, invoices, today, fixed }: { initia
 
   function save(e: React.FormEvent) {
     e.preventDefault();
-    if (!f.buyer_id) return setError("Choose the buyer the cheque is from.");
-    if (!f.cheque_no.trim()) return setError("Enter the cheque number.");
-    if (!f.cheque_date) return setError("Set the date written on the cheque.");
-    if (amount <= 0) return setError("Enter the cheque amount.");
-    if (rest < 0) return setError(`You've set ${money(split)} against invoices, more than the ${money(amount)} cheque.`);
-    const over = open.find((i) => num(f.split[i.id]) > i.left + SLACK);
-    if (over) return setError(`${over.invoice_no} has only ${money(over.left)} left to pay.`);
     setError("");
+    const form = e.currentTarget as HTMLFormElement;
+    const no = (k: string, msg: string) => { setBad({ k, msg }); point(form, k); };
+    if (!f.buyer_id) return no("buyer_id", "Choose the buyer the cheque is from.");
+    if (!f.cheque_no.trim()) return no("cheque_no", "Enter the cheque number.");
+    if (!f.cheque_date) return no("cheque_date", "Set the date written on the cheque.");
+    if (amount <= 0) return no("amount", "Enter the cheque amount.");
+    const over = open.find((i) => num(f.split[i.id]) > i.left + SLACK);
+    if (over) return no(`split-${over.id}`, `${over.invoice_no} has only ${money(over.left)} left to pay.`);
+    setBad(null);
+    // Not one field: the split as a whole is more than the cheque. Focus the first amount set, the line under the table says by how much.
+    if (rest < 0) {
+      point(form, `split-${open.find((i) => num(f.split[i.id]) > 0)?.id}`);
+      return setError(`You've set ${money(split)} against invoices, more than the ${money(amount)} cheque.`);
+    }
     start(async () => {
       const r = await saveCheque({
         id: f.id, buyer_id: f.buyer_id, cheque_no: f.cheque_no, bank: f.bank, cheque_date: f.cheque_date, amount: f.amount,
@@ -213,18 +250,20 @@ export function ChequeForm({ initial, buyers, invoices, today, fixed }: { initia
       <section className="panel stack">
         <h2>Cheque</h2>
         <div className="fgrid">
-          <Field label="From buyer" hint={fixed ? "Fixed once deposited" : undefined} req>
-            <select className="inp" value={f.buyer_id} disabled={fixed} onChange={(e) => setF((p) => ({ ...p, buyer_id: e.target.value, split: {} }))} aria-label="From buyer">
+          <Field label="From buyer" hint={fixed ? "Fixed once deposited" : undefined} req err={errOf("buyer_id")}>
+            <select className="inp" value={f.buyer_id} disabled={fixed} onChange={(e) => { setF((p) => ({ ...p, buyer_id: e.target.value, split: {} })); unmark("buyer_id"); }} aria-label="From buyer" {...at("buyer_id")}>
               <option value="">Choose buyer</option>
               {buyers.map((x) => <option key={x.id} value={x.id}>{x.label}</option>)}
             </select>
           </Field>
-          <Field label="Cheque number" req><input className="inp code" value={f.cheque_no} disabled={fixed} onChange={set("cheque_no")} inputMode="numeric" /></Field>
-          <Field label="Date on the cheque" hint={f.cheque_date > today ? "Post-dated: deposit on or after this date" : undefined} req>
-            <input type="date" className="inp" value={f.cheque_date} disabled={fixed} onChange={set("cheque_date")} />
+          <Field label="Cheque number" req err={errOf("cheque_no")}>
+            <input className="inp code" value={f.cheque_no} disabled={fixed} onChange={set("cheque_no")} inputMode="numeric" {...at("cheque_no")} />
           </Field>
-          <Field label="Amount (₹)" hint={amount ? money(amount) : undefined} req>
-            <input className="inp num" inputMode="decimal" value={f.amount} disabled={fixed} onChange={(e) => setF((p) => ({ ...p, amount: clean(e.target.value) }))} />
+          <Field label="Date on the cheque" hint={f.cheque_date > today ? "Post-dated: deposit on or after this date" : undefined} req err={errOf("cheque_date")}>
+            <input type="date" className="inp" value={f.cheque_date} disabled={fixed} onChange={set("cheque_date")} {...at("cheque_date")} />
+          </Field>
+          <Field label="Amount (₹)" hint={amount ? money(amount) : undefined} req err={errOf("amount")}>
+            <input className="inp num" inputMode="decimal" value={f.amount} disabled={fixed} onChange={set("amount")} {...at("amount")} />
           </Field>
           <Field label="Bank"><input className="inp" value={f.bank} onChange={set("bank")} placeholder="HDFC Bank, Jaipur" /></Field>
           <Field label="Received on"><input type="date" className="inp" value={f.received_on} max={today} onChange={set("received_on")} /></Field>
@@ -257,7 +296,9 @@ export function ChequeForm({ initial, buyers, invoices, today, fixed }: { initia
                     <td className="r num whitespace-nowrap">{money(i.left)}</td>
                     <td className="r">
                       <input className="inp num ml-auto max-w-[140px]" inputMode="decimal" value={f.split[i.id] ?? ""} placeholder="0" aria-label={`Amount for ${i.invoice_no}`}
-                        onChange={(e) => setF((p) => ({ ...p, split: { ...p.split, [i.id]: clean(e.target.value) } }))} />
+                        {...at(`split-${i.id}`)} aria-describedby={errOf(`split-${i.id}`) ? `split-err-${i.id}` : undefined}
+                        onChange={(e) => { setF((p) => ({ ...p, split: { ...p.split, [i.id]: clean(e.target.value) } })); unmark(`split-${i.id}`); }} />
+                      {errOf(`split-${i.id}`) && <div id={`split-err-${i.id}`} className="mt-1 text-xs text-bad" role="alert">{errOf(`split-${i.id}`)}</div>}
                     </td>
                   </tr>
                 ))}
