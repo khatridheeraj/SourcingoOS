@@ -249,6 +249,7 @@ main:focus { outline: none; }
   .inp::placeholder { color: var(--faint); }
   .inp:hover:not(:disabled) { border-color: var(--faint); }
   .inp:focus { outline: none; border-color: var(--accent); box-shadow: var(--ring); }
+  .inp[aria-invalid="true"]:not(:focus) { border-color: var(--bad); }
   textarea.inp { resize: vertical; min-height: 72px; }
   .inp:disabled { background: var(--surface-2); color: var(--muted); box-shadow: none; }
 

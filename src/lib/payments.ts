@@ -56,6 +56,13 @@ export type ChequeRow = Cheque & { allocated: number; invoices: { invoice: Invoi
 const n = (v: unknown) => Number(v ?? 0) || 0;
 // Money to the paisa, so sums like 74999.9 - 25000.3 don't show (or pre-fill) as 49999.59999999999.
 export const paise = (v: number) => Math.round(v * 100) / 100;
+// A rupee amount as typed or pasted, kept as digits and one decimal point: "Rs. 1,250.50" is "1250.50".
+// A dot before the first digit is the "Rs." or "INR." in front, not a decimal point; a second dot is dropped.
+export function amountText(s: string): string {
+  const t = s.replace(/[^\d.]/g, "").replace(/^\.+/, "");
+  const i = t.indexOf(".");
+  return i < 0 ? t : t.slice(0, i + 1) + t.slice(i + 1).replace(/\./g, "");
+}
 export const addDays = (d: string, days: number) => {
   const t = new Date(`${d}T00:00:00Z`);
   t.setUTCDate(t.getUTCDate() + days);

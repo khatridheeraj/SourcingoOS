@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { dayAtNear, dayNear, dayTimeAt, dayTimeNear, qtyTotal, qtyU, unitOf, unitOfAll } from "./format.ts";
+import { dayAtNear, dayNear, dayTimeAt, dayTimeNear, money, qtyTotal, qtyU, unitOf, unitOfAll } from "./format.ts";
 
 test("fabric is counted in metres, garments in pieces", () => {
   assert.equal(unitOf("fabric"), "m");
@@ -72,4 +72,13 @@ test("no screen writes a day and month by hand (a date from last year would lose
   };
   walk(new URL("..", import.meta.url).pathname);
   assert.deepEqual(bad, [], "use dayNear from format.ts, which keeps the year for other years");
+});
+
+test("money shows paise as two digits, and whole rupees whole", () => {
+  assert.equal(money(1250.5), "₹1,250.50");
+  assert.equal(money(1250), "₹1,250");
+  assert.equal(money(1250.004), "₹1,250");
+  assert.equal(money(0.05), "₹0.05");
+  assert.equal(money(-12.5), "₹-12.50");
+  assert.equal(money(125000.75), "₹1,25,000.75");
 });
