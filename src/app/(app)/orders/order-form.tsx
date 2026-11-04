@@ -7,6 +7,7 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import { money, qtyTotal } from "@/lib/format";
 import { toast } from "@/components/toast";
 import { NO_WARNINGS, overdueText, type OrderWarnings, type Overdue } from "@/lib/order-checks";
+import { orderProblem, type OrderProblem } from "@/lib/order-input";
 import { PO_ACCEPT, poFileProblem, uploadPoFiles } from "@/lib/po-upload";
 import { checkOrder, saveOrder, type LineInput, type OrderInput } from "./actions";
 
@@ -19,6 +20,16 @@ const n = (s: string) => Number(s.replace(/[,₹\s]/g, "")) || 0;
 // saving: either way keyboard focus fell to the top of the page, 15 menu stops away. Which field had it is kept
 // here across that reload and put back.
 let refocus: number | null = null;
+
+// The field a problem is about gets keyboard focus, centred so the sticky top bar doesn't cover it; a field inside
+// the folded "Notes and buyer's terms" opens it first.
+function point(form: HTMLFormElement | null, k: string) {
+  const el = form?.elements.namedItem(k);
+  if (!(el instanceof HTMLElement)) return;
+  el.closest("details")?.setAttribute("open", "");
+  el.focus({ preventScroll: true });
+  el.scrollIntoView({ block: "center" });
+}
 
 // overdueShown: the buyer whose overdue invoices the page already warns about, so the form doesn't say it twice.
 // inquiryId: the buyer inquiry this new order comes from.
@@ -38,6 +49,8 @@ export function OrderForm({ initial, initialLines, buyers, factories, team, inco
   const [order, setOrder] = useState(initial);
   const [lines, setLines] = useState<LineInput[]>(initialLines.length ? initialLines : [blankLine()]);
   const [error, setError] = useState("");
+  // A problem with one field: shown under that field, which is marked and takes focus, not only in the bar below.
+  const [bad, setBad] = useState<OrderProblem | null>(null);
   const [existing, setExisting] = useState<{ id: string; orderNo: string } | null>(null);
   // The order was saved but something after it (linking the incoming PO) failed: say so, and don't move on as if all went fine.
   const [warning, setWarning] = useState("");
@@ -75,11 +88,13 @@ export function OrderForm({ initial, initialLines, buyers, factories, team, inco
   const set = (k: keyof OrderInput) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     setOrder({ ...order, [k]: e.target.value });
     setSaved(false);
+    setBad((x) => (x?.field === k ? null : x));
     if (k === "buyer_id" || k === "buyer_po") setConfirming(false);
   };
   const setLine = (i: number, k: keyof LineInput, v: string) => {
     setLines(lines.map((l, j) => (j === i ? { ...l, [k]: v } : l)));
     setSaved(false);
+    setBad((x) => (x?.field === `line-${i}-${k}` ? null : x));
   };
 
   // A style described "Fabric" is saved as fabric (bought by the metre), as the database does.
@@ -90,6 +105,9 @@ export function OrderForm({ initial, initialLines, buyers, factories, team, inco
 
   function save(confirmed: boolean) {
     setError("");
+    const problem = orderProblem(order, lines);
+    setBad(problem);
+    if (problem) return point(formRef.current, problem.field);
     setWarning("");
     setExisting(null);
     start(async () => {
@@ -102,6 +120,10 @@ export function OrderForm({ initial, initialLines, buyers, factories, team, inco
       setConfirming(false);
       if (res.error && !res.id) {
         setExisting(res.existing ?? null);
+        if (res.field) {
+          setBad({ field: res.field, msg: res.error });
+          return point(formRef.current, res.field);
+        }
         return setError(res.error);
       }
       setSaved(true);
@@ -164,6 +186,9 @@ export function OrderForm({ initial, initialLines, buyers, factories, team, inco
   const showOverdue = shown.overdue && order.buyer_id !== overdueShown && !(initial.id && order.buyer_id === initial.buyer_id);
   const hasChecks = showOverdue || w.same_po.length > 0 || w.similar_po.length > 0 || w.same_style.length > 0;
 
+  const mark = (k: string) => ({ name: k, "aria-invalid": bad?.field === k || undefined, "aria-describedby": bad?.field === k ? "order-err" : undefined });
+  const errAt = (k: string) => bad?.field === k && <small id="order-err" className="mt-1 block text-[12.5px] font-semibold text-bad" role="alert">{bad.msg}</small>;
+
   const notesField = (
     <label className="field mt-3">
       <span>Notes</span>
@@ -173,26 +198,29 @@ export function OrderForm({ initial, initialLines, buyers, factories, team, inco
   const termsField = order.buyer_terms !== undefined && (
     <label className="field mt-3">
       <span>Buyer&apos;s terms</span>
-      <textarea className="inp" value={order.buyer_terms} onChange={set("buyer_terms")} rows={2} maxLength={2000}
+      <textarea className="inp" value={order.buyer_terms} onChange={set("buyer_terms")} rows={2} maxLength={2000} {...mark("buyer_terms")}
         placeholder="Inspection 3 days before dispatch, 2% penalty a week late, packing and labelling rules" />
+      {errAt("buyer_terms")}
     </label>
   );
 
   return (
-    <form ref={formRef} onSubmit={submit} className="stack">
+    <form ref={formRef} onSubmit={submit} className="stack" noValidate>
       <div className="panel scroll-mt-20" id="details">
         <h2>Buyer PO</h2>
         <div className="fgrid">
           <label className="field">
             <span>Buyer <i>*</i></span>
-            <select className="inp" value={order.buyer_id} onChange={set("buyer_id")} required>
+            <select className="inp" value={order.buyer_id} onChange={set("buyer_id")} required {...mark("buyer_id")}>
               <option value="">Pick a buyer</option>
               {buyers.map((b) => <option key={b.id} value={b.id}>{b.label}</option>)}
             </select>
+            {errAt("buyer_id")}
           </label>
           <label className="field">
             <span>Buyer PO number <i>*</i></span>
-            <input className="inp" value={order.buyer_po} onChange={set("buyer_po")} required placeholder="As printed on the buyer's PO" />
+            <input className="inp" value={order.buyer_po} onChange={set("buyer_po")} required placeholder="As printed on the buyer's PO" {...mark("buyer_po")} />
+            {errAt("buyer_po")}
           </label>
           <label className="field">
             <span>PO date</span>
@@ -200,7 +228,8 @@ export function OrderForm({ initial, initialLines, buyers, factories, team, inco
           </label>
           <label className="field">
             <span>Ship date</span>
-            <input className="inp" type="date" min={order.po_date || undefined} value={order.ship_date} onChange={set("ship_date")} />
+            <input className="inp" type="date" min={order.po_date || undefined} value={order.ship_date} onChange={set("ship_date")} {...mark("ship_date")} />
+            {errAt("ship_date")}
           </label>
           <label className="field">
             <span>Merchandiser</span>
@@ -267,18 +296,18 @@ export function OrderForm({ initial, initialLines, buyers, factories, team, inco
             <tbody ref={tableRef}>
               {lines.map((l, i) => (
                 <tr key={i}>
-                  <td data-label="Style no."><input className="inp min-w-[110px]" value={l.style} onChange={(e) => setLine(i, "style", e.target.value)} aria-label={`Line ${i + 1} style`} /></td>
+                  <td data-label="Style no."><input className="inp min-w-[110px]" value={l.style} onChange={(e) => setLine(i, "style", e.target.value)} aria-label={`Line ${i + 1} style`} {...mark(`line-${i}-style`)} />{errAt(`line-${i}-style`)}</td>
                   <td data-label="Description"><input className="inp min-w-[140px]" value={l.description} onChange={(e) => setLine(i, "description", e.target.value)} aria-label={`Line ${i + 1} description`} /></td>
                   <td data-label="Colour"><input className="inp min-w-[90px]" value={l.colour} onChange={(e) => setLine(i, "colour", e.target.value)} aria-label={`Line ${i + 1} colour`} /></td>
-                  <td data-label="Qty"><input className="inp w-[90px]" inputMode="numeric" value={l.qty} onChange={(e) => setLine(i, "qty", e.target.value)} placeholder={isFabric(l) ? "metres" : "pcs"} aria-label={`Line ${i + 1} quantity in ${isFabric(l) ? "metres" : "pieces"}`} /></td>
-                  <td data-label="Buyer rate ₹"><input className="inp w-[90px]" inputMode="decimal" value={l.buyer_rate} onChange={(e) => setLine(i, "buyer_rate", e.target.value)} aria-label={`Line ${i + 1} buyer rate`} /></td>
+                  <td data-label="Qty"><input className="inp w-[90px]" inputMode="numeric" value={l.qty} onChange={(e) => setLine(i, "qty", e.target.value)} placeholder={isFabric(l) ? "metres" : "pcs"} aria-label={`Line ${i + 1} quantity in ${isFabric(l) ? "metres" : "pieces"}`} {...mark(`line-${i}-qty`)} />{errAt(`line-${i}-qty`)}</td>
+                  <td data-label="Buyer rate ₹"><input className="inp w-[90px]" inputMode="decimal" value={l.buyer_rate} onChange={(e) => setLine(i, "buyer_rate", e.target.value)} aria-label={`Line ${i + 1} buyer rate`} {...mark(`line-${i}-buyer_rate`)} />{errAt(`line-${i}-buyer_rate`)}</td>
                   {fac && <><td data-label="Factory">
                     <select className="inp min-w-[150px]" value={l.factory_id} onChange={(e) => setLine(i, "factory_id", e.target.value)} aria-label={`Line ${i + 1} factory`}>
                       <option value="">Not decided</option>
                       {factories.map((f) => <option key={f.id} value={f.id}>{f.label}</option>)}
                     </select>
                   </td>
-                  <td data-label="Factory rate ₹"><input className="inp w-[90px]" inputMode="decimal" value={l.factory_rate} onChange={(e) => setLine(i, "factory_rate", e.target.value)} aria-label={`Line ${i + 1} factory rate`} /></td></>}
+                  <td data-label="Factory rate ₹"><input className="inp w-[90px]" inputMode="decimal" value={l.factory_rate} onChange={(e) => setLine(i, "factory_rate", e.target.value)} aria-label={`Line ${i + 1} factory rate`} {...mark(`line-${i}-factory_rate`)} />{errAt(`line-${i}-factory_rate`)}</td></>}
                   <td>
                     <button type="button" className="btn sm danger" disabled={lines.length === 1} onClick={() => changeLines(lines.filter((_, j) => j !== i), Math.min(i, lines.length - 2))} aria-label={`Remove line ${i + 1}`}>✕</button>
                   </td>

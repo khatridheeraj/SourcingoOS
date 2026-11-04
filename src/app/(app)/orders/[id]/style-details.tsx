@@ -43,18 +43,25 @@ export function StyleDetails({ orderId, companyId, lineId, style, styleQty, deta
   const [error, setError] = useState("");
   const [busy, setBusy] = useState("");
   const [pending, start] = useTransition();
+  // Which job the shown error came from: the fabric and sizes save, or a file.
+  const [errorFrom, setErrorFrom] = useState("");
+  const saveError = !!error && errorFrom === "save";
   const filled = rows.filter((r) => r.size.trim() || r.qty.trim());
   const sum = filled.reduce((a, r) => a + (Number(r.qty) || 0), 0);
   const dirty = fabric.trim() !== detail.fabric || JSON.stringify(filled.map((r) => [r.size.trim(), Number(r.qty) || 0]).filter(([, n]) => n))
     !== JSON.stringify(sizeEntries(detail.sizes));
 
-  function run(label: string, job: () => Promise<{ error?: string }>, done: string) {
+  function run(label: string, job: () => Promise<{ error?: string; stale?: boolean }>, done: string) {
     setError("");
     setBusy(label);
     start(async () => {
       const res = await job();
       setBusy("");
-      if (res.error) return setError(res.error);
+      if (res.stale) router.refresh();
+      if (res.error) {
+        setErrorFrom(label);
+        return setError(res.error);
+      }
       toast(done);
       router.refresh();
     });
@@ -63,6 +70,7 @@ export function StyleDetails({ orderId, companyId, lineId, style, styleQty, deta
   function addFiles(kind: LineFileKind, list: FileList | null) {
     const files = Array.from(list ?? []);
     if (!files.length) return;
+    setErrorFrom("");
     if (detail.files.length + files.length > 30) return setError("A style can keep up to 30 files. Take off old ones first.");
     run(`up:${kind}`, async () => {
       try {
@@ -134,7 +142,7 @@ export function StyleDetails({ orderId, companyId, lineId, style, styleQty, deta
         <div className="row">
           <button type="button" className="btn primary sm" disabled={pending || !dirty || (filled.length > 0 && sum !== styleQty)}
             title={filled.length > 0 && sum !== styleQty ? `The sizes must add up to ${qty(styleQty)} pcs` : undefined}
-            onClick={() => run("save", () => saveStyleDetails(orderId, lineId, fabric, filled), `${style} saved`)}>
+            onClick={() => run("save", () => saveStyleDetails(orderId, lineId, fabric, filled, { fabric: detail.fabric, sizes: detail.sizes }), `${style} saved`)}>
             {busy === "save" ? "Saving…" : fabricOrder ? "Save fabric" : "Save fabric and sizes"}
           </button>
           {dirty && (
@@ -142,6 +150,9 @@ export function StyleDetails({ orderId, companyId, lineId, style, styleQty, deta
           )}
         </div>
       )}
+
+      {/* A save problem shows by the Save button, not below the files where a phone can't see it. */}
+      {saveError && <p className="text-[13px] font-semibold text-bad" role="alert">{error}</p>}
 
       <div className="sfiles">
         {KINDS.map((k) => {
@@ -173,7 +184,7 @@ export function StyleDetails({ orderId, companyId, lineId, style, styleQty, deta
           );
         })}
       </div>
-      {error && <p className="text-[13px] font-semibold text-bad" role="alert">{error}</p>}
+      {error && !saveError && <p className="text-[13px] font-semibold text-bad" role="alert">{error}</p>}
     </div>
   );
 }
