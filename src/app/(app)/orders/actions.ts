@@ -4,8 +4,10 @@ import { revalidatePath } from "next/cache";
 import { canEditOrders, canEnterDone, canRecordQc, getMe } from "@/lib/auth";
 import { friendly } from "@/lib/errors";
 import { QC_KINDS, TNA_STEPS, todayIST } from "@/lib/format";
+import { isFilled, orderProblem } from "@/lib/order-input";
 import { buyerOverdue, NO_WARNINGS, orderWarnings, type OrderWarnings, type Overdue } from "@/lib/order-checks";
 import { PO_FILE_TYPES, PO_MAX_BYTES, type StoredFile } from "@/lib/po-files";
+import { sizeEntries } from "@/lib/sizes";
 import { createClient } from "@/lib/supabase/server";
 
 export type OrderInput = {
@@ -53,28 +55,14 @@ export async function checkOrder(order: Pick<OrderInput, "id" | "buyer_id" | "bu
 // confirm: returned instead of saving when that choice is still needed.
 // inquiryId: the buyer inquiry this order was made from, marked converted once the order is saved.
 export async function saveOrder(order: OrderInput, lines: LineInput[], incomingId?: string, confirmed = false, inquiryId?: string): Promise<{
-  error?: string; id?: string; existing?: { id: string; orderNo: string }; confirm?: OrderWarnings;
+  error?: string; field?: string; id?: string; existing?: { id: string; orderNo: string }; confirm?: OrderWarnings;
 }> {
   const me = await getMe();
   if (!me?.role) return { error: "Your account is not switched on yet." };
   if (!canEditOrders(me.role)) return { error: "Only the orders team can change orders." };
-  if (!order.buyer_id) return { error: "Pick the buyer." };
-  if (!order.buyer_po.trim()) return { error: "Enter the buyer's PO number." };
-  if (order.po_date && order.ship_date && order.ship_date < order.po_date) return { error: "The ship date can't be before the PO date." };
-
-  const filled = lines.filter((l) => l.style.trim() || l.qty.trim());
-  if (filled.length === 0) return { error: "Add at least one style." };
-  for (const [i, l] of filled.entries()) {
-    const n = i + 1;
-    if (!l.style.trim()) return { error: `Line ${n}: enter the style number.` };
-    const q = Number(num(l.qty));
-    if (!Number.isInteger(q) || q <= 0) return { error: `Line ${n}: quantity must be a whole number above zero.` };
-    for (const [k, label] of [["buyer_rate", "buyer rate"], ["factory_rate", "factory rate"]] as const) {
-      const r = Number(num(l[k]));
-      if (l[k].trim() && Number.isNaN(r)) return { error: `Line ${n}: the ${label} must be a number.` };
-      if (l[k].trim() && r < 0) return { error: `Line ${n}: the ${label} can't be below zero.` };
-    }
-  }
+  const problem = orderProblem(order, lines);
+  if (problem) return { error: problem.msg, field: problem.field };
+  const filled = lines.filter(isFilled);
 
   const supabase = await createClient();
   // The same check the form shows, made again here so a save can't skip it. A check that can't run doesn't stop the save.
@@ -86,7 +74,6 @@ export async function saveOrder(order: OrderInput, lines: LineInput[], incomingI
   };
   if (warnings?.similar_po.length && !confirmed) return { confirm: warnings };
 
-  if ((order.buyer_terms ?? "").length > 2000) return { error: "Keep the buyer's terms under 2000 letters." };
   const { buyer_terms, ...head } = order;
   const { data, error } = await supabase.rpc("save_order", {
     p_order: { ...head, buyer_po: order.buyer_po.trim() },
@@ -306,7 +293,10 @@ export async function setStylePhoto(orderId: string, lineId: string, path: strin
 export type LineFileKind = "tech_pack" | "cutting" | "other";
 
 // A style's fabric and its pieces per size. The database checks the sizes add up to the style's quantity.
-export async function saveStyleDetails(orderId: string, lineId: string, fabric: string, sizes: { size: string; qty: string }[]): Promise<{ error?: string }> {
+// was: the fabric and sizes the form was opened with. When someone else saved this style since then, the save is
+// refused (stale) instead of quietly replacing their sizes, and the form reloads to show what they saved.
+export async function saveStyleDetails(orderId: string, lineId: string, fabric: string, sizes: { size: string; qty: string }[],
+  was?: { fabric: string; sizes: Record<string, number> }): Promise<{ error?: string; stale?: boolean }> {
   const me = await getMe();
   if (!canEditOrders(me?.role)) return { error: "Only the orders team can change orders." };
   const rows = sizes.map((r) => ({ size: r.size.trim(), qty: r.qty.trim() })).filter((r) => r.size || r.qty);
@@ -314,6 +304,13 @@ export async function saveStyleDetails(orderId: string, lineId: string, fabric: 
   if (rows.some((r) => !/^\d+$/.test(r.qty))) return { error: "Enter whole pieces for every size." };
   if (new Set(rows.map((r) => r.size.toUpperCase())).size !== rows.length) return { error: "A size is entered twice." };
   const supabase = await createClient();
+  if (was) {
+    const { data: now } = await supabase.from("order_lines").select("fabric, sizes").eq("id", lineId).maybeSingle<{ fabric: string | null; sizes: Record<string, number> | null }>();
+    const same = (x: { fabric: string | null; sizes: Record<string, number> | null }) => JSON.stringify([(x.fabric ?? "").trim(), sizeEntries(x.sizes)]);
+    if (now && same(now) !== same(was)) {
+      return { error: "Someone else saved this style's fabric or sizes while you had it open, so yours weren't saved. Tap Undo to see theirs, then change them again if needed.", stale: true };
+    }
+  }
   const { error } = await supabase.rpc("save_style_details", {
     p_line: lineId, p_fabric: fabric.trim(), p_sizes: rows.length ? Object.fromEntries(rows.map((r) => [r.size, Number(r.qty)])) : null,
   });

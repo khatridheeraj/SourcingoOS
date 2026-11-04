@@ -285,17 +285,18 @@ export function ChequeForm({ initial, buyers, invoices, today, fixed }: { initia
           <p className="muted">This buyer has no invoices waiting for a cheque. You can still save the cheque and set it against an invoice later.</p>
         ) : (
           <div className="table-wrap">
-            <table className="tbl">
+            {/* One card per invoice on a phone, so the amount box isn't off to the right. */}
+            <table className="tbl stack">
               <thead><tr><th>Invoice</th><th>Date</th><th>Due</th><th className="r">Left to pay</th><th className="r">From this cheque (₹)</th></tr></thead>
               <tbody>
                 {open.map((i) => (
                   <tr key={i.id}>
-                    <td className="code">{i.invoice_no}</td>
-                    <td className="whitespace-nowrap">{day(i.invoice_date)}</td>
-                    <td className={`whitespace-nowrap ${i.due && i.due < today ? "text-bad" : ""}`}>{day(i.due)}</td>
-                    <td className="r num whitespace-nowrap">{money(i.left)}</td>
-                    <td className="r">
-                      <input className="inp num ml-auto max-w-[140px]" inputMode="decimal" value={f.split[i.id] ?? ""} placeholder="0" aria-label={`Amount for ${i.invoice_no}`}
+                    <td className="code font-semibold">{i.invoice_no}</td>
+                    <td className="whitespace-nowrap" data-label="Dated">{day(i.invoice_date)}</td>
+                    <td className={`whitespace-nowrap ${i.due && i.due < today ? "text-bad" : ""}`} data-label="Due">{day(i.due)}</td>
+                    <td className="r num whitespace-nowrap" data-label="Left to pay">{money(i.left)}</td>
+                    <td className="r" data-label="From this cheque (₹)">
+                      <input className="inp num max-w-[140px] min-[761px]:ml-auto" inputMode="decimal" value={f.split[i.id] ?? ""} placeholder="0" aria-label={`Amount for ${i.invoice_no}`}
                         {...at(`split-${i.id}`)} aria-describedby={errOf(`split-${i.id}`) ? `split-err-${i.id}` : undefined}
                         onChange={(e) => { setF((p) => ({ ...p, split: { ...p.split, [i.id]: clean(e.target.value) } })); unmark(`split-${i.id}`); }} />
                       {errOf(`split-${i.id}`) && <div id={`split-err-${i.id}`} className="mt-1 text-xs text-bad" role="alert">{errOf(`split-${i.id}`)}</div>}
