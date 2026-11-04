@@ -438,6 +438,8 @@ main:focus { outline: none; }
 
   .table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); box-shadow: var(--shadow); }
   .tbl { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+  /* "stack" (one card per row on a phone) must not pick up the column layout of the plain .stack class. */
+  .tbl.stack { display: table; gap: 0; }
   .tbl th {
     text-align: left; font-size: 12px; color: var(--muted); font-weight: 500;
     padding: 9px 14px; border-bottom: 1px solid var(--line); background: var(--surface-2); white-space: nowrap;
@@ -846,6 +848,11 @@ main:focus { outline: none; }
     .tbl.stack tr:last-child { border-bottom: 0; }
     .tbl.stack td { padding: 3px 0; border: 0; }
     .tbl.stack input[type="checkbox"] { width: 22px; height: 22px; }
+    .tbl.stack td:empty { display: none; }
+    .tbl.stack td.r { text-align: left; }
+    .tbl.stack td.r > .row { justify-content: flex-start; padding-top: 6px; }
+    /* A number or field with no heading above it says what it is. */
+    .tbl.stack td[data-label]::before { content: attr(data-label) " "; color: var(--muted); }
     /* Tap targets of at least 40px for the small links and switches. */
     .pill { height: 40px; }
     summary:not(.bstyle summary) { min-height: 40px; padding-block: 10px; }
