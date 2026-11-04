@@ -22,8 +22,11 @@ export function BuyerList({ buyers, owner, openOrders, senders }: {
     setError("");
     start(async () => {
       const res = await saveBuyer(editing);
-      if (res.error) setError(res.error);
-      else setEditing(null);
+      if (res.error) {
+        setError(res.error);
+        // The buyer itself went in: the next Save changes it instead of adding it again.
+        if (res.id) setEditing((e) => (e ? { ...e, id: res.id } : e));
+      } else setEditing(null);
     });
   }
 

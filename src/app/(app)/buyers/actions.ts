@@ -11,12 +11,25 @@ export type BuyerInput = { id?: string; code: string; realName: string; city: st
 
 const senderList = (s: string) => s.split(/[\s,;]+/).map((x) => x.trim()).filter(Boolean);
 
-export async function saveBuyer(b: BuyerInput): Promise<{ error?: string }> {
+// The first sender the database would refuse, checked the same way as set_buyer_po_senders, so a new buyer is never
+// saved without its senders (saving again would then try to add the buyer a second time).
+function badSender(list: string[]): string | null {
+  for (const raw of list) {
+    const s = raw.trim().toLowerCase();
+    const x = s.includes("@") && !s.startsWith("@") ? s : "@" + s.replace(/^@+/, "");
+    if (!/^[a-z0-9._%+'-]*@[a-z0-9-]+(\.[a-z0-9-]+)+$/.test(x)) return x;
+  }
+  return null;
+}
+
+export async function saveBuyer(b: BuyerInput): Promise<{ error?: string; id?: string }> {
   const me = await getMe();
   if (me?.role !== "owner") return { error: "Only the owner can add or change buyers." };
   const code = b.code.trim().toUpperCase().replace(/\s+/g, "-");
   if (!/^[A-Z0-9-]{2,20}$/.test(code)) return { error: "Use 2 to 20 capital letters, numbers or dashes for the code, like BYR-OZ." };
   if (!b.realName.trim()) return { error: "Enter the buyer's real name." };
+  const bad = badSender(senderList(b.senders));
+  if (bad) return { error: `"${bad}" is not an email address or a domain like @buyer.com.` };
 
   const supabase = await createClient();
   const { data: id, error } = await supabase.rpc("save_buyer", {
@@ -25,7 +38,7 @@ export async function saveBuyer(b: BuyerInput): Promise<{ error?: string }> {
   if (error) return { error: friendly(error) };
   const { error: senders } = await supabase.rpc("set_buyer_po_senders", { p_buyer: id, p_senders: senderList(b.senders) });
   revalidatePath("/", "layout");
-  if (senders) return { error: `The buyer is saved, but not its PO senders: ${friendly(senders)}` };
+  if (senders) return { error: `The buyer is saved, but not its PO senders: ${friendly(senders)}`, id: id as string };
   return {};
 }
 
