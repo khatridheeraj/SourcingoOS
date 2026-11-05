@@ -56,7 +56,7 @@ export function AddressFix({ dispatchId, kind, id, address, gstin }: { dispatchI
           })}>
           {pending ? "Saving…" : "Save address"}
         </button>
-        {address && <button type="button" className="btn sm" onClick={() => setOpen(false)}>Cancel</button>}
+        {address && <button type="button" className="btn sm" disabled={pending} onClick={() => { setA(address); setG(gstin ?? ""); setError(""); setOpen(false); }}>Cancel</button>}
         {error && <span className="text-[12.5px] font-semibold text-bad" role="alert">{error}</span>}
       </div>
     </div>

@@ -792,9 +792,10 @@ main:focus { outline: none; }
   .smp-trail q, .fsmp-note, .bsmp-note, .bsmp-hist q { display: block; flex-basis: 100%; margin-top: 2px; padding: 6px 10px; border-radius: 8px; background: var(--surface-2); font-size: 13px; color: var(--foreground); quotes: none; white-space: pre-line; }
   .bsmp-note, .fsmp-note { flex-basis: auto; }
   .smp-photos { flex: none; }
-  .smp-acts { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: auto; padding-top: 2px; }
-  .smp-acts .btn { width: 100%; }
-  .smp-acts .btn.primary:not(:only-child):nth-last-child(odd) { grid-column: 1 / -1; }
+  /* Two equal columns that never grow past the card; the one primary button takes its own row, long labels wrap. */
+  .smp-acts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: auto; padding-top: 2px; }
+  .smp-acts .btn { width: 100%; min-width: 0; height: auto; min-height: 34px; padding-block: 6px; white-space: normal; text-align: center; line-height: 1.25; }
+  .smp-acts .btn.primary:not(:only-child) { grid-column: 1 / -1; }
   .smp-earlier { border-top: 1px solid var(--line); padding-top: 8px; }
   .smp-earlier summary { cursor: pointer; font-size: 12.5px; font-weight: 500; color: var(--muted); }
   .smp-old { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; padding: 10px; border-radius: 10px; background: var(--surface-2); }

@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useRef, useState, useTransition } from "react";
 import { PhotoPicker, type Picked } from "@/components/photo-picker";
 import { toast } from "@/components/toast";
-import { dayAtNear, dayNear } from "@/lib/format";
+import { dayAtNear, dayNear, istDate } from "@/lib/format";
 import { uploadPhotos } from "@/lib/photos";
 import { COURIERS, sampleLabel, STATE_TEXT, trackUrl } from "@/lib/samples";
 import type { RoundView, SampleThread } from "@/lib/samples-server";
@@ -89,6 +89,11 @@ export function SampleThreadCard({ t, today, showOrder = true, readOnly = false 
   const waiting = last?.status === "with_buyer" && last.forwarded_at ? Math.floor((Date.parse(today) - Date.parse(last.dispatched_on ?? last.forwarded_at.slice(0, 10))) / 86_400_000) : 0;
   const courierName = courier === "Other" ? other.trim() : courier;
   const byHand = courierName.toLowerCase() === "by hand";
+  // The earliest day each date box allows: never before the team had the sample (or before it went to the buyer), never over 30 days back.
+  const latest = (...ds: (string | null | undefined)[]) => ds.filter((d): d is string => !!d).reduce((a, b) => (a > b ? a : b));
+  const received = last ? istDate(last.sent_at) : null;
+  const minSent = latest(addDays(today, -30), received);
+  const minAnswer = latest(minSent, last?.status === "with_buyer" ? last.dispatched_on : null);
 
   function open(m: Mode) {
     setMode(m);
@@ -111,12 +116,14 @@ export function SampleThreadCard({ t, today, showOrder = true, readOnly = false 
         if (mode === "forward") {
           if (!courierName) return setError("Say how the sample goes: the courier, or By hand.");
           if (!byHand && !awb.trim()) return setError("Enter the AWB (tracking) number, so the buyer can track the parcel.");
+          if (sentOn && sentOn < minSent) return setError(received && minSent === received ? `The sample reached you on ${dm(received)}, so it went to the buyer that day or later.` : "Give the day the sample went: today or in the last 30 days.");
           res = await forwardSample(t.orderId, last.id, courierName, byHand ? "" : awb.trim(), sentOn, note);
         } else if (mode === "return") {
           if (!note.trim()) return setError("Say what to fix, so the factory knows.");
           res = await returnSample(t.orderId, last.id, note);
         } else if (mode === "answer") {
           if (!approved && !note.trim()) return setError("Say what to change, so the factory can fix it.");
+          if (sentOn && sentOn < minAnswer) return setError(minAnswer === addDays(today, -30) ? "Give the day the buyer answered: today or in the last 30 days." : `The buyer could answer only after getting the sample, so pick ${dm(minAnswer)} or later.`);
           const paths = files.length ? await uploadPhotos(`${t.companyId}/${t.orderId}/samples/${t.lineId}`, files.map((f) => f.file)) : [];
           res = await recordAnswer(t.orderId, last.id, approved, note, paths, sentOn);
         } else {
@@ -237,7 +244,7 @@ export function SampleThreadCard({ t, today, showOrder = true, readOnly = false 
                 </label>
               )}
               <label className="field"><span>Sent on</span>
-                <input className="inp" type="date" value={sentOn} min={addDays(today, -30)} max={today} disabled={pending} onChange={(e) => setSentOn(e.target.value)} />
+                <input className="inp" type="date" value={sentOn} min={minSent} max={today} disabled={pending} onChange={(e) => setSentOn(e.target.value)} />
               </label>
               <label className="field"><span>Note for the buyer (optional)</span>
                 <textarea className="inp h-20 resize-none font-[inherit]" maxLength={500} value={note} disabled={pending} placeholder="e.g. Thread colour corrected as per your comments"
@@ -263,7 +270,7 @@ export function SampleThreadCard({ t, today, showOrder = true, readOnly = false 
                   onChange={(e) => setNote(e.target.value)} />
               </label>
               <label className="field"><span>Answered on</span>
-                <input className="inp" type="date" value={sentOn} min={addDays(today, -30)} max={today} disabled={pending} onChange={(e) => setSentOn(e.target.value)} />
+                <input className="inp" type="date" value={sentOn} min={minAnswer} max={today} disabled={pending} onChange={(e) => setSentOn(e.target.value)} />
                 {approved && <small>Approving marks the {label.toLowerCase()} step done on this day.</small>}
               </label>
               <PhotoPicker files={files} onChange={setFiles} disabled={pending} label="Buyer's photos or marked-up pictures" />
