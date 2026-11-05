@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { canEditOrders, getMe } from "@/lib/auth";
 import { friendly } from "@/lib/errors";
 import { isSampleStep } from "@/lib/samples";
+import { dayNear, istDate } from "@/lib/format";
 import { createClient } from "@/lib/supabase/server";
 
 type Result = { error?: string };
@@ -38,6 +39,9 @@ export async function forwardSample(orderId: string, id: string, courier: string
   if (no) return { error: no };
   if (!DAY.test(sentOn)) return { error: "Pick the day the sample went." };
   const supabase = await createClient();
+  // A sample can't reach the buyer before it reached the team.
+  const { data: r } = await supabase.from("sample_rounds").select("sent_at").eq("id", id).maybeSingle();
+  if (r?.sent_at && sentOn < istDate(r.sent_at)) return { error: `The sample reached you on ${dayNear(istDate(r.sent_at))}, so it went to the buyer that day or later.` };
   const { error } = await supabase.rpc("forward_sample", { p_id: id, p_courier: courier.slice(0, 60), p_awb: awb.slice(0, 60), p_sent_on: sentOn, p_note: note.slice(0, 500) });
   if (error) return { error: friendly(error) };
   refresh(orderId);
@@ -63,6 +67,9 @@ export async function recordAnswer(orderId: string, id: string, approved: boolea
   if (!approved && !note.trim()) return { error: "Say what to change, so the factory can fix it." };
   if (!DAY.test(on)) return { error: "Pick the day the buyer answered." };
   const supabase = await createClient();
+  // The buyer answers after getting the sample, so never before the day it went to them.
+  const { data: r } = await supabase.from("sample_rounds").select("status, dispatched_on").eq("id", id).maybeSingle();
+  if (r?.status === "with_buyer" && r.dispatched_on && on < r.dispatched_on) return { error: `The buyer could answer only after getting the sample, so pick ${dayNear(r.dispatched_on)} or later.` };
   const { error } = await supabase.rpc("answer_sample", { p_id: id, p_approved: approved, p_note: note.slice(0, 1000), p_photos: photos, p_on: on });
   if (error) return { error: friendly(error) };
   refresh(orderId);

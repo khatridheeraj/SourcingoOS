@@ -26,6 +26,8 @@ const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "
 export const day = (d: string | null | undefined) => (d ? `${Number(d.slice(8, 10))} ${MONTHS[Number(d.slice(5, 7)) - 1]} ${d.slice(0, 4)}` : "");
 // The India date of a timestamp (a UTC timestamp's first 10 characters can be the day before).
 export const dayAt = (ts: string | null | undefined) => (ts ? day(date.format(new Date(ts))) : "");
+// The India date of a timestamp as YYYY-MM-DD.
+export const istDate = (ts: string) => date.format(new Date(ts));
 
 // Today's date in India as YYYY-MM-DD.
 export const todayIST = () => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(new Date());
