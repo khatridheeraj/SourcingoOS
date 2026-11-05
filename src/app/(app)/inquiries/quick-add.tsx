@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useMemo, useRef, useState, useTransition } from "react";
 import { PhotoPicker, type Picked } from "@/components/photo-picker";
 import { toast } from "@/components/toast";
+import { caught } from "@/lib/errors";
 import { parseInquiry, type ParseBuyer, type ParsedInquiry } from "@/lib/inquiry-parse";
 import { INQUIRY_SOURCES } from "@/lib/inquiries";
 import { addDays } from "@/lib/payments";
@@ -60,11 +61,12 @@ export function QuickAdd({ buyers, companyId, meId, today, initial = "" }: { buy
     const product = v.product.trim() || (photos.length ? "See the photos" : "");
     if (!product) return setError("Say what they want: the product, like satin co-ord sets.");
     start(async () => {
+      // A dropped connection or a sign-out says so under the form and keeps the pasted message.
       const res = await createInquiry({
         buyer_id: isNew ? "" : v.buyer_id, prospect: isNew ? v.prospect : "", contact_name: v.contact_name, contact: v.contact,
         source: v.source || "whatsapp", product, est_qty: v.est_qty, unit: v.unit, target_price: v.target_price,
         merchandiser_id: meId, next_follow_up: addDays(today, follow), notes: v.notes,
-      });
+      }).catch((e: unknown) => ({ error: caught(e, "It didn't save. Try again."), id: null, no: null }));
       if (res.error || !res.id) return setError(res.error ?? "It didn't save. Try again.");
       if (photos.length) {
         try {
