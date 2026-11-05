@@ -116,9 +116,12 @@ body {
   font-size: 14px;
   line-height: 1.5;
   font-feature-settings: "cv11", "ss01", "ss03";
+  /* A pasted link or a name typed without spaces (a Drive link in notes, "SatinCoordSetWith…") breaks onto the next
+     line instead of pushing the page wider than a phone. break-word leaves table column widths as they were. */
+  overflow-wrap: break-word;
 }
 b, strong { font-weight: 600; }
-h1, h2, h3 { font-family: var(--font-display); text-wrap: balance; font-weight: 600; letter-spacing: -0.011em; }
+h1, h2, h3 { font-family: var(--font-display); text-wrap: balance; font-weight: 600; letter-spacing: -0.011em; overflow-wrap: anywhere; }
 .num { font-variant-numeric: tabular-nums; }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 /* Photo and file pickers hide the real input inside a label: the label shows the keyboard focus instead. */
@@ -326,7 +329,10 @@ main:focus { outline: none; }
   .card-h { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 14px 16px 14px 20px; border-bottom: 1px solid var(--line); }
   .card-h h2 { font-size: 15px; font-weight: 600; line-height: 1.35; }
   .card-h p { margin-top: 1px; font-size: 12.5px; color: var(--muted); }
-  .card-h > div:first-child { flex: 1 1 220px; }
+  .card-h > div:first-child { flex: 1 1 220px; min-width: 0; }
+  /* A name or style code in a row of chips and buttons wraps (breaking inside a very long code) instead of running
+     off the card. Rows still wrap whole items first; only an item wider than the line breaks. */
+  .row > b, .row > strong, .score-list li > b { min-width: 0; overflow-wrap: anywhere; }
   .card-empty { display: flex; align-items: center; gap: 10px; padding: 18px 20px; font-size: 13.5px; color: var(--muted); }
   .card-empty::before { content: ""; width: 18px; height: 18px; border-radius: 50%; flex: none; background: var(--ok-soft) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='%23157a46' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 10.5 2.5 2.5L14 7.5'/%3E%3C/svg%3E") center / 14px no-repeat; }
   .rows > li { border-top: 1px solid var(--line); }
@@ -853,6 +859,12 @@ main:focus { outline: none; }
     .tbl.stack td.r > .row { justify-content: flex-start; padding-top: 6px; }
     /* A number or field with no heading above it says what it is. */
     .tbl.stack td[data-label]::before { content: attr(data-label) " "; color: var(--muted); }
+    /* Activity log on a phone: time and who on one line, what happened under them at full width. */
+    .act-log td:first-child:not(.act-day), .act-log td:nth-child(2) { display: inline-block; width: auto; margin-right: 10px; vertical-align: baseline; }
+    .act-log tr:has(.act-day) { padding: 0; }
+    .act-log td.act-day { padding: 8px 14px; }
+    /* Order margin on a phone: the style, then its numbers two to a line, so Margin and % are in view. */
+    .margin-tbl td:not(:first-child) { display: inline-block; width: 50%; }
     /* Tap targets of at least 40px for the small links and switches. */
     .pill { height: 40px; }
     summary:not(.bstyle summary) { min-height: 40px; padding-block: 10px; }
@@ -2049,7 +2061,9 @@ main:focus { outline: none; }
   .oh h1 { font-size: 30px; line-height: 1.15; letter-spacing: -0.03em; font-weight: 650; }
   /* The dot before each part is clipped at the start of a line, so a long PO number that wraps leaves no stray dot. */
   .oh-sub { display: flex; flex-wrap: wrap; gap: 4px 0; margin: 4px 0 0 -18px; font-size: 14px; color: var(--muted); clip-path: inset(-4px -4px -4px 18px); }
-  .oh-sub span::before { content: "·"; display: inline-block; width: 18px; text-align: center; color: var(--faint); }
+  /* A long PO number wraps beside its dot, so its second line isn't cut by the clip that hides the line-start dots. */
+  .oh-sub span { display: inline-flex; min-width: 0; overflow-wrap: anywhere; }
+  .oh-sub span::before { flex: none; content: "·"; display: inline-block; width: 18px; text-align: center; color: var(--faint); }
   .oh-facts { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 18px; margin-top: 14px; font-size: 13.5px; color: var(--muted); }
   .oh-facts b { font-size: 15px; font-weight: 650; color: var(--foreground); }
   .oh-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }

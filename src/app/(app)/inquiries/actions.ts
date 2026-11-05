@@ -9,6 +9,7 @@ import { addBuyer } from "../buyers/actions";
 import { ignoreSender, setAside } from "../pos/actions";
 import { addDays } from "@/lib/payments";
 import { buyerByDomain, parseInquiry } from "@/lib/inquiry-parse";
+import { inquiryProblem, priceText, qtyText, type InquiryField } from "@/lib/inquiry-input";
 
 export type InquiryInput = {
   buyer_id: string;
@@ -25,7 +26,6 @@ export type InquiryInput = {
   notes: string;
 };
 
-const num = (s: string) => s.replace(/[,₹\s]/g, "");
 const isDate = (d: string) => !d || /^\d{4}-\d{2}-\d{2}$/.test(d);
 
 async function team() {
@@ -35,14 +35,11 @@ async function team() {
   return { me, supabase: await createClient() } as const;
 }
 
-function clean(i: InquiryInput): { error: string } | { row: Record<string, unknown> } {
-  if (!i.buyer_id && !i.prospect.trim()) return { error: "Pick the buyer, or type the name of a new one." };
-  if (!i.product.trim()) return { error: "Say what the buyer is asking for." };
-  const qty = num(i.est_qty);
-  if (qty && !(Number.isInteger(Number(qty)) && Number(qty) > 0)) return { error: "The quantity must be a whole number above zero." };
-  const price = num(i.target_price);
-  if (price && !(Number(price) >= 0)) return { error: "The target price must be a number." };
-  if (!isDate(i.next_follow_up)) return { error: "Enter the follow-up as a date." };
+function clean(i: InquiryInput, today?: string): { error: string; field?: InquiryField } | { row: Record<string, unknown> } {
+  const bad = inquiryProblem(i, { today });
+  if (bad) return bad;
+  const qty = qtyText(i.est_qty);
+  const price = i.target_price.trim() ? priceText(i.target_price) : "";
   return {
     row: {
       buyer_id: i.buyer_id || null,
@@ -62,12 +59,11 @@ function clean(i: InquiryInput): { error: string } | { row: Record<string, unkno
 }
 
 // Logs a new inquiry. Photos are added after it exists, since they go in its own folder.
-export async function createInquiry(i: InquiryInput): Promise<{ error?: string; id?: string; no?: string }> {
+export async function createInquiry(i: InquiryInput): Promise<{ error?: string; field?: InquiryField; id?: string; no?: string }> {
   const t = await team();
   if ("error" in t) return { error: t.error };
-  const c = clean(i);
-  if ("error" in c) return { error: c.error };
-  if (c.row.next_follow_up && String(c.row.next_follow_up) < todayIST()) return { error: "The follow-up can't be in the past." };
+  const c = clean(i, todayIST());
+  if ("error" in c) return { error: c.error, field: c.field };
   const { data, error } = await t.supabase.from("inquiries").insert(c.row).select("id, inquiry_no").single();
   if (error) return { error: friendly(error) };
   revalidatePath("/inquiries");
@@ -75,11 +71,11 @@ export async function createInquiry(i: InquiryInput): Promise<{ error?: string; 
   return { id: data.id, no: data.inquiry_no };
 }
 
-export async function updateInquiry(id: string, i: InquiryInput): Promise<{ error?: string }> {
+export async function updateInquiry(id: string, i: InquiryInput): Promise<{ error?: string; field?: InquiryField }> {
   const t = await team();
   if ("error" in t) return { error: t.error };
   const c = clean(i);
-  if ("error" in c) return { error: c.error };
+  if ("error" in c) return { error: c.error, field: c.field };
   const { data, error } = await t.supabase.from("inquiries").update(c.row).eq("id", id).in("status", ["new", "quoted"]).select("id");
   if (error) return { error: friendly(error) };
   if (!data?.length) return { error: "Only open inquiries can be changed. Reload the page." };
@@ -95,8 +91,8 @@ export async function setInquiryStatus(id: string, status: "new" | "quoted" | "l
   if ("error" in t) return { error: t.error };
   const patch: Record<string, unknown> = { status };
   if (status === "quoted") {
-    const price = num(p.quoted_price ?? "");
-    if (!price || !(Number(price) >= 0)) return { error: "Enter the price you quoted, per piece." };
+    const price = priceText(p.quoted_price ?? "");
+    if (!price || /-\s*\d/.test(p.quoted_price ?? "") || !(Number(price) >= 0)) return { error: "Enter the price you quoted, per piece." };
     patch.quoted_price = Number(price);
   }
   if (status === "lost") {
