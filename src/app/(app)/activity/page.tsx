@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { AREAS, describe, type Entry, hrefFor, OTHER_AREA, sourceLabel, when, who } from "@/lib/activity";
+import { AREAS, describe, type Entry, hrefFor, OTHER_AREA, sourceLabel, timeOf, when, who } from "@/lib/activity";
 import { getMe, type Role, roleLabel } from "@/lib/auth";
 import { loadTeam, personName } from "@/lib/data";
 import { nowMs, todayIST } from "@/lib/format";
@@ -83,7 +83,7 @@ export default async function ActivityPage({ searchParams }: PageProps<"/activit
       {error && <p className="errbox">Couldn&apos;t load the activity log: {error.message}</p>}
       {entries.length ? (
         <div className="table-wrap">
-          <table className="tbl">
+          <table className="tbl stack act-log">
             <thead><tr><th>When</th><th>Who</th><th>What</th></tr></thead>
             <tbody>
               {entries.map((e, i) => {
@@ -91,9 +91,9 @@ export default async function ActivityPage({ searchParams }: PageProps<"/activit
                 const href = hrefFor(e);
                 const src = e.actor ? sourceLabel(e) : null;
                 return [
-                  days[i] !== days[i - 1] && <tr key={`d${e.id}`}><td colSpan={3} className="bg-surface-2 text-xs font-bold">{days[i]}</td></tr>,
+                  days[i] !== days[i - 1] && <tr key={`d${e.id}`}><td colSpan={3} className="act-day bg-surface-2 text-xs font-bold">{days[i]}</td></tr>,
                   <tr key={e.id}>
-                    <td className="whitespace-nowrap muted text-xs">{when(e.at)}</td>
+                    <td className="whitespace-nowrap muted text-xs"><time dateTime={e.at} title={when(e.at)}>{timeOf(e.at)}</time></td>
                     <td className="whitespace-nowrap">{who(e, names)}{src && <div className="text-xs muted">{src}</div>}</td>
                     <td>
                       {href ? <Link className="link" href={href}>{d.text}</Link> : <b>{d.text}</b>}

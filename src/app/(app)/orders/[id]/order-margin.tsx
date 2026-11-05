@@ -55,7 +55,7 @@ export function OrderMargin({ styles, dispatches, cash }: { styles: MarginStyle[
       )}
       {styles.length > 1 && (
         <div className="table-wrap mt-3">
-          <table className="tbl">
+          <table className="tbl stack margin-tbl">
             <thead>
               <tr><th>Style</th><th className="r">{unit === "m" ? "Metres" : unit === "pcs" ? "Pieces" : "Quantity"}</th><th className="r">Buyer rate</th><th className="r">Factory rate</th><th className="r">{unit === "m" ? "Per metre" : unit === "pcs" ? "Per piece" : "Per unit"}</th><th className="r">Margin</th><th className="r">%</th></tr>
             </thead>
@@ -67,12 +67,12 @@ export function OrderMargin({ styles, dispatches, cash }: { styles: MarginStyle[
                 return (
                   <tr key={s.id}>
                     <td><span className="code">{s.style}</span>{s.colour && <span className="muted"> · {s.colour}</span>}</td>
-                    <td className="r num">{unit === "units" ? qtyU(s.qty, s.product) : qty(s.qty)}</td>
-                    <td className="r num">{money(s.buyerRate)}</td>
-                    <td className="r num">{money(s.factoryRate)}</td>
-                    <td className="r num">{money(per)}</td>
-                    <td className="r num">{per == null ? <span className="muted">Rate missing</span> : money(per * s.qty)}</td>
-                    <td className={`r num ${marginCls(p)}`}>{pct(p)}</td>
+                    <td className="r num" data-label={unit === "m" ? "Metres" : unit === "pcs" ? "Pieces" : "Quantity"}>{unit === "units" ? qtyU(s.qty, s.product) : qty(s.qty)}</td>
+                    <td className="r num" data-label="Buyer">{money(s.buyerRate)}</td>
+                    <td className="r num" data-label="Factory">{money(s.factoryRate)}</td>
+                    <td className="r num" data-label={unit === "m" ? "Per metre" : unit === "pcs" ? "Per piece" : "Per unit"}>{money(per)}</td>
+                    <td className="r num" data-label="Margin">{per == null ? <span className="muted">Rate missing</span> : money(per * s.qty)}</td>
+                    <td className={`r num ${marginCls(p)}`} data-label="Margin %">{pct(p)}</td>
                   </tr>
                 );
               })}
