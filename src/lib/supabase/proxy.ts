@@ -1,5 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { SIGNED_OUT } from "@/lib/errors";
 
 // /api/brief is answered only for a mailbox Google vouches for. /f/<secret> is a factory link.
 // /po/<token> is one factory PO, to read and accept. /tally-reader is the Tally reader download (no secrets).
@@ -29,6 +30,12 @@ export async function updateSession(request: NextRequest) {
   const { data } = await supabase.auth.getClaims();
   const path = request.nextUrl.pathname;
   if (!data?.claims && !PUBLIC_PATHS.some((p) => path === p || path.startsWith(p + "/"))) {
+    // A save (server action) from a page left open after signing out, or after the session ran out elsewhere: a
+    // redirect would replay the save against /login and the page would fall over with "couldn't load", losing what
+    // was typed. Answer in words instead; the form shows them and keeps its text.
+    if (request.method !== "GET" && request.headers.has("next-action")) {
+      return new NextResponse(SIGNED_OUT, { status: 401, headers: { "content-type": "text/plain" } });
+    }
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     // Remember the page they opened, so the sign-in link brings them back to it.

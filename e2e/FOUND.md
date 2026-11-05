@@ -18,8 +18,8 @@ How to use it:
 |---|---|---|
 | Buyer status page after the ship date has passed: say "N days past" or stay quiet? | 2026-10-26 | 2026-10-29 |
 | Nightly database backup needs a GitHub secret from him | 2026-10-24 | 2026-10-29 |
-| Tally reader has not read Tally since Mon 2 Nov evening (42.6 h at Wed 13:55 IST, 50.6 h at 21:55 IST, 58.6 h at Thu 05:55 IST, agent seen 36.9 h ago; 66.6 h at Thu 13:55 IST, agent seen 44.9 h ago) and the office PC agent was last seen Tue ~17:00 IST: Tally invoices and bills stop reaching the app until Tally is opened on that PC | 2026-11-04 | 2026-11-05 |
-| One buyer PO in "To check" and one held, both over 2 days old (live data, team's job). 29 Oct 17:00Z: only the held one is left; 31 Oct: 4 held (unknown senders, in Your approvals); 1 Nov: 3 held, evening 4; 2 Nov: 4; 3 Nov: 4, afternoon 4, evening 4; 4 Nov: 4, afternoon 5, evening 7; 5 Nov: 7, afternoon 7 | 2026-10-29 | 2026-11-05 |
+| One buyer PO in "To check" and one held, both over 2 days old (live data, team's job). 29 Oct 17:00Z: only the held one is left; 31 Oct: 4 held (unknown senders, in Your approvals); 1 Nov: 3 held, evening 4; 2 Nov: 4; 3 Nov: 4, afternoon 4, evening 4; 4 Nov: 4, afternoon 5, evening 7; 5 Nov: 7, afternoon 7, evening 8 | 2026-10-29 | 2026-11-05 |
+| SO-0018: two factory POs sent for the owner's approval on 3 Nov 10:56Z, still waiting over 2 days (in Your approvals on Home) | 2026-11-05 | 2026-11-05 |
 
 ## Known (not new, never report)
 | Item | Why it is not a finding | Last seen |
@@ -32,7 +32,7 @@ How to use it:
 | Gmail pickup has found no new buyer PO for days | No buyer has emailed a PO; not a glitch (2 Nov early: 59 h) | 2026-11-02 |
 | Factory PO emails all go to merchandiser@sourcingo.in | Test inbox mode, on purpose until Dheeraj says switch | 2026-10-31 |
 | Markers screen paused | MARKERS_ON flag, on purpose | 2026-10-31 |
-| Supabase advisors: security-definer functions callable by anon/authenticated, RLS on with no policy, one mutable search_path, leaked-password check off | Long-standing by design (the app's RPCs are security definer and check the role inside); not new (4 Nov early and evening, 5 Nov early: same five) | 2026-11-05 |
+| Supabase advisors: security-definer functions callable by anon/authenticated, RLS on with no policy, one mutable search_path, leaked-password check off | Long-standing by design (the app's RPCs are security definer and check the role inside); not new (4 Nov early and evening, 5 Nov early and evening: same five) | 2026-11-05 |
 | Supabase performance advisors: unindexed foreign keys, unused indexes, auth RLS initplan, multiple permissive policies, one table without a primary key | Long-standing INFO/WARN on a 33 MB database; nothing slow in the logs | 2026-10-31 |
 | Morning brief "shipped in part" / "closed short" lines and Home's deleted-PO line say "pcs" even for a fabric order | The numbers come from database functions that don't return the unit; fix with the next migration a thread makes, not a check run | 2026-10-30 |
 | Local stack: Next dev logs "The destination stream closed early" after a save that redirects | Dev-server noise when a page is left mid-stream; not seen in production | 2026-10-29 |
@@ -54,7 +54,7 @@ order already late, large order (20+ styles, 50,000+ pieces, long names), fabric
 Hindi or long text in names and notes, zero and huge money amounts, slow network (throttle in a short Playwright script) and double taps,
 browser back after saving, phone Back with a sheet open, two people editing the same order, date edges (month end, year end, today vs
 tomorrow), keyboard only, form errors (blank, wrong format, negative numbers), public links with a wrong or
-made-up token (/po, /f, /s), print and PDF views (A4, many styles), printing from dark mode, a brand-new company with nothing in it, signed out / spent sign-in links, a very old order (a year past its ship date), hand-edited or stale web addresses (bad filter values, page past the end, odd characters in ?next=), search with odd input (loose codes, long pastes, other scripts), money typed or pasted the way people write it (Rs. 1,250.50, 1,25,000, two dots, zero), long unbroken text (a pasted Drive link in notes, a name or code typed without spaces).
+made-up token (/po, /f, /s), print and PDF views (A4, many styles), printing from dark mode, a brand-new company with nothing in it, signed out / spent sign-in links, signed out mid-form (session ended in another tab), a very old order (a year past its ship date), hand-edited or stale web addresses (bad filter values, page past the end, odd characters in ?next=), search with odd input (loose codes, long pastes, other scripts), money typed or pasted the way people write it (Rs. 1,250.50, 1,25,000, two dots, zero), long unbroken text (a pasted Drive link in notes, a name or code typed without spaces).
 
 | Date | Area | Angle | Result |
 |---|---|---|---|
@@ -122,6 +122,9 @@ made-up token (/po, /f, /s), print and PDF views (A4, many styles), printing fro
 | 2026-11-05 | Samples: Send to buyer, Record buyer's answer, Buyer already answered | date edges: sent-to-buyer day before the factory sent it, buyer's answer before the sample went out, merch phone + desk, light + dark | The date box allowed any day in the last 30, so a sample that came in on 3 Nov could be "sent to buyer 16 Oct": the card read "With buyer 20 days" in amber and the page header counted it 5+ days late; an answer could also be dated before the sample went to the buyer. Fixed (this run's PR): the date box starts at the day the sample came in (or went out), and the app refuses an earlier day with a plain reason |
 | 2026-11-05 | Samples card buttons (Send to buyer / Buyer already answered / Send back, Record buyer's answer / Remind buyer) | phone 390 px, merch light + dark | "Remind buyer" stuck out past the card's right edge (the long "Record buyer's answer" label stretched its column). Fixed (this run's PR): the main button takes its own full row, the rest share two equal columns and wrap |
 | 2026-11-05 | Delivery challan: our address and GSTIN, buyer's delivery address (exploration: Change then Cancel) | owner phone | Cancel kept the half-typed address and any old error, so Change showed unsaved text as if it were saved. Fixed (this run's PR): Cancel puts back the saved address |
+| 2026-11-05 | Team notes (owner deciding Go ahead / Done / Later / Not doing with a reply) | keyboard only + slow network (1.5 s) + double Enter, owner desk; Hindi and Hinglish note text | Double Enter made one decision, Hindi fine. But the decided note leaves the Waiting tab with the pressed button, and focus fell to the page top. Fixed (this run's PR): focus moves to the next note's reply box (or the tabs) |
+| 2026-11-05 | Updates (Factories behind plan, Buyer updates: Check, Copy, Send) | phone light + dark, merch and owner | Fine |
+| 2026-11-05 | Any save while signed out (inquiry quick add, and every server action) | signed out in another tab or the session ran out, then tap Save, phone light + dark (exploration: signed out mid-form) | The save was redirected to /login, the page fell over with "This page couldn't load… Nothing you saved is lost" (untrue), Try again failed again, the pasted message was gone, and nothing said to sign in. Fixed (this run's PR): a save without a session gets "You were signed out, so this didn't save. Sign in again in a new tab, then come back and tap this again" (Hindi for factories); forms that catch errors show it under the form and keep the text (quick add now does); others show "You were signed out" with a Sign in again button that comes back to the page. Signing in and tapping again saves once |
 
 Not yet looked at from any angle beyond the crawl: date edges (month and year end; a year-old order done 1 Nov),
 two people on the QC record (order Details and style sizes done),
@@ -131,6 +134,8 @@ Print views not yet looked at: buyer PO PDF; a printed form's Styles table is cu
 ## Closed
 | Item | How | Date |
 |---|---|---|
+| A save after being signed out (another tab, or the session ran out) crashed the page with an untrue "Nothing you saved is lost" and lost the typed text; Team notes decision dropped keyboard focus to the page top | Fixed (this run's PR) | 2026-11-05 |
+| Tally reader not reading Tally since Mon 2 Nov (reported 4 Nov) | Reading again: last read 2.6 h before the 5 Nov evening run, agent seen 2.4 h before | 2026-11-05 |
 | Inquiry form errors only in the bottom bar and "Rs. 250" / "1200 pcs" refused; Activity log entries and order margin off to the right on a phone, unnamed log entries; long links and names pushing a phone page wide or off their cards | Fixed (this run's PR) | 2026-11-05 |
 | Record cheque amount boxes off to the right on a phone; new order errors only in the bottom bar and "Line N" off by blank rows; a second person's save quietly replaced a style's sizes and fabric | Fixed (this run's PR) | 2026-11-04 |
 | Factory form errors in one box away from the field, no word after saving; Factories and Buyers lists hid their buttons off to the right on a phone; Team table half width on a computer | Fixed (this run's PR) | 2026-11-04 |

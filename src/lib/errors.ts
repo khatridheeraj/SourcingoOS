@@ -39,6 +39,11 @@ export function isDropped(message: string): boolean {
 }
 export const DROPPED = "The connection dropped, so this may not have saved. Check the network and try again.";
 
+// Said when a save reaches the server after the person was signed out (another tab, or the session ran out).
+// The page stays as it is, so signing in again in a new tab and tapping the same button saves what was typed.
+export const SIGNED_OUT = "You were signed out, so this didn't save. Sign in again in a new tab, then come back and tap this again.";
+export const isSignedOut = (message: string) => message.trim() === SIGNED_OUT;
+
 // The words to show for an error a save threw: a dropped connection in plain words, anything else as it came.
 export function caught(e: unknown, fallback: string): string {
   if (!(e instanceof Error) || !e.message) return fallback;

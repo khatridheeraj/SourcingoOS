@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
 import { decideNote, type TeamNote } from "@/components/help/actions";
 import { NoteFiles, STATUS_TONE } from "@/components/help/help-chat";
 import { toast } from "@/components/toast";
@@ -24,20 +24,25 @@ export function NoteDecide({ n }: { n: TeamNote }) {
   const [reply, setReply] = useState("");
   const [error, setError] = useState("");
   const [pending, start] = useTransition();
+  const card = useRef<HTMLElement>(null);
 
-  function decide(status: TeamNote["status"], msg: string) {
+  function decide(status: TeamNote["status"], msg: string, byKeys: boolean) {
     setError("");
     start(async () => {
       const res = await decideNote(n.id, status, reply);
       if (res.error) return setError(res.error);
       setReply("");
       toast(msg);
+      // A decided note leaves its tab and the pressed button goes with it, which dropped keyboard focus to the
+      // page top. Move it to the next note's reply box (or this one's, or the tabs). Not on a phone: that pops
+      // the keyboard up for nothing.
+      if (byKeys || window.matchMedia("(pointer: fine)").matches) keepFocus(card.current);
       router.refresh();
     });
   }
 
   return (
-    <article className={`note${n.status === "new" ? "" : " decided"}`}>
+    <article ref={card} className={`note${n.status === "new" ? "" : " decided"}`}>
       <div className="note-h">
         <span className={`chip ${n.kind === "idea" ? "ok" : n.kind === "question" ? "info" : "warn"}`}>{KIND[n.kind]}</span>
         {n.status !== "new" && <span className={`chip ${STATUS_TONE[n.status]}`}>{STATUS[n.status]}</span>}
@@ -64,11 +69,29 @@ export function NoteDecide({ n }: { n: TeamNote }) {
       <div className="note-acts">
         {OUTCOMES.map((o) => (
           <button key={o.status} type="button" className={`btn sm${o.status === "planned" && n.status === "new" ? " primary" : ""}`}
-            disabled={pending || (o.status === n.status && !reply.trim())} onClick={() => decide(o.status, o.done)}>
+            disabled={pending || (o.status === n.status && !reply.trim())} onClick={(e) => decide(o.status, o.done, e.detail === 0)}>
             {o.label}
           </button>
         ))}
       </div>
     </article>
   );
+}
+
+function keepFocus(art: HTMLElement | null) {
+  if (!art) return;
+  const sib = (art.nextElementSibling ?? art.previousElementSibling) as HTMLElement | null;
+  const next = sib?.querySelector("textarea")?.getAttribute("aria-label");
+  const t0 = Date.now();
+  const tick = () => {
+    // Wait for the refreshed list: the note either leaves this tab or (after 3 s) is taken to stay.
+    if (art.isConnected && Date.now() - t0 < 3000) return void setTimeout(tick, 100);
+    const a = document.activeElement;
+    if (a && a !== document.body && a.isConnected) return;
+    const target = (next && document.querySelector<HTMLElement>(`textarea[aria-label="${next}"]`))
+      || (art.isConnected ? art.querySelector("textarea") : null)
+      || document.querySelector<HTMLElement>('nav.seg a[aria-current="page"]');
+    target?.focus({ preventScroll: false });
+  };
+  setTimeout(tick, 100);
 }

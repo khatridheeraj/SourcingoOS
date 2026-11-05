@@ -249,6 +249,7 @@ const ERRORS_HI: Record<string, string> = {
   "Couldn't read that photo.": "यह फोटो खुल नहीं पाई।",
   "You don't have permission to do that.": "आपको यह करने की इजाज़त नहीं है।",
   "Something went wrong. Try again.": "कुछ गड़बड़ हो गई। फिर से कोशिश करें।",
+  "You were signed out, so this didn't save. Sign in again in a new tab, then come back and tap this again.": "आप लॉगआउट हो गए, इसलिए यह नहीं गया। नए टैब में अपना फैक्ट्री लिंक खोलकर फिर से लॉगिन करें, फिर यहाँ वापस आकर दोबारा भेजें।",
   "The connection dropped, so this may not have saved. Check the network and try again.": "इंटरनेट बीच में कट गया, इसलिए शायद यह नहीं गया। इंटरनेट देखकर फिर से भेजें।",
   "Add at least one photo of the sample.": "सैंपल की कम से कम एक फोटो लगाएँ।",
   "Samples are sent once the factory PO is released.": "PO रिलीज़ होने के बाद ही सैंपल भेजे जाते हैं।",
