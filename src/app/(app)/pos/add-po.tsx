@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useRef, useState, useTransition } from "react";
+import { caught, isDropped } from "@/lib/errors";
 import { PO_FILE_TYPES, PO_MAX_BYTES, PO_BUCKET, type StoredFile } from "@/lib/po-files";
 import { createClient } from "@/lib/supabase/client";
 import { addPoFiles } from "./actions";
@@ -37,24 +38,28 @@ export function AddPo({ companyId }: { companyId: string }) {
           : `${f.name} isn't a PDF, Excel, CSV or photo.`);
       }
       if (f.size > PO_MAX_BYTES) return fail(`${f.name} is over 25 MB.`);
+      // An empty file (a download that didn't finish) can never be read, so trying again wouldn't help.
+      if (f.size === 0) return fail(`${f.name} is empty. Download it again from WhatsApp or the email, then pick the new copy.`);
       picked.push({ f, ext, type });
     }
     start(async () => {
       const id = crypto.randomUUID();
       const supabase = createClient();
       const stored: StoredFile[] = [];
+      // The files already sent are taken back when anything goes wrong, so nothing is left half added.
+      const undo = async () => { if (stored.length) await supabase.storage.from(PO_BUCKET).remove(stored.map((s) => s.path)).catch(() => {}); };
       for (const { f, ext, type } of picked) {
         const path = `${companyId}/${id}/${crypto.randomUUID()}.${ext}`;
         const { error: up } = await supabase.storage.from(PO_BUCKET).upload(path, f, { contentType: type });
         if (up) {
-          // The files already sent are taken back, so nothing is left half added.
-          if (stored.length) await supabase.storage.from(PO_BUCKET).remove(stored.map((s) => s.path));
-          return fail(`Couldn't upload ${f.name}: ${up.message}`);
+          await undo();
+          return fail(`Couldn't upload ${f.name}: ${isDropped(up.message) ? "the connection dropped. Check the network and try again." : up.message}`);
         }
         stored.push({ path, name: f.name, type, size: f.size });
       }
-      const res = await addPoFiles(id, stored);
-      if (res.error) return fail(res.error);
+      let res: { error?: string };
+      try { res = await addPoFiles(id, stored); } catch (e) { res = { error: caught(e, "It didn't save. Try again.") }; }
+      if (res.error) { await undo(); return fail(res.error); }
       if (input.current) input.current.value = "";
       setDone(true);
       router.refresh();
