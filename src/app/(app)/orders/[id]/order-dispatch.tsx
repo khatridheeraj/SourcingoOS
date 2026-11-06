@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { day, money, qty, dayTimeAt } from "@/lib/format";
 import { garmentBill, gstLabel, gstRate } from "@/lib/gst";
+import { amountText } from "@/lib/payments";
 import { uploadPhotos, uploadReports } from "@/lib/photos";
 import {
   attachDispatchCopy, cancelDispatch, recordDispatchInvoice, recordEwayBill, recordGrn, recordPurchase, recordShipping,
@@ -44,6 +45,18 @@ const DOC_ACCEPT = "image/*,.pdf";
 const isDate = (s: string) => /^\d{4}-\d{2}-\d{2}$/.test(s);
 const digits = (s: string) => s.replace(/[,\s]/g, "");
 
+// A check that failed on one field: its message shows under that field, the field gets a red edge, and keyboard focus
+// goes to it (centred, so the sticky top bar doesn't cover it). The same pattern as the invoice and cheque forms.
+type Bad = { k: string; msg: string } | null;
+function point(form: HTMLFormElement, k: string) {
+  const el = form.elements.namedItem(k);
+  if (!(el instanceof HTMLElement)) return;
+  el.focus({ preventScroll: true });
+  el.scrollIntoView({ block: "center" });
+}
+const mark = (bad: Bad, k: string) => ({ name: k, "aria-invalid": bad?.k === k || undefined });
+const Under = ({ bad, k }: { bad: Bad; k: string }) => (bad?.k === k ? <small className="text-bad" role="alert">{bad.msg}</small> : null);
+
 // One file (a PDF or a phone photo) into the dispatch's folder; returns its storage path.
 async function uploadDoc(folder: string, file: File): Promise<string> {
   if (file.type.startsWith("image/")) return (await uploadPhotos(folder, [file]))[0];
@@ -73,6 +86,7 @@ export function OrderDispatch({ orderId, orderNo, companyId, open, owner, factor
   });
   const [p, setP] = useState<PurchaseInput>(blank(factories.length === 1 ? factories[0] : undefined));
   const [billCopy, setBillCopy] = useState<File | null>(null);
+  const [pBad, setPBad] = useState<Bad>(null);
   // Sent in parts: some pieces have gone and some are still to go.
   const shipped = ship.reduce((t, l) => t + l.shipped, 0);
   const part = open && shipped > 0 && ship.some((l) => l.shipped < l.ordered);
@@ -82,7 +96,23 @@ export function OrderDispatch({ orderId, orderNo, companyId, open, owner, factor
   function savePurchase(e: React.FormEvent) {
     e.preventDefault();
     fail("new", "");
-    if (billCopy && !billCopy.type.startsWith("image/") && !billCopy.name.toLowerCase().endsWith(".pdf")) return fail("new", `${billCopy.name} isn't a PDF or a photo.`);
+    // The same checks as the server, but each message goes under its own box.
+    const form = e.currentTarget as HTMLFormElement;
+    const no = (k: string, msg: string) => { setPBad({ k, msg }); point(form, k); };
+    if (!p.factory_id) return no("factory_id", "Pick the factory.");
+    if (!p.bill_no.trim()) return no("bill_no", "Enter the factory\u2019s bill number.");
+    if (!isDate(p.bill_date)) return no("bill_date", "Enter the bill date.");
+    if (p.bill_date > today) return no("bill_date", "The bill date can\u2019t be after today.");
+    if (billCopy && !billCopy.type.startsWith("image/") && !billCopy.name.toLowerCase().endsWith(".pdf")) return no("bill_copy", `${billCopy.name} isn\u2019t a PDF or a photo.`);
+    const used = p.lines.map((l, i) => ({ l, i })).filter(({ l }) => digits(l.qty) !== "" && Number(digits(l.qty)) !== 0);
+    const unitOf = (i: number) => ship.find((x) => x.id === p.lines[i].line_id)?.unit ?? "pcs";
+    if (!used.length) return no("qty-0", `Enter the ${unitOf(0) === "m" ? "metres" : "pieces"} bought for at least one style.`);
+    for (const { l, i } of used) {
+      const q = Number(digits(l.qty));
+      if (!Number.isInteger(q) || q <= 0) return no(`qty-${i}`, unitOf(i) === "m" ? "Whole metres above zero." : "Whole pieces above zero.");
+      if (l.purchase_rate === "") return no(`rate-${i}`, "Enter the purchase rate.");
+    }
+    setPBad(null);
     start(async () => {
       const res = await recordPurchase(orderId, p);
       if (res.error || !res.id) return fail("new", res.error ?? "The purchase didn't save. Try again.");
@@ -144,7 +174,7 @@ export function OrderDispatch({ orderId, orderNo, companyId, open, owner, factor
 
       {adding && (
         <PurchaseForm p={p} setP={setP} blank={blank} factories={factories} ship={ship} bills={tally.purchases} today={today} pending={pending}
-          copy={billCopy} setCopy={setBillCopy} error={error.new} onSubmit={savePurchase} onClose={() => setAdding(false)} />
+          copy={billCopy} setCopy={setBillCopy} error={error.new} bad={pBad} setBad={setPBad} onSubmit={savePurchase} onClose={() => { setAdding(false); setPBad(null); }} />
       )}
 
       {dispatches.length === 0 && !adding && <p className="muted text-[13px]">Nothing dispatched yet.</p>}
@@ -277,18 +307,20 @@ function TallyMatch({ what, no, total, tally, none, fix }: {
   );
 }
 
-function PurchaseForm({ p, setP, blank, factories, ship, bills, today, pending, copy, setCopy, error, onSubmit, onClose }: {
+function PurchaseForm({ p, setP: put, blank, factories, ship, bills, today, pending, copy, setCopy, error, bad, setBad, onSubmit, onClose }: {
   p: PurchaseInput; setP: (p: PurchaseInput) => void; blank: (f?: DispatchFactory) => PurchaseInput; factories: DispatchFactory[]; ship: ShipLine[];
   bills: TallyBills["purchases"]; today: string; pending: boolean; copy: File | null; setCopy: (f: File | null) => void;
-  error?: string; onSubmit: (e: React.FormEvent) => void; onClose: () => void;
+  error?: string; bad: Bad; setBad: (b: Bad) => void; onSubmit: (e: React.FormEvent) => void; onClose: () => void;
 }) {
+  // Typing into a box clears its message.
+  const setP = (x: PurchaseInput) => { put(x); if (bad) setBad(null); };
   const factory = factories.find((f) => f.id === p.factory_id);
   // The factory's bills in Tally aren't listed: the typed number is only checked against them.
   const mine = bills.filter((b) => b.factory_id === p.factory_id);
   const tally = mine.find((b) => b.no.toLowerCase() === p.bill_no.trim().toLowerCase());
   const bill = garmentBill(p.lines.map((l) => ({ qty: n(l.qty), rate: n(l.purchase_rate) })));
   return (
-    <form onSubmit={onSubmit} className="mb-4 flex flex-col gap-4 rounded-[10px] border border-line p-3">
+    <form noValidate onSubmit={onSubmit} className="mb-4 flex flex-col gap-4 rounded-[10px] border border-line p-3">
       <div className="row">
         <h3 className="font-semibold">{ship.some((l) => l.bought > 0) ? "Next part: the factory\u2019s bill" : "Purchase: the factory\u2019s bill"}</h3>
         {factories.length === 1 && <span className="muted text-[13px]">from {factories[0].name}</span>}
@@ -296,26 +328,29 @@ function PurchaseForm({ p, setP, blank, factories, ship, bills, today, pending, 
       {factories.length > 1 && (
         <label className="field max-w-[320px]">
           <span>Factory <i>*</i></span>
-          <select className="inp" value={p.factory_id} onChange={(e) => { setP(blank(factories.find((f) => f.id === e.target.value))); }} aria-label="Purchase factory">
+          <select className="inp" value={p.factory_id} onChange={(e) => { setP(blank(factories.find((f) => f.id === e.target.value))); }} aria-label="Purchase factory" {...mark(bad, "factory_id")}>
             <option value="">Pick the factory</option>
             {factories.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
           </select>
+          <Under bad={bad} k="factory_id" />
         </label>
       )}
       {factory && (
         <div className="fgrid">
           <label className="field">
             <span>Bill number <i>*</i></span>
-            <input className="inp" value={p.bill_no} onChange={(e) => setP({ ...p, bill_no: e.target.value })} aria-label="Factory bill number" placeholder="As printed on the bill" />
+            <input className="inp" value={p.bill_no} onChange={(e) => setP({ ...p, bill_no: e.target.value })} aria-label="Factory bill number" placeholder="As printed on the bill" {...mark(bad, "bill_no")} />
+            <Under bad={bad} k="bill_no" />
           </label>
           <label className="field">
             <span>Bill date <i>*</i></span>
-            <input className="inp" type="date" max={today} value={p.bill_date} onChange={(e) => setP({ ...p, bill_date: e.target.value })} aria-label="Factory bill date" />
+            <input className="inp" type="date" max={today} value={p.bill_date} onChange={(e) => setP({ ...p, bill_date: e.target.value })} aria-label="Factory bill date" {...mark(bad, "bill_date")} />
+            <Under bad={bad} k="bill_date" />
           </label>
           <label className="field">
             <span>Copy of the bill</span>
-            <input className="inp" type="file" accept={DOC_ACCEPT} onChange={(e) => setCopy(e.target.files?.[0] ?? null)} aria-label="Copy of the factory bill" />
-            <small>{copy ? copy.name : "PDF or photo, for the record. You can add it later too."}</small>
+            <input className="inp" type="file" accept={DOC_ACCEPT} onChange={(e) => { setCopy(e.target.files?.[0] ?? null); if (bad) setBad(null); }} aria-label="Copy of the factory bill" {...mark(bad, "bill_copy")} />
+            {bad?.k === "bill_copy" ? <Under bad={bad} k="bill_copy" /> : <small>{copy ? copy.name : "PDF or photo, for the record. You can add it later too."}</small>}
           </label>
         </div>
       )}
@@ -326,7 +361,9 @@ function PurchaseForm({ p, setP, blank, factories, ship, bills, today, pending, 
             <div className="bill-line hidden text-[12px] text-muted sm:grid" aria-hidden><span>Style</span><span>{boughtLabel(unitOver(p.lines.map((l) => ship.find((x) => x.id === l.line_id)?.unit ?? "pcs")))}</span><span>Purchase rate ₹</span><span>Sale rate ₹</span></div>
             {p.lines.map((l, i) => {
               const line = factory.lines.find((x) => x.id === l.line_id);
-              const set = (k: "qty" | "purchase_rate" | "sale_rate", v: string) => setP({ ...p, lines: p.lines.map((x, j) => (j === i ? { ...x, [k]: v } : x)) });
+              // Rates keep only the amount ("Rs. 1,250.50" pasted from a bill is 1250.50); quantities only digits and a dot.
+              const set = (k: "qty" | "purchase_rate" | "sale_rate", v: string) =>
+                setP({ ...p, lines: p.lines.map((x, j) => (j === i ? { ...x, [k]: k === "qty" ? v.replace(/[^\d.]/g, "") : amountText(v) } : x)) });
               const sh = ship.find((x) => x.id === l.line_id);
               const left = sh ? sh.ordered - sh.bought : 0;
               const over = sh && n(l.qty) > Math.max(0, left) ? n(l.qty) - Math.max(0, left) : 0;
@@ -339,9 +376,11 @@ function PurchaseForm({ p, setP, blank, factories, ship, bills, today, pending, 
                     </span>
                     {over > 0 && <span className="text-[12px] font-semibold text-warn">{qty(over)} more than ordered</span>}
                   </div>
-                  <label><span className="sm:hidden">{boughtLabel(sh?.unit ?? "pcs")}</span><input className="inp" inputMode="numeric" value={l.qty} onChange={(e) => set("qty", e.target.value)} aria-label={`${line?.style} ${boughtLabel(sh?.unit ?? "pcs").toLowerCase()}`} /></label>
-                  <label><span className="sm:hidden">Purchase rate ₹</span><input className="inp" inputMode="decimal" value={l.purchase_rate} onChange={(e) => set("purchase_rate", e.target.value)} aria-label={`${line?.style} purchase rate`} /></label>
-                  <label><span className="sm:hidden">Sale rate ₹</span><input className="inp" inputMode="decimal" value={l.sale_rate} onChange={(e) => set("sale_rate", e.target.value)} aria-label={`${line?.style} sale rate`} /></label>
+                  <label><span className="sm:hidden">{boughtLabel(sh?.unit ?? "pcs")}</span><input className="inp" inputMode="numeric" value={l.qty} onChange={(e) => set("qty", e.target.value)} aria-label={`${line?.style} ${boughtLabel(sh?.unit ?? "pcs").toLowerCase()}`} {...mark(bad, `qty-${i}`)} /></label>
+                  <label><span className="sm:hidden">Purchase rate ₹</span><input className="inp" inputMode="decimal" value={l.purchase_rate} onChange={(e) => set("purchase_rate", e.target.value)} aria-label={`${line?.style} purchase rate`} {...mark(bad, `rate-${i}`)} /></label>
+                  <label><span className="sm:hidden">Sale rate ₹</span><input className="inp" inputMode="decimal" value={l.sale_rate} onChange={(e) => set("sale_rate", e.target.value)} aria-label={`${line?.style} sale rate`} name={`sale-${i}`} /></label>
+                  {/* On its own row under the style's boxes, so the three boxes stay in line. */}
+                  {(bad?.k === `qty-${i}` || bad?.k === `rate-${i}`) && <small className="col-span-full text-[12px] text-bad sm:col-[2/-1]" role="alert">{bad.msg}</small>}
                 </div>
               );
             })}
@@ -378,6 +417,19 @@ function InvoiceStep({ d, unit, bills, buyerInTally, today, late, pending, onSav
   // The invoice comes from Tally by itself when the buyer is in Tally and the sale rates are known; typing is the fallback.
   const auto = buyerInTally && !!sale && sale.taxable > 0;
   const [manual, setManual] = useState(false);
+  const [bad, setBad] = useState<Bad>(null);
+  const put = (k: keyof typeof v, x: string) => { setV({ ...v, [k]: k === "taxable" ? amountText(x) : x }); setBad((b) => (b?.k === k ? null : b)); };
+  function submit(e: React.FormEvent) {
+    e.preventDefault();
+    const form = e.currentTarget as HTMLFormElement;
+    const no = (k: string, msg: string) => { setBad({ k, msg }); point(form, k); };
+    if (!v.invoice_no.trim()) return no("invoice_no", "Enter the invoice number from Tally.");
+    if (!isDate(v.invoice_date)) return no("invoice_date", "Enter the invoice date.");
+    if (v.invoice_date > today) return no("invoice_date", "The invoice date can\u2019t be after today.");
+    if (!(n(v.taxable) > 0)) return no("taxable", "Enter the invoice value before GST.");
+    setBad(null);
+    onSave(v);
+  }
   const due = (
     <p className={`text-[13px] font-semibold ${late ? "text-bad" : "text-warn"}`}>
       {late ? `Emergency: the invoice was due by ${dayTimeAt(new Date(d.invoiceDueAt))}.` : `Invoice the buyer by ${dayTimeAt(new Date(d.invoiceDueAt))}.`}
@@ -410,16 +462,16 @@ function InvoiceStep({ d, unit, bills, buyerInTally, today, late, pending, onSav
   const off = tally ? Math.abs(tally.amount - (taxable + gst)) > 1 : false;
   const total = tally && !off ? tally.amount : Math.round(taxable + gst);
   return (
-    <form className="mt-3 flex flex-col gap-3 rounded-[10px] bg-surface-2 p-3" onSubmit={(e) => { e.preventDefault(); onSave(v); }}>
+    <form noValidate className="mt-3 flex flex-col gap-3 rounded-[10px] bg-surface-2 p-3" onSubmit={submit}>
       {due}
       {!buyerInTally && <p className="muted text-[13px]">This buyer has no ledger in Tally yet, so enter the invoice here once it&apos;s made.</p>}
       <div className="fgrid">
-        <label className="field"><span>Tally invoice number <i>*</i></span><input className="inp" value={v.invoice_no} onChange={(e) => setV({ ...v, invoice_no: e.target.value })} aria-label="Invoice number" placeholder="SPL/26-27/…" /></label>
-        <label className="field"><span>Invoice date <i>*</i></span><input className="inp" type="date" value={v.invoice_date} onChange={(e) => setV({ ...v, invoice_date: e.target.value })} aria-label="Invoice date" /></label>
+        <label className="field"><span>Tally invoice number <i>*</i></span><input className="inp" value={v.invoice_no} onChange={(e) => put("invoice_no", e.target.value)} aria-label="Invoice number" placeholder="SPL/26-27/…" {...mark(bad, "invoice_no")} /><Under bad={bad} k="invoice_no" /></label>
+        <label className="field"><span>Invoice date <i>*</i></span><input className="inp" type="date" max={today} value={v.invoice_date} onChange={(e) => put("invoice_date", e.target.value)} aria-label="Invoice date" {...mark(bad, "invoice_date")} /><Under bad={bad} k="invoice_date" /></label>
         <label className="field">
           <span>Value before GST ₹ <i>*</i></span>
-          <input className="inp" inputMode="decimal" value={v.taxable} onChange={(e) => setV({ ...v, taxable: e.target.value })} aria-label="Invoice value before GST" />
-          <small>{sale ? `${qty(pcs)} ${unit} at the sale rates.` : "Quantity times the sale rate."}</small>
+          <input className="inp" inputMode="decimal" value={v.taxable} onChange={(e) => put("taxable", e.target.value)} aria-label="Invoice value before GST" {...mark(bad, "taxable")} />
+          {bad?.k === "taxable" ? <Under bad={bad} k="taxable" /> : <small>{sale ? `${qty(pcs)} ${unit} at the sale rates.` : "Quantity times the sale rate."}</small>}
         </label>
       </div>
       {taxable > 0 && (
@@ -446,7 +498,10 @@ function EwayStep({ invoiceNo, today, pending, onSave }: {
   const [byHand, setByHand] = useState(false);
   const [v, setV] = useState({ no: "", date: today, valid_until: "" });
   const [file, setFile] = useState<File | null>(null);
-  const [err, setErr] = useState("");
+  const [bad, setBad] = useState<Bad>(null);
+  // Typing into a box clears its own message.
+  const box = { no: "eway_no", date: "eway_date", valid_until: "eway_valid" } as const;
+  const put = (k: keyof typeof v, x: string) => { setV({ ...v, [k]: x }); setBad((b) => (b?.k === box[k] ? null : b)); };
   if (!byHand) {
     return (
       <div className="mt-3 rounded-[10px] bg-surface-2 p-3 text-[13px]">
@@ -457,25 +512,29 @@ function EwayStep({ invoiceNo, today, pending, onSave }: {
     );
   }
   return (
-    <form className="mt-3 rounded-[10px] bg-surface-2 p-3" onSubmit={(e) => {
+    <form noValidate className="mt-3 rounded-[10px] bg-surface-2 p-3" onSubmit={(e) => {
       e.preventDefault();
       // The same checks as the server, before the copy is uploaded, so a refused form leaves no file behind.
-      if (!/^\d{12}$/.test(v.no.replace(/\s/g, ""))) return setErr("An e-way bill number has 12 digits.");
-      if (!isDate(v.date)) return setErr("Enter the e-way bill date.");
-      if (!file) return setErr("Attach the e-way bill.");
-      setErr("");
+      const form = e.currentTarget;
+      const no = (k: string, msg: string) => { setBad({ k, msg }); point(form, k); };
+      const digitsOnly = v.no.replace(/\s/g, "");
+      if (!/^\d{12}$/.test(digitsOnly)) return no("eway_no", digitsOnly ? `An e-way bill number has 12 digits; this has ${digitsOnly.replace(/\D/g, "").length}.` : "Enter the e-way bill number.");
+      if (!isDate(v.date)) return no("eway_date", "Enter the e-way bill date.");
+      if (v.date > today) return no("eway_date", "The e-way bill date can\u2019t be after today.");
+      if (v.valid_until && v.valid_until < v.date) return no("eway_valid", "Valid till can\u2019t be before the e-way bill date.");
+      if (!file) return no("eway_copy", "Attach the e-way bill.");
+      setBad(null);
       onSave(v, file);
     }}>
       <p className="mb-2 text-[13px] font-semibold text-warn">Enter the e-way bill for invoice {invoiceNo} and attach its copy.</p>
       <div className="fgrid">
-        <label className="field"><span>E-way bill number <i>*</i></span><input className="inp" inputMode="numeric" value={v.no} onChange={(e) => setV({ ...v, no: e.target.value })} aria-label="E-way bill number" placeholder="12 digits" /></label>
-        <label className="field"><span>Date <i>*</i></span><input className="inp" type="date" value={v.date} onChange={(e) => setV({ ...v, date: e.target.value })} aria-label="E-way bill date" /></label>
-        <label className="field"><span>Valid till</span><input className="inp" type="date" value={v.valid_until} onChange={(e) => setV({ ...v, valid_until: e.target.value })} aria-label="E-way bill valid till" /></label>
-        <label className="field"><span>E-way bill copy <i>*</i></span><input className="inp" type="file" accept={DOC_ACCEPT} onChange={(e) => setFile(e.target.files?.[0] ?? null)} aria-label="E-way bill copy" /></label>
+        <label className="field"><span>E-way bill number <i>*</i></span><input className="inp" inputMode="numeric" value={v.no} onChange={(e) => put("no", e.target.value)} aria-label="E-way bill number" placeholder="12 digits" {...mark(bad, "eway_no")} /><Under bad={bad} k="eway_no" /></label>
+        <label className="field"><span>Date <i>*</i></span><input className="inp" type="date" max={today} value={v.date} onChange={(e) => put("date", e.target.value)} aria-label="E-way bill date" {...mark(bad, "eway_date")} /><Under bad={bad} k="eway_date" /></label>
+        <label className="field"><span>Valid till</span><input className="inp" type="date" min={v.date || undefined} value={v.valid_until} onChange={(e) => put("valid_until", e.target.value)} aria-label="E-way bill valid till" {...mark(bad, "eway_valid")} /><Under bad={bad} k="eway_valid" /></label>
+        <label className="field"><span>E-way bill copy <i>*</i></span><input className="inp" type="file" accept={DOC_ACCEPT} onChange={(e) => { setFile(e.target.files?.[0] ?? null); setBad((b) => (b?.k === "eway_copy" ? null : b)); }} aria-label="E-way bill copy" {...mark(bad, "eway_copy")} /><Under bad={bad} k="eway_copy" /></label>
       </div>
       <div className="row mt-3">
         <button className="btn primary" disabled={pending}>{pending ? "Saving…" : "Save e-way bill"}</button>
-        {err && <span className="text-[13px] font-semibold text-bad" role="alert">{err}</span>}
       </div>
     </form>
   );
@@ -488,33 +547,41 @@ function ShipStep({ today, pending, qcBlock, onSave }: {
   const [lr, setLr] = useState<File | null>(null);
   const [photos, setPhotos] = useState<File[]>([]);
   const [err, setErr] = useState("");
+  const [bad, setBad] = useState<Bad>(null);
+  const put = (k: keyof typeof v, x: string) => { setV({ ...v, [k]: x }); setBad((b) => (b?.k === k ? null : b)); };
   function submit(e: React.FormEvent) {
     e.preventDefault();
     // The same checks as the server, before anything is uploaded, so a refused form leaves no files behind.
+    // A blocked QC is about the whole dispatch, so it stays by the button; the rest go under their own box, in screen order.
     if (qcBlock.length) return setErr(`The latest final QC for ${qcBlock.join(", ")} is not a pass, so these goods can't ship yet. Quality records a passed re-check in the QC tab (or cancels a check entered with the wrong date).`);
-    if (!photos.length) return setErr("Add photos of the goods.");
-    if (!lr) return setErr("Attach the LR copy.");
-    if (!v.transporter.trim()) return setErr("Enter the transporter.");
-    if (!v.lr_no.trim() || !isDate(v.lr_date)) return setErr("Enter the LR number and date.");
-    const cartons = digits(v.cartons);
-    if (cartons !== "" && !(Number.isInteger(Number(cartons)) && Number(cartons) > 0)) return setErr("Cartons must be a whole number.");
     setErr("");
+    const form = e.currentTarget as HTMLFormElement;
+    const no = (k: string, msg: string) => { setBad({ k, msg }); point(form, k); };
+    if (!v.transporter.trim()) return no("transporter", "Enter the transporter.");
+    if (!v.lr_no.trim()) return no("lr_no", "Enter the LR number.");
+    if (!isDate(v.lr_date)) return no("lr_date", "Enter the LR date.");
+    if (v.lr_date > today) return no("lr_date", "The LR date can\u2019t be after today.");
+    const cartons = digits(v.cartons);
+    if (cartons !== "" && !(Number.isInteger(Number(cartons)) && Number(cartons) > 0)) return no("cartons", "Cartons must be a whole number.");
+    if (!lr) return no("lr_copy", "Attach the LR copy.");
+    if (!photos.length) return no("photos", "Add photos of the goods.");
+    setBad(null);
     onSave(v, lr, photos);
   }
   return (
-    <form className="mt-3 rounded-[10px] bg-surface-2 p-3" onSubmit={submit}>
+    <form noValidate className="mt-3 rounded-[10px] bg-surface-2 p-3" onSubmit={submit}>
       <p className="mb-2 text-[13px] font-semibold text-warn">Before the goods leave: photos of the packed goods, the transporter and the LR.</p>
       <div className="fgrid">
-        <label className="field"><span>Transporter <i>*</i></span><input className="inp" value={v.transporter} onChange={(e) => setV({ ...v, transporter: e.target.value })} aria-label="Transporter" /></label>
-        <label className="field"><span>Vehicle number</span><input className="inp" value={v.vehicle_no} onChange={(e) => setV({ ...v, vehicle_no: e.target.value })} aria-label="Vehicle number" /></label>
-        <label className="field"><span>LR number <i>*</i></span><input className="inp" value={v.lr_no} onChange={(e) => setV({ ...v, lr_no: e.target.value })} aria-label="LR number" /></label>
-        <label className="field"><span>LR date <i>*</i></span><input className="inp" type="date" value={v.lr_date} onChange={(e) => setV({ ...v, lr_date: e.target.value })} aria-label="LR date" /></label>
-        <label className="field"><span>Cartons</span><input className="inp" inputMode="numeric" value={v.cartons} onChange={(e) => setV({ ...v, cartons: e.target.value })} aria-label="Cartons" /></label>
-        <label className="field"><span>LR copy <i>*</i></span><input className="inp" type="file" accept={DOC_ACCEPT} onChange={(e) => setLr(e.target.files?.[0] ?? null)} aria-label="LR copy" /></label>
+        <label className="field"><span>Transporter <i>*</i></span><input className="inp" value={v.transporter} onChange={(e) => put("transporter", e.target.value)} aria-label="Transporter" {...mark(bad, "transporter")} /><Under bad={bad} k="transporter" /></label>
+        <label className="field"><span>Vehicle number</span><input className="inp" value={v.vehicle_no} onChange={(e) => put("vehicle_no", e.target.value)} aria-label="Vehicle number" /></label>
+        <label className="field"><span>LR number <i>*</i></span><input className="inp" value={v.lr_no} onChange={(e) => put("lr_no", e.target.value)} aria-label="LR number" {...mark(bad, "lr_no")} /><Under bad={bad} k="lr_no" /></label>
+        <label className="field"><span>LR date <i>*</i></span><input className="inp" type="date" max={today} value={v.lr_date} onChange={(e) => put("lr_date", e.target.value)} aria-label="LR date" {...mark(bad, "lr_date")} /><Under bad={bad} k="lr_date" /></label>
+        <label className="field"><span>Cartons</span><input className="inp" inputMode="numeric" value={v.cartons} onChange={(e) => put("cartons", e.target.value)} aria-label="Cartons" {...mark(bad, "cartons")} /><Under bad={bad} k="cartons" /></label>
+        <label className="field"><span>LR copy <i>*</i></span><input className="inp" type="file" accept={DOC_ACCEPT} onChange={(e) => { setLr(e.target.files?.[0] ?? null); setBad((b) => (b?.k === "lr_copy" ? null : b)); }} aria-label="LR copy" {...mark(bad, "lr_copy")} /><Under bad={bad} k="lr_copy" /></label>
         <label className="field">
           <span>Photos of the goods <i>*</i></span>
-          <input className="inp" type="file" accept="image/*" multiple onChange={(e) => setPhotos([...(e.target.files ?? [])])} aria-label="Photos of the goods" />
-          <small>{photos.length ? `${photos.length} ready` : "As many as you need."}</small>
+          <input className="inp" type="file" accept="image/*" multiple onChange={(e) => { setPhotos([...(e.target.files ?? [])]); setBad((b) => (b?.k === "photos" ? null : b)); }} aria-label="Photos of the goods" {...mark(bad, "photos")} />
+          {bad?.k === "photos" ? <Under bad={bad} k="photos" /> : <small>{photos.length ? `${photos.length} ready` : "As many as you need."}</small>}
         </label>
       </div>
       <div className="row mt-3">
@@ -530,28 +597,29 @@ function GrnStep({ d, pcs, unit, late, pending, onSave }: {
 }) {
   const [v, setV] = useState({ received_qty: String(pcs), notes: "" });
   const [file, setFile] = useState<File | null>(null);
-  const [err, setErr] = useState("");
+  const [bad, setBad] = useState<Bad>(null);
   return (
-    <form className="mt-3 rounded-[10px] bg-surface-2 p-3" onSubmit={(e) => {
+    <form noValidate className="mt-3 rounded-[10px] bg-surface-2 p-3" onSubmit={(e) => {
       e.preventDefault();
-      if (!file) return setErr("Attach the GRN report.");
+      const form = e.currentTarget;
+      const no = (k: string, msg: string) => { setBad({ k, msg }); point(form, k); };
+      if (!file) return no("grn_copy", "Attach the GRN report.");
       // The same check as the server, before the report is uploaded.
       const q = digits(v.received_qty);
-      if (q === "" || !Number.isInteger(Number(q)) || Number(q) < 0) return setErr(`Enter the ${unit === "m" ? "metres" : "pieces"} the buyer received.`);
-      setErr("");
+      if (q === "" || !Number.isInteger(Number(q)) || Number(q) < 0) return no("received_qty", `Enter the ${unit === "m" ? "metres" : "pieces"} the buyer received, as a whole number.`);
+      setBad(null);
       onSave(v, file);
     }}>
       <p className={`mb-2 text-[13px] font-semibold ${late ? "text-bad" : "text-warn"}`}>
         {late ? `GRN overdue: it was due ${day(d.grnDueOn)}.` : `Get the buyer's GRN report by ${day(d.grnDueOn)}.`}
       </p>
       <div className="fgrid">
-        <label className="field"><span>GRN report <i>*</i></span><input className="inp" type="file" accept={DOC_ACCEPT} onChange={(e) => setFile(e.target.files?.[0] ?? null)} aria-label="GRN report" /></label>
-        <label className="field"><span>{unit === "m" ? "Metres" : "Pieces"} received <i>*</i></span><input className="inp" inputMode="numeric" value={v.received_qty} onChange={(e) => setV({ ...v, received_qty: e.target.value })} aria-label={`${unit === "m" ? "Metres" : "Pieces"} received`} /></label>
+        <label className="field"><span>GRN report <i>*</i></span><input className="inp" type="file" accept={DOC_ACCEPT} onChange={(e) => { setFile(e.target.files?.[0] ?? null); setBad((b) => (b?.k === "grn_copy" ? null : b)); }} aria-label="GRN report" {...mark(bad, "grn_copy")} /><Under bad={bad} k="grn_copy" /></label>
+        <label className="field"><span>{unit === "m" ? "Metres" : "Pieces"} received <i>*</i></span><input className="inp" inputMode="numeric" value={v.received_qty} onChange={(e) => { setV({ ...v, received_qty: e.target.value }); setBad((b) => (b?.k === "received_qty" ? null : b)); }} aria-label={`${unit === "m" ? "Metres" : "Pieces"} received`} {...mark(bad, "received_qty")} /><Under bad={bad} k="received_qty" /></label>
         <label className="field"><span>Shortages or remarks</span><input className="inp" value={v.notes} onChange={(e) => setV({ ...v, notes: e.target.value })} aria-label="GRN remarks" /></label>
       </div>
       <div className="row mt-3">
         <button className="btn primary" disabled={pending}>{pending ? "Uploading…" : "Save GRN"}</button>
-        {err && <span className="text-[13px] font-semibold text-bad" role="alert">{err}</span>}
       </div>
     </form>
   );

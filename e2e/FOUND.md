@@ -18,8 +18,8 @@ How to use it:
 |---|---|---|
 | Buyer status page after the ship date has passed: say "N days past" or stay quiet? | 2026-10-26 | 2026-10-29 |
 | Nightly database backup needs a GitHub secret from him | 2026-10-24 | 2026-10-29 |
-| One buyer PO in "To check" and one held, both over 2 days old (live data, team's job). 29 Oct 17:00Z: only the held one is left; 31 Oct: 4 held (unknown senders, in Your approvals); 1 Nov: 3 held, evening 4; 2 Nov: 4; 3 Nov: 4, afternoon 4, evening 4; 4 Nov: 4, afternoon 5, evening 7; 5 Nov: 7, afternoon 7, evening 8 | 2026-10-29 | 2026-11-05 |
-| SO-0018: two factory POs sent for the owner's approval on 3 Nov 10:56Z, still waiting over 2 days (in Your approvals on Home) | 2026-11-05 | 2026-11-05 |
+| One buyer PO in "To check" and one held, both over 2 days old (live data, team's job). 29 Oct 17:00Z: only the held one is left; 31 Oct: 4 held (unknown senders, in Your approvals); 1 Nov: 3 held, evening 4; 2 Nov: 4; 3 Nov: 4, afternoon 4, evening 4; 4 Nov: 4, afternoon 5, evening 7; 5 Nov: 7, afternoon 7, evening 8; 6 Nov: 8 | 2026-10-29 | 2026-11-06 |
+| SO-0018: two factory POs sent for the owner's approval on 3 Nov 10:56Z, still waiting over 2 days (in Your approvals on Home) | 2026-11-05 | 2026-11-06 |
 
 ## Known (not new, never report)
 | Item | Why it is not a finding | Last seen |
@@ -32,7 +32,7 @@ How to use it:
 | Gmail pickup has found no new buyer PO for days | No buyer has emailed a PO; not a glitch (2 Nov early: 59 h) | 2026-11-02 |
 | Factory PO emails all go to merchandiser@sourcingo.in | Test inbox mode, on purpose until Dheeraj says switch | 2026-10-31 |
 | Markers screen paused | MARKERS_ON flag, on purpose | 2026-10-31 |
-| Supabase advisors: security-definer functions callable by anon/authenticated, RLS on with no policy, one mutable search_path, leaked-password check off | Long-standing by design (the app's RPCs are security definer and check the role inside); not new (4 Nov early and evening, 5 Nov early and evening: same five) | 2026-11-05 |
+| Supabase advisors: security-definer functions callable by anon/authenticated, RLS on with no policy, one mutable search_path, leaked-password check off | Long-standing by design (the app's RPCs are security definer and check the role inside); not new (4 Nov early and evening, 5 Nov early and evening, 6 Nov early: same five) | 2026-11-06 |
 | Supabase performance advisors: unindexed foreign keys, unused indexes, auth RLS initplan, multiple permissive policies, one table without a primary key | Long-standing INFO/WARN on a 33 MB database; nothing slow in the logs | 2026-10-31 |
 | Morning brief "shipped in part" / "closed short" lines and Home's deleted-PO line say "pcs" even for a fabric order | The numbers come from database functions that don't return the unit; fix with the next migration a thread makes, not a check run | 2026-10-30 |
 | Local stack: Next dev logs "The destination stream closed early" after a save that redirects | Dev-server noise when a page is left mid-stream; not seen in production | 2026-10-29 |
@@ -48,7 +48,7 @@ Inquiries, Samples, Styles, Goods with us and challan, Payments (invoices, chequ
 Reports, Brief, Today, Updates, Activity, Buyers, Factories, Team, Tally, Feedback, Help panel,
 factory panel (/factory, /f/...), factory PO accept link (/po/...), buyer page (/buyer, /s/...), login.
 
-Angles: phone light, phone dark, desk light, desk dark, each of the 7 roles (owner, manager, merch, quality,
+Angles: phone light, small phone (320 px wide), phone dark, desk light, desk dark, each of the 7 roles (owner, manager, merch, quality,
 accounts, factory, buyer), empty state (no orders, no styles, no photos), rush order (ships in 1 to 3 days),
 order already late, large order (20+ styles, 50,000+ pieces, long names), fabric order (metres), part shipment,
 Hindi or long text in names and notes, zero and huge money amounts, slow network (throttle in a short Playwright script) and double taps,
@@ -125,15 +125,19 @@ made-up token (/po, /f, /s), print and PDF views (A4, many styles), printing fro
 | 2026-11-05 | Team notes (owner deciding Go ahead / Done / Later / Not doing with a reply) | keyboard only + slow network (1.5 s) + double Enter, owner desk; Hindi and Hinglish note text | Double Enter made one decision, Hindi fine. But the decided note leaves the Waiting tab with the pressed button, and focus fell to the page top. Fixed (this run's PR): focus moves to the next note's reply box (or the tabs) |
 | 2026-11-05 | Updates (Factories behind plan, Buyer updates: Check, Copy, Send) | phone light + dark, merch and owner | Fine |
 | 2026-11-05 | Any save while signed out (inquiry quick add, and every server action) | signed out in another tab or the session ran out, then tap Save, phone light + dark (exploration: signed out mid-form) | The save was redirected to /login, the page fell over with "This page couldn't load… Nothing you saved is lost" (untrue), Try again failed again, the pasted message was gone, and nothing said to sign in. Fixed (this run's PR): a save without a session gets "You were signed out, so this didn't save. Sign in again in a new tab, then come back and tap this again" (Hindi for factories); forms that catch errors show it under the form and keep the text (quick add now does); others show "You were signed out" with a Sign in again button that comes back to the page. Signing in and tapping again saves once |
+| 2026-11-06 | Dispatch (Record a purchase, Invoice by hand, E-way bill by hand, Shipping, GRN) | form errors: blank bill number, no quantity, "12.5" pieces, blank rate, "Rs. 1,250.50" pasted, ₹0 invoice, 8-digit e-way bill, cartons "2.5", missing files, merch phone light + owner phone dark + desk | Purchase and invoice had no check on the phone: the server's one message sat by the button with no box marked; the other steps showed one line by the button. A pasted "Rs. 250" rate was refused as no rate, and a ₹0 invoice went through. Fixed (this run's PR): every step's message sits under its box with a red edge and focus moves there, rates and invoice value keep only the amount, ₹0 invoice refused (server too) |
+| 2026-11-06 | Dispatch dates | date edges: bill, invoice, e-way bill and LR dated after today; e-way bill "valid till" before its date | Invoice, e-way bill and LR took any future date; valid till before the e-way date was saved as is. Fixed (this run's PR): none after today, valid till not before the date, with the app's own message (no browser bubble) |
+| 2026-11-06 | Home, Orders, order page, Payments, Bills, Goods, Reports, Styles, Samples, Inquiries, Today, Brief, Team, Factories, Buyers, factory and buyer panels | a small phone, 320 px wide (iPhone SE size, or a big-text setting), owner, factory, buyer, quality, accounts (exploration) | Nothing wider than the screen. Fine |
 
 Not yet looked at from any angle beyond the crawl: date edges (month and year end; a year-old order done 1 Nov),
-two people on the QC record (order Details and style sizes done),
+two people on the QC record (order Details and style sizes done; not walked yet),
 factory PO accept link with a real token (accept twice, accept after approval withdrawn; needs the po-inbox function, the local stand-in can't test it).
-Print views not yet looked at: buyer PO PDF; a printed form's Styles table is cut at the right edge (nobody prints a blank form, low value). Wide tables on a phone: Money and cheque/invoice pages done 4 Nov; Tally, Reports, Activity and order margin done 5 Nov. Sample photos on a slow network read in code only (button disabled while saving, dropped connection caught), not walked. Angles never tried: slow network on a whole save flow (challan number 30 Oct, record cheque 1 Nov, QC with photos 2 Nov; not yet invoice, sample photos), field errors marked under the field on other forms (dispatch forms still show one message by their button; new order 4 Nov, inquiries 5 Nov done), year end with the server's clock (only checked by reading the date code: India-time today, other years shown with the year).
+Print views not yet looked at: buyer PO PDF; a printed form's Styles table is cut at the right edge (nobody prints a blank form, low value). Wide tables on a phone: Money and cheque/invoice pages done 4 Nov; Tally, Reports, Activity and order margin done 5 Nov. Sample photos on a slow network read in code only (button disabled while saving, dropped connection caught), not walked. Angles never tried: slow network on a whole save flow (challan number 30 Oct, record cheque 1 Nov, QC with photos 2 Nov; not yet invoice, sample photos), field errors marked under the field on other forms (dispatch done 6 Nov; new order 4 Nov, inquiries 5 Nov done; not yet: QC sheet, factory visit, samples, styles), year end with the server's clock (only checked by reading the date code: India-time today, other years shown with the year).
 
 ## Closed
 | Item | How | Date |
 |---|---|---|
+| Dispatch forms: errors in one line by the button (purchase and invoice not checked on the phone at all), pasted "Rs." rates refused, ₹0 invoice saved, future invoice / e-way / LR dates and valid-till before the e-way date accepted | Fixed (this run's PR) | 2026-11-06 |
 | A save after being signed out (another tab, or the session ran out) crashed the page with an untrue "Nothing you saved is lost" and lost the typed text; Team notes decision dropped keyboard focus to the page top | Fixed (this run's PR) | 2026-11-05 |
 | Tally reader not reading Tally since Mon 2 Nov (reported 4 Nov) | Reading again: last read 2.6 h before the 5 Nov evening run, agent seen 2.4 h before | 2026-11-05 |
 | Inquiry form errors only in the bottom bar and "Rs. 250" / "1200 pcs" refused; Activity log entries and order margin off to the right on a phone, unnamed log entries; long links and names pushing a phone page wide or off their cards | Fixed (this run's PR) | 2026-11-05 |
