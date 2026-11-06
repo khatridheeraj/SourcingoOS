@@ -3,10 +3,11 @@
 import { revalidatePath } from "next/cache";
 import { canEditOrders, canEnterDone, canRecordQc, getMe } from "@/lib/auth";
 import { friendly } from "@/lib/errors";
-import { QC_KINDS, TNA_STEPS, todayIST } from "@/lib/format";
+import { dayNear, QC_KINDS, qcKindLabel, TNA_STEPS, todayIST } from "@/lib/format";
 import { isFilled, orderProblem } from "@/lib/order-input";
 import { buyerOverdue, NO_WARNINGS, orderWarnings, type OrderWarnings, type Overdue } from "@/lib/order-checks";
 import { PO_FILE_TYPES, PO_MAX_BYTES, type StoredFile } from "@/lib/po-files";
+import { personName } from "@/lib/names";
 import { sizeEntries } from "@/lib/sizes";
 import { createClient } from "@/lib/supabase/server";
 
@@ -430,6 +431,30 @@ export async function recordQc(orderId: string, qcId: string, q: QcInput, files:
   revalidatePath("/");
   revalidatePath(`/orders/${orderId}`);
   return {};
+}
+
+// Before a check is saved: has someone already recorded the same check (same style, type, result and day)?
+// Two people on the same inspection (QC on the floor, the owner from the report) otherwise make two identical
+// checks without knowing. Returns what to tell the person, or "" when there is nothing like it yet.
+export async function sameQc(orderId: string, lineIds: string[], kind: string, result: string, checkedOn: string): Promise<string> {
+  const me = await getMe();
+  if (!me?.role || !canRecordQc(me.role) || !lineIds.length || !/^\d{4}-\d{2}-\d{2}$/.test(checkedOn)) return "";
+  const supabase = await createClient();
+  const { data } = await supabase.from("qc_checks").select("line_id, checked_by, order_lines(style)")
+    .eq("order_id", orderId).in("line_id", lineIds).eq("kind", kind).eq("result", result).eq("checked_on", checkedOn).is("cancelled_at", null);
+  if (!data?.length) return "";
+  const ids = [...new Set(data.map((c) => c.checked_by).filter((x): x is string => !!x))];
+  const { data: ppl } = ids.length ? await supabase.from("profiles").select("id, full_name, email").in("id", ids) : { data: [] };
+  const name = (id: string | null) => {
+    const p = (ppl ?? []).find((x) => x.id === id);
+    return id === me.id ? "You" : p ? personName(p) : "Someone in the team";
+  };
+  const c = data[0];
+  const style = (c.order_lines as unknown as { style: string } | null)?.style ?? "this style";
+  const lines = new Set(data.map((x) => x.line_id)).size;
+  const styles = lines === 1 ? style : `${lines} of these styles`;
+  return `${name(c.checked_by)} already recorded a ${qcKindLabel(kind)} ${result === "pass" ? "Pass" : "Fail"} for ${styles} on ${dayNear(checkedOn)}. `
+    + "Tap Save again only if this was a separate inspection.";
 }
 
 // Adds more photos or reports to a saved check.

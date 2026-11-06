@@ -1,5 +1,6 @@
 "use client";
 
+import { caught } from "@/lib/errors";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { closeOldOrder, loadQuick, lockPlan, logChase, markStepsDone, moveLateTargets, startProduction } from "@/app/(app)/orders/quick-actions";
@@ -567,7 +568,7 @@ function SheetPhoto({ orderId, companyId, lineId, style, onAdded }: { orderId: s
           if (r.error) setError(r.error);
           else { toast(`${style}'s photo added`); onAdded(); }
         } catch (err) {
-          setError(err instanceof Error ? err.message : "The photo didn't upload.");
+          setError(caught(err, "The photo didn't upload."));
         } finally {
           setBusy(false);
         }

@@ -1,5 +1,6 @@
 "use client";
 
+import { caught } from "@/lib/errors";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { toast } from "@/components/toast";
@@ -193,7 +194,7 @@ export function PoPhotoSlot({ orderId, companyId, lineId, style }: { orderId: st
           if (r.error) setError(r.error);
           else router.refresh();
         } catch (err) {
-          setError(err instanceof Error ? err.message : "The photo didn't upload.");
+          setError(caught(err, "The photo didn't upload."));
         } finally {
           setBusy(false);
         }
