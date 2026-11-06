@@ -4,8 +4,9 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { day, QC_KINDS, qcKindLabel, qtyU, SHIP_QC, todayIST, dayTimeAt } from "@/lib/format";
 import { REPORT_ACCEPT, REPORT_MAX_MB, uploadPhotos, uploadReports } from "@/lib/photos";
+import { caught } from "@/lib/errors";
 import { shipQcNote } from "@/lib/ship-qc";
-import { addQcComment, addQcFiles, cancelQc, recordQc, removeQcPhoto, type QcFile, type QcInput } from "../actions";
+import { addQcComment, addQcFiles, cancelQc, recordQc, removeQcPhoto, sameQc, type QcFile, type QcInput } from "../actions";
 
 export type QcCheck = {
   id: string; line_id: string; kind: string; checked_on: string; result: string; pieces_checked: number | null; defects: number;
@@ -78,6 +79,9 @@ export function OrderQc({ orderId, companyId, open, canRecord, today, checks, fi
   const [photos, setPhotos] = useState<File[]>([]);
   const [reports, setReports] = useState<File[]>([]);
   const [error, setError] = useState("");
+  // The check the person chose to save even though someone already recorded the same one.
+  const [again, setAgain] = useState("");
+  const [same, setSame] = useState("");
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState("");
   const [drafts, setDrafts] = useState<Record<string, string>>({});
@@ -86,28 +90,34 @@ export function OrderQc({ orderId, companyId, open, canRecord, today, checks, fi
   const can = open && canRecord;
 
   function startFor(lineId: string) {
-    setQ({ ...blank, line_id: lineId }); setPhotos([]); setReports([]); setError(""); setAdding(true);
+    setQ({ ...blank, line_id: lineId }); setPhotos([]); setReports([]); setError(""); setSame(""); setAgain(""); setAdding(true);
   }
 
   function reset() {
-    setAdding(false); setError(""); setQ(blank); setPhotos([]); setReports([]);
+    setAdding(false); setError(""); setAgain(""); setSame(""); setQ(blank); setPhotos([]); setReports([]);
   }
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
+    setSame("");
     setNotice("");
     const problem = qcProblem(q, photos, reports);
     if (problem) return setError(problem);
+    const key = [q.line_id, q.kind, q.result, q.checked_on].join("|");
     start(async () => {
       const id = crypto.randomUUID();
       try {
+        if (again !== key) {
+          const same = await sameQc(orderId, [q.line_id], q.kind, q.result, q.checked_on);
+          if (same) { setAgain(key); setSame(same); router.refresh(); return; }
+        }
         setBusy("new");
         const files = await upload(`${companyId}/${orderId}/qc/${id}`, photos, reports);
         const res = await recordQc(orderId, id, q, files);
         if (res.error) return setError(res.error);
       } catch (err) {
-        return setError(err instanceof Error ? err.message : "The files didn't upload. Try again.");
+        return setError(caught(err, "The files didn't upload. Try again."));
       } finally {
         setBusy("");
       }
@@ -127,7 +137,7 @@ export function OrderQc({ orderId, companyId, open, canRecord, today, checks, fi
         const res = await addQcFiles(orderId, qcId, up);
         if (res.error) setNotice(`The files weren't added: ${res.error}`);
       } catch (err) {
-        setNotice(`The files weren't added: ${err instanceof Error ? err.message : "upload failed."}`);
+        setNotice(`The files weren't added: ${caught(err, "upload failed.")}`);
       } finally {
         setBusy("");
       }
@@ -228,6 +238,7 @@ export function OrderQc({ orderId, companyId, open, canRecord, today, checks, fi
         </label>
       </div>
       {dateNote && <p className="mt-3 text-[13px] font-semibold text-warn" role="status">{dateNote}</p>}
+      {same && <p className="mt-3 text-[13px] font-semibold text-warn" role="status">{same}</p>}
       <div className="row mt-3">
         <button className="btn primary" disabled={pending}>{pending ? (busy ? "Uploading proof…" : "Saving…") : `Save QC${q.line_id ? ` for ${styleName(q.line_id)}` : ""}`}</button>
         <button type="button" className="btn" onClick={reset}>Close</button>

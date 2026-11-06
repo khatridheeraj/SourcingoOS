@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
 import { loadQuick } from "@/app/(app)/orders/quick-actions";
-import { recordQc } from "@/app/(app)/orders/actions";
+import { recordQc, sameQc } from "@/app/(app)/orders/actions";
 import { PhotoPicker, type Picked } from "@/components/photo-picker";
 import { toast } from "@/components/toast";
 import { addDays, dm, live, type QOrder, type QStyle } from "@/lib/quick";
@@ -96,6 +96,9 @@ function QcForm({ order, req, onDone }: { order: QOrder; req: Open; onDone: () =
   const [defects, setDefects] = useState("");
   const [notes, setNotes] = useState("");
   const [err, setErr] = useState("");
+  // The check the person chose to save even though someone already recorded the same one.
+  const [again, setAgain] = useState("");
+  const [same, setSame] = useState("");
   const [pending, start] = useTransition();
   const picked = styles.filter((s) => lineIds.includes(s.id));
   const today = order.today;
@@ -109,11 +112,17 @@ function QcForm({ order, req, onDone }: { order: QOrder; req: Open; onDone: () =
 
   function save() {
     setErr("");
+    setSame("");
     if (!picked.length) return setErr("Pick the style.");
     if (!result) return setErr("Tap Pass or Fail.");
     if (result === "fail" && !notes.trim()) { setMore(true); return setErr("Write what failed, so the factory knows what to fix."); }
     if (!photos.length) return setErr("Add at least one photo as proof of the check.");
+    const key = [...lineIds].sort().join(",") + `|${kind}|${result}|${on}`;
     start(async () => {
+      if (again !== key) {
+        const same = await sameQc(order.id, picked.map((s) => s.id), kind, result, on).catch(() => "");
+        if (same) { setAgain(key); setSame(same); router.refresh(); return; }
+      }
       // Each style gets its own check with its own copy of the photos, so cancelling one never touches another.
       const saved: string[] = [];
       // When a later style fails (a dropped network, a photo that won't upload), the styles already saved come off the
@@ -186,7 +195,8 @@ function QcForm({ order, req, onDone }: { order: QOrder; req: Open; onDone: () =
         </label>
       </div>
       <footer className="qs-foot">
-        {note && !err && <p className="qs-note" role="status">{note}</p>}
+        {note && !err && !same && <p className="qs-note" role="status">{note}</p>}
+        {same && !err && <p className="qs-note" role="status">{same}</p>}
         {err && <p className="qs-err" role="alert">{err}</p>}
         <button type="button" className={`btn primary qs-go ${result === "fail" ? "danger" : ""}`} disabled={pending} onClick={save}>
           {pending ? "Saving…" : result ? `Save ${qcKindLabel(kind)} ${result === "pass" ? "pass" : "fail"}${picked.length === 1 ? ` · ${picked[0].style}` : picked.length ? ` · ${picked.length} styles` : ""}` : "Save QC"}

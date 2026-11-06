@@ -1,5 +1,6 @@
 "use client";
 
+import { caught } from "@/lib/errors";
 import { useRouter } from "next/navigation";
 import { useRef, useState, useTransition } from "react";
 import { uploadPhotos } from "@/lib/photos";
@@ -70,7 +71,7 @@ export function InquiryForm({ id, companyId, initial, buyers, team }: {
           const saved = await setInquiryPhotos(res.id, paths);
           if (saved.error) toast(`Inquiry logged, but the photos didn't save: ${saved.error}`, "bad");
         } catch (err) {
-          toast(`Inquiry logged, but the photos didn't upload: ${err instanceof Error ? err.message : "try again"}`, "bad");
+          toast(`Inquiry logged, but the photos didn't upload: ${caught(err, "try again")}`, "bad");
         }
       }
       toast("Inquiry logged");

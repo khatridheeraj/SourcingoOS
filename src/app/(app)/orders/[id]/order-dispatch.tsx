@@ -1,5 +1,6 @@
 "use client";
 
+import { caught } from "@/lib/errors";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { day, money, qty, dayTimeAt } from "@/lib/format";
@@ -144,7 +145,7 @@ export function OrderDispatch({ orderId, orderNo, companyId, open, owner, factor
         const res = await work(`${companyId}/${orderId}/dispatch/${id}`);
         if (res.error) return fail(id, res.error);
       } catch (err) {
-        return fail(id, err instanceof Error ? err.message : "The files didn't upload. Try again.");
+        return fail(id, caught(err, "The files didn't upload. Try again."));
       }
       router.refresh();
     });

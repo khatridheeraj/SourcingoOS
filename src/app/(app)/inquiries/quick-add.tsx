@@ -74,7 +74,7 @@ export function QuickAdd({ buyers, companyId, meId, today, initial = "" }: { buy
           const saved = await setInquiryPhotos(res.id, paths);
           if (saved.error) toast(`Logged, but the photos didn't save: ${saved.error}`, "bad");
         } catch (err) {
-          toast(`Logged, but the photos didn't upload: ${err instanceof Error ? err.message : "try again"}`, "bad");
+          toast(`Logged, but the photos didn't upload: ${caught(err, "try again")}`, "bad");
         }
       }
       toast(`${res.no ?? "Inquiry"} logged. It comes back ${FOLLOW.find((f) => f.d === follow)?.label.toLowerCase()} to follow up.`);

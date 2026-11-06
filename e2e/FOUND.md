@@ -18,7 +18,7 @@ How to use it:
 |---|---|---|
 | Buyer status page after the ship date has passed: say "N days past" or stay quiet? | 2026-10-26 | 2026-10-29 |
 | Nightly database backup needs a GitHub secret from him | 2026-10-24 | 2026-10-29 |
-| One buyer PO in "To check" and one held, both over 2 days old (live data, team's job). 29 Oct 17:00Z: only the held one is left; 31 Oct: 4 held (unknown senders, in Your approvals); 1 Nov: 3 held, evening 4; 2 Nov: 4; 3 Nov: 4, afternoon 4, evening 4; 4 Nov: 4, afternoon 5, evening 7; 5 Nov: 7, afternoon 7, evening 8; 6 Nov: 8 | 2026-10-29 | 2026-11-06 |
+| One buyer PO in "To check" and one held, both over 2 days old (live data, team's job). 29 Oct 17:00Z: only the held one is left; 31 Oct: 4 held (unknown senders, in Your approvals); 1 Nov: 3 held, evening 4; 2 Nov: 4; 3 Nov: 4, afternoon 4, evening 4; 4 Nov: 4, afternoon 5, evening 7; 5 Nov: 7, afternoon 7, evening 8; 6 Nov: 8, evening 9 | 2026-10-29 | 2026-11-06 |
 | SO-0018: two factory POs sent for the owner's approval on 3 Nov 10:56Z, still waiting over 2 days (in Your approvals on Home) | 2026-11-05 | 2026-11-06 |
 
 ## Known (not new, never report)
@@ -32,7 +32,7 @@ How to use it:
 | Gmail pickup has found no new buyer PO for days | No buyer has emailed a PO; not a glitch (2 Nov early: 59 h) | 2026-11-02 |
 | Factory PO emails all go to merchandiser@sourcingo.in | Test inbox mode, on purpose until Dheeraj says switch | 2026-10-31 |
 | Markers screen paused | MARKERS_ON flag, on purpose | 2026-10-31 |
-| Supabase advisors: security-definer functions callable by anon/authenticated, RLS on with no policy, one mutable search_path, leaked-password check off | Long-standing by design (the app's RPCs are security definer and check the role inside); not new (4 Nov early and evening, 5 Nov early and evening, 6 Nov early: same five) | 2026-11-06 |
+| Supabase advisors: security-definer functions callable by anon/authenticated, RLS on with no policy, one mutable search_path, leaked-password check off | Long-standing by design (the app's RPCs are security definer and check the role inside); not new (4 Nov early and evening, 5 Nov early and evening, 6 Nov early and evening: same five) | 2026-11-06 |
 | Supabase performance advisors: unindexed foreign keys, unused indexes, auth RLS initplan, multiple permissive policies, one table without a primary key | Long-standing INFO/WARN on a 33 MB database; nothing slow in the logs | 2026-10-31 |
 | Morning brief "shipped in part" / "closed short" lines and Home's deleted-PO line say "pcs" even for a fabric order | The numbers come from database functions that don't return the unit; fix with the next migration a thread makes, not a check run | 2026-10-30 |
 | Local stack: Next dev logs "The destination stream closed early" after a save that redirects | Dev-server noise when a page is left mid-stream; not seen in production | 2026-10-29 |
@@ -40,6 +40,7 @@ How to use it:
 | Form Save buttons on a phone are content-width, not full width (dispatch steps, order Details, most forms); DESIGN.md asks full width for primary buttons | A sweep across every form, not a check-run fix; the button is easy to hit (40px+). Leave unless Dheeraj asks | 2026-11-02 |
 | A tap on most save buttons (about 70 outside the photo flows) while the connection is down swaps the page for the error screen, which since 3 Nov says "The connection dropped" and offers Try again; anything typed in that form is lost | Each button catches its own errors; catching a dropped connection on every one is a sweep, not a check-run fix. Photo flows and factory sheets already keep the form and say it in place | 2026-11-03 |
 | Live order SO-0004 open long past its 30 Sep ship date | Dheeraj (3 Nov): it is pending, leave it open and wait | 2026-11-03 |
+| A team member opening a page their role can't use (a Payments, Team or Buyer POs link sent to Quality or a merchandiser) lands on Orders or Home with no word why | Data stays hidden, which is right; a one-line "not for your role" note on all ~20 guarded pages is a sweep, not a check-run fix | 2026-11-06 |
 | Factory PO routine asking for database permission | He granted it on 2026-10-29 14:22Z. If a read or write is blocked, log it here and stay quiet | 2026-10-29 |
 
 ## Coverage
@@ -48,7 +49,7 @@ Inquiries, Samples, Styles, Goods with us and challan, Payments (invoices, chequ
 Reports, Brief, Today, Updates, Activity, Buyers, Factories, Team, Tally, Feedback, Help panel,
 factory panel (/factory, /f/...), factory PO accept link (/po/...), buyer page (/buyer, /s/...), login.
 
-Angles: phone light, small phone (320 px wide), phone dark, desk light, desk dark, each of the 7 roles (owner, manager, merch, quality,
+Angles: phone light, a role typing another role's page address, small phone (320 px wide), phone dark, desk light, desk dark, each of the 7 roles (owner, manager, merch, quality,
 accounts, factory, buyer), empty state (no orders, no styles, no photos), rush order (ships in 1 to 3 days),
 order already late, large order (20+ styles, 50,000+ pieces, long names), fabric order (metres), part shipment,
 Hindi or long text in names and notes, zero and huge money amounts, slow network (throttle in a short Playwright script) and double taps,
@@ -131,14 +132,19 @@ made-up token (/po, /f, /s), print and PDF views (A4, many styles), printing fro
 | 2026-11-06 | Buyer PO page: "Add as a new buyer" (unknown buyer on an emailed PO) | form errors: blank (spaces) name, one-letter code, a code already used typed in small letters, symbols; then Cancel and reopen, owner phone + desk, light + dark | Every message sat at the end of the row, no box was marked and focus fell to the page top (the button was disabled while saving); Cancel kept the half-typed name and code. Fixed (this run's PR): message under its box with focus moved there, Cancel puts back the PO's name and suggested code, labels on both boxes, "<buyer> added." toast, extra spaces in the name dropped |
 | 2026-11-06 | Buyer POs: "Add PO from a file" | a dropped connection during the upload and during the save, merch phone (exploration: an empty, 0-byte file, the kind a WhatsApp download that didn't finish leaves) | An empty file uploaded, then said "That file didn't upload properly. Try again" (trying again never helps) and stayed in storage; a dropped upload said the browser's raw "Failed to fetch"; a dropped save replaced the whole page with the error screen and left the uploaded files behind. Fixed (this run's PR): empty file refused before upload in plain words, dropped connection said plainly in the line under the button, uploaded files taken back whenever the save fails |
 
+| 2026-11-06 | Order page QC tab and the Record QC sheet | two people (Quality on the floor, the owner from the report) recording the same Final Pass for one style, phone light + dark | The second save made an identical second check with no word (two "Final Pass" rows, same day). Fixed (this run's PR): before saving, the app says who already recorded the same check and saves only on a second tap |
+| 2026-11-06 | Order QC tab, dispatch files, order sheet photos, factory PO photos, inquiry photos, Help note | a dropped connection on a photo or file upload (code read across every catch) | Six places still showed the browser's raw "Failed to fetch". Fixed (this run's PR): plain "connection dropped" text, Hindi in Help for factories |
+| 2026-11-06 | Samples (Send to buyer, Record buyer's answer) | two people (merch and the buyer, or two merchandisers) answering one sample (code read: the seed has no sample rounds) | The database refuses the second with "already answered. Reload the page." Fine |
+| 2026-11-06 | 26 pages typed straight into the address bar by the wrong role (Quality into Money, Tally, Buyer POs, Goods; merch into Team, Activity, Cash ahead; factory and buyer into staff pages and each other's; owner into /factory and /buyer) (exploration: a role crossing into another role's screen) | Every one is refused and lands on the role's own page, no errors, no data shown. Only the silent landing is a rough edge (Known) |
 Not yet looked at from any angle beyond the crawl: date edges (month and year end; a year-old order done 1 Nov),
-two people on the QC record (order Details and style sizes done; not walked yet),
+two people on one sample with real rounds in the seed (QC record done 6 Nov),
 factory PO accept link with a real token (accept twice, accept after approval withdrawn; needs the po-inbox function, the local stand-in can't test it).
 Print views not yet looked at: buyer PO PDF; a printed form's Styles table is cut at the right edge (nobody prints a blank form, low value). Wide tables on a phone: Money and cheque/invoice pages done 4 Nov; Tally, Reports, Activity and order margin done 5 Nov. Sample photos on a slow network read in code only (button disabled while saving, dropped connection caught), not walked. Angles never tried: slow network on a whole save flow (challan number 30 Oct, record cheque 1 Nov, QC with photos 2 Nov; not yet invoice, sample photos), field errors marked under the field on other forms (dispatch done 6 Nov; new order 4 Nov, inquiries 5 Nov done; not yet: QC sheet, factory visit, samples, styles), year end with the server's clock (only checked by reading the date code: India-time today, other years shown with the year).
 
 ## Closed
 | Item | How | Date |
 |---|---|---|
+| Two people recording the same QC check made a silent duplicate; six upload screens showed raw "Failed to fetch" | Fixed (this run's PR) | 2026-11-06 |
 | Buyer PO "Add as a new buyer": errors at the end of the row with focus lost, Cancel kept half-typed text; "Add PO from a file": empty file said "Try again", raw "Failed to fetch", a dropped save crashed the page and left files in storage | Fixed (this run's PR) | 2026-11-06 |
 | Dispatch forms: errors in one line by the button (purchase and invoice not checked on the phone at all), pasted "Rs." rates refused, ₹0 invoice saved, future invoice / e-way / LR dates and valid-till before the e-way date accepted | Fixed (this run's PR) | 2026-11-06 |
 | A save after being signed out (another tab, or the session ran out) crashed the page with an untrue "Nothing you saved is lost" and lost the typed text; Team notes decision dropped keyboard focus to the page top | Fixed (this run's PR) | 2026-11-05 |

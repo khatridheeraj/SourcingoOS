@@ -1,5 +1,7 @@
 "use client";
 
+import { caught } from "@/lib/errors";
+import { errorText } from "@/app/factory/i18n";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
@@ -439,7 +441,7 @@ function Compose({ w, owner, lang, kind: first, body: firstBody, files: firstFil
         toast(lang === "hi" ? "भेज दिया" : `Sent to ${owner}`);
         onSent(res.no!);
       } catch (e) {
-        setError(e instanceof Error ? e.message : String(e));
+        setError(errorText(lang, caught(e, "It didn't send. Try again.")));
       }
     });
   }
