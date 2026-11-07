@@ -8,7 +8,9 @@ export type OrderHead = { buyer_id: string; buyer_po: string; po_date: string; s
 export type OrderLine = { style: string; qty: string; buyer_rate: string; factory_rate: string };
 export type OrderProblem = { field: string; msg: string };
 
-const num = (s: string) => s.replace(/[,₹\s]/g, "");
+import { latinDigits } from "./digits.ts";
+
+export const num = (s: string) => latinDigits(s).replace(/[,₹\s]/g, "");
 
 // A row counts once its style number or quantity is filled in; fully blank rows are left out of the save.
 export const isFilled = (l: OrderLine) => !!(l.style.trim() || l.qty.trim());

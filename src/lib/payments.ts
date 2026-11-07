@@ -1,5 +1,6 @@
 // Money owed by buyers: invoices, credit notes and the cheques that pay them.
 // Pure sums only, so the same numbers show on every screen.
+import { latinDigits } from "./digits.ts";
 
 export type ChequeStatus = "in_hand" | "deposited" | "cleared" | "bounced" | "cancelled" | "paid_other";
 export const CHEQUE_LABEL: Record<ChequeStatus, string> = {
@@ -59,7 +60,7 @@ export const paise = (v: number) => Math.round(v * 100) / 100;
 // A rupee amount as typed or pasted, kept as digits and one decimal point: "Rs. 1,250.50" is "1250.50".
 // A dot before the first digit is the "Rs." or "INR." in front, not a decimal point; a second dot is dropped.
 export function amountText(s: string): string {
-  const t = s.replace(/[^\d.]/g, "").replace(/^\.+/, "");
+  const t = latinDigits(s).replace(/[^\d.]/g, "").replace(/^\.+/, "");
   const i = t.indexOf(".");
   return i < 0 ? t : t.slice(0, i + 1) + t.slice(i + 1).replace(/\./g, "");
 }

@@ -2,13 +2,14 @@
 // before anything is sent) and the save (so it can't be skipped). Quantity and price are read the way people type
 // them: "1,200", "1200 pcs", "Rs. 250", "₹ 1,250.50".
 import { amountText } from "./payments.ts";
+import { latinDigits } from "./digits.ts";
 
 export type InquiryField = "buyer_id" | "prospect" | "product" | "est_qty" | "target_price" | "next_follow_up";
 export type InquiryCheck = {
   buyer_id: string; prospect: string; product: string; est_qty: string; target_price: string; next_follow_up: string;
 };
 
-export const qtyText = (s: string) => s.replace(/[,\s]/g, "").replace(/(pcs|pieces|piece|pc|metres|metre|meters|meter|mtrs|mtr|m)$/i, "");
+export const qtyText = (s: string) => latinDigits(s).replace(/[,\s]/g, "").replace(/(pcs|pieces|piece|pc|metres|metre|meters|meter|mtrs|mtr|m)$/i, "");
 export const priceText = (s: string) => amountText(s);
 const isDate = (d: string) => !d || /^\d{4}-\d{2}-\d{2}$/.test(d);
 

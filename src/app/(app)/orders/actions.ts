@@ -4,7 +4,8 @@ import { revalidatePath } from "next/cache";
 import { canEditOrders, canEnterDone, canRecordQc, getMe } from "@/lib/auth";
 import { friendly } from "@/lib/errors";
 import { dayNear, QC_KINDS, qcKindLabel, TNA_STEPS, todayIST } from "@/lib/format";
-import { isFilled, orderProblem } from "@/lib/order-input";
+import { isFilled, num, orderProblem } from "@/lib/order-input";
+import { wholeText } from "@/lib/digits";
 import { qcCount, qcCountsProblem } from "@/lib/qc-input";
 import { buyerOverdue, NO_WARNINGS, orderWarnings, type OrderWarnings, type Overdue } from "@/lib/order-checks";
 import { PO_FILE_TYPES, PO_MAX_BYTES, type StoredFile } from "@/lib/po-files";
@@ -37,7 +38,6 @@ export type LineInput = {
   factory_rate: string;
 };
 
-const num = (s: string) => s.replace(/[,₹\s]/g, "");
 
 // What the form shows while an order is typed in: other orders it may repeat, and the buyer's overdue invoices.
 export async function checkOrder(order: Pick<OrderInput, "id" | "buyer_id" | "buyer_po">, styles: string[]): Promise<{ warnings: OrderWarnings; overdue: Overdue | null }> {
@@ -301,7 +301,8 @@ export async function saveStyleDetails(orderId: string, lineId: string, fabric: 
   was?: { fabric: string; sizes: Record<string, number> }): Promise<{ error?: string; stale?: boolean }> {
   const me = await getMe();
   if (!canEditOrders(me?.role)) return { error: "Only the orders team can change orders." };
-  const rows = sizes.map((r) => ({ size: r.size.trim(), qty: r.qty.trim() })).filter((r) => r.size || r.qty);
+  // A size left blank (picked from a run, but the buyer orders none of it) is left out, not refused.
+  const rows = sizes.map((r) => ({ size: r.size.trim(), qty: wholeText(r.qty.trim()) })).filter((r) => r.qty);
   if (rows.some((r) => !r.size)) return { error: "Every size needs a name, like S or 32." };
   if (rows.some((r) => !/^\d+$/.test(r.qty))) return { error: "Enter whole pieces for every size." };
   if (new Set(rows.map((r) => r.size.toUpperCase())).size !== rows.length) return { error: "A size is entered twice." };

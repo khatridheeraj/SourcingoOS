@@ -8,6 +8,7 @@ import { SHIP_QC, TNA_STEPS, todayIST } from "@/lib/format";
 import { addDays, andList, dm, EMAIL_OK, emptySteps, pastTarget, startTargets, type QGroup, type QOrder, type QStyle } from "@/lib/quick";
 import { createClient } from "@/lib/supabase/server";
 import { saveLineStages, type LineStageInput } from "./actions";
+import { amountText } from "@/lib/payments";
 
 const str = (v: unknown) => (v == null ? "" : String(v));
 
@@ -127,8 +128,11 @@ export async function startProduction(orderId: string, input: StartInput): Promi
   }
   let factoryId = input.factoryId;
   if (input.styles?.length) {
-    const rows = input.styles.filter((s) => s.factory_id || s.factory_rate?.trim());
-    if (rows.some((s) => s.factory_rate?.trim() && !(Number(s.factory_rate.replace(/[,₹\s]/g, "")) >= 0))) return { error: "Enter each factory rate as a number." };
+    // Rates read the way people type or paste them: "Rs. 250", "₹ 1,250.50", "२५०".
+    if (input.styles.some((s) => s.factory_rate && /-\s*\d/.test(s.factory_rate))) return { error: "A factory rate can't be below zero." };
+    const rows = input.styles.map((s) => (s.factory_rate?.trim() ? { ...s, factory_rate: amountText(s.factory_rate) || s.factory_rate } : s))
+      .filter((s) => s.factory_id || s.factory_rate?.trim());
+    if (rows.some((s) => s.factory_rate?.trim() && !(Number(s.factory_rate) >= 0))) return { error: "Enter each factory rate as a number, like 250 or 250.50." };
     if (rows.length) {
       const { error } = await supabase.rpc("set_style_factory", { p_order: orderId, p_rows: rows });
       if (error) return { error: friendly(error) };
