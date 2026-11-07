@@ -25,7 +25,7 @@ const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 export async function savePoDetails(d: PoDetails): Promise<{ error?: string }> {
   const me = await getMe();
   if (!canEditOrders(me?.role)) return { error: "Only the orders team can change a factory PO." };
-  const fGstin = d.factory.gstin.trim().toUpperCase();
+  const fGstin = d.factory.gstin.replace(/\s+/g, "").toUpperCase();
   if (fGstin && !GSTIN.test(fGstin)) return { error: "The factory's GSTIN doesn't look right. It has 15 letters and numbers, like 08ABCDE1234F1Z5." };
   const fEmail = d.factory.email.trim().toLowerCase();
   if (fEmail && !EMAIL.test(fEmail)) return { error: "The factory's email doesn't look right." };
@@ -47,7 +47,7 @@ export async function savePoDetails(d: PoDetails): Promise<{ error?: string }> {
   if (d.company) {
     const c = d.company;
     const { error: e3 } = await supabase.rpc("set_company_po_details", {
-      p_legal_name: c.legalName, p_address: c.address, p_ship_address: c.shipAddress, p_gstin: c.gstin, p_phone: c.phone, p_email: c.email,
+      p_legal_name: c.legalName, p_address: c.address, p_ship_address: c.shipAddress, p_gstin: c.gstin.replace(/\s+/g, ""), p_phone: c.phone, p_email: c.email,
     });
     if (e3) return { error: friendly(e3) };
   }

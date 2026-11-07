@@ -1,6 +1,7 @@
 // Helpers behind the quick sheets: an order's steps per style, what to mark done, the plan to start production with,
 // and the WhatsApp chase for a factory. Pure functions, used on the server and in the browser alike.
 import { dayNear, daysBetween, qtyTotal, qtyU, TNA_STEPS } from "@/lib/format";
+import { waNumber } from "@/lib/whatsapp";
 export { emptySteps, startBuffer, startTargets } from "@/lib/tna-plan";
 
 // factory_on: the factory's own date for the step, when it has sent one.
@@ -168,9 +169,8 @@ export function buyerUpdateText(buyer: string, orders: { orderNo: string; buyerP
   ]);
 }
 
-// A WhatsApp link to the factory's number (Indian numbers without the country code get +91), or to any chat.
+// A WhatsApp link to the factory's number, or to any chat. The number is read by the one shared rule, so
+// "098290 12345" and "+91 98290 12345" both reach +91 98290 12345.
 export function waLink(phone: string | null | undefined, text: string) {
-  const digits = (phone ?? "").replace(/\D/g, "");
-  const to = digits.length === 10 ? `91${digits}` : digits.length >= 11 ? digits.replace(/^0+/, "") : "";
-  return `https://wa.me/${to}?text=${encodeURIComponent(text)}`;
+  return `https://wa.me/${waNumber(phone)}?text=${encodeURIComponent(text)}`;
 }
