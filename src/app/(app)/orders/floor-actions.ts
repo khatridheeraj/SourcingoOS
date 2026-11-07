@@ -1,5 +1,6 @@
 "use server";
 
+import { qtyText } from "@/lib/inquiry-input";
 import { revalidatePath } from "next/cache";
 import { canEnterDone, canRecordQc, getMe } from "@/lib/auth";
 import { buyerName, loadBuyers, loadFactories, loadTeam, personName } from "@/lib/data";
@@ -116,7 +117,8 @@ export async function postFloorUpdate(input: FloorInput): Promise<{ error?: stri
   const me = await getMe();
   if (!canEnterDone(me?.role)) return { error: "Only Quality and the orders team post production updates." };
   if (!FLOOR_STATUS.some((s) => s.key === input.status)) return { error: "Say how the step is: done, on track, running late or a problem." };
-  const qty = input.qty.replace(/[,\s]/g, "");
+  // Read the way people type it on the floor: "1,200", "450 pcs", "300 m".
+  const qty = qtyText(input.qty.trim());
   if (qty && !/^\d+$/.test(qty)) return { error: "Enter the quantity done as a whole number." };
   if (input.expectedOn && !/^\d{4}-\d{2}-\d{2}$/.test(input.expectedOn)) return { error: "Pick the ready date from the calendar." };
   if (!input.photos.length) return { error: "Add at least one photo from the floor." };
