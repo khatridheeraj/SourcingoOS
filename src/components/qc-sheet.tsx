@@ -11,6 +11,7 @@ import { QC_KINDS, qcKindLabel, TNA_STEPS } from "@/lib/format";
 import { shipQcNote } from "@/lib/ship-qc";
 import { uploadPhotos } from "@/lib/photos";
 import { caught } from "@/lib/errors";
+import { qcCountsProblem } from "@/lib/qc-input";
 
 type Open = { orderId: string; kind?: string; lineId?: string };
 const EVENT = "sourcingo:qc-sheet";
@@ -96,6 +97,9 @@ function QcForm({ order, req, onDone }: { order: QOrder; req: Open; onDone: () =
   const [defects, setDefects] = useState("");
   const [notes, setNotes] = useState("");
   const [err, setErr] = useState("");
+  // The box the message is about: marked, with the message under it, and focused.
+  const [bad, setBad] = useState<"" | "pieces" | "defects" | "notes">("");
+  const form = useRef<HTMLDivElement>(null);
   // The check the person chose to save even though someone already recorded the same one.
   const [again, setAgain] = useState("");
   const [same, setSame] = useState("");
@@ -110,12 +114,27 @@ function QcForm({ order, req, onDone }: { order: QOrder; req: Open; onDone: () =
     if (!req.kind && next.length === 1) setKind(dueKind(styles.find((x) => x.id === next[0])!));
   }
 
+  const msg = (k: typeof bad) => (bad === k ? <small className="text-bad" role="alert">{err}</small> : null);
+  const fixed = (k: typeof bad) => { if (bad === k) { setBad(""); setErr(""); } };
+  // Puts the message under its box and moves there (the box may only just have opened, so after it renders).
+  function badBox(field: "pieces" | "defects" | "notes", msg: string) {
+    setMore(true); setBad(field); setErr(msg);
+    requestAnimationFrame(() => {
+      const el = form.current?.querySelector<HTMLElement>(`[name="${field}"]`);
+      if (el) { el.focus({ preventScroll: true }); el.scrollIntoView({ block: "center" }); }
+    });
+  }
+
   function save() {
     setErr("");
+    setBad("");
     setSame("");
     if (!picked.length) return setErr("Pick the style.");
     if (!result) return setErr("Tap Pass or Fail.");
-    if (result === "fail" && !notes.trim()) { setMore(true); return setErr("Write what failed, so the factory knows what to fix."); }
+    // Counts are checked before any photo goes up: the server would turn them away after the upload, leaving the photos behind.
+    const counts = picked.length === 1 ? qcCountsProblem(pieces, defects) : null;
+    if (counts) return badBox(counts.field, counts.error);
+    if (result === "fail" && !notes.trim()) return badBox("notes", "Write what failed, so the factory knows what to fix.");
     if (!photos.length) return setErr("Add at least one photo as proof of the check.");
     const key = [...lineIds].sort().join(",") + `|${kind}|${result}|${on}`;
     start(async () => {
@@ -152,7 +171,7 @@ function QcForm({ order, req, onDone }: { order: QOrder; req: Open; onDone: () =
   }
 
   return (
-    <div className="qs-form">
+    <div className="qs-form" ref={form}>
       <p className="qs-label">{styles.length > 1 ? "Styles (pick one or more)" : "Style"}</p>
       <div className="qs-chips qc-chips" role="group" aria-label="Styles">
         {styles.map((s) => (
@@ -177,11 +196,12 @@ function QcForm({ order, req, onDone }: { order: QOrder; req: Open; onDone: () =
       ) : (
         <div className="qc-extra">
           {picked.length === 1 && <div className="qs-two">
-            <label className="field"><span>Pieces checked</span><input className="inp" inputMode="numeric" value={pieces} onChange={(e) => setPieces(e.target.value)} /></label>
-            <label className="field"><span>Defects</span><input className="inp" inputMode="numeric" value={defects} onChange={(e) => setDefects(e.target.value)} placeholder="0" /></label>
+            <label className="field"><span>Pieces checked</span><input className="inp" inputMode="numeric" name="pieces" aria-invalid={bad === "pieces" || undefined} value={pieces} onChange={(e) => { setPieces(e.target.value); fixed("pieces"); }} />{msg("pieces")}</label>
+            <label className="field"><span>Defects</span><input className="inp" inputMode="numeric" name="defects" aria-invalid={bad === "defects" || undefined} value={defects} onChange={(e) => { setDefects(e.target.value); fixed("defects"); }} placeholder="0" />{msg("defects")}</label>
           </div>}
           <label className="field"><span>Notes{result === "fail" && <i> *</i>}</span>
-            <textarea className="inp" rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder={result === "fail" ? "What failed and what the factory must fix" : "Anything worth noting"} />
+            <textarea className="inp" rows={3} name="notes" aria-invalid={bad === "notes" || undefined} value={notes} onChange={(e) => { setNotes(e.target.value); fixed("notes"); }} placeholder={result === "fail" ? "What failed and what the factory must fix" : "Anything worth noting"} />
+            {msg("notes")}
           </label>
         </div>
       )}
@@ -197,7 +217,7 @@ function QcForm({ order, req, onDone }: { order: QOrder; req: Open; onDone: () =
       <footer className="qs-foot">
         {note && !err && !same && <p className="qs-note" role="status">{note}</p>}
         {same && !err && <p className="qs-note" role="status">{same}</p>}
-        {err && <p className="qs-err" role="alert">{err}</p>}
+        {err && !bad && <p className="qs-err" role="alert">{err}</p>}
         <button type="button" className={`btn primary qs-go ${result === "fail" ? "danger" : ""}`} disabled={pending} onClick={save}>
           {pending ? "Saving…" : result ? `Save ${qcKindLabel(kind)} ${result === "pass" ? "pass" : "fail"}${picked.length === 1 ? ` · ${picked[0].style}` : picked.length ? ` · ${picked.length} styles` : ""}` : "Save QC"}
         </button>
