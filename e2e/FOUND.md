@@ -18,7 +18,7 @@ How to use it:
 |---|---|---|
 | Buyer status page after the ship date has passed: say "N days past" or stay quiet? | 2026-10-26 | 2026-10-29 |
 | Nightly database backup needs a GitHub secret from him | 2026-10-24 | 2026-10-29 |
-| One buyer PO in "To check" and one held, both over 2 days old (live data, team's job). 29 Oct 17:00Z: only the held one is left; 31 Oct: 4 held (unknown senders, in Your approvals); 1 Nov: 3 held, evening 4; 2 Nov: 4; 3 Nov: 4, afternoon 4, evening 4; 4 Nov: 4, afternoon 5, evening 7; 5 Nov: 7, afternoon 7, evening 8; 6 Nov: 8, evening 9; 7 Nov: 9, afternoon 9 | 2026-10-29 | 2026-11-07 |
+| One buyer PO in "To check" and one held, both over 2 days old (live data, team's job). 29 Oct 17:00Z: only the held one is left; 31 Oct: 4 held (unknown senders, in Your approvals); 1 Nov: 3 held, evening 4; 2 Nov: 4; 3 Nov: 4, afternoon 4, evening 4; 4 Nov: 4, afternoon 5, evening 7; 5 Nov: 7, afternoon 7, evening 8; 6 Nov: 8, evening 9; 7 Nov: 9, afternoon 9, evening 10 | 2026-10-29 | 2026-11-07 |
 | SO-0018: two factory POs sent for the owner's approval on 3 Nov 10:56Z, still waiting over 2 days (in Your approvals on Home) | 2026-11-05 | 2026-11-07 |
 
 ## Known (not new, never report)
@@ -50,7 +50,7 @@ Inquiries, Samples, Styles, Goods with us and challan, Payments (invoices, chequ
 Reports, Brief, Today, Updates, Activity, Buyers, Factories, Team, Tally, Feedback, Help panel,
 factory panel (/factory, /f/...), factory PO accept link (/po/...), buyer page (/buyer, /s/...), login.
 
-Angles: phone light, a role typing another role's page address, small phone (320 px wide), phone dark, desk light, desk dark, each of the 7 roles (owner, manager, merch, quality,
+Angles: phone light, phone numbers and GSTINs pasted the way people write them, a role typing another role's page address, small phone (320 px wide), phone dark, desk light, desk dark, each of the 7 roles (owner, manager, merch, quality,
 accounts, factory, buyer), empty state (no orders, no styles, no photos), rush order (ships in 1 to 3 days),
 order already late, large order (20+ styles, 50,000+ pieces, long names), fabric order (metres), part shipment,
 Hindi or long text in names and notes, zero and huge money amounts, slow network (throttle in a short Playwright script) and double taps,
@@ -142,6 +142,9 @@ made-up token (/po, /f, /s), print and PDF views (A4, many styles), printing fro
 | 2026-11-07 | Samples sheets (Send to buyer, Send back, Buyer already answered, Record buyer's answer, Add sample) | form errors: no AWB, Other courier with no name, blank "what to fix", Changes needed with no note, date box cleared, merch phone light + dark | Every message sat in one line above the button, no box was marked and focus stayed on the button. Fixed (this run's PR): message under its box with a red edge and focus there, checked before any photo uploads; a cleared or future date is caught on the phone |
 | 2026-11-07 | Order page, a style's pieces per size | form errors: a size picked from a run but left blank (buyer orders no XS), a size typed twice in small letters, merch phone | Picking "XS to XXL" and leaving XS blank (sizes still adding up) was refused with "Enter whole pieces for every size", and nothing said which size (the only way out was to clear the XS name). Fixed (this run's PR): a blank size is left out; a size typed twice or a nameless size with pieces is caught on the phone, that box marked and focused |
 | 2026-11-07 | Every number box (order quantities and rates, inquiry quantity and price, QC counts, money amounts, dispatch, sizes, credit/GRN/payment days, factory rates) | Hindi, Gujarati and other Indian digits typed on a language keyboard or pasted from a Hindi WhatsApp message ("१,२००", "₹ २५०") (exploration) | Money boxes dropped them silently ("₹ २५०" read as no amount), whole-number boxes (days, sizes, buffer) threw them away as typed, and quantities were refused as "not a number". Fixed (this run's PR): shared `latinDigits()` in `src/lib/digits.ts` (test) reads them as 0-9 everywhere. Also the factory PO sheet refused a pasted "Rs. 250" rate: now read like every other amount |
+| 2026-11-07 | Delivery challan: our address and GSTIN (owner) | form errors: GSTIN pasted with spaces ("08 ABCDE 1234F 1Z5", the way the GST portal and letterheads show it), a short GSTIN, Enter in the GSTIN box, owner phone light + dark | The box stopped at 15 characters counting the spaces, so a pasted GSTIN was cut short and then refused; a wrong GSTIN was said next to Save, not under the box; Enter did nothing. The factory PO's two GSTIN boxes cut a spaced paste the same way. Fixed (this run's PR): spaces dropped as typed, room for them, message under the box with focus on it, Enter saves |
+| 2026-11-07 | Style catalogue search | odd input: a code typed loosely ("nv shirt" for NV-SHIRT-A), a quote, merch phone | The search button found NV-SHIRT-A from "nv shirt" but the catalogue said "No styles found" (it matched the whole text as one piece). Fixed (this run's PR): each word must match, hyphens, slashes and dots count as spaces. A quote is harmless |
+| 2026-11-07 | WhatsApp buttons (Today chase, Updates, factory link, inquiries, samples) | phone numbers saved the Indian way: "098290 12345", "0091 98290 12345", "+91 98290-12345" (exploration: numbers pasted from a visiting card or contact) | Today and Updates used their own copy of the rule, which turned "098290 12345" into wa.me/9829012345 (no country code, WhatsApp says the number isn't on WhatsApp); "0091" broke both. Fixed (this run's PR): one shared rule with tests (`src/lib/whatsapp.test.ts`) |
 Not yet looked at from any angle beyond the crawl: date edges (month and year end; a year-old order done 1 Nov),
 two people on one sample with real rounds in the seed (QC record done 6 Nov),
 factory PO accept link with a real token (accept twice, accept after approval withdrawn; needs the po-inbox function, the local stand-in can't test it).
@@ -150,6 +153,7 @@ Print views not yet looked at: buyer PO PDF; a printed form's Styles table is cu
 ## Closed
 | Item | How | Date |
 |---|---|---|
+| Challan and factory PO GSTIN boxes cut a GSTIN pasted with spaces; challan GSTIN message beside Save and Enter did nothing; catalogue search missed loosely typed codes; Today/Updates WhatsApp lost +91 on "098..." numbers | Fixed (this run's PR) | 2026-11-07 |
 | Samples sheet messages not under their box; a blank size from a size run blocked saving a style; Indian-language digits dropped or refused in number boxes; factory PO rate "Rs. 250" refused | Fixed (this run's PR) | 2026-11-07 |
 | Record QC sheet and visit sheet checked pieces and defects only after the photos uploaded; "120 pcs" refused; QC messages not under their box | Fixed (this run's PR) | 2026-11-07 |
 | Two people recording the same QC check made a silent duplicate; six upload screens showed raw "Failed to fetch" | Fixed (this run's PR) | 2026-11-06 |

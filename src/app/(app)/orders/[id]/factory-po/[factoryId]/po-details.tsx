@@ -15,9 +15,9 @@ export function PoDetailsForm({ initial, missing, isOwner }: { initial: PoDetail
   const [pending, start] = useTransition();
 
   const f = (k: keyof PoDetails["factory"]) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
-    setD({ ...d, factory: { ...d.factory, [k]: k === "gstin" ? e.target.value.toUpperCase() : e.target.value } });
+    setD({ ...d, factory: { ...d.factory, [k]: k === "gstin" ? e.target.value.replace(/\s+/g, "").toUpperCase() : e.target.value } });
   const c = (k: keyof NonNullable<PoDetails["company"]>) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
-    d.company && setD({ ...d, company: { ...d.company, [k]: k === "gstin" ? e.target.value.toUpperCase() : e.target.value } });
+    d.company && setD({ ...d, company: { ...d.company, [k]: k === "gstin" ? e.target.value.replace(/\s+/g, "").toUpperCase() : e.target.value } });
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -59,7 +59,7 @@ export function PoDetailsForm({ initial, missing, isOwner }: { initial: PoDetail
         <legend className="challan-label">Factory</legend>
         <div className="fgrid">
           <label className="field sm:col-span-2"><span>Address</span><textarea className="inp" rows={2} maxLength={500} value={d.factory.address} onChange={f("address")} placeholder="Street, area, city, state, PIN" /></label>
-          <label className="field"><span>GSTIN</span><input className="inp" maxLength={15} value={d.factory.gstin} onChange={f("gstin")} placeholder="08ABCDE1234F1Z5" /></label>
+          <label className="field"><span>GSTIN</span><input className="inp code" maxLength={24} autoCapitalize="characters" value={d.factory.gstin} onChange={f("gstin")} placeholder="08ABCDE1234F1Z5" /></label>
           <label className="field"><span>Mobile</span><input className="inp" type="tel" value={d.factory.phone} onChange={f("phone")} /></label>
           <label className="field"><span>Email</span><input className="inp" type="email" value={d.factory.email} onChange={f("email")} /></label>
         </div>
@@ -69,7 +69,7 @@ export function PoDetailsForm({ initial, missing, isOwner }: { initial: PoDetail
           <legend className="challan-label">Our details (owner only)</legend>
           <div className="fgrid">
             <label className="field"><span>Name on PO</span><input className="inp" maxLength={120} value={d.company.legalName} onChange={c("legalName")} placeholder="Sourcingo Pvt. Ltd." /></label>
-            <label className="field"><span>GSTIN</span><input className="inp" maxLength={15} value={d.company.gstin} onChange={c("gstin")} /></label>
+            <label className="field"><span>GSTIN</span><input className="inp code" maxLength={24} autoCapitalize="characters" value={d.company.gstin} onChange={c("gstin")} /></label>
             <label className="field"><span>Bill to address</span><textarea className="inp" rows={2} maxLength={500} value={d.company.address} onChange={c("address")} /></label>
             <label className="field"><span>Ship to address</span><textarea className="inp" rows={2} maxLength={500} value={d.company.shipAddress} onChange={c("shipAddress")} placeholder="Leave empty if same as bill to" /></label>
             <label className="field"><span>Mobile</span><input className="inp" type="tel" value={d.company.phone} onChange={c("phone")} /></label>
