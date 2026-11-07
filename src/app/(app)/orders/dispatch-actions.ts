@@ -4,9 +4,10 @@ import { revalidatePath } from "next/cache";
 import { canEditOrders, getMe } from "@/lib/auth";
 import { friendly } from "@/lib/errors";
 import { createClient } from "@/lib/supabase/server";
+import { latinDigits } from "@/lib/digits";
 
 type Result = { error?: string };
-const num = (s: string) => s.replace(/[,₹\s]/g, "");
+const num = (s: string) => latinDigits(s).replace(/[,₹\s]/g, "");
 const isDate = (s: string) => /^\d{4}-\d{2}-\d{2}$/.test(s);
 
 async function team() {

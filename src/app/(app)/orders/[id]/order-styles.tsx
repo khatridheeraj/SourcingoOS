@@ -16,6 +16,7 @@ import { moveLateTargets } from "../quick-actions";
 import { andList } from "@/lib/quick";
 import { acceptTargetsForFactory, releaseFactoryPo, requestPlan, requestPoLock, saveLineStages, sendBackPoLock, setLineProduct, setStylePhoto, type LineStageInput } from "../actions";
 import { caught } from "@/lib/errors";
+import { wholeText } from "@/lib/digits";
 
 // fabricOrder: a fabric style, whose TNA skips the garment-making steps.
 export type StyleRow = { id: string; style: string; colour: string; qty: number; photoUrl: string | null; hasRate: boolean; fabricOrder: boolean; detail: StyleDetail };
@@ -495,7 +496,7 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
                   <Link href={`/orders/${orderId}/factory-po/${g.factoryId}`} className="btn sm" title="A draft of our PO to this factory, to print or save as a PDF">Draft PO PDF</Link>
                   <label className="row gap-1.5 text-[13px]">Buffer
                     <input className="inp w-14 !py-1" inputMode="numeric" value={buffer} aria-label={`Buffer days for ${g.factoryName}`}
-                      onChange={(e) => setBuffers((b) => ({ ...b, [g.factoryId!]: e.target.value.replace(/\D/g, "") }))} />
+                      onChange={(e) => setBuffers((b) => ({ ...b, [g.factoryId!]: wholeText(e.target.value) }))} />
                     days
                   </label>
                   <button type="button" className="btn sm" disabled={pending || !bufferOk || toAsk.length > 0 || unsaved(g)}

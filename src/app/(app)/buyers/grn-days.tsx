@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { setGrnDays } from "./actions";
+import { wholeText } from "@/lib/digits";
 
 export function GrnDays({ buyerId, code, value, owner }: { buyerId: string; code: string; value: number | null; owner: boolean }) {
   const router = useRouter();
@@ -20,7 +21,7 @@ export function GrnDays({ buyerId, code, value, owner }: { buyerId: string; code
         else { setError(""); router.refresh(); }
       });
     }}>
-      <input className="inp num w-[70px]" inputMode="numeric" value={v} onChange={(e) => setV(e.target.value.replace(/\D/g, ""))} placeholder="7" aria-label={`${code} GRN days`} />
+      <input className="inp num w-[70px]" inputMode="numeric" value={v} onChange={(e) => setV(wholeText(e.target.value))} placeholder="7" aria-label={`${code} GRN days`} />
       <span className="text-xs muted">days</span>
       {dirty && <button className="btn sm primary" disabled={pending}>Save</button>}
       {error && <span className="text-xs text-bad">{error}</span>}

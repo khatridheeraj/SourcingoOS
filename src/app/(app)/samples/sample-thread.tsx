@@ -13,6 +13,8 @@ import { addSample, forwardSample, recordAnswer, returnSample } from "./actions"
 import { caught } from "@/lib/errors";
 
 type Mode = "forward" | "return" | "answer" | "add";
+// The box a message is about: marked, with the message under it, and focused.
+type Box = "" | "other" | "awb" | "on" | "note" | "files";
 const dm = (d: string) => dayNear(d);
 const addDays = (d: string, n: number) => new Date(Date.parse(d) + n * 86_400_000).toISOString().slice(0, 10);
 const lateBy = (target: string, today: string) => { const n = Math.round((Date.parse(today) - Date.parse(target)) / 86_400_000); return `${n} ${n === 1 ? "day" : "days"}`; };
@@ -78,6 +80,7 @@ export function SampleThreadCard({ t, today, showOrder = true, readOnly = false 
   const [approved, setApproved] = useState(true);
   const [files, setFiles] = useState<Picked[]>([]);
   const [error, setError] = useState("");
+  const [bad, setBad] = useState<Box>("");
   const [pending, start] = useTransition();
 
   const last = t.rounds[t.rounds.length - 1];
@@ -98,6 +101,7 @@ export function SampleThreadCard({ t, today, showOrder = true, readOnly = false 
   function open(m: Mode) {
     setMode(m);
     setError("");
+    setBad("");
     setNote("");
     setAwb("");
     setOther("");
@@ -108,26 +112,54 @@ export function SampleThreadCard({ t, today, showOrder = true, readOnly = false 
     box.current?.showModal();
   }
 
+  // Puts the message under its box and moves there, before anything is uploaded or sent.
+  function badBox(k: Exclude<Box, "">, msg: string) {
+    setBad(k);
+    setError(msg);
+    requestAnimationFrame(() => {
+      const el = box.current?.querySelector<HTMLElement>(`[data-box="${k}"]`);
+      if (el) { el.focus({ preventScroll: true }); el.scrollIntoView({ block: "center" }); }
+    });
+  }
+  const fixed = (k: Box) => { if (bad === k) { setBad(""); setError(""); } };
+  const at = (k: Exclude<Box, "">) => ({ "data-box": k, "aria-invalid": bad === k || undefined });
+  const msg = (k: Box) => (bad === k && error ? <small className="text-bad" role="alert">{error}</small> : null);
+
+  // The checks the person can fix on the spot, in the order the boxes appear.
+  function problem(): [Exclude<Box, "">, string] | null {
+    if (mode === "forward") {
+      if (!courierName) return ["other", "Type the courier's name, or pick one above."];
+      if (!byHand && !awb.trim()) return ["awb", "Enter the AWB (tracking) number, so the buyer can track the parcel."];
+      if (!sentOn) return ["on", "Pick the day the sample went."];
+      if (sentOn > today) return ["on", "The sample can't have gone after today."];
+      if (sentOn < minSent) return ["on", received && minSent === received ? `The sample reached you on ${dm(received)}, so it went to the buyer that day or later.` : "Give the day the sample went: today or in the last 30 days."];
+    } else if (mode === "return") {
+      if (!note.trim()) return ["note", "Say what to fix, so the factory knows."];
+    } else if (mode === "answer") {
+      if (!approved && !note.trim()) return ["note", "Say what to change, so the factory can fix it."];
+      if (!sentOn) return ["on", "Pick the day the buyer answered."];
+      if (sentOn > today) return ["on", "The buyer can't have answered after today."];
+      if (sentOn < minAnswer) return ["on", minAnswer === addDays(today, -30) ? "Give the day the buyer answered: today or in the last 30 days." : `The buyer could answer only after getting the sample, so pick ${dm(minAnswer)} or later.`];
+    } else if (!files.length) return ["files", "Add at least one photo of the sample."];
+    return null;
+  }
+
   function submit() {
     setError("");
+    setBad("");
+    const p = problem();
+    if (p) return badBox(...p);
     start(async () => {
       try {
         let res: { error?: string };
         if (mode === "forward") {
-          if (!courierName) return setError("Say how the sample goes: the courier, or By hand.");
-          if (!byHand && !awb.trim()) return setError("Enter the AWB (tracking) number, so the buyer can track the parcel.");
-          if (sentOn && sentOn < minSent) return setError(received && minSent === received ? `The sample reached you on ${dm(received)}, so it went to the buyer that day or later.` : "Give the day the sample went: today or in the last 30 days.");
           res = await forwardSample(t.orderId, last.id, courierName, byHand ? "" : awb.trim(), sentOn, note);
         } else if (mode === "return") {
-          if (!note.trim()) return setError("Say what to fix, so the factory knows.");
           res = await returnSample(t.orderId, last.id, note);
         } else if (mode === "answer") {
-          if (!approved && !note.trim()) return setError("Say what to change, so the factory can fix it.");
-          if (sentOn && sentOn < minAnswer) return setError(minAnswer === addDays(today, -30) ? "Give the day the buyer answered: today or in the last 30 days." : `The buyer could answer only after getting the sample, so pick ${dm(minAnswer)} or later.`);
           const paths = files.length ? await uploadPhotos(`${t.companyId}/${t.orderId}/samples/${t.lineId}`, files.map((f) => f.file)) : [];
           res = await recordAnswer(t.orderId, last.id, approved, note, paths, sentOn);
         } else {
-          if (!files.length) return setError("Add at least one photo of the sample.");
           const paths = await uploadPhotos(`${t.companyId}/${t.orderId}/samples/${t.lineId}`, files.map((f) => f.file));
           res = await addSample(t.orderId, t.lineId, t.stage, note, paths);
         }
@@ -236,15 +268,17 @@ export function SampleThreadCard({ t, today, showOrder = true, readOnly = false 
                 </div>
               </div>
               {courier === "Other" && (
-                <label className="field"><span>Courier name</span><input className="inp" value={other} maxLength={60} disabled={pending} onChange={(e) => setOther(e.target.value)} /></label>
+                <label className="field"><span>Courier name</span><input className="inp" {...at("other")} value={other} maxLength={60} disabled={pending} onChange={(e) => { setOther(e.target.value); fixed("other"); }} />{msg("other")}</label>
               )}
               {!byHand && (
                 <label className="field"><span>AWB (tracking) number</span>
-                  <input className="inp" value={awb} maxLength={60} autoComplete="off" disabled={pending} inputMode="text" placeholder="e.g. D12345678" onChange={(e) => setAwb(e.target.value)} />
+                  <input className="inp" {...at("awb")} value={awb} maxLength={60} autoComplete="off" disabled={pending} inputMode="text" placeholder="e.g. D12345678" onChange={(e) => { setAwb(e.target.value); fixed("awb"); }} />
+                  {msg("awb")}
                 </label>
               )}
               <label className="field"><span>Sent on</span>
-                <input className="inp" type="date" value={sentOn} min={minSent} max={today} disabled={pending} onChange={(e) => setSentOn(e.target.value)} />
+                <input className="inp" type="date" {...at("on")} value={sentOn} min={minSent} max={today} disabled={pending} onChange={(e) => { setSentOn(e.target.value); fixed("on"); }} />
+                {msg("on")}
               </label>
               <label className="field"><span>Note for the buyer (optional)</span>
                 <textarea className="inp h-20 resize-none font-[inherit]" maxLength={500} value={note} disabled={pending} placeholder="e.g. Thread colour corrected as per your comments"
@@ -254,36 +288,42 @@ export function SampleThreadCard({ t, today, showOrder = true, readOnly = false 
             </>}
             {mode === "return" && (
               <label className="field"><span>What to fix</span>
-                <textarea className="inp h-24 resize-none font-[inherit]" autoFocus maxLength={1000} value={note} disabled={pending} placeholder="e.g. Wrong thread colour, match the lab dip"
-                  onChange={(e) => setNote(e.target.value)} />
+                <textarea className="inp h-24 resize-none font-[inherit]" {...at("note")} autoFocus maxLength={1000} value={note} disabled={pending} placeholder="e.g. Wrong thread colour, match the lab dip"
+                  onChange={(e) => { setNote(e.target.value); fixed("note"); }} />
+                {msg("note")}
                 <small>The factory sees this in its panel and sends the next round.</small>
               </label>
             )}
             {mode === "answer" && <>
               <div className="seg w-full" role="radiogroup" aria-label="Buyer's answer">
-                <button type="button" role="radio" aria-checked={approved} disabled={pending} onClick={() => setApproved(true)}>Approved</button>
+                <button type="button" role="radio" aria-checked={approved} disabled={pending} onClick={() => { setApproved(true); fixed("note"); }}>Approved</button>
                 <button type="button" role="radio" aria-checked={!approved} disabled={pending} onClick={() => setApproved(false)}>Changes needed</button>
               </div>
               <label className="field"><span>{approved ? "Buyer's comments (optional)" : "What the buyer wants changed"}</span>
-                <textarea className="inp h-24 resize-none font-[inherit]" maxLength={1000} value={note} disabled={pending}
+                <textarea className="inp h-24 resize-none font-[inherit]" {...at("note")} maxLength={1000} value={note} disabled={pending}
                   placeholder={approved ? "e.g. Approved, keep the hem 1 cm shorter in bulk" : "e.g. Chest too loose, take in 1 cm; sleeve 2 cm longer"}
-                  onChange={(e) => setNote(e.target.value)} />
+                  onChange={(e) => { setNote(e.target.value); fixed("note"); }} />
+                {msg("note")}
               </label>
               <label className="field"><span>Answered on</span>
-                <input className="inp" type="date" value={sentOn} min={minAnswer} max={today} disabled={pending} onChange={(e) => setSentOn(e.target.value)} />
+                <input className="inp" type="date" {...at("on")} value={sentOn} min={minAnswer} max={today} disabled={pending} onChange={(e) => { setSentOn(e.target.value); fixed("on"); }} />
+                {msg("on")}
                 {approved && <small>Approving marks the {label.toLowerCase()} step done on this day.</small>}
               </label>
               <PhotoPicker files={files} onChange={setFiles} disabled={pending} label="Buyer's photos or marked-up pictures" />
             </>}
             {mode === "add" && <>
-              <PhotoPicker files={files} onChange={setFiles} disabled={pending} label="Photos of the sample" />
+              <div {...at("files")} tabIndex={-1} className="grid gap-1 outline-none">
+                <PhotoPicker files={files} onChange={(f) => { setFiles(f); fixed("files"); }} disabled={pending} label="Photos of the sample" />
+                {msg("files")}
+              </div>
               <label className="field"><span>Note (optional)</span>
                 <textarea className="inp h-20 resize-none font-[inherit]" maxLength={500} value={note} disabled={pending} placeholder="e.g. Factory sent it on WhatsApp"
                   onChange={(e) => setNote(e.target.value)} />
               </label>
             </>}
           </div>
-          {error && <p className="mt-3 text-[13px] font-semibold text-bad" role="alert">{error}</p>}
+          {error && !bad && <p className="mt-3 text-[13px] font-semibold text-bad" role="alert">{error}</p>}
           <div className="sheet-acts">
             <button type="button" className={`btn ${mode === "return" || (mode === "answer" && !approved) ? "" : "primary"}`} disabled={pending} onClick={submit}>
               {pending ? "Saving…" : mode === "forward" ? "Send to buyer" : mode === "return" ? "Send back" : mode === "answer" ? (approved ? "Approve" : "Ask for changes") : "Add sample"}

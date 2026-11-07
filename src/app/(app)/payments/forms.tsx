@@ -6,6 +6,7 @@ import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { day, money } from "@/lib/format";
 import { addDays, amountText, autoSplit, CHEQUE_LABEL, CHEQUE_TONE, CHEQUE_VALID_DAYS, type ChequeStatus, NEXT_STEPS, SLACK } from "@/lib/payments";
 import { type InvoiceInput, saveCheque, saveCreditNote, saveInvoice, setChequeNotice, setChequeStatus, setCreditDays } from "./actions";
+import { wholeText } from "@/lib/digits";
 
 export type BuyerOpt = { id: string; label: string; creditDays: number | null };
 const num = (s: string | number | null | undefined) => Number(String(s ?? "").replace(/[,₹\s]/g, "")) || 0;
@@ -511,7 +512,7 @@ export function CreditDays({ buyerId, value }: { buyerId: string; value: number 
         else { setError(""); box.current?.focus(); router.refresh(); }
       });
     }}>
-      <input ref={box} className="inp num w-[70px]" inputMode="numeric" value={v} onChange={(e) => setV(e.target.value.replace(/\D/g, ""))} placeholder="—" aria-label="Credit days" />
+      <input ref={box} className="inp num w-[70px]" inputMode="numeric" value={v} onChange={(e) => setV(wholeText(e.target.value))} placeholder="—" aria-label="Credit days" />
       <span className="text-xs muted">days</span>
       {dirty && <button className="btn sm primary" disabled={pending}>Save</button>}
       {error && <span className="text-xs text-bad">{error}</span>}

@@ -12,6 +12,7 @@ import {
   type PurchaseInput, type ShippingInput,
 } from "../dispatch-actions";
 import { closeShort } from "../actions";
+import { latinDigits } from "@/lib/digits";
 
 // Each style's pieces across the order's dispatches: ordered, bought, billed (invoiced) and shipped.
 // unit: "m" for a fabric style (bought by the metre), "pcs" for a garment.
@@ -364,7 +365,7 @@ function PurchaseForm({ p, setP: put, blank, factories, ship, bills, today, pend
               const line = factory.lines.find((x) => x.id === l.line_id);
               // Rates keep only the amount ("Rs. 1,250.50" pasted from a bill is 1250.50); quantities only digits and a dot.
               const set = (k: "qty" | "purchase_rate" | "sale_rate", v: string) =>
-                setP({ ...p, lines: p.lines.map((x, j) => (j === i ? { ...x, [k]: k === "qty" ? v.replace(/[^\d.]/g, "") : amountText(v) } : x)) });
+                setP({ ...p, lines: p.lines.map((x, j) => (j === i ? { ...x, [k]: k === "qty" ? latinDigits(v).replace(/[^\d.]/g, "") : amountText(v) } : x)) });
               const sh = ship.find((x) => x.id === l.line_id);
               const left = sh ? sh.ordered - sh.bought : 0;
               const over = sh && n(l.qty) > Math.max(0, left) ? n(l.qty) - Math.max(0, left) : 0;

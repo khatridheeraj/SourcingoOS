@@ -5,6 +5,7 @@ import { useRef, useState, useTransition } from "react";
 import { toast } from "@/components/toast";
 import { DEFAULT_DAYS, MSME_DAYS, type Msme } from "@/lib/payables";
 import { saveTerms } from "./actions";
+import { wholeText } from "@/lib/digits";
 
 // One supplier's payment days and MSME registration. Saving moves the due date of every bill it has.
 export function TermsForm({ ledger, days, msme, udyam }: { ledger: string; days: number; msme: Msme | null; udyam: string | null }) {
@@ -33,7 +34,7 @@ export function TermsForm({ ledger, days, msme, udyam }: { ledger: string; days:
     }}>
       <label>
         <span>Payment days</span>
-        <input ref={daysBox} className="inp num" inputMode="numeric" value={v.days} placeholder={String(DEFAULT_DAYS)} onChange={(e) => setV({ ...v, days: e.target.value.replace(/\D/g, "").slice(0, 3) })} />
+        <input ref={daysBox} className="inp num" inputMode="numeric" value={v.days} placeholder={String(DEFAULT_DAYS)} onChange={(e) => setV({ ...v, days: wholeText(e.target.value).slice(0, 3) })} />
       </label>
       <label>
         <span>MSME (Udyam)</span>
