@@ -34,15 +34,17 @@ export async function buildReport(supabase: SupabaseClient, companyId: string, f
   buyers: Buyer[], factories: { id: string; name: string }[]): Promise<Report> {
   const fromTs = `${from}T00:00:00+05:30`;
   const [{ data: lines }, { data: stages }, { data: qc }, { data: pos }, { data: disp }] = await Promise.all([
-    fetchAll<{ id: string; factory_id: string | null; order_id: string }>((a, z) => supabase.from("order_lines").select("id, factory_id, order_id")
-      .eq("company_id", companyId).is("removed_at", null).order("id").range(a, z)),
+    // A deleted order counts nowhere; a shipped or cancelled one keeps its history but has nothing overdue.
+    fetchAll<{ id: string; factory_id: string | null; order_id: string; orders: { status: string } | { status: string }[] }>((a, z) => supabase.from("order_lines")
+      .select("id, factory_id, order_id, orders!inner(status)").eq("company_id", companyId).is("removed_at", null).is("orders.removed_at", null).order("id").range(a, z)),
     fetchAll<{ line_id: string; stage: string; label: string | null; planned_on: string | null; done_on: string | null }>((a, z) => supabase.from("line_stages")
       .select("line_id, stage, label, planned_on, done_on").eq("company_id", companyId).eq("not_needed", false).not("planned_on", "is", null)
       .or(`done_on.gte.${from},done_on.is.null`).order("line_id").order("stage").range(a, z)),
     fetchAll<{ line_id: string; kind: string; result: string; checked_on: string }>((a, z) => supabase.from("qc_checks").select("line_id, kind, result, checked_on")
       .eq("company_id", companyId).is("cancelled_at", null).in("kind", SHIP_QC).gte("checked_on", from).order("id").range(a, z)),
     fetchAll<{ factory_id: string; plan_requested_at: string | null; factory_sent_at: string | null }>((a, z) => supabase.from("factory_pos")
-      .select("factory_id, plan_requested_at, factory_sent_at").eq("company_id", companyId).gte("plan_requested_at", fromTs).order("id").range(a, z)),
+      .select("factory_id, plan_requested_at, factory_sent_at, orders!inner(id)").eq("company_id", companyId).is("orders.removed_at", null)
+      .gte("plan_requested_at", fromTs).order("id").range(a, z)),
     fetchAll<{ id: string; order_id: string; factory_id: string; shipped_at: string; grn_due_on: string | null; grn_at: string | null }>((a, z) => supabase.from("dispatches")
       .select("id, order_id, factory_id, shipped_at, grn_due_on, grn_at").eq("company_id", companyId).is("cancelled_at", null).gte("shipped_at", fromTs).order("id").range(a, z)),
   ]);
@@ -56,6 +58,7 @@ export async function buildReport(supabase: SupabaseClient, companyId: string, f
     : [{ data: [] }, { data: [] }];
 
   const factoryOfLine = new Map((lines ?? []).map((l) => [l.id, l.factory_id]));
+  const openLine = new Set((lines ?? []).filter((l) => [l.orders].flat()[0]?.status === "open").map((l) => l.id));
   const nameOf = new Map(factories.map((f) => [f.id, f.name]));
   const scores = new Map<string, FactoryScore>();
   const score = (id: string | null | undefined) => {
@@ -70,7 +73,7 @@ export async function buildReport(supabase: SupabaseClient, companyId: string, f
     const f = score(factoryOfLine.get(s.line_id));
     if (!factoryOfLine.has(s.line_id)) continue;
     if (!s.done_on) {
-      if (s.planned_on! < today) { if (f) f.openLate++; total.openLate++; }
+      if (s.planned_on! < today && openLine.has(s.line_id)) { if (f) f.openLate++; total.openLate++; }
       continue;
     }
     const late = Math.max(0, daysBetween(s.planned_on!, s.done_on));
@@ -85,6 +88,7 @@ export async function buildReport(supabase: SupabaseClient, companyId: string, f
     steps.set(key, st);
   }
   for (const c of qc ?? []) {
+    if (!factoryOfLine.has(c.line_id)) continue;
     const f = score(factoryOfLine.get(c.line_id));
     for (const t of [f?.qc, total.qc]) if (t) { t.checked++; if (c.result === "pass") t.passed++; }
   }
@@ -93,6 +97,8 @@ export async function buildReport(supabase: SupabaseClient, companyId: string, f
     const f = score(p.factory_id);
     const sent = p.factory_sent_at && p.factory_sent_at >= p.plan_requested_at ? p.factory_sent_at : null;
     const hours = sent ? (Date.parse(sent) - Date.parse(p.plan_requested_at)) / 3_600_000 : null;
+    // A plan still inside its 24 hours isn't late yet, so it isn't counted until it is sent or its time runs out.
+    if (hours == null && Date.now() - Date.parse(p.plan_requested_at) < PLAN_HOURS * 3_600_000) continue;
     for (const t of [f?.plans, total.plans]) {
       if (!t) continue;
       t.asked++;
