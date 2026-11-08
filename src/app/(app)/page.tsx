@@ -302,6 +302,8 @@ export default async function OrdersPage({ searchParams }: PageProps<"/">) {
               <span className="o-date" role="cell">
                 {r.due ? dayNear(r.due, today) : <span className="muted">No ship date</span>}
                 {r.late ? <small className="text-bad">{r.lateBy} {r.lateBy === 1 ? "day" : "days"} late</small>
+                  // A rush order going out today or tomorrow: a bare date reads like any other row, so say it.
+                  : r.status === "open" && r.due && daysBetween(today, r.due) <= 1 ? <small className="text-warn">{r.due === today ? "Ships today" : "Ships tomorrow"}</small>
                   : r.revised_ship_date && r.ship_date && r.revised_ship_date !== r.ship_date ? <small title={r.delay_reason ?? undefined}>Buyer date {dayNear(r.ship_date, today)}</small> : null}
               </span>
               <span className="r num hide-phone" role="cell"><span className="o-k">Qty </span>{r.qtyText}</span>
