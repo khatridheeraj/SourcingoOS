@@ -39,6 +39,16 @@ export type LineInput = {
 };
 
 
+// The owner may delete a PO while someone else has it open. Several saves (QC checks, style files and sizes, the
+// style photo, the buyer's PO file) would still be taken by the database, on an order nobody can see any more.
+// Deleted orders are hidden from every read, so a miss here means it is gone.
+type Db = Awaited<ReturnType<typeof createClient>>;
+const GONE = "This order was deleted while you had it open, so this wasn't saved. Reload the page.";
+async function orderGone(supabase: Db, orderId: string): Promise<boolean> {
+  const { data } = await supabase.from("orders").select("id").eq("id", orderId).maybeSingle();
+  return !data;
+}
+
 // What the form shows while an order is typed in: other orders it may repeat, and the buyer's overdue invoices.
 export async function checkOrder(order: Pick<OrderInput, "id" | "buyer_id" | "buyer_po">, styles: string[]): Promise<{ warnings: OrderWarnings; overdue: Overdue | null }> {
   const me = await getMe();
@@ -285,6 +295,7 @@ export async function setStylePhoto(orderId: string, lineId: string, path: strin
   if (!canEditOrders(me.role)) return { error: "Only the orders team can change orders." };
   if (!path.startsWith(`${me.companyId}/${orderId}/styles/${lineId}/`) || path.includes("..")) return { error: "That photo didn't upload properly. Try again." };
   const supabase = await createClient();
+  if (await orderGone(supabase, orderId)) return { error: GONE };
   const { data, error } = await supabase.from("order_lines").update({ photo_path: path }).eq("id", lineId).eq("order_id", orderId).select("id");
   if (error) return { error: friendly(error) };
   if (!data?.length) return { error: "That style is no longer on this order. Reload the page." };
@@ -307,6 +318,7 @@ export async function saveStyleDetails(orderId: string, lineId: string, fabric: 
   if (rows.some((r) => !/^\d+$/.test(r.qty))) return { error: "Enter whole pieces for every size." };
   if (new Set(rows.map((r) => r.size.toUpperCase())).size !== rows.length) return { error: "A size is entered twice." };
   const supabase = await createClient();
+  if (await orderGone(supabase, orderId)) return { error: GONE };
   if (was) {
     const { data: now } = await supabase.from("order_lines").select("fabric, sizes").eq("id", lineId).maybeSingle<{ fabric: string | null; sizes: Record<string, number> | null }>();
     const same = (x: { fabric: string | null; sizes: Record<string, number> | null }) => JSON.stringify([(x.fabric ?? "").trim(), sizeEntries(x.sizes)]);
@@ -328,6 +340,7 @@ export async function addLineFiles(orderId: string, lineId: string, kind: LineFi
   if (!me?.companyId || !canEditOrders(me.role)) return { error: "Only the orders team can change orders." };
   if (!files.every((f) => f.path.startsWith(`${me.companyId}/${orderId}/files/${lineId}/`) && !f.path.includes(".."))) return { error: "Those files didn't upload properly. Try again." };
   const supabase = await createClient();
+  if (await orderGone(supabase, orderId)) return { error: GONE };
   const { error } = await supabase.rpc("add_line_files", { p_line: lineId, p_kind: kind, p_files: files });
   if (error) return { error: friendly(error) };
   revalidatePath(`/orders/${orderId}`);
@@ -363,6 +376,7 @@ export async function addOrderPoFiles(orderId: string, files: StoredFile[]): Pro
     }
   }
   const supabase = await createClient();
+  if (await orderGone(supabase, orderId)) return { error: GONE };
   const { error } = await supabase.rpc("add_order_po_files", { p_order: orderId, p_files: files.map((f) => ({ ...f, name: f.name.slice(0, 200) })) });
   if (error) return { error: friendly(error) };
   revalidatePath(`/orders/${orderId}`);
@@ -423,6 +437,7 @@ export async function recordQc(orderId: string, qcId: string, q: QcInput, files:
   if (!checkFiles(`${me.companyId}/${orderId}/qc/${qcId}/`, files)) return { error: "Those files didn't upload properly. Try again." };
 
   const supabase = await createClient();
+  if (await orderGone(supabase, orderId)) return { error: GONE };
   const { error } = await supabase.rpc("record_qc", {
     p_order: orderId,
     p: { id: qcId, line_id: q.line_id, kind: q.kind, checked_on: q.checked_on, result: q.result, pieces_checked: pieces == null ? "" : String(pieces), defects: String(defects), notes: q.notes },
