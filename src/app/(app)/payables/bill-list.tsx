@@ -144,7 +144,16 @@ function BillMore({ r }: { r: BillRow }) {
   const [error, setError] = useState("");
   const [pending, start] = useTransition();
   const input = useRef<HTMLInputElement>(null);
-  const save = (hold: boolean) => start(async () => {
+  const save = (hold: boolean) => {
+    // Holding needs a reason: say so at the note box and put the keyboard there, before anything is sent.
+    if (hold && !note.trim()) {
+      setError("Say why the bill is on hold in the note, so Accounts knows when to release it.");
+      input.current?.focus();
+      return;
+    }
+    send(hold);
+  };
+  const send = (hold: boolean) => start(async () => {
     const res = await saveBillNote(r.ledger, r.bill!, hold, note);
     if (res.error) { setError(res.error); return; }
     setError("");
@@ -173,7 +182,7 @@ function BillMore({ r }: { r: BillRow }) {
       {r.order_id && <Link className="link text-[13px]" href={`/orders/${r.order_id}#dispatch`}>Open {r.order_no}&apos;s dispatch</Link>}
       {r.bill && (
         <form className="bill-hold" onSubmit={(e) => { e.preventDefault(); save(r.hold); }}>
-          <input ref={input} className="inp" value={note} maxLength={300} onChange={(e) => setNote(e.target.value)} placeholder="Note, e.g. short by 120 pcs, debit note to come" aria-label="Note on this bill" />
+          <input ref={input} className="inp" value={note} maxLength={300} aria-invalid={error ? true : undefined} onChange={(e) => { setNote(e.target.value); if (error) setError(""); }} placeholder="Note, e.g. short by 120 pcs, debit note to come" aria-label="Note on this bill" />
           <div className="row">
             {r.hold
               ? <button type="button" className="btn sm primary" disabled={pending} onClick={() => save(false)}>Release for payment</button>
