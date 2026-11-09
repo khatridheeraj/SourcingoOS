@@ -31,6 +31,9 @@ const TABLE: Record<string, string> = {
   buyers: "buyer", buyer_names: "buyer's real name", factories: "factory",
   companies: "company", profiles: "person's details", members: "team member", invites: "invite", inbound_keys: "PO pickup key", ai_keys: "AI key",
   tally_settings: "Tally settings", tally_vouchers: "Tally voucher",
+  // Read "Added inquiries Areeba" and "Changed order po files" before these had names.
+  inquiries: "inquiry", inquiry_notes: "inquiry note", order_po_files: "buyer PO file", factory_chases: "reminder to the factory",
+  supplier_terms: "supplier's payment terms",
 };
 export const tableLabel = (t: string) => TABLE[t] ?? t.replace(/_/g, " ");
 
@@ -102,6 +105,8 @@ function fmtObject(v: object): string {
 // "10 Sep 2026, 3:49 pm" in India time, always with the year (the log is also downloaded); never "Sept".
 const clock = new Intl.DateTimeFormat("en-IN", { hour: "numeric", minute: "2-digit", timeZone: "Asia/Kolkata" });
 export const when = (at: string) => `${dayAt(at)}, ${clock.format(new Date(at))}`;
+// "3:49 pm": the log page lists entries under a heading for each day, so a row needs only its time.
+export const timeOf = (at: string) => clock.format(new Date(at));
 
 // What the record is called: its number or name where it has one.
 export function recordName(e: Entry, n: Names) {

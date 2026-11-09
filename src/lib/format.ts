@@ -14,7 +14,10 @@ export const qtyTotal = (lines: { qty: number | null; product?: string | null }[
 // One unit for a number summed over several styles: "m" when all are fabric, "pcs" when none are, else "units".
 export const unitOfAll = (lines: { product?: string | null }[]) =>
   lines.length && lines.every((l) => l.product === "fabric") ? "m" : lines.some((l) => l.product === "fabric") ? "units" : "pcs";
-export const money = (n: number | null | undefined) => (n == null ? "" : `₹${inr.format(n)}`);
+// Paise always show as two digits: ₹1,250.50, never ₹1,250.5. Whole rupees stay whole: ₹1,250.
+const inrPaise = new Intl.NumberFormat("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+export const money = (n: number | null | undefined) =>
+  n == null ? "" : `₹${Number.isInteger(Math.round(n * 100) / 100) ? inr.format(n) : inrPaise.format(n)}`;
 // Rupees the way people say them at a glance: ₹10.7 L, ₹1.2 Cr.
 export const moneyShort = (n: number | null | undefined) =>
   n == null ? "" : n >= 1e7 ? `₹${+(n / 1e7).toFixed(2)} Cr` : n >= 1e5 ? `₹${+(n / 1e5).toFixed(1)} L` : money(n);
@@ -23,6 +26,8 @@ const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "
 export const day = (d: string | null | undefined) => (d ? `${Number(d.slice(8, 10))} ${MONTHS[Number(d.slice(5, 7)) - 1]} ${d.slice(0, 4)}` : "");
 // The India date of a timestamp (a UTC timestamp's first 10 characters can be the day before).
 export const dayAt = (ts: string | null | undefined) => (ts ? day(date.format(new Date(ts))) : "");
+// The India date of a timestamp as YYYY-MM-DD.
+export const istDate = (ts: string) => date.format(new Date(ts));
 
 // Today's date in India as YYYY-MM-DD.
 export const todayIST = () => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(new Date());

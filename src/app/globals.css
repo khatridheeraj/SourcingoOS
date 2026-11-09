@@ -116,9 +116,12 @@ body {
   font-size: 14px;
   line-height: 1.5;
   font-feature-settings: "cv11", "ss01", "ss03";
+  /* A pasted link or a name typed without spaces (a Drive link in notes, "SatinCoordSetWith…") breaks onto the next
+     line instead of pushing the page wider than a phone. break-word leaves table column widths as they were. */
+  overflow-wrap: break-word;
 }
 b, strong { font-weight: 600; }
-h1, h2, h3 { font-family: var(--font-display); text-wrap: balance; font-weight: 600; letter-spacing: -0.011em; }
+h1, h2, h3 { font-family: var(--font-display); text-wrap: balance; font-weight: 600; letter-spacing: -0.011em; overflow-wrap: anywhere; }
 .num { font-variant-numeric: tabular-nums; }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 /* Photo and file pickers hide the real input inside a label: the label shows the keyboard focus instead. */
@@ -249,6 +252,7 @@ main:focus { outline: none; }
   .inp::placeholder { color: var(--faint); }
   .inp:hover:not(:disabled) { border-color: var(--faint); }
   .inp:focus { outline: none; border-color: var(--accent); box-shadow: var(--ring); }
+  .inp[aria-invalid="true"]:not(:focus) { border-color: var(--bad); }
   textarea.inp { resize: vertical; min-height: 72px; }
   .inp:disabled { background: var(--surface-2); color: var(--muted); box-shadow: none; }
 
@@ -325,7 +329,10 @@ main:focus { outline: none; }
   .card-h { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 14px 16px 14px 20px; border-bottom: 1px solid var(--line); }
   .card-h h2 { font-size: 15px; font-weight: 600; line-height: 1.35; }
   .card-h p { margin-top: 1px; font-size: 12.5px; color: var(--muted); }
-  .card-h > div:first-child { flex: 1 1 220px; }
+  .card-h > div:first-child { flex: 1 1 220px; min-width: 0; }
+  /* A name or style code in a row of chips and buttons wraps (breaking inside a very long code) instead of running
+     off the card. Rows still wrap whole items first; only an item wider than the line breaks. */
+  .row > b, .row > strong, .score-list li > b { min-width: 0; overflow-wrap: anywhere; }
   .card-empty { display: flex; align-items: center; gap: 10px; padding: 18px 20px; font-size: 13.5px; color: var(--muted); }
   .card-empty::before { content: ""; width: 18px; height: 18px; border-radius: 50%; flex: none; background: var(--ok-soft) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20' fill='none' stroke='%23157a46' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 10.5 2.5 2.5L14 7.5'/%3E%3C/svg%3E") center / 14px no-repeat; }
   .rows > li { border-top: 1px solid var(--line); }
@@ -437,6 +444,8 @@ main:focus { outline: none; }
 
   .table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); box-shadow: var(--shadow); }
   .tbl { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+  /* "stack" (one card per row on a phone) must not pick up the column layout of the plain .stack class. */
+  .tbl.stack { display: table; gap: 0; }
   .tbl th {
     text-align: left; font-size: 12px; color: var(--muted); font-weight: 500;
     padding: 9px 14px; border-bottom: 1px solid var(--line); background: var(--surface-2); white-space: nowrap;
@@ -802,9 +811,10 @@ main:focus { outline: none; }
   .smp-trail q, .fsmp-note, .bsmp-note, .bsmp-hist q { display: block; flex-basis: 100%; margin-top: 2px; padding: 6px 10px; border-radius: 8px; background: var(--surface-2); font-size: 13px; color: var(--foreground); quotes: none; white-space: pre-line; }
   .bsmp-note, .fsmp-note { flex-basis: auto; }
   .smp-photos { flex: none; }
-  .smp-acts { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: auto; padding-top: 2px; }
-  .smp-acts .btn { width: 100%; }
-  .smp-acts .btn.primary:not(:only-child):nth-last-child(odd) { grid-column: 1 / -1; }
+  /* Two equal columns that never grow past the card; the one primary button takes its own row, long labels wrap. */
+  .smp-acts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: auto; padding-top: 2px; }
+  .smp-acts .btn { width: 100%; min-width: 0; height: auto; min-height: 34px; padding-block: 6px; white-space: normal; text-align: center; line-height: 1.25; }
+  .smp-acts .btn.primary:not(:only-child) { grid-column: 1 / -1; }
   .smp-earlier { border-top: 1px solid var(--line); padding-top: 8px; }
   .smp-earlier summary { cursor: pointer; font-size: 12.5px; font-weight: 500; color: var(--muted); }
   .smp-old { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; padding: 10px; border-radius: 10px; background: var(--surface-2); }
@@ -864,6 +874,17 @@ main:focus { outline: none; }
     .tbl.stack tr:last-child { border-bottom: 0; }
     .tbl.stack td { padding: 3px 0; border: 0; }
     .tbl.stack input[type="checkbox"] { width: 22px; height: 22px; }
+    .tbl.stack td:empty { display: none; }
+    .tbl.stack td.r { text-align: left; }
+    .tbl.stack td.r > .row { justify-content: flex-start; padding-top: 6px; }
+    /* A number or field with no heading above it says what it is. */
+    .tbl.stack td[data-label]::before { content: attr(data-label) " "; color: var(--muted); }
+    /* Activity log on a phone: time and who on one line, what happened under them at full width. */
+    .act-log td:first-child:not(.act-day), .act-log td:nth-child(2) { display: inline-block; width: auto; margin-right: 10px; vertical-align: baseline; }
+    .act-log tr:has(.act-day) { padding: 0; }
+    .act-log td.act-day { padding: 8px 14px; }
+    /* Order margin on a phone: the style, then its numbers two to a line, so Margin and % are in view. */
+    .margin-tbl td:not(:first-child) { display: inline-block; width: 50%; }
     /* Tap targets of at least 40px for the small links and switches. */
     .pill { height: 40px; }
     summary:not(.bstyle summary) { min-height: 40px; padding-block: 10px; }
@@ -1485,6 +1506,7 @@ main:focus { outline: none; }
   .qs-go.primary:not(:disabled) { background: var(--ok); border-color: var(--ok); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.16), 0 6px 16px -6px color-mix(in srgb, var(--ok) 70%, transparent); }
   .qs-go.primary:not(:disabled):hover { background: color-mix(in srgb, var(--ok) 88%, #000); }
   .qs-err { font-size: 13px; font-weight: 500; color: var(--bad); }
+  .qs-note { margin-bottom: 8px; font-size: 13px; font-weight: 500; color: var(--warn); }
   .qs-sum { font-size: 13px; color: var(--muted); }
 
   /* Start production. */
@@ -2060,7 +2082,9 @@ main:focus { outline: none; }
   .oh h1 { font-size: 30px; line-height: 1.15; letter-spacing: -0.03em; font-weight: 650; }
   /* The dot before each part is clipped at the start of a line, so a long PO number that wraps leaves no stray dot. */
   .oh-sub { display: flex; flex-wrap: wrap; gap: 4px 0; margin: 4px 0 0 -18px; font-size: 14px; color: var(--muted); clip-path: inset(-4px -4px -4px 18px); }
-  .oh-sub span::before { content: "·"; display: inline-block; width: 18px; text-align: center; color: var(--faint); }
+  /* A long PO number wraps beside its dot, so its second line isn't cut by the clip that hides the line-start dots. */
+  .oh-sub span { display: inline-flex; min-width: 0; overflow-wrap: anywhere; }
+  .oh-sub span::before { flex: none; content: "·"; display: inline-block; width: 18px; text-align: center; color: var(--faint); }
   .oh-facts { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 18px; margin-top: 14px; font-size: 13.5px; color: var(--muted); }
   .oh-facts b { font-size: 15px; font-weight: 650; color: var(--foreground); }
   .oh-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { day, money } from "@/lib/format";
 import { settleCheques } from "./actions";
 
@@ -18,6 +18,9 @@ export function TallySettle({ rows }: { rows: SettleRow[] }) {
   const [error, setError] = useState("");
   const [ok, setOk] = useState("");
   const [pending, start] = useTransition();
+  const done = useRef<HTMLDivElement>(null);
+  // The button greys out once the cheques are marked; keyboard focus moves to the "marked" line instead of the page top.
+  useEffect(() => { if (ok) done.current?.focus(); }, [ok]);
   const chosen = rows.filter((r) => sel.has(r.id));
   const toggle = (id: string) => setSel((p) => { const s = new Set(p); if (s.has(id)) s.delete(id); else s.add(id); return s; });
   const all = rows.length > 0 && rows.every((r) => sel.has(r.id));
@@ -72,7 +75,7 @@ export function TallySettle({ rows }: { rows: SettleRow[] }) {
         </table>
       </div>
       {error && <div className="errbox" role="alert">{error}</div>}
-      {ok && <div className="okbox" role="status">{ok}</div>}
+      {ok && <div ref={done} tabIndex={-1} className="okbox" role="status">{ok}</div>}
       <div className="row">
         <button type="button" className="btn primary" disabled={pending || !chosen.length} onClick={go}>
           {pending ? "Marking…" : `Mark ${chosen.length} as Tally shows`}

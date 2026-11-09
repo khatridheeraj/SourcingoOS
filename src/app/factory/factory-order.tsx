@@ -58,6 +58,8 @@ export function FactoryOrder({ order, now, companyId, updates, rounds, lang, inf
   // A fabric style has no garment-making steps: the table shows only steps some style on the order has.
   const tableSteps = TNA_STEPS.filter((s) => order.lines.some((l) => stageOf(l.id, s.key)));
   const extrasOf = (l: PanelOrder["lines"][number]) => l.stages.filter((s) => s.stage.startsWith("extra_"));
+  // Today in India: the factory's day, not the server's.
+  const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(new Date(now));
   const initial = Object.fromEntries(order.lines.flatMap((l) => l.stages.map((s) => [key(l.id, s.stage), s.factory_on ?? ""])));
   const [dates, setDates] = useState<Record<string, string>>(initial);
   const [error, setError] = useState("");
@@ -84,10 +86,12 @@ export function FactoryOrder({ order, now, companyId, updates, rounds, lang, inf
   }
 
   // Most factories just agree to the targets: one tap fills every empty date with Sourcingo's target.
+  // A target that has already passed is left empty: agreeing to a day gone by promises nothing, so the factory gives a real date.
+  const open = (s: Stage) => !!s.planned_on && s.planned_on >= today;
   function agreeTargets() {
     setDates((d) => {
       const next = { ...d };
-      for (const l of order.lines) for (const s of l.stages) if (!next[key(l.id, s.stage)] && s.planned_on) {
+      for (const l of order.lines) for (const s of l.stages) if (!next[key(l.id, s.stage)] && s.planned_on && open(s)) {
         // A target after the PO's target date can't be sent, so it comes in on the target date.
         next[key(l.id, s.stage)] = order.target && s.planned_on > order.target ? order.target : s.planned_on;
       }
@@ -95,7 +99,10 @@ export function FactoryOrder({ order, now, companyId, updates, rounds, lang, inf
     });
     setSent(false);
   }
-  const fillable = order.lines.reduce((n, l) => n + l.stages.filter((s) => !dates[key(l.id, s.stage)] && s.planned_on).length, 0);
+  const fillable = order.lines.reduce((n, l) => n + l.stages.filter((s) => !dates[key(l.id, s.stage)] && open(s)).length, 0);
+  const pastEmpty = order.lines.reduce((n, l) => n + l.stages.filter((s) => !dates[key(l.id, s.stage)] && s.planned_on && !open(s)).length, 0);
+  // A date before today in a plan is a step already done, or a slip of the day or year: say so beside it.
+  const passed = (v: string) => !!v && v < today;
 
   function send() {
     setError("");
@@ -116,7 +123,6 @@ export function FactoryOrder({ order, now, companyId, updates, rounds, lang, inf
     : { text: missing ? w.toFill(missing) : w.readyToSend, cls: "warn" };
 
   // After release a step is late when its target has passed and it isn't done yet.
-  const today = now.slice(0, 10);
   const totalSteps = order.lines.reduce((n, l) => n + l.stages.length, 0);
   const doneSteps = order.lines.reduce((n, l) => n + l.stages.filter((s) => s.done_on).length, 0);
   const lateStep = (st: Stage) => released && !st.done_on && !!st.planned_on && st.planned_on < today;
@@ -135,6 +141,7 @@ export function FactoryOrder({ order, now, companyId, updates, rounds, lang, inf
         )}
         {lateStep(st) && <small className="block text-bad">{w.lateStep}</small>}
         {!released && st.planned_on && v > st.planned_on && <small className="block text-bad">{w.laterThanTarget}</small>}
+        {!released && passed(v) && <small className="block text-warn">{w.passed}</small>}
         {released && st.done_on && <small className="block text-ok">{w.done(day(st.done_on))}</small>}
       </>
     );
@@ -155,10 +162,11 @@ export function FactoryOrder({ order, now, companyId, updates, rounds, lang, inf
       )}
       {!released && fillable > 0 && (
         <div className="fagree">
-          <p>{w.useTargetsHelp(missing)}</p>
+          <p>{w.useTargetsHelp(missing)}{pastEmpty > 0 && <> {w.pastTargets(pastEmpty)}</>}</p>
           <button type="button" className="btn primary" disabled={pending} onClick={agreeTargets}>{w.useTargets}</button>
         </div>
       )}
+      {!released && fillable === 0 && pastEmpty > 0 && <p className="mb-3 text-[13px] font-semibold text-warn">{w.pastTargets(pastEmpty)}</p>}
       {/* After release the work comes first: mark a step done, send a sample. The step list folds away below. */}
       {released && <FactoryProgress companyId={companyId} order={order} updates={updates.filter((u) => u.order_id === order.order_id)} lang={lang} />}
       {released && <FactorySamples companyId={companyId} order={order} rounds={rounds} lang={lang} />}
@@ -180,6 +188,7 @@ export function FactoryOrder({ order, now, companyId, updates, rounds, lang, inf
                     {st?.planned_on ? <small className={st && lateStep(st) ? "text-bad" : undefined}>{w.target} {day(st.planned_on)}{st && lateStep(st) ? ` · ${w.lateStep}` : ""}</small> : <small className="muted">{st ? w.noTarget : w.notSetYet}</small>}
                     {released && st?.factory_on && <small>{w.yourDate} {day(st.factory_on)}</small>}
                     {st && !released && st.planned_on && (dates[key(l.id, st.stage)] ?? "") > st.planned_on && <small className="text-bad">{w.laterThanTarget}</small>}
+                    {st && !released && passed(dates[key(l.id, st.stage)] ?? "") && <small className="text-warn">{w.passed}</small>}
                     {released && st?.done_on && <small className="text-ok">{w.done(day(st.done_on))}</small>}
                   </div>
                   {st && !released && (

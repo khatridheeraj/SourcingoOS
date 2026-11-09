@@ -22,8 +22,11 @@ export function BuyerList({ buyers, owner, openOrders, senders }: {
     setError("");
     start(async () => {
       const res = await saveBuyer(editing);
-      if (res.error) setError(res.error);
-      else setEditing(null);
+      if (res.error) {
+        setError(res.error);
+        // The buyer itself went in: the next Save changes it instead of adding it again.
+        if (res.id) setEditing((e) => (e ? { ...e, id: res.id } : e));
+      } else setEditing(null);
     });
   }
 
@@ -67,7 +70,7 @@ export function BuyerList({ buyers, owner, openOrders, senders }: {
         <div className="empty"><b>No buyers yet</b>{owner ? "Add your buyers, or send Claude the confirmed list." : "The owner adds buyers."}</div>
       ) : (
         <div className="table-wrap">
-          <table className="tbl">
+          <table className="tbl stack">
             <thead><tr><th>Name</th><th>Code</th><th>City</th><th className="r">Open orders</th><th>GRN within</th><th>Notes</th>{owner && <th>PO senders</th>}<th></th>{owner && <th></th>}</tr></thead>
             <tbody>
               {buyers.map((b) => (
@@ -75,10 +78,10 @@ export function BuyerList({ buyers, owner, openOrders, senders }: {
                   <td className="font-semibold">{b.realName ?? <span className="muted">Not set</span>}</td>
                   <td className="code muted">{b.code}</td>
                   <td>{b.city}</td>
-                  <td className="r num">{openOrders[b.id] ?? 0}</td>
-                  <td><GrnDays buyerId={b.id} code={b.realName ?? b.code} value={b.grn_days} owner={owner} /></td>
+                  <td className="r num" data-label="Open orders">{openOrders[b.id] ?? 0}</td>
+                  <td data-label="GRN within"><GrnDays buyerId={b.id} code={b.realName ?? b.code} value={b.grn_days} owner={owner} /></td>
                   <td className="muted">{b.notes}</td>
-                  {owner && <td className="muted text-xs">{(senders[b.id] ?? []).join(", ") || "None yet"}</td>}
+                  {owner && <td className="muted text-xs" data-label="PO senders">{(senders[b.id] ?? []).join(", ") || "None yet"}</td>}
                   <td>{!b.active ? <span className="chip">Inactive</span> : <BuyerLink buyerId={b.id} name={b.realName ?? b.code} />}</td>
                   {owner && (
                     <td className="r">

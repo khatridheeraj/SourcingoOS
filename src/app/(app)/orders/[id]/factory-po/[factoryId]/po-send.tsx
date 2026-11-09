@@ -1,5 +1,6 @@
 "use client";
 
+import { caught } from "@/lib/errors";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { toast } from "@/components/toast";
@@ -7,6 +8,7 @@ import { uploadPhotos } from "@/lib/photos";
 import { ErrorFix } from "@/components/fix-link";
 import { releaseFactoryPo, requestPoLock, sendBackPoLock, setStylePhoto } from "../../../actions";
 import { emailPo, markAccepted } from "./actions";
+import { checkPoMail } from "@/lib/po-details";
 import { dayTimeNear } from "@/lib/format";
 
 export type PoMailState = {
@@ -36,6 +38,7 @@ export function PoSend({ orderId, factoryId, released, blocker, factoryEmail, de
   const [note, setNote] = useState("");
   const [marking, setMarking] = useState(false);
   const [error, setError] = useState("");
+  const [mailBad, setMailBad] = useState<{ field: "to" | "cc"; msg: string } | null>(null);
   const [back, setBack] = useState<string | null>(null);
   const [pending, start] = useTransition();
 
@@ -47,14 +50,22 @@ export function PoSend({ orderId, factoryId, released, blocker, factoryEmail, de
     toast(done);
     router.refresh();
   });
-  const send = () => start(async () => {
+  const send = () => {
+    if (pending) return;
     setError("");
-    const r = await emailPo(orderId, factoryId, to, cc);
-    if (r.error) return setError(r.error);
-    setForm(false);
-    toast(testTo ? `Queued: goes to the test inbox ${testTo} within the hour` : "Queued: the PO goes to the factory within the hour");
-    router.refresh();
-  });
+    // A wrong address is said under its own box at once; the save checks again.
+    const wrong = checkPoMail(to, cc);
+    if ("field" in wrong) { setMailBad({ field: wrong.field, msg: wrong.error }); document.getElementById(`po-mail-${wrong.field}`)?.focus(); return; }
+    setMailBad(null);
+    start(async () => {
+      const r = await emailPo(orderId, factoryId, to, cc);
+      if (r.field) { setMailBad({ field: r.field, msg: r.error ?? "" }); document.getElementById(`po-mail-${r.field}`)?.focus(); return; }
+      if (r.error) return setError(r.error);
+      setForm(false);
+      toast(testTo ? `Queued: goes to the test inbox ${testTo} within the hour` : "Queued: the PO goes to the factory within the hour");
+      router.refresh();
+    });
+  };
   const accept = () => start(async () => {
     setError("");
     const r = await markAccepted(orderId, factoryId, note);
@@ -151,11 +162,17 @@ export function PoSend({ orderId, factoryId, released, blocker, factoryEmail, de
       )}
       {form && (
         <div className="fgrid mt-3">
-          <label className="field"><span>Factory email</span><input className="inp" type="email" value={to} onChange={(e) => setTo(e.target.value)} autoFocus /></label>
-          <label className="field"><span>CC</span><input className="inp" value={cc} onChange={(e) => setCc(e.target.value)} placeholder="Comma between addresses" /></label>
+          <label className="field"><span>Factory email</span><input id="po-mail-to" className="inp" type="email" inputMode="email" value={to} autoFocus
+            aria-invalid={mailBad?.field === "to" || undefined} onChange={(e) => { setTo(e.target.value); if (mailBad?.field === "to") setMailBad(null); }}
+            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); send(); } }} />
+            {mailBad?.field === "to" && <small className="text-bad" role="alert">{mailBad.msg}</small>}</label>
+          <label className="field"><span>CC</span><input id="po-mail-cc" className="inp" inputMode="email" value={cc} placeholder="Comma between addresses"
+            aria-invalid={mailBad?.field === "cc" || undefined} onChange={(e) => { setCc(e.target.value); if (mailBad?.field === "cc") setMailBad(null); }}
+            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); send(); } }} />
+            {mailBad?.field === "cc" && <small className="text-bad" role="alert">{mailBad.msg}</small>}</label>
           <div className="row sm:col-span-2">
             <button type="button" className="btn primary" disabled={pending || !to.trim()} onClick={send}>{pending ? "Queuing…" : "Send"}</button>
-            <button type="button" className="btn" onClick={() => setForm(false)}>Cancel</button>
+            <button type="button" className="btn" onClick={() => { setForm(false); setMailBad(null); setTo(m.to ?? factoryEmail); setCc(m.cc ?? defaultCc); }}>Cancel</button>
             <small className="muted">From dheerajkhatri@sourcingo.in. No signature needed: the factory replies &quot;Accepted&quot;.</small>
           </div>
         </div>
@@ -193,7 +210,7 @@ export function PoPhotoSlot({ orderId, companyId, lineId, style }: { orderId: st
           if (r.error) setError(r.error);
           else router.refresh();
         } catch (err) {
-          setError(err instanceof Error ? err.message : "The photo didn't upload.");
+          setError(caught(err, "The photo didn't upload."));
         } finally {
           setBusy(false);
         }

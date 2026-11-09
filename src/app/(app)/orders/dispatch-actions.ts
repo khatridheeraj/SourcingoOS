@@ -4,9 +4,10 @@ import { revalidatePath } from "next/cache";
 import { canEditOrders, getMe } from "@/lib/auth";
 import { friendly } from "@/lib/errors";
 import { createClient } from "@/lib/supabase/server";
+import { latinDigits } from "@/lib/digits";
 
 type Result = { error?: string };
-const num = (s: string) => s.replace(/[,₹\s]/g, "");
+const num = (s: string) => latinDigits(s).replace(/[,₹\s]/g, "");
 const isDate = (s: string) => /^\d{4}-\d{2}-\d{2}$/.test(s);
 
 async function team() {
@@ -58,7 +59,8 @@ export async function recordDispatchInvoice(orderId: string, id: string, p: { in
   if (!(await team())) return { error: "Only the orders team can record dispatches." };
   if (!p.invoice_no.trim()) return { error: "Enter the invoice number." };
   if (!isDate(p.invoice_date)) return { error: "Enter the invoice date." };
-  if (!(Number(num(p.taxable)) >= 0) || num(p.taxable) === "") return { error: "Enter the invoice value before GST." };
+  // A ₹0 invoice is a slip, never a real sale.
+  if (!(Number(num(p.taxable)) > 0)) return { error: "Enter the invoice value before GST." };
   return run(orderId, "record_dispatch_invoice", { p_id: id, p: { invoice_no: p.invoice_no.trim(), invoice_date: p.invoice_date, taxable: num(p.taxable) } });
 }
 

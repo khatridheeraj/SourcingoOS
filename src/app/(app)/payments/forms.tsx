@@ -2,28 +2,43 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { day, money } from "@/lib/format";
-import { addDays, autoSplit, CHEQUE_LABEL, CHEQUE_TONE, CHEQUE_VALID_DAYS, type ChequeStatus, NEXT_STEPS, SLACK } from "@/lib/payments";
+import { addDays, amountText, autoSplit, CHEQUE_LABEL, CHEQUE_TONE, CHEQUE_VALID_DAYS, type ChequeStatus, NEXT_STEPS, SLACK } from "@/lib/payments";
 import { type InvoiceInput, saveCheque, saveCreditNote, saveInvoice, setChequeNotice, setChequeStatus, setCreditDays } from "./actions";
+import { wholeText } from "@/lib/digits";
 
 export type BuyerOpt = { id: string; label: string; creditDays: number | null };
 const num = (s: string | number | null | undefined) => Number(String(s ?? "").replace(/[,₹\s]/g, "")) || 0;
-const clean = (s: string) => s.replace(/[^\d.]/g, "");
+const clean = amountText;
 
-function Field({ label, children, hint, wide, req }: { label: string; children: React.ReactNode; hint?: React.ReactNode; wide?: boolean; req?: boolean }) {
+// A check that failed on one field: its message shows under that field, and keyboard focus goes to it.
+type Bad = { k: string; msg: string } | null;
+function point(form: HTMLFormElement, k: string) {
+  const el = form.elements.namedItem(k);
+  if (!(el instanceof HTMLElement)) return;
+  // Centred, so the sticky top bar doesn't cover it.
+  el.focus({ preventScroll: true });
+  el.scrollIntoView({ block: "center" });
+}
+
+function Field({ label, children, hint, wide, req, err }: { label: string; children: React.ReactNode; hint?: React.ReactNode; wide?: boolean; req?: boolean; err?: string }) {
   return (
     <label className="field" style={wide ? { gridColumn: "1 / -1" } : undefined}>
       <span>{label}{req && <i> *</i>}</span>
       {children}
-      {hint && <small>{hint}</small>}
+      {err ? <small className="text-bad" role="alert">{err}</small> : hint && <small>{hint}</small>}
     </label>
   );
 }
 
-function Message({ error, ok }: { error: string; ok: string }) {
+// With grab, a new "done" message takes keyboard focus: the button that was pressed has just gone or changed, and
+// focus would otherwise fall to the top of the page.
+function Message({ error, ok, grab }: { error: string; ok: string; grab?: boolean }) {
+  const box = useRef<HTMLDivElement>(null);
+  useEffect(() => { if (grab && ok) box.current?.focus(); }, [grab, ok]);
   if (error) return <div className="errbox" role="alert">{error}</div>;
-  if (ok) return <div className="okbox" role="status">{ok}</div>;
+  if (ok) return <div ref={box} tabIndex={grab ? -1 : undefined} className="okbox" role="status">{ok}</div>;
   return null;
 }
 
@@ -33,19 +48,28 @@ export function InvoiceForm({ initial, buyers, today, locked }: { initial: Invoi
   const [f, setF] = useState(initial);
   const [error, setError] = useState("");
   const [ok, setOk] = useState("");
+  const [bad, setBad] = useState<Bad>(null);
   const [pending, start] = useTransition();
-  const set = (k: keyof InvoiceInput) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => setF((p) => ({ ...p, [k]: e.target.value }));
+  const set = (k: keyof InvoiceInput) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
+    setF((p) => ({ ...p, [k]: k === "amount" ? clean(e.target.value) : e.target.value }));
+    setBad((x) => (x?.k === k ? null : x));
+  };
+  const at = (k: string) => ({ name: k, "aria-invalid": bad?.k === k || undefined });
   const b = buyers.find((x) => x.id === f.buyer_id);
   const autoDue = b?.creditDays != null && f.invoice_date ? addDays(f.invoice_date, b.creditDays) : null;
 
   function save(e: React.FormEvent) {
     e.preventDefault();
     setOk("");
-    if (!f.buyer_id) return setError("Choose the buyer.");
-    if (!f.invoice_no.trim()) return setError("Enter the invoice number.");
-    if (!f.amount) return setError("Enter the invoice amount, including tax.");
-    if (f.due_date && f.due_date < f.invoice_date) return setError("The due date can't be before the invoice date.");
     setError("");
+    const form = e.currentTarget as HTMLFormElement;
+    const no = (k: string, msg: string) => { setBad({ k, msg }); point(form, k); };
+    if (!f.buyer_id) return no("buyer_id", "Choose the buyer.");
+    if (!f.invoice_no.trim()) return no("invoice_no", "Enter the invoice number.");
+    if (!f.invoice_date) return no("invoice_date", "Set the invoice date.");
+    if (num(f.amount) <= 0) return no("amount", "Enter the invoice amount, including tax.");
+    if (f.due_date && f.due_date < f.invoice_date) return no("due_date", "The due date can't be before the invoice date.");
+    setBad(null);
     start(async () => {
       const r = await saveInvoice(f);
       if (r.error) return setError(r.error);
@@ -58,19 +82,23 @@ export function InvoiceForm({ initial, buyers, today, locked }: { initial: Invoi
   return (
     <form className="stack" onSubmit={save}>
       <div className="fgrid">
-        <Field label="Buyer" hint={locked} req>
-          <select className="inp" value={f.buyer_id} onChange={set("buyer_id")} disabled={!!locked} aria-label="Buyer">
+        <Field label="Buyer" hint={locked} req err={bad?.k === "buyer_id" ? bad.msg : undefined}>
+          <select className="inp" value={f.buyer_id} onChange={set("buyer_id")} disabled={!!locked} aria-label="Buyer" {...at("buyer_id")}>
             <option value="">Choose buyer</option>
             {buyers.map((x) => <option key={x.id} value={x.id}>{x.label}</option>)}
           </select>
         </Field>
-        <Field label="Invoice number" req><input className="inp code" value={f.invoice_no} onChange={set("invoice_no")} placeholder="SPL/26-27/001" /></Field>
-        <Field label="Invoice date" req><input type="date" className="inp" value={f.invoice_date} max={addDays(today, 31)} onChange={set("invoice_date")} required /></Field>
-        <Field label="Amount with tax (₹)" hint={f.amount ? money(num(f.amount)) : undefined} req>
-          <input className="inp num" inputMode="decimal" value={f.amount} onChange={(e) => setF((p) => ({ ...p, amount: clean(e.target.value) }))} />
+        <Field label="Invoice number" req err={bad?.k === "invoice_no" ? bad.msg : undefined}>
+          <input className="inp code" value={f.invoice_no} onChange={set("invoice_no")} placeholder="SPL/26-27/001" {...at("invoice_no")} />
         </Field>
-        <Field label="Due date" hint={f.due_date ? "This invoice's own due date" : autoDue ? `Empty uses ${b!.creditDays} credit days: ${day(autoDue)}` : "Empty uses the buyer's credit days (not set yet)"}>
-          <input type="date" className="inp" value={f.due_date} min={f.invoice_date || undefined} onChange={set("due_date")} />
+        <Field label="Invoice date" req err={bad?.k === "invoice_date" ? bad.msg : undefined}>
+          <input type="date" className="inp" value={f.invoice_date} max={addDays(today, 31)} onChange={set("invoice_date")} {...at("invoice_date")} />
+        </Field>
+        <Field label="Amount with tax (₹)" hint={num(f.amount) ? money(num(f.amount)) : undefined} req err={bad?.k === "amount" ? bad.msg : undefined}>
+          <input className="inp num" inputMode="decimal" value={f.amount} onChange={set("amount")} {...at("amount")} />
+        </Field>
+        <Field label="Due date" err={bad?.k === "due_date" ? bad.msg : undefined} hint={f.due_date ? "This invoice's own due date" : autoDue ? `Empty uses ${b!.creditDays} credit days: ${day(autoDue)}` : "Empty uses the buyer's credit days (not set yet)"}>
+          <input type="date" className="inp" value={f.due_date} min={f.invoice_date || undefined} onChange={set("due_date")} {...at("due_date")} />
         </Field>
         <Field label="Notes" wide><textarea className="inp" rows={2} value={f.notes} onChange={set("notes")} /></Field>
       </div>
@@ -93,8 +121,10 @@ export function CancelInvoice({ invoice }: { invoice: InvoiceInput }) {
         if (!confirm(`Cancel invoice ${invoice.invoice_no}? It stays on record as cancelled and stops counting in what buyers owe.`)) return;
         start(async () => {
           const r = await saveInvoice({ ...invoice, cancelled: true });
-          if (r.error) setError(r.error);
-          else router.refresh();
+          if (r.error) return setError(r.error);
+          // The edit panel goes away once cancelled; keep keyboard focus on the invoice's title, which now says Cancelled.
+          document.getElementById("invoice-title")?.focus();
+          router.refresh();
         });
       }}>Cancel this invoice</button>
       {error && <div className="errbox" role="alert">{error}</div>}
@@ -107,10 +137,12 @@ export function AddCreditNote({ invoiceId, today, max }: { invoiceId: string; to
   const blank = { credit_note_no: "", note_date: today, amount: "", notes: "" };
   const [f, setF] = useState(blank);
   const [error, setError] = useState("");
+  const [ok, setOk] = useState("");
   const [pending, start] = useTransition();
   return (
     <form className="stack" onSubmit={(e) => {
       e.preventDefault();
+      setOk("");
       if (!f.credit_note_no.trim()) return setError("Enter the credit note number.");
       if (num(f.amount) <= 0) return setError("Enter the credit note amount.");
       if (num(f.amount) > max + SLACK) return setError(`That is more than the ${money(max)} on this invoice that no cheque pays yet.`);
@@ -119,6 +151,8 @@ export function AddCreditNote({ invoiceId, today, max }: { invoiceId: string; to
         const r = await saveCreditNote({ id: null, invoice_id: invoiceId, ...f });
         if (r.error) return setError(r.error);
         setF(blank);
+        // The form empties for the next one, so say this one went in.
+        setOk(r.ok!);
         router.refresh();
       });
     }}>
@@ -128,7 +162,7 @@ export function AddCreditNote({ invoiceId, today, max }: { invoiceId: string; to
         <Field label="Amount (₹)" req><input className="inp num" inputMode="decimal" value={f.amount} onChange={(e) => setF({ ...f, amount: clean(e.target.value) })} /></Field>
         <Field label="Reason"><input className="inp" value={f.notes} onChange={(e) => setF({ ...f, notes: e.target.value })} placeholder="Short shipment, rate difference…" /></Field>
       </div>
-      {error && <div className="errbox" role="alert">{error}</div>}
+      <Message error={error} ok={ok} />
       <div><button className="btn" disabled={pending}>{pending ? "Adding…" : "Add credit note"}</button></div>
     </form>
   );
@@ -144,8 +178,10 @@ export function CancelCreditNote({ note }: { note: { id: string; credit_note_no:
         if (!confirm(`Cancel credit note ${note.credit_note_no}? The invoice goes back to its full amount.`)) return;
         start(async () => {
           const r = await saveCreditNote({ ...note, amount: String(note.amount), notes: note.notes ?? "", cancelled: true });
-          if (r.error) setError(r.error);
-          else router.refresh();
+          if (r.error) return setError(r.error);
+          // Its row goes away once cancelled; keep keyboard focus on the Credit notes heading instead of the page top.
+          document.getElementById("credit-notes")?.focus();
+          router.refresh();
         });
       }}>Cancel</button>
       {error && <span className="text-[12.5px] text-bad">{error}</span>}
@@ -164,8 +200,15 @@ export function ChequeForm({ initial, buyers, invoices, today, fixed }: { initia
   const router = useRouter();
   const [f, setF] = useState(initial);
   const [error, setError] = useState("");
+  const [bad, setBad] = useState<Bad>(null);
   const [pending, start] = useTransition();
-  const set = (k: keyof ChequeDraft) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => setF((p) => ({ ...p, [k]: e.target.value }));
+  const unmark = (k: string) => setBad((x) => (x?.k === k ? null : x));
+  const set = (k: keyof ChequeDraft) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
+    setF((p) => ({ ...p, [k]: k === "amount" ? clean(e.target.value) : e.target.value }));
+    unmark(k);
+  };
+  const at = (k: string) => ({ name: k, "aria-invalid": bad?.k === k || undefined });
+  const errOf = (k: string) => (bad?.k === k ? bad.msg : undefined);
   const open = useMemo(
     () => invoices.filter((i) => i.buyer_id === f.buyer_id && (i.left > SLACK || f.split[i.id])).sort((a, z) => (a.due ?? a.invoice_date).localeCompare(z.due ?? z.invoice_date)),
     [invoices, f.buyer_id, f.split],
@@ -176,14 +219,21 @@ export function ChequeForm({ initial, buyers, invoices, today, fixed }: { initia
 
   function save(e: React.FormEvent) {
     e.preventDefault();
-    if (!f.buyer_id) return setError("Choose the buyer the cheque is from.");
-    if (!f.cheque_no.trim()) return setError("Enter the cheque number.");
-    if (!f.cheque_date) return setError("Set the date written on the cheque.");
-    if (amount <= 0) return setError("Enter the cheque amount.");
-    if (rest < 0) return setError(`You've set ${money(split)} against invoices, more than the ${money(amount)} cheque.`);
-    const over = open.find((i) => num(f.split[i.id]) > i.left + SLACK);
-    if (over) return setError(`${over.invoice_no} has only ${money(over.left)} left to pay.`);
     setError("");
+    const form = e.currentTarget as HTMLFormElement;
+    const no = (k: string, msg: string) => { setBad({ k, msg }); point(form, k); };
+    if (!f.buyer_id) return no("buyer_id", "Choose the buyer the cheque is from.");
+    if (!f.cheque_no.trim()) return no("cheque_no", "Enter the cheque number.");
+    if (!f.cheque_date) return no("cheque_date", "Set the date written on the cheque.");
+    if (amount <= 0) return no("amount", "Enter the cheque amount.");
+    const over = open.find((i) => num(f.split[i.id]) > i.left + SLACK);
+    if (over) return no(`split-${over.id}`, `${over.invoice_no} has only ${money(over.left)} left to pay.`);
+    setBad(null);
+    // Not one field: the split as a whole is more than the cheque. Focus the first amount set, the line under the table says by how much.
+    if (rest < 0) {
+      point(form, `split-${open.find((i) => num(f.split[i.id]) > 0)?.id}`);
+      return setError(`You've set ${money(split)} against invoices, more than the ${money(amount)} cheque.`);
+    }
     start(async () => {
       const r = await saveCheque({
         id: f.id, buyer_id: f.buyer_id, cheque_no: f.cheque_no, bank: f.bank, cheque_date: f.cheque_date, amount: f.amount,
@@ -201,18 +251,20 @@ export function ChequeForm({ initial, buyers, invoices, today, fixed }: { initia
       <section className="panel stack">
         <h2>Cheque</h2>
         <div className="fgrid">
-          <Field label="From buyer" hint={fixed ? "Fixed once deposited" : undefined} req>
-            <select className="inp" value={f.buyer_id} disabled={fixed} onChange={(e) => setF((p) => ({ ...p, buyer_id: e.target.value, split: {} }))} aria-label="From buyer">
+          <Field label="From buyer" hint={fixed ? "Fixed once deposited" : undefined} req err={errOf("buyer_id")}>
+            <select className="inp" value={f.buyer_id} disabled={fixed} onChange={(e) => { setF((p) => ({ ...p, buyer_id: e.target.value, split: {} })); unmark("buyer_id"); }} aria-label="From buyer" {...at("buyer_id")}>
               <option value="">Choose buyer</option>
               {buyers.map((x) => <option key={x.id} value={x.id}>{x.label}</option>)}
             </select>
           </Field>
-          <Field label="Cheque number" req><input className="inp code" value={f.cheque_no} disabled={fixed} onChange={set("cheque_no")} inputMode="numeric" /></Field>
-          <Field label="Date on the cheque" hint={f.cheque_date > today ? "Post-dated: deposit on or after this date" : undefined} req>
-            <input type="date" className="inp" value={f.cheque_date} disabled={fixed} onChange={set("cheque_date")} />
+          <Field label="Cheque number" req err={errOf("cheque_no")}>
+            <input className="inp code" value={f.cheque_no} disabled={fixed} onChange={set("cheque_no")} inputMode="numeric" {...at("cheque_no")} />
           </Field>
-          <Field label="Amount (₹)" hint={amount ? money(amount) : undefined} req>
-            <input className="inp num" inputMode="decimal" value={f.amount} disabled={fixed} onChange={(e) => setF((p) => ({ ...p, amount: clean(e.target.value) }))} />
+          <Field label="Date on the cheque" hint={f.cheque_date > today ? "Post-dated: deposit on or after this date" : undefined} req err={errOf("cheque_date")}>
+            <input type="date" className="inp" value={f.cheque_date} disabled={fixed} onChange={set("cheque_date")} {...at("cheque_date")} />
+          </Field>
+          <Field label="Amount (₹)" hint={amount ? money(amount) : undefined} req err={errOf("amount")}>
+            <input className="inp num" inputMode="decimal" value={f.amount} disabled={fixed} onChange={set("amount")} {...at("amount")} />
           </Field>
           <Field label="Bank"><input className="inp" value={f.bank} onChange={set("bank")} placeholder="HDFC Bank, Jaipur" /></Field>
           <Field label="Received on"><input type="date" className="inp" value={f.received_on} max={today} onChange={set("received_on")} /></Field>
@@ -234,18 +286,21 @@ export function ChequeForm({ initial, buyers, invoices, today, fixed }: { initia
           <p className="muted">This buyer has no invoices waiting for a cheque. You can still save the cheque and set it against an invoice later.</p>
         ) : (
           <div className="table-wrap">
-            <table className="tbl">
+            {/* One card per invoice on a phone, so the amount box isn't off to the right. */}
+            <table className="tbl stack">
               <thead><tr><th>Invoice</th><th>Date</th><th>Due</th><th className="r">Left to pay</th><th className="r">From this cheque (₹)</th></tr></thead>
               <tbody>
                 {open.map((i) => (
                   <tr key={i.id}>
-                    <td className="code">{i.invoice_no}</td>
-                    <td className="whitespace-nowrap">{day(i.invoice_date)}</td>
-                    <td className={`whitespace-nowrap ${i.due && i.due < today ? "text-bad" : ""}`}>{day(i.due)}</td>
-                    <td className="r num whitespace-nowrap">{money(i.left)}</td>
-                    <td className="r">
-                      <input className="inp num ml-auto max-w-[140px]" inputMode="decimal" value={f.split[i.id] ?? ""} placeholder="0" aria-label={`Amount for ${i.invoice_no}`}
-                        onChange={(e) => setF((p) => ({ ...p, split: { ...p.split, [i.id]: clean(e.target.value) } }))} />
+                    <td className="code font-semibold">{i.invoice_no}</td>
+                    <td className="whitespace-nowrap" data-label="Dated">{day(i.invoice_date)}</td>
+                    <td className={`whitespace-nowrap ${i.due && i.due < today ? "text-bad" : ""}`} data-label="Due">{day(i.due)}</td>
+                    <td className="r num whitespace-nowrap" data-label="Left to pay">{money(i.left)}</td>
+                    <td className="r" data-label="From this cheque (₹)">
+                      <input className="inp num max-w-[140px] min-[761px]:ml-auto" inputMode="decimal" value={f.split[i.id] ?? ""} placeholder="0" aria-label={`Amount for ${i.invoice_no}`}
+                        {...at(`split-${i.id}`)} aria-describedby={errOf(`split-${i.id}`) ? `split-err-${i.id}` : undefined}
+                        onChange={(e) => { setF((p) => ({ ...p, split: { ...p.split, [i.id]: clean(e.target.value) } })); unmark(`split-${i.id}`); }} />
+                      {errOf(`split-${i.id}`) && <div id={`split-err-${i.id}`} className="mt-1 text-xs text-bad" role="alert">{errOf(`split-${i.id}`)}</div>}
                     </td>
                   </tr>
                 ))}
@@ -341,7 +396,7 @@ export function ChequeTable({ rows, today }: { rows: ChequeLine[]; today: string
           <button type="button" className="btn sm" onClick={() => setSel(new Set())}>Clear</button>
         </div>
       )}
-      <Message error={error} ok={ok} />
+      <Message error={error} ok={ok} grab />
       <div className="table-wrap">
         <table className="tbl">
           <thead>
@@ -409,7 +464,7 @@ export function ChequeSteps({ id, status, chequeDate, expires, today, isOwner }:
       ) : wait ? <p>{wait}</p> : (
         <p className="text-xs muted">This cheque is {CHEQUE_LABEL[status].toLowerCase()}. Only the owner can correct it.</p>
       )}
-      <Message error={error} ok={ok} />
+      <Message error={error} ok={ok} grab />
     </div>
   );
 }
@@ -420,15 +475,17 @@ export function NoticeSent({ id, sent, bouncedOn, today }: { id: string; sent: s
   const [on, setOn] = useState(sent ?? today);
   const [error, setError] = useState("");
   const [pending, start] = useTransition();
+  const date = useRef<HTMLInputElement>(null);
   const save = (v: string | null) => start(async () => {
     const r = await setChequeNotice(id, v);
     if (r.error) setError(r.error);
-    else { setError(""); router.refresh(); }
+    // "Not sent yet" goes away once pressed; keep keyboard focus here instead of the top of the page.
+    else { setError(""); if (v === null) date.current?.focus(); router.refresh(); }
   });
   return (
     <div className="stack">
       <div className="row">
-        <label className="row text-[12.5px] muted">Notice sent on <input type="date" className="inp w-[150px]" value={on} min={bouncedOn} max={today} onChange={(e) => setOn(e.target.value)} aria-label="Notice sent on" /></label>
+        <label className="row text-[12.5px] muted">Notice sent on <input ref={date} type="date" className="inp w-[150px]" value={on} min={bouncedOn} max={today} onChange={(e) => setOn(e.target.value)} aria-label="Notice sent on" /></label>
         <button type="button" className="btn primary" disabled={pending || !on || on === sent} onClick={() => save(on)}>{sent ? "Change date" : "Notice sent"}</button>
         {sent && <button type="button" className="btn ghost sm" disabled={pending} onClick={() => save(null)}>Not sent yet</button>}
       </div>
@@ -442,17 +499,20 @@ export function CreditDays({ buyerId, value }: { buyerId: string; value: number 
   const [v, setV] = useState(value == null ? "" : String(value));
   const [error, setError] = useState("");
   const [pending, start] = useTransition();
-  const dirty = v !== (value == null ? "" : String(value));
+  const box = useRef<HTMLInputElement>(null);
+  // "060" is the same 60 days as saved.
+  const dirty = (v === "" ? "" : String(Number(v))) !== (value == null ? "" : String(value));
   return (
     <form className="row gap-1.5" onSubmit={(e) => {
       e.preventDefault();
       start(async () => {
         const r = await setCreditDays(buyerId, v);
         if (r.error) setError(r.error);
-        else { setError(""); router.refresh(); }
+        // Save goes away once saved; keep keyboard focus on the days box.
+        else { setError(""); box.current?.focus(); router.refresh(); }
       });
     }}>
-      <input className="inp num w-[70px]" inputMode="numeric" value={v} onChange={(e) => setV(e.target.value.replace(/\D/g, ""))} placeholder="—" aria-label="Credit days" />
+      <input ref={box} className="inp num w-[70px]" inputMode="numeric" value={v} onChange={(e) => setV(wholeText(e.target.value))} placeholder="—" aria-label="Credit days" />
       <span className="text-xs muted">days</span>
       {dirty && <button className="btn sm primary" disabled={pending}>Save</button>}
       {error && <span className="text-xs text-bad">{error}</span>}

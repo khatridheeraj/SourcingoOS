@@ -1,10 +1,13 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
 import { day, QC_KINDS, qcKindLabel, qtyU, SHIP_QC, todayIST, dayTimeAt } from "@/lib/format";
 import { REPORT_ACCEPT, REPORT_MAX_MB, uploadPhotos, uploadReports } from "@/lib/photos";
-import { addQcComment, addQcFiles, cancelQc, recordQc, removeQcPhoto, type QcFile, type QcInput } from "../actions";
+import { caught } from "@/lib/errors";
+import { shipQcNote } from "@/lib/ship-qc";
+import { qcCountsProblem } from "@/lib/qc-input";
+import { addQcComment, addQcFiles, cancelQc, recordQc, removeQcPhoto, sameQc, type QcFile, type QcInput } from "../actions";
 
 export type QcCheck = {
   id: string; line_id: string; kind: string; checked_on: string; result: string; pieces_checked: number | null; defects: number;
@@ -28,21 +31,23 @@ async function upload(folder: string, photos: File[], reports: File[]): Promise<
 
 // The same checks the server makes before saving (recordQc in ../actions.ts and the database), run before any file
 // goes up: a check the server would turn away otherwise leaves its photos and reports behind in storage.
-const whole = (s: string) => Number(s.replace(/[,₹\s]/g, ""));
+// A count or the notes that need fixing is named, so its box is marked and focused (the rest show by Save).
+type QcBox = "pieces_checked" | "defects" | "notes";
+function qcBoxProblem(q: QcInput): { field: QcBox; error: string } | null {
+  const counts = qcCountsProblem(q.pieces_checked, q.defects);
+  if (counts) return { field: counts.field === "pieces" ? "pieces_checked" : "defects", error: counts.error };
+  if (q.result === "fail" && !q.notes.trim()) return { field: "notes", error: "Write what failed in the notes, so the factory knows what to fix." };
+  return null;
+}
 function qcProblem(q: QcInput, photos: File[], reports: File[]): string {
   if (!q.line_id) return "Pick the style this check is for.";
   if (!QC_KINDS.some((k) => k.key === q.kind)) return "Pick the type of check.";
   if (q.result !== "pass" && q.result !== "fail") return "Pick Pass or Fail.";
   if (!/^\d{4}-\d{2}-\d{2}$/.test(q.checked_on)) return "Enter the date of the check.";
   if (q.checked_on > todayIST()) return "The check date can't be in the future.";
-  const pieces = q.pieces_checked.trim() ? whole(q.pieces_checked) : null;
-  const defects = q.defects.trim() ? whole(q.defects) : 0;
-  // Whole numbers that fit the database's number column.
-  const fits = (n: number) => Number.isInteger(n) && n <= 2_147_483_647;
-  if (pieces != null && (!fits(pieces) || pieces <= 0)) return "Pieces checked must be a whole number above zero.";
-  if (!fits(defects) || defects < 0) return "Defects must be a whole number, 0 or more.";
-  if (pieces != null && defects > pieces) return "Defects can't be more than the pieces checked.";
-  if (q.result === "fail" && !q.notes.trim()) return "Write what failed in the notes, so the factory knows what to fix.";
+  const box = qcBoxProblem(q);
+  if (box) return box.error;
+
   if (!photos.length && !reports.length) return "Add the QC report or at least one photo as proof of the check.";
   // File checks the upload would only make after the photos are already up.
   const notPhoto = photos.find((f) => !f.type.startsWith("image/") && !/\.(jpe?g|png|webp|gif|heic|heif)$/i.test(f.name));
@@ -77,36 +82,59 @@ export function OrderQc({ orderId, companyId, open, canRecord, today, checks, fi
   const [photos, setPhotos] = useState<File[]>([]);
   const [reports, setReports] = useState<File[]>([]);
   const [error, setError] = useState("");
+  const [badBox, setBadBox] = useState<QcBox | "">("");
+  const formRef = useRef<HTMLFormElement>(null);
+  // The check the person chose to save even though someone already recorded the same one.
+  const [again, setAgain] = useState("");
+  const [same, setSame] = useState("");
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState("");
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [pending, start] = useTransition();
-  const set = (k: keyof QcInput, v: string) => setQ({ ...q, [k]: v });
+  const set = (k: keyof QcInput, v: string) => { setQ({ ...q, [k]: v }); if (k === badBox) { setBadBox(""); setError(""); } };
+  const at = (k: QcBox) => ({ name: k, "aria-invalid": badBox === k || undefined });
+  const err = (k: QcBox) => (badBox === k ? <small className="text-bad" role="alert">{error}</small> : null);
   const can = open && canRecord;
 
   function startFor(lineId: string) {
-    setQ({ ...blank, line_id: lineId }); setPhotos([]); setReports([]); setError(""); setAdding(true);
+    setQ({ ...blank, line_id: lineId }); setPhotos([]); setReports([]); setError(""); setBadBox(""); setSame(""); setAgain(""); setAdding(true);
   }
 
   function reset() {
-    setAdding(false); setError(""); setQ(blank); setPhotos([]); setReports([]);
+    setAdding(false); setError(""); setBadBox(""); setAgain(""); setSame(""); setQ(blank); setPhotos([]); setReports([]);
   }
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
     setError("");
+    setSame("");
     setNotice("");
+    setBadBox("");
     const problem = qcProblem(q, photos, reports);
-    if (problem) return setError(problem);
+    if (problem) {
+      // A count or the notes: the message goes under that box, which is marked and takes focus.
+      const box = qcBoxProblem(q);
+      if (box?.error === problem) {
+        setBadBox(box.field);
+        const el = formRef.current?.elements.namedItem(box.field);
+        if (el instanceof HTMLElement) { el.focus({ preventScroll: true }); el.scrollIntoView({ block: "center" }); }
+      }
+      return setError(problem);
+    }
+    const key = [q.line_id, q.kind, q.result, q.checked_on].join("|");
     start(async () => {
       const id = crypto.randomUUID();
       try {
+        if (again !== key) {
+          const same = await sameQc(orderId, [q.line_id], q.kind, q.result, q.checked_on);
+          if (same) { setAgain(key); setSame(same); router.refresh(); return; }
+        }
         setBusy("new");
         const files = await upload(`${companyId}/${orderId}/qc/${id}`, photos, reports);
         const res = await recordQc(orderId, id, q, files);
         if (res.error) return setError(res.error);
       } catch (err) {
-        return setError(err instanceof Error ? err.message : "The files didn't upload. Try again.");
+        return setError(caught(err, "The files didn't upload. Try again."));
       } finally {
         setBusy("");
       }
@@ -126,7 +154,7 @@ export function OrderQc({ orderId, companyId, open, canRecord, today, checks, fi
         const res = await addQcFiles(orderId, qcId, up);
         if (res.error) setNotice(`The files weren't added: ${res.error}`);
       } catch (err) {
-        setNotice(`The files weren't added: ${err instanceof Error ? err.message : "upload failed."}`);
+        setNotice(`The files weren't added: ${caught(err, "upload failed.")}`);
       } finally {
         setBusy("");
       }
@@ -172,9 +200,11 @@ export function OrderQc({ orderId, companyId, open, canRecord, today, checks, fi
   const gone = checks.filter((c) => !styles.some((st) => st.id === c.line_id));
   const groups = gone.length ? [...styles, { id: "", style: "Styles taken off the order", colour: "", qty: 0 }] : styles;
   const styleName = (id: string) => styles.find((st) => st.id === id)?.style ?? "";
+  const cur = q.line_id ? finalOf(q.line_id) : undefined;
+  const dateNote = shipQcNote([{ style: styleName(q.line_id), latest: cur && { result: cur.result, on: cur.checked_on } }], q.kind, q.result, q.checked_on);
 
   const form = (
-    <form onSubmit={submit} className="mb-4 rounded-[10px] border border-line p-3">
+    <form ref={formRef} onSubmit={submit} className="mb-4 rounded-[10px] border border-line p-3">
       <p className="mb-3 text-[13px]">New check for <b className="code">{styleName(q.line_id)}</b>. Its photos and reports belong to this style only.</p>
       <div className="field">
         <span>Type of check <i>*</i></span>
@@ -196,20 +226,24 @@ export function OrderQc({ orderId, companyId, open, canRecord, today, checks, fi
         <label className="field">
           <span>Date checked</span>
           <input className="inp" type="date" max={today} value={q.checked_on} onChange={(e) => set("checked_on", e.target.value)} />
+          <small>The day of the inspection, not the day you enter it.</small>
         </label>
         <label className="field">
           <span>Pieces checked</span>
-          <input className="inp" inputMode="numeric" value={q.pieces_checked} onChange={(e) => set("pieces_checked", e.target.value)} />
+          <input className="inp" inputMode="numeric" {...at("pieces_checked")} value={q.pieces_checked} onChange={(e) => set("pieces_checked", e.target.value)} />
+          {err("pieces_checked")}
         </label>
         <label className="field">
           <span>Defects found</span>
-          <input className="inp" inputMode="numeric" value={q.defects} placeholder="0" onChange={(e) => set("defects", e.target.value)} />
+          <input className="inp" inputMode="numeric" {...at("defects")} value={q.defects} placeholder="0" onChange={(e) => set("defects", e.target.value)} />
+          {err("defects")}
         </label>
       </div>
       <label className="field mt-3">
         <span>Notes{q.result === "fail" && <i> *</i>}</span>
-        <textarea className="inp" rows={2} value={q.notes} onChange={(e) => set("notes", e.target.value)}
+        <textarea className="inp" rows={2} {...at("notes")} value={q.notes} onChange={(e) => set("notes", e.target.value)}
           placeholder={q.result === "fail" ? "What failed, and what the factory must fix" : "Anything worth remembering"} />
+        {err("notes")}
       </label>
       <div className="fgrid mt-3">
         <label className="field">
@@ -223,10 +257,12 @@ export function OrderQc({ orderId, companyId, open, canRecord, today, checks, fi
           <small>{reports.length ? `${reports.length} ${reports.length === 1 ? "report" : "reports"} ready` : `Inspection reports: PDF, Excel, Word or CSV. Big PDFs are shrunk automatically; up to ${REPORT_MAX_MB} MB each.`}</small>
         </label>
       </div>
+      {dateNote && <p className="mt-3 text-[13px] font-semibold text-warn" role="status">{dateNote}</p>}
+      {same && <p className="mt-3 text-[13px] font-semibold text-warn" role="status">{same}</p>}
       <div className="row mt-3">
         <button className="btn primary" disabled={pending}>{pending ? (busy ? "Uploading proof…" : "Saving…") : `Save QC${q.line_id ? ` for ${styleName(q.line_id)}` : ""}`}</button>
         <button type="button" className="btn" onClick={reset}>Close</button>
-        {error && <span className="text-[13px] font-semibold text-bad" role="alert">{error}</span>}
+        {error && !badBox && <span className="text-[13px] font-semibold text-bad" role="alert">{error}</span>}
       </div>
     </form>
   );
@@ -255,6 +291,13 @@ export function OrderQc({ orderId, companyId, open, canRecord, today, checks, fi
                   <button type="button" className="btn sm ml-auto" onClick={() => startFor(st.id)}>Record QC</button>
                 )}
               </div>
+              {st.id && fin?.result === "fail" && open && (
+                <p className="mb-2 text-[13px] text-bad">
+                  Shipping goes by the latest final QC, the Fail of {day(fin.checked_on)}.{" "}
+                  {can ? "Record a passed re-check once the factory fixes it, or cancel a check entered with the wrong date."
+                    : "The goods can ship once Quality records a passed re-check."}
+                </p>
+              )}
               {st.id && adding && q.line_id === st.id && form}
               {mine.length === 0 ? (!(adding && q.line_id === st.id) && <p className="muted text-[13px]">No QC recorded for this style yet.</p>) : (
               <ul className="flex flex-col gap-2">
@@ -268,6 +311,9 @@ export function OrderQc({ orderId, companyId, open, canRecord, today, checks, fi
                     {c.cancelled_at ? "Cancelled" : c.result === "pass" ? "Pass" : "Fail"}
                   </span>
                   <span className="muted">{day(c.checked_on)} · {c.by}</span>
+                  {fin && c.id === fin.id && mine.filter((x) => !x.cancelled_at && SHIP_QC.includes(x.kind)).length > 1 && (
+                    <span className="muted text-xs">Shipping goes by this one</span>
+                  )}
                   {editable && (
                     <span className="qc-acts">
                       <label className={`btn sm ghost ${pending ? "pointer-events-none opacity-50" : ""}`}>

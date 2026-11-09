@@ -2,8 +2,9 @@
 
 import { revalidatePath } from "next/cache";
 import { getMe } from "@/lib/auth";
-import { STAFF_ROLES } from "@/lib/auth-roles";
+import { roleLabel, STAFF_ROLES, type Role } from "@/lib/auth-roles";
 import { friendly } from "@/lib/errors";
+import { loadTeam } from "@/lib/data";
 import { createClient } from "@/lib/supabase/server";
 
 const validRole = (r: string) => STAFF_ROLES.some((x) => x.value === r) || r === "factory" || r === "buyer";
@@ -15,6 +16,20 @@ export async function addPerson(email: string, role: string, factoryId = "", buy
   const supabase = await createClient();
   if (role === "factory" && !factoryId) return { error: "Pick the factory this login is for." };
   if (role === "buyer" && !buyerId) return { error: "Pick the buyer this login is for." };
+  // Adding someone who is already here must never quietly change their role or switch them back on: say so, and
+  // point to their row, where a role change is a deliberate act.
+  if (role !== "factory" && role !== "buyer") {
+    const addr = email.trim().toLowerCase();
+    const here = (await loadTeam()).find((m) => m.email.toLowerCase() === addr);
+    if (here) {
+      if (here.role === "factory" || here.role === "buyer") {
+        return { error: `${addr} is a ${here.role} login here. Use a separate email for a team login.` };
+      }
+      const as = roleLabel(here.role as Role);
+      if (!here.active) return { error: `${addr} is already on the team as ${as}, switched off. Tick "Can sign in" on their row below.` };
+      return { error: here.role === role ? `${addr} is already on the team as ${as}.` : `${addr} is already on the team as ${as}. Change their role on their row below.` };
+    }
+  }
   const { data, error } = role === "factory"
     ? await supabase.rpc("add_factory_member", { p_email: email, p_factory: factoryId })
     : role === "buyer"

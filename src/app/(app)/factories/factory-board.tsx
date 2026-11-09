@@ -2,7 +2,7 @@ import { NO_COMPANY } from "@/lib/names";
 import Link from "next/link";
 import { getMe } from "@/lib/auth";
 import { buyerName, loadBuyers, type Factory } from "@/lib/data";
-import { day, dayAt, daysBetween, dueDate, nowMs, planDueAt, qty, qtyTotal, stageReached, todayIST } from "@/lib/format";
+import { dayAtNear, dayNear, daysBetween, dueDate, nowMs, planDueAt, qty, qtyTotal, stageReached, todayIST } from "@/lib/format";
 import { fetchAll } from "@/lib/fetch-all";
 import { type StepRow, styleProgress } from "@/lib/progress";
 import { createClient } from "@/lib/supabase/server";
@@ -171,12 +171,12 @@ export function BoardView({ board: { cards, total, noFactory }, today, noFactori
                   <Link key={r.key} href={`/orders/${r.orderId}`} className="frow">
                     <span className="frow-t"><span className="code">{r.orderNo}</span>{r.buyer}</span>
                     <span className="frow-d">
-                      {r.due ? day(r.due) : <span className="muted">No ship date</span>}
+                      {r.due ? dayNear(r.due) : <span className="muted">No ship date</span>}
                       {r.due && r.due < today && <small className="text-bad">{plural(daysBetween(r.due, today), "day")} late</small>}
                     </span>
                     <span className="frow-s">
                       PO {r.buyerPo} · {r.styles.length <= 2 ? r.styles.join(", ") : `${r.styles.slice(0, 2).join(", ")} +${r.styles.length - 2}`} · <b>{qtyTotal(r.items)}</b>
-                      {r.released && <> · released {dayAt(r.released).slice(0, -5)}</>}
+                      {r.released && <> · released {dayAtNear(r.released)}</>}
                     </span>
                     <span className="frow-g o-prog">
                       {r.state ? <span className={`chip ${r.state.cls}`}>{r.state.text}</span> : <ProgressCell p={r.progress} looksShipped={r.looksShipped} />}

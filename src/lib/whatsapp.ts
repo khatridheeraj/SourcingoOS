@@ -1,6 +1,7 @@
 // WhatsApp wants the number with its country code and no signs; Indian numbers are usually saved without +91.
 export function waNumber(phone: string | null | undefined): string {
   let d = (phone ?? "").replace(/\D/g, "");
+  if (d.startsWith("00")) d = d.slice(2); // 0091 98290 12345, the international way of writing +91
   if (d.length === 11 && d.startsWith("0")) d = d.slice(1);
   if (d.length === 10) d = `91${d}`;
   return d.length >= 11 ? d : "";

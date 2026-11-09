@@ -10,6 +10,7 @@ import { SAMPLE_STEPS, type SampleStatus } from "@/lib/samples";
 import { sendSample } from "./actions";
 import type { PanelOrder } from "./factory-order";
 import { errorText, stepName, words, type Lang } from "./i18n";
+import { caught } from "@/lib/errors";
 
 // A round as the factory's panel reads it: its own photos (as links) and the answer, never the buyer's name.
 export type FactoryRound = {
@@ -62,7 +63,7 @@ export function FactorySamples({ companyId, order, rounds, lang }: { companyId: 
         toast(w.sampleSentToast(pick.line.style, name(pick.stage)));
         router.refresh();
       } catch (e) {
-        setError(e instanceof Error ? errorText(lang, e.message) : w.photoFail);
+        setError(errorText(lang, caught(e, w.photoFail)));
       }
     });
   }

@@ -5,6 +5,7 @@ import { useState, useTransition } from "react";
 import { uploadPhotos } from "@/lib/photos";
 import { toast } from "@/components/toast";
 import { addInquiryBuyer, setInquiryPhotos, setInquiryStatus } from "../actions";
+import { caught } from "@/lib/errors";
 
 type Photo = { path: string; url: string };
 
@@ -25,7 +26,11 @@ export function InquiryActions({ id, companyId, status, hasBuyer, prospect, newB
   const [mode, setMode] = useState<"" | "buyer">("");
   const [buyerNameIn, setBuyerNameIn] = useState(prospect);
   const [buyerCode, setBuyerCode] = useState(newBuyerCode);
-  const [error, setError] = useState("");
+  // The message shows in the panel whose button made it: the photos' own errors under Photos, whatever else is on.
+  const [error, setErrorText] = useState("");
+  const [errorAt, setErrorAt] = useState("");
+  const setError = (text: string, at = "") => { setErrorText(text); setErrorAt(at); };
+  const photoError = errorAt === "photos" || errorAt === "rm";
   const [busy, setBusy] = useState("");
   const [pending, start] = useTransition();
   const open = status === "new" || status === "quoted";
@@ -36,7 +41,7 @@ export function InquiryActions({ id, companyId, status, hasBuyer, prospect, newB
     start(async () => {
       const res = await job();
       setBusy("");
-      if (res.error) return setError(res.error);
+      if (res.error) return setError(res.error, label);
       toast(done);
       after?.();
       router.refresh();
@@ -46,13 +51,13 @@ export function InquiryActions({ id, companyId, status, hasBuyer, prospect, newB
   function addPhotos(list: FileList | null) {
     const files = Array.from(list ?? []);
     if (!files.length) return;
-    if (allPhotos.length + files.length > 12) return setError("An inquiry can keep up to 12 photos. Remove some first.");
+    if (allPhotos.length + files.length > 12) return setError(`An inquiry can keep up to 12 photos. Remove ${allPhotos.length + files.length - 12} first, or pick fewer.`, "photos");
     run("photos", async () => {
       try {
         const paths = await uploadPhotos(`${companyId}/inquiries/${id}`, files);
         return await setInquiryPhotos(id, [...allPhotos, ...paths]);
       } catch (e) {
-        return { error: e instanceof Error ? e.message : "The photos didn't upload." };
+        return { error: caught(e, "The photos didn't upload.") };
       }
     }, files.length === 1 ? "Photo added" : `${files.length} photos added`);
   }
@@ -93,7 +98,7 @@ export function InquiryActions({ id, companyId, status, hasBuyer, prospect, newB
               </div>
             </div>
           )}
-          {error && <p className="mt-2 text-[13px] font-semibold text-bad" role="alert">{error}</p>}
+          {error && !photoError && <p className="mt-2 text-[13px] font-semibold text-bad" role="alert">{error}</p>}
         </div>
       )}
 
@@ -103,7 +108,7 @@ export function InquiryActions({ id, companyId, status, hasBuyer, prospect, newB
           <button type="button" className="btn" disabled={pending} onClick={() => run("reopen", () => setInquiryStatus(id, "new", {}), "Inquiry opened again")}>
             {busy === "reopen" ? "Saving…" : "Open again"}
           </button>
-          {error && <p className="w-full text-[13px] font-semibold text-bad" role="alert">{error}</p>}
+          {error && !photoError && <p className="w-full text-[13px] font-semibold text-bad" role="alert">{error}</p>}
         </div>
       )}
 
@@ -130,7 +135,7 @@ export function InquiryActions({ id, companyId, status, hasBuyer, prospect, newB
           )}
         </div>
         {!photos.length && !open && <p className="muted text-[13px]">No photos.</p>}
-        {!open && error && <p className="mt-2 text-[13px] font-semibold text-bad" role="alert">{error}</p>}
+        {error && photoError && <p className="mt-2 text-[13px] font-semibold text-bad" role="alert">{error}</p>}
       </div>
     </>
   );

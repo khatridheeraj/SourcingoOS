@@ -1,4 +1,4 @@
-import { day, TNA_STEPS } from "@/lib/format";
+import { dayNear, TNA_STEPS } from "@/lib/format";
 import { project, shipRisk, type Projection } from "@/lib/tna-plan";
 
 export type StepRow = { line_id: string; stage: string; planned_on: string | null; done_on: string | null; not_needed?: boolean; label?: string | null };
@@ -25,7 +25,7 @@ export function why(p: Projection, steps: StepRow[], pace?: Pace): string {
   if (!c) return "";
   const s = steps[c.index];
   if (!s) return "";
-  if (c.kind === "overdue") return `${stepName(s)} was due ${day(s.planned_on).slice(0, -5)} and isn't marked done`;
+  if (c.kind === "overdue") return `${stepName(s)} was due ${dayNear(s.planned_on)} and isn't marked done`;
   if (c.kind === "done_late") return `${stepName(s)} finished ${plural(c.days, "day")} late`;
   return pace ? `${pace.factory} usually finishes steps ${plural(pace.days, "day")} after target` : "";
 }

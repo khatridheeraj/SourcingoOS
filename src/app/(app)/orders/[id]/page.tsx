@@ -320,6 +320,7 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
       unshipped: dispatches.filter((d) => !d.shippedAt).length,
       billedAll: !!o.closed_short_at || lines.every((l) => (shipRows.find((x) => x.line_id === l.id)?.billed ?? 0) >= l.qty),
     } : null,
+    shipped: { any: ship.shipped > 0, all: ship.shipped > 0 && ship.toShip === 0 },
     due: due ?? null,
     riskDays: outlook?.level === "risk" ? outlook.daysLate : 0,
     today,
@@ -371,9 +372,9 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
             {ship.part && o.status === "open" && <a href="#dispatch" className="chip info">Part shipped · {qty(ship.shipped)} of {qty(ship.ordered)} {unitOfAll(lines)}</a>}
             {o.closed_short_at && <span className="chip warn" title={o.short_reason ?? undefined}>Closed short · {qty(ship.billed)} of {qty(ship.ordered)} {unitOfAll(lines)}</span>}
           </p>
-          {!ship.part && fc && <Outlook f={fc} due={due ?? null} styles={lines.length} />}
+          {!ship.part && !(ship.shipped > 0 && ship.toShip === 0) && fc && <Outlook f={fc} due={due ?? null} styles={lines.length} />}
         </div>
-        <ShipClock c={shipClock(due ?? null, today, o.status)} date={due ? `${o.revised_ship_date && o.revised_ship_date !== o.ship_date ? "New date " : ""}${dayNear(due, today).replaceAll(" ", "\u00a0")}` : undefined} />
+        <ShipClock c={shipClock(due ?? null, today, o.status, ship.shipped > 0 && ship.toShip === 0)} date={due ? `${o.revised_ship_date && o.revised_ship_date !== o.ship_date ? "New date " : ""}${dayNear(due, today).replaceAll(" ", "\u00a0")}` : undefined} />
       </header>
       <OrderJourney orderId={o.id} orderNo={o.order_no} j={j} canEdit={canEdit} canRecordQc={canRecordQc(me?.role)} shipBlocker={shipBlocker as string | null}>
         {/* The journey card carries the main next step; these stay for any time. */}

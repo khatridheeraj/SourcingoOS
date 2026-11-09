@@ -26,7 +26,7 @@ export async function setBuyerDelivery(dispatchId: string, buyerId: string, addr
 
 export async function setCompanyDetails(dispatchId: string, address: string, gstin: string): Promise<{ error?: string }> {
   const supabase = await createClient();
-  const { error } = await supabase.rpc("set_company_details", { p_address: address, p_gstin: gstin });
+  const { error } = await supabase.rpc("set_company_details", { p_address: address, p_gstin: gstin.replace(/\s+/g, "") });
   if (error) return { error: friendly(error) };
   revalidatePath(`/goods/${dispatchId}/challan`);
   return {};

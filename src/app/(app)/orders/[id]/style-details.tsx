@@ -1,12 +1,14 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
 import { qty } from "@/lib/format";
 import { sizeEntries } from "@/lib/sizes";
 import { uploadAttachments } from "@/lib/photos";
 import { toast } from "@/components/toast";
 import { addLineFiles, removeLineFile, saveStyleDetails, type LineFileKind } from "../actions";
+import { caught } from "@/lib/errors";
+import { wholeText } from "@/lib/digits";
 
 export type LineFile = { id: string; kind: LineFileKind; name: string; url: string | null };
 export type StyleDetail = { fabric: string; sizes: Record<string, number>; files: LineFile[] };
@@ -42,18 +44,28 @@ export function StyleDetails({ orderId, companyId, lineId, style, styleQty, deta
   const [error, setError] = useState("");
   const [busy, setBusy] = useState("");
   const [pending, start] = useTransition();
+  // Which job the shown error came from: the fabric and sizes save, or a file.
+  const [errorFrom, setErrorFrom] = useState("");
+  // The size row a save message is about ("name" or "qty" box), marked and focused before anything is sent.
+  const [badRow, setBadRow] = useState<{ i: number; k: "size" | "qty" } | null>(null);
+  const rowsBox = useRef<HTMLDivElement>(null);
+  const saveError = !!error && errorFrom === "save";
   const filled = rows.filter((r) => r.size.trim() || r.qty.trim());
   const sum = filled.reduce((a, r) => a + (Number(r.qty) || 0), 0);
   const dirty = fabric.trim() !== detail.fabric || JSON.stringify(filled.map((r) => [r.size.trim(), Number(r.qty) || 0]).filter(([, n]) => n))
     !== JSON.stringify(sizeEntries(detail.sizes));
 
-  function run(label: string, job: () => Promise<{ error?: string }>, done: string) {
+  function run(label: string, job: () => Promise<{ error?: string; stale?: boolean }>, done: string) {
     setError("");
     setBusy(label);
     start(async () => {
       const res = await job();
       setBusy("");
-      if (res.error) return setError(res.error);
+      if (res.stale) router.refresh();
+      if (res.error) {
+        setErrorFrom(label);
+        return setError(res.error);
+      }
       toast(done);
       router.refresh();
     });
@@ -62,18 +74,42 @@ export function StyleDetails({ orderId, companyId, lineId, style, styleQty, deta
   function addFiles(kind: LineFileKind, list: FileList | null) {
     const files = Array.from(list ?? []);
     if (!files.length) return;
+    setErrorFrom("");
     if (detail.files.length + files.length > 30) return setError("A style can keep up to 30 files. Take off old ones first.");
     run(`up:${kind}`, async () => {
       try {
         const paths = await uploadAttachments(`${companyId}/${orderId}/files/${lineId}`, files);
         return await addLineFiles(orderId, lineId, kind, paths.map((path, i) => ({ path, file_name: files[i].name })));
       } catch (e) {
-        return { error: e instanceof Error ? e.message : "The files didn't upload." };
+        return { error: caught(e, "The files didn't upload.") };
       }
     }, files.length === 1 ? "File added" : `${files.length} files added`);
   }
 
-  const setRow = (i: number, patch: Partial<{ size: string; qty: string }>) => setRows((r) => r.map((x, j) => (j === i ? { ...x, ...patch } : x)));
+  const setRow = (i: number, patch: Partial<{ size: string; qty: string }>) => {
+    setRows((r) => r.map((x, j) => (j === i ? { ...x, ...patch } : x)));
+    if (badRow?.i === i) { setBadRow(null); setError(""); }
+  };
+
+  // The same checks the save makes, on the phone first, pointing at the row on screen.
+  function save() {
+    const seen = new Map<string, number>();
+    for (const [i, r] of rows.entries()) {
+      const k = r.size.trim().toUpperCase();
+      if (!k && !r.qty.trim()) continue;
+      const stop = (kind: "size" | "qty", msg: string) => {
+        setErrorFrom("save"); setError(msg); setBadRow({ i, k: kind });
+        requestAnimationFrame(() => rowsBox.current?.querySelector<HTMLElement>(`[data-cell="${i}-${kind}"]`)?.focus());
+      };
+      if (!k) return stop("size", `Give the size with ${r.qty} pcs a name, like S or 32.`);
+      // A size picked from a run but left blank (the buyer orders no XS) is simply left out.
+      if (!r.qty.trim()) continue;
+      if (seen.has(k)) return stop("size", `Size ${r.size.trim()} is entered twice.`);
+      seen.set(k, i);
+    }
+    setBadRow(null);
+    run("save", () => saveStyleDetails(orderId, lineId, fabric, filled, { fabric: detail.fabric, sizes: detail.sizes }), `${style} saved`);
+  }
   const sizesTotal = Object.values(detail.sizes).reduce((a, n) => a + n, 0);
 
   return (
@@ -107,13 +143,13 @@ export function StyleDetails({ orderId, companyId, lineId, style, styleQty, deta
               </div>
             )}
             {rows.length > 0 && (
-              <div className="sizes">
+              <div className="sizes" ref={rowsBox}>
                 {rows.map((r, i) => (
                   <label key={i}>
-                    <input className="inp !font-semibold" value={r.size} maxLength={12} placeholder="Size" aria-label={`Size ${i + 1} name`}
+                    <input className="inp !font-semibold" data-cell={`${i}-size`} aria-invalid={(badRow?.i === i && badRow.k === "size") || undefined} value={r.size} maxLength={12} placeholder="Size" aria-label={`Size ${i + 1} name`}
                       onChange={(e) => setRow(i, { size: e.target.value })} />
-                    <input className="inp" inputMode="numeric" value={r.qty} placeholder="pcs" aria-label={`Pieces in ${r.size || `size ${i + 1}`}`}
-                      onChange={(e) => setRow(i, { qty: e.target.value.replace(/\D/g, "") })} />
+                    <input className="inp" inputMode="numeric" data-cell={`${i}-qty`} aria-invalid={(badRow?.i === i && badRow.k === "qty") || undefined} value={r.qty} placeholder="pcs" aria-label={`Pieces in ${r.size || `size ${i + 1}`}`}
+                      onChange={(e) => setRow(i, { qty: wholeText(e.target.value) })} />
                   </label>
                 ))}
                 {rows.length < 12 && (
@@ -133,14 +169,17 @@ export function StyleDetails({ orderId, companyId, lineId, style, styleQty, deta
         <div className="row">
           <button type="button" className="btn primary sm" disabled={pending || !dirty || (filled.length > 0 && sum !== styleQty)}
             title={filled.length > 0 && sum !== styleQty ? `The sizes must add up to ${qty(styleQty)} pcs` : undefined}
-            onClick={() => run("save", () => saveStyleDetails(orderId, lineId, fabric, filled), `${style} saved`)}>
+            onClick={save}>
             {busy === "save" ? "Saving…" : fabricOrder ? "Save fabric" : "Save fabric and sizes"}
           </button>
           {dirty && (
-            <button type="button" className="btn sm" disabled={pending} onClick={() => { setFabric(detail.fabric); setRows(toRows(detail.sizes)); setError(""); }}>Undo</button>
+            <button type="button" className="btn sm" disabled={pending} onClick={() => { setFabric(detail.fabric); setRows(toRows(detail.sizes)); setError(""); setBadRow(null); }}>Undo</button>
           )}
         </div>
       )}
+
+      {/* A save problem shows by the Save button, not below the files where a phone can't see it. */}
+      {saveError && <p className="text-[13px] font-semibold text-bad" role="alert">{error}</p>}
 
       <div className="sfiles">
         {KINDS.map((k) => {
@@ -172,7 +211,7 @@ export function StyleDetails({ orderId, companyId, lineId, style, styleQty, deta
           );
         })}
       </div>
-      {error && <p className="text-[13px] font-semibold text-bad" role="alert">{error}</p>}
+      {error && !saveError && <p className="text-[13px] font-semibold text-bad" role="alert">{error}</p>}
     </div>
   );
 }

@@ -3,9 +3,14 @@
 import { revalidatePath } from "next/cache";
 import { canEditOrders, canEnterDone, canRecordQc, getMe } from "@/lib/auth";
 import { friendly } from "@/lib/errors";
-import { QC_KINDS, TNA_STEPS, todayIST } from "@/lib/format";
+import { dayNear, QC_KINDS, qcKindLabel, TNA_STEPS, todayIST } from "@/lib/format";
+import { isFilled, num, orderProblem } from "@/lib/order-input";
+import { wholeText } from "@/lib/digits";
+import { qcCount, qcCountsProblem } from "@/lib/qc-input";
 import { buyerOverdue, NO_WARNINGS, orderWarnings, type OrderWarnings, type Overdue } from "@/lib/order-checks";
 import { PO_FILE_TYPES, PO_MAX_BYTES, type StoredFile } from "@/lib/po-files";
+import { personName } from "@/lib/names";
+import { sizeEntries } from "@/lib/sizes";
 import { createClient } from "@/lib/supabase/server";
 
 export type OrderInput = {
@@ -33,7 +38,16 @@ export type LineInput = {
   factory_rate: string;
 };
 
-const num = (s: string) => s.replace(/[,₹\s]/g, "");
+
+// The owner may delete a PO while someone else has it open. Several saves (QC checks, style files and sizes, the
+// style photo, the buyer's PO file) would still be taken by the database, on an order nobody can see any more.
+// Deleted orders are hidden from every read, so a miss here means it is gone.
+type Db = Awaited<ReturnType<typeof createClient>>;
+const GONE = "This order was deleted while you had it open, so this wasn't saved. Reload the page.";
+async function orderGone(supabase: Db, orderId: string): Promise<boolean> {
+  const { data } = await supabase.from("orders").select("id").eq("id", orderId).maybeSingle();
+  return !data;
+}
 
 // What the form shows while an order is typed in: other orders it may repeat, and the buyer's overdue invoices.
 export async function checkOrder(order: Pick<OrderInput, "id" | "buyer_id" | "buyer_po">, styles: string[]): Promise<{ warnings: OrderWarnings; overdue: Overdue | null }> {
@@ -53,28 +67,14 @@ export async function checkOrder(order: Pick<OrderInput, "id" | "buyer_id" | "bu
 // confirm: returned instead of saving when that choice is still needed.
 // inquiryId: the buyer inquiry this order was made from, marked converted once the order is saved.
 export async function saveOrder(order: OrderInput, lines: LineInput[], incomingId?: string, confirmed = false, inquiryId?: string): Promise<{
-  error?: string; id?: string; existing?: { id: string; orderNo: string }; confirm?: OrderWarnings;
+  error?: string; field?: string; id?: string; existing?: { id: string; orderNo: string }; confirm?: OrderWarnings;
 }> {
   const me = await getMe();
   if (!me?.role) return { error: "Your account is not switched on yet." };
   if (!canEditOrders(me.role)) return { error: "Only the orders team can change orders." };
-  if (!order.buyer_id) return { error: "Pick the buyer." };
-  if (!order.buyer_po.trim()) return { error: "Enter the buyer's PO number." };
-  if (order.po_date && order.ship_date && order.ship_date < order.po_date) return { error: "The ship date can't be before the PO date." };
-
-  const filled = lines.filter((l) => l.style.trim() || l.qty.trim());
-  if (filled.length === 0) return { error: "Add at least one style." };
-  for (const [i, l] of filled.entries()) {
-    const n = i + 1;
-    if (!l.style.trim()) return { error: `Line ${n}: enter the style number.` };
-    const q = Number(num(l.qty));
-    if (!Number.isInteger(q) || q <= 0) return { error: `Line ${n}: quantity must be a whole number above zero.` };
-    for (const [k, label] of [["buyer_rate", "buyer rate"], ["factory_rate", "factory rate"]] as const) {
-      const r = Number(num(l[k]));
-      if (l[k].trim() && Number.isNaN(r)) return { error: `Line ${n}: the ${label} must be a number.` };
-      if (l[k].trim() && r < 0) return { error: `Line ${n}: the ${label} can't be below zero.` };
-    }
-  }
+  const problem = orderProblem(order, lines);
+  if (problem) return { error: problem.msg, field: problem.field };
+  const filled = lines.filter(isFilled);
 
   const supabase = await createClient();
   // The same check the form shows, made again here so a save can't skip it. A check that can't run doesn't stop the save.
@@ -86,7 +86,6 @@ export async function saveOrder(order: OrderInput, lines: LineInput[], incomingI
   };
   if (warnings?.similar_po.length && !confirmed) return { confirm: warnings };
 
-  if ((order.buyer_terms ?? "").length > 2000) return { error: "Keep the buyer's terms under 2000 letters." };
   const { buyer_terms, ...head } = order;
   const { data, error } = await supabase.rpc("save_order", {
     p_order: { ...head, buyer_po: order.buyer_po.trim() },
@@ -296,6 +295,7 @@ export async function setStylePhoto(orderId: string, lineId: string, path: strin
   if (!canEditOrders(me.role)) return { error: "Only the orders team can change orders." };
   if (!path.startsWith(`${me.companyId}/${orderId}/styles/${lineId}/`) || path.includes("..")) return { error: "That photo didn't upload properly. Try again." };
   const supabase = await createClient();
+  if (await orderGone(supabase, orderId)) return { error: GONE };
   const { data, error } = await supabase.from("order_lines").update({ photo_path: path }).eq("id", lineId).eq("order_id", orderId).select("id");
   if (error) return { error: friendly(error) };
   if (!data?.length) return { error: "That style is no longer on this order. Reload the page." };
@@ -306,14 +306,26 @@ export async function setStylePhoto(orderId: string, lineId: string, path: strin
 export type LineFileKind = "tech_pack" | "cutting" | "other";
 
 // A style's fabric and its pieces per size. The database checks the sizes add up to the style's quantity.
-export async function saveStyleDetails(orderId: string, lineId: string, fabric: string, sizes: { size: string; qty: string }[]): Promise<{ error?: string }> {
+// was: the fabric and sizes the form was opened with. When someone else saved this style since then, the save is
+// refused (stale) instead of quietly replacing their sizes, and the form reloads to show what they saved.
+export async function saveStyleDetails(orderId: string, lineId: string, fabric: string, sizes: { size: string; qty: string }[],
+  was?: { fabric: string; sizes: Record<string, number> }): Promise<{ error?: string; stale?: boolean }> {
   const me = await getMe();
   if (!canEditOrders(me?.role)) return { error: "Only the orders team can change orders." };
-  const rows = sizes.map((r) => ({ size: r.size.trim(), qty: r.qty.trim() })).filter((r) => r.size || r.qty);
+  // A size left blank (picked from a run, but the buyer orders none of it) is left out, not refused.
+  const rows = sizes.map((r) => ({ size: r.size.trim(), qty: wholeText(r.qty.trim()) })).filter((r) => r.qty);
   if (rows.some((r) => !r.size)) return { error: "Every size needs a name, like S or 32." };
   if (rows.some((r) => !/^\d+$/.test(r.qty))) return { error: "Enter whole pieces for every size." };
   if (new Set(rows.map((r) => r.size.toUpperCase())).size !== rows.length) return { error: "A size is entered twice." };
   const supabase = await createClient();
+  if (await orderGone(supabase, orderId)) return { error: GONE };
+  if (was) {
+    const { data: now } = await supabase.from("order_lines").select("fabric, sizes").eq("id", lineId).maybeSingle<{ fabric: string | null; sizes: Record<string, number> | null }>();
+    const same = (x: { fabric: string | null; sizes: Record<string, number> | null }) => JSON.stringify([(x.fabric ?? "").trim(), sizeEntries(x.sizes)]);
+    if (now && same(now) !== same(was)) {
+      return { error: "Someone else saved this style's fabric or sizes while you had it open, so yours weren't saved. Tap Undo to see theirs, then change them again if needed.", stale: true };
+    }
+  }
   const { error } = await supabase.rpc("save_style_details", {
     p_line: lineId, p_fabric: fabric.trim(), p_sizes: rows.length ? Object.fromEntries(rows.map((r) => [r.size, Number(r.qty)])) : null,
   });
@@ -328,6 +340,7 @@ export async function addLineFiles(orderId: string, lineId: string, kind: LineFi
   if (!me?.companyId || !canEditOrders(me.role)) return { error: "Only the orders team can change orders." };
   if (!files.every((f) => f.path.startsWith(`${me.companyId}/${orderId}/files/${lineId}/`) && !f.path.includes(".."))) return { error: "Those files didn't upload properly. Try again." };
   const supabase = await createClient();
+  if (await orderGone(supabase, orderId)) return { error: GONE };
   const { error } = await supabase.rpc("add_line_files", { p_line: lineId, p_kind: kind, p_files: files });
   if (error) return { error: friendly(error) };
   revalidatePath(`/orders/${orderId}`);
@@ -363,6 +376,7 @@ export async function addOrderPoFiles(orderId: string, files: StoredFile[]): Pro
     }
   }
   const supabase = await createClient();
+  if (await orderGone(supabase, orderId)) return { error: GONE };
   const { error } = await supabase.rpc("add_order_po_files", { p_order: orderId, p_files: files.map((f) => ({ ...f, name: f.name.slice(0, 200) })) });
   if (error) return { error: friendly(error) };
   revalidatePath(`/orders/${orderId}`);
@@ -414,16 +428,16 @@ export async function recordQc(orderId: string, qcId: string, q: QcInput, files:
   if (q.result !== "pass" && q.result !== "fail") return { error: "Pick Pass or Fail." };
   if (!/^\d{4}-\d{2}-\d{2}$/.test(q.checked_on)) return { error: "Enter the date of the check." };
   if (q.checked_on > todayIST()) return { error: "The check date can't be in the future." };
-  const pieces = q.pieces_checked.trim() ? Number(num(q.pieces_checked)) : null;
-  const defects = q.defects.trim() ? Number(num(q.defects)) : 0;
-  if (pieces != null && (!Number.isInteger(pieces) || pieces <= 0)) return { error: "Pieces checked must be a whole number above zero." };
-  if (!Number.isInteger(defects) || defects < 0) return { error: "Defects must be a whole number, 0 or more." };
-  if (pieces != null && defects > pieces) return { error: "Defects can't be more than the pieces checked." };
+  const counts = qcCountsProblem(q.pieces_checked, q.defects);
+  if (counts) return { error: counts.error };
+  const pieces = qcCount(q.pieces_checked);
+  const defects = qcCount(q.defects) ?? 0;
   if (q.result === "fail" && !q.notes.trim()) return { error: "Write what failed in the notes, so the factory knows what to fix." };
   if (!files.length) return { error: "Add the QC report or at least one photo as proof of the check." };
   if (!checkFiles(`${me.companyId}/${orderId}/qc/${qcId}/`, files)) return { error: "Those files didn't upload properly. Try again." };
 
   const supabase = await createClient();
+  if (await orderGone(supabase, orderId)) return { error: GONE };
   const { error } = await supabase.rpc("record_qc", {
     p_order: orderId,
     p: { id: qcId, line_id: q.line_id, kind: q.kind, checked_on: q.checked_on, result: q.result, pieces_checked: pieces == null ? "" : String(pieces), defects: String(defects), notes: q.notes },
@@ -433,6 +447,30 @@ export async function recordQc(orderId: string, qcId: string, q: QcInput, files:
   revalidatePath("/");
   revalidatePath(`/orders/${orderId}`);
   return {};
+}
+
+// Before a check is saved: has someone already recorded the same check (same style, type, result and day)?
+// Two people on the same inspection (QC on the floor, the owner from the report) otherwise make two identical
+// checks without knowing. Returns what to tell the person, or "" when there is nothing like it yet.
+export async function sameQc(orderId: string, lineIds: string[], kind: string, result: string, checkedOn: string): Promise<string> {
+  const me = await getMe();
+  if (!me?.role || !canRecordQc(me.role) || !lineIds.length || !/^\d{4}-\d{2}-\d{2}$/.test(checkedOn)) return "";
+  const supabase = await createClient();
+  const { data } = await supabase.from("qc_checks").select("line_id, checked_by, order_lines(style)")
+    .eq("order_id", orderId).in("line_id", lineIds).eq("kind", kind).eq("result", result).eq("checked_on", checkedOn).is("cancelled_at", null);
+  if (!data?.length) return "";
+  const ids = [...new Set(data.map((c) => c.checked_by).filter((x): x is string => !!x))];
+  const { data: ppl } = ids.length ? await supabase.from("profiles").select("id, full_name, email").in("id", ids) : { data: [] };
+  const name = (id: string | null) => {
+    const p = (ppl ?? []).find((x) => x.id === id);
+    return id === me.id ? "You" : p ? personName(p) : "Someone in the team";
+  };
+  const c = data[0];
+  const style = (c.order_lines as unknown as { style: string } | null)?.style ?? "this style";
+  const lines = new Set(data.map((x) => x.line_id)).size;
+  const styles = lines === 1 ? style : `${lines} of these styles`;
+  return `${name(c.checked_by)} already recorded a ${qcKindLabel(kind)} ${result === "pass" ? "Pass" : "Fail"} for ${styles} on ${dayNear(checkedOn)}. `
+    + "Tap Save again only if this was a separate inspection.";
 }
 
 // Adds more photos or reports to a saved check.

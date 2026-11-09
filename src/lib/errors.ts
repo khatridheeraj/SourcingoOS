@@ -32,3 +32,20 @@ export function friendly(error: { message: string; code?: string } | null | unde
   if (error.code === "42501" || m.includes("row-level security")) return "You don't have permission to do that.";
   return m;
 }
+
+// What the browser itself says when the connection drops in the middle of a save: Chrome, Safari, Firefox, React Native.
+export function isDropped(message: string): boolean {
+  return /^(failed to fetch|load failed|networkerror when attempting to fetch resource\.?|network request failed|network error)$/i.test(message.trim());
+}
+export const DROPPED = "The connection dropped, so this may not have saved. Check the network and try again.";
+
+// Said when a save reaches the server after the person was signed out (another tab, or the session ran out).
+// The page stays as it is, so signing in again in a new tab and tapping the same button saves what was typed.
+export const SIGNED_OUT = "You were signed out, so this didn't save. Sign in again in a new tab, then come back and tap this again.";
+export const isSignedOut = (message: string) => message.trim() === SIGNED_OUT;
+
+// The words to show for an error a save threw: a dropped connection in plain words, anything else as it came.
+export function caught(e: unknown, fallback: string): string {
+  if (!(e instanceof Error) || !e.message) return fallback;
+  return isDropped(e.message) ? DROPPED : e.message;
+}

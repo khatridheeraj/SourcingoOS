@@ -23,6 +23,8 @@ export default async function StylesPage({ searchParams }: PageProps<"/styles">)
   const sp = await searchParams;
   const str = (v: unknown) => (typeof v === "string" ? v : "");
   const q = str(sp.q).trim().replace(/[,()%*\\]/g, " ").slice(0, 60);
+  // Hyphens, slashes and dots count as spaces, so a code typed loosely ("nv shirt a", "nv/shirt") still matches.
+  const words = q.toLowerCase().split(/[\s\-_/.]+/).filter(Boolean).slice(0, 6);
   const buyer = /^[0-9a-f-]{36}$/i.test(str(sp.buyer)) ? str(sp.buyer) : "";
   const factory = /^[0-9a-f-]{36}$/i.test(str(sp.factory)) ? str(sp.factory) : "";
   const all = sp.show === "all";
@@ -37,7 +39,8 @@ export default async function StylesPage({ searchParams }: PageProps<"/styles">)
     if (!all) query = query.eq("orders.status", "open");
     if (buyer) query = query.eq("orders.buyer_id", buyer);
     if (factory) query = query.eq("factory_id", factory);
-    if (q) query = query.or(["style", "description", "colour", "fabric"].map((c) => `${c}.ilike.*${q}*`).join(","));
+    // Each word typed must match somewhere, like the search button: "nv shirt" finds NV-SHIRT-A, "red cotton" a red cotton style.
+    for (const w of words) query = query.or(["style", "description", "colour", "fabric"].map((c) => `${c}.ilike.*${w}*`).join(","));
     return query;
   };
   const { data, count, error } = await styles().order("created_at", { ascending: false }).order("position").order("id").range((page - 1) * PAGE, page * PAGE - 1);

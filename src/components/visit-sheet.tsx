@@ -9,6 +9,9 @@ import { FLOOR_STATUS, floorLine, INSPECTION_KIND, NOT_DONE_ON_VISIT, REJECT, VI
 import { uploadPhotos } from "@/lib/photos";
 import { dm, when } from "@/lib/quick";
 import { dayTimeAt } from "@/lib/format";
+import { caught } from "@/lib/errors";
+import { qtyText } from "@/lib/inquiry-input";
+import { qcCountsProblem } from "@/lib/qc-input";
 
 type Open = { factoryId?: string; orderId?: string };
 const EVENT = "sourcingo:visit";
@@ -148,8 +151,17 @@ function StyleCard({ s, companyId, today, canQc, open, posted, onToggle, onPoste
   const [note, setNote] = useState("");
   const [files, setFiles] = useState<Picked[]>([]);
   const [error, setError] = useState("");
+  // The box the message is about: marked, with the message under it, and focused.
+  const [bad, setBad] = useState<"" | "pieces" | "defects" | "qty">("");
   const [pending, start] = useTransition();
   const card = useRef<HTMLElement>(null);
+  const msg = (k: typeof bad) => (bad === k ? <small className="text-bad" role="alert">{error}</small> : null);
+  const fixed = (k: typeof bad) => { if (bad === k) { setBad(""); setError(""); } };
+  function badBox(field: Exclude<typeof bad, "">, text: string) {
+    setBad(field); setError(text);
+    const el = card.current?.querySelector<HTMLElement>(`[name="${field}"]`);
+    if (el) { el.focus({ preventScroll: true }); el.scrollIntoView({ block: "center" }); }
+  }
   // The style that opens next comes into view, so the visit flows down the list.
   useEffect(() => { if (open) card.current?.scrollIntoView({ block: "nearest", behavior: "smooth" }); }, [open]);
   const cur = s.steps.find((x) => x.key === stage);
@@ -182,6 +194,12 @@ function StyleCard({ s, companyId, today, canQc, open, posted, onToggle, onPoste
   function save() {
     if (!status || missing) return;
     setError("");
+    setBad("");
+    // Counts are checked before any photo goes up: the server would turn them away after the upload, leaving the photos behind.
+    const counts = checked ? qcCountsProblem(pieces, defects) : null;
+    if (counts) return badBox(counts.field, counts.error);
+    const q = !checked && status !== "done" && status !== "reject" ? qtyText(qty.trim()) : "";
+    if (q && !/^\d+$/.test(q)) return badBox("qty", `Enter the ${s.unit === "m" ? "metres" : "pieces"} done as a whole number, like 450.`);
     start(async () => {
       try {
         if (status === "pass" || status === "fail") {
@@ -217,7 +235,7 @@ function StyleCard({ s, companyId, today, canQc, open, posted, onToggle, onPoste
         onPosted();
         router.refresh();
       } catch (e) {
-        setError(e instanceof Error ? e.message : "The photos didn't upload. Try again.");
+        setError(caught(e, "The photos didn't upload. Try again."));
       }
     });
   }
@@ -272,10 +290,12 @@ function StyleCard({ s, companyId, today, canQc, open, posted, onToggle, onPoste
           {checked && (
             <div className="vs-pair">
               <label className="field"><span>Pieces checked</span>
-                <input className="inp num" inputMode="numeric" value={pieces} placeholder={`of ${total}`} onChange={(e) => setPieces(e.target.value)} />
+                <input className="inp num" inputMode="numeric" name="pieces" aria-invalid={bad === "pieces" || undefined} value={pieces} placeholder={`of ${total}`} onChange={(e) => { setPieces(e.target.value); fixed("pieces"); }} />
+                {msg("pieces")}
               </label>
               <label className="field"><span>Defects found</span>
-                <input className="inp num" inputMode="numeric" value={defects} placeholder="0" onChange={(e) => setDefects(e.target.value)} />
+                <input className="inp num" inputMode="numeric" name="defects" aria-invalid={bad === "defects" || undefined} value={defects} placeholder="0" onChange={(e) => { setDefects(e.target.value); fixed("defects"); }} />
+                {msg("defects")}
               </label>
             </div>
           )}
@@ -287,7 +307,8 @@ function StyleCard({ s, companyId, today, canQc, open, posted, onToggle, onPoste
           )}
           {status && status !== "done" && status !== "reject" && !checked && !noDone && (
             <label className="field"><span>{s.unit === "m" ? "Metres" : "Pieces"} done so far</span>
-              <span className="vs-qty"><input className="inp num" inputMode="numeric" value={qty} placeholder="0" onChange={(e) => setQty(e.target.value)} /><small>of {total}</small></span>
+              <span className="vs-qty"><input className="inp num" inputMode="numeric" name="qty" aria-invalid={bad === "qty" || undefined} value={qty} placeholder="0" onChange={(e) => { setQty(e.target.value); fixed("qty"); }} /><small>of {total}</small></span>
+              {msg("qty")}
             </label>
           )}
           {status && (
@@ -298,7 +319,7 @@ function StyleCard({ s, companyId, today, canQc, open, posted, onToggle, onPoste
           )}
           {status && <PhotoPicker files={files} onChange={setFiles} disabled={pending} label={checked ? "Photos of the check" : "Photos from the floor"} />}
 
-          {error && <p className="qs-err" role="alert">{error}</p>}
+          {error && !bad && <p className="qs-err" role="alert">{error}</p>}
           <button type="button" className={`btn primary qs-go ${rejecting ? "danger" : status === "done" || status === "pass" ? "" : "vs-go"}`} disabled={pending || !!missing} onClick={save}>
             {pending ? "Saving…" : missing || (rejecting ? `Reject ${cur?.label ?? "the goods"}` : checked ? `Save ${checkName} pass` : status === "done" ? `Mark ${cur?.label ?? "it"} done` : "Post update")}
           </button>
