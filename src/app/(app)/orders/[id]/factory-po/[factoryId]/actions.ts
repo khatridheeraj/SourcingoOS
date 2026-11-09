@@ -4,6 +4,8 @@ import { revalidatePath } from "next/cache";
 import { canEditOrders, getMe } from "@/lib/auth";
 import { friendly } from "@/lib/errors";
 import { createClient } from "@/lib/supabase/server";
+import { checkPoDetails, checkPoMail, cleanGstin, type PoDetailsField } from "@/lib/po-details";
+import { latinDigits } from "@/lib/digits";
 
 export type PoDetails = {
   orderId: string;
@@ -17,20 +19,17 @@ export type PoDetails = {
   company?: { legalName: string; address: string; shipAddress: string; gstin: string; phone: string; email: string };
 };
 
-const GSTIN = /^[0-9]{2}[A-Z0-9]{13}$/;
-const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
 // Everything printed on one factory PO that isn't the order itself: its number and delivery line, the factory's
 // address and tax details (kept on the factory for every later PO), and, for the owner, our own details.
-export async function savePoDetails(d: PoDetails): Promise<{ error?: string }> {
+export async function savePoDetails(d: PoDetails): Promise<{ error?: string; field?: PoDetailsField }> {
   const me = await getMe();
   if (!canEditOrders(me?.role)) return { error: "Only the orders team can change a factory PO." };
-  const fGstin = d.factory.gstin.replace(/\s+/g, "").toUpperCase();
-  if (fGstin && !GSTIN.test(fGstin)) return { error: "The factory's GSTIN doesn't look right. It has 15 letters and numbers, like 08ABCDE1234F1Z5." };
-  const fEmail = d.factory.email.trim().toLowerCase();
-  if (fEmail && !EMAIL.test(fEmail)) return { error: "The factory's email doesn't look right." };
-  if (d.company && d.company.email.trim() && !EMAIL.test(d.company.email.trim())) return { error: "Our email doesn't look right." };
   if (d.company && me?.role !== "owner") return { error: "Only the owner can change our company details." };
+  // Every box is checked before anything is written, so a wrong "our GSTIN" never leaves the factory's half saved.
+  const bad = checkPoDetails(d.factory, d.company);
+  if (bad) return bad;
+  const fGstin = cleanGstin(d.factory.gstin);
+  const fEmail = d.factory.email.trim().toLowerCase();
 
   const supabase = await createClient();
   if (d.hasPo) {
@@ -40,14 +39,14 @@ export async function savePoDetails(d: PoDetails): Promise<{ error?: string }> {
   const { error: e2 } = await supabase.from("factories").update({
     address: d.factory.address.trim() || null,
     gstin: fGstin || null,
-    phone: d.factory.phone.trim() || null,
+    phone: latinDigits(d.factory.phone).trim() || null,
     email: fEmail || null,
   }).eq("id", d.factoryId);
   if (e2) return { error: friendly(e2) };
   if (d.company) {
     const c = d.company;
     const { error: e3 } = await supabase.rpc("set_company_po_details", {
-      p_legal_name: c.legalName, p_address: c.address, p_ship_address: c.shipAddress, p_gstin: c.gstin.replace(/\s+/g, ""), p_phone: c.phone, p_email: c.email,
+      p_legal_name: c.legalName, p_address: c.address, p_ship_address: c.shipAddress, p_gstin: cleanGstin(c.gstin), p_phone: latinDigits(c.phone).trim(), p_email: c.email,
     });
     if (e3) return { error: friendly(e3) };
   }
@@ -58,11 +57,14 @@ export async function savePoDetails(d: PoDetails): Promise<{ error?: string }> {
 
 // "Email PO to factory": the email goes from the owner's Gmail within the hour, then a follow-up every 2 hours
 // (9 am to 9 pm, Monday to Saturday) until the factory accepts.
-export async function emailPo(orderId: string, factoryId: string, to: string, cc: string): Promise<{ error?: string }> {
+export async function emailPo(orderId: string, factoryId: string, to: string, cc: string): Promise<{ error?: string; field?: "to" | "cc" }> {
   const me = await getMe();
   if (!canEditOrders(me?.role)) return { error: "Only the orders team can email a factory PO." };
+  // Addresses pasted from Gmail ("Ramesh <r@f.com>") or Outlook ("a@x.com; b@y.com;") are cleaned first.
+  const m = checkPoMail(to, cc);
+  if ("field" in m) return m;
   const supabase = await createClient();
-  const { error } = await supabase.rpc("request_po_mail", { p_order: orderId, p_factory: factoryId, p_to: to, p_cc: cc });
+  const { error } = await supabase.rpc("request_po_mail", { p_order: orderId, p_factory: factoryId, p_to: m.to, p_cc: m.cc });
   if (error) return { error: friendly(error) };
   revalidatePath(`/orders/${orderId}/factory-po/${factoryId}`);
   revalidatePath(`/orders/${orderId}`);
