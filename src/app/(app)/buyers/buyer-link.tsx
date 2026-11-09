@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRef, useState, useTransition } from "react";
 import { Icon } from "@/components/nav";
 import { toast } from "@/components/toast";
@@ -11,7 +12,7 @@ function message(name: string, url: string): string {
 
 // Gives a buyer the private link to its live order status, ready to send on WhatsApp or by email.
 // The buyer sees only its own orders: never factories, rates or other buyers.
-export function BuyerLink({ buyerId, name, size = "sm" }: { buyerId: string; name: string; size?: "sm" | "md" }) {
+export function BuyerLink({ buyerId, name, size = "sm", seePage = true }: { buyerId: string; name: string; size?: "sm" | "md"; seePage?: boolean }) {
   const box = useRef<HTMLDialogElement>(null);
   const [url, setUrl] = useState("");
   const [error, setError] = useState("");
@@ -67,6 +68,11 @@ export function BuyerLink({ buyerId, name, size = "sm" }: { buyerId: string; nam
               href={`https://wa.me/?text=${encodeURIComponent(text)}`} target="_blank" rel="noreferrer">WhatsApp</a>
             <button type="button" className="btn" disabled={!url} onClick={copy}>Copy</button>
           </div>
+          {seePage && (
+            <p className="mt-3 text-[13px]">
+              <Link className="link" href={`/preview/buyer/${buyerId}`}>See exactly what {name} will see</Link>
+            </p>
+          )}
           <div className="mt-4 border-t border-[var(--line)] pt-3 text-[12.5px] text-muted">
             {!confirmNew ? (
               <button type="button" className="link" disabled={pending} onClick={() => setConfirmNew(true)}>Link sent to the wrong person? Make a new link</button>

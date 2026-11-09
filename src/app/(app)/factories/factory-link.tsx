@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRef, useState, useTransition } from "react";
 import { Icon } from "@/components/nav";
 import { toast } from "@/components/toast";
@@ -16,7 +17,7 @@ function message(lang: Lang, name: string, url: string): string {
 }
 
 // Sends a factory the link to its own panel on WhatsApp, in Hindi or English. The factory needs no email or password.
-export function FactoryLink({ factoryId, name, phone, size = "sm" }: { factoryId: string; name: string; phone: string | null; size?: "sm" | "md" }) {
+export function FactoryLink({ factoryId, name, phone, size = "sm", seePage = true }: { factoryId: string; name: string; phone: string | null; size?: "sm" | "md"; seePage?: boolean }) {
   const box = useRef<HTMLDialogElement>(null);
   const [url, setUrl] = useState("");
   const [lang, setLang] = useState<Lang>("hi");
@@ -83,6 +84,11 @@ export function FactoryLink({ factoryId, name, phone, size = "sm" }: { factoryId
             <button type="button" className="btn" disabled={!url} onClick={copy}>Copy</button>
           </div>
           {!to && url && <p className="mt-2 text-[12.5px] text-muted">No phone number saved for {name}, so WhatsApp asks which chat to send it to.</p>}
+          {seePage && (
+            <p className="mt-3 text-[13px]">
+              <Link className="link" href={`/preview/factory/${factoryId}`}>See exactly what {name} will see</Link>
+            </p>
+          )}
           <div className="mt-4 border-t border-[var(--line)] pt-3 text-[12.5px] text-muted">
             {!confirmNew ? (
               <button type="button" className="link" disabled={pending} onClick={() => setConfirmNew(true)}>Link sent to the wrong person? Make a new link</button>
