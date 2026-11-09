@@ -77,13 +77,11 @@ begin
   return null;
 end $$;
 
-drop trigger if exists dispatches_close_order on public.dispatches;
-create trigger dispatches_close_order after update of shipped_at, invoiced_at, cancelled_at on public.dispatches
+create or replace trigger dispatches_close_order after update of shipped_at, invoiced_at, cancelled_at on public.dispatches
   for each row when (new.shipped_at is not null or new.cancelled_at is not null)
   execute function public.close_if_shipped_dispatch();
 
-drop trigger if exists qc_checks_close_order on public.qc_checks;
-create trigger qc_checks_close_order after insert or update of result, cancelled_at on public.qc_checks
+create or replace trigger qc_checks_close_order after insert or update of result, cancelled_at on public.qc_checks
   for each row execute function public.close_if_shipped_qc();
 
 -- Orders already fully sent with a passed final QC close now.
