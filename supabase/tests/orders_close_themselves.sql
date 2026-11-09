@@ -102,3 +102,15 @@ do $$ begin
     raise exception 'held emails not screened right: %', (select string_agg(email_id || ':' || status, ',' order by email_id) from public.incoming_pos);
   end if;
 end $$;
+
+-- 5. New held mail is screened when its files are listed: a bill goes to Not a PO, a PO keeps waiting.
+insert into public.incoming_pos (company_id, source, email_id, email_from, email_subject, status, sender_unknown)
+select id, 'email', 'm4', 'ebill@airtel.com', 'Your bill', 'held', true from public.companies
+union all select id, 'email', 'm5', 'new3@buyer.com', 'Styles for winter', 'held', true from public.companies;
+update public.incoming_pos set files = '[{"name":"bill.pdf"}]'::jsonb where email_id = 'm4';
+update public.incoming_pos set files = '[{"name":"Purchase Order 77.pdf"}]'::jsonb where email_id = 'm5';
+do $$ begin
+  if (select string_agg(email_id || ':' || status, ',' order by email_id) from public.incoming_pos where email_id in ('m4', 'm5')) <> 'm4:not_po,m5:held' then
+    raise exception 'new held mail not screened right';
+  end if;
+end $$;
