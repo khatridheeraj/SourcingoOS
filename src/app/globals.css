@@ -751,6 +751,14 @@ main:focus { outline: none; }
   .bqc-photos img { display: block; width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 8px; border: 1px solid var(--line); }
 
   /* Factory panel: progress per style on a released PO, and the step-done sheet. */
+  /* The factory PO on top of its order in the factory panel: open it, accept it. */
+  .fpo { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; margin-bottom: 14px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-2); }
+  .fpo.wait { border-color: var(--warn); }
+  .fpo-id { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; flex: 1; min-width: 0; font-size: 13px; color: var(--muted); }
+  .fpo-id b { font-size: 14px; font-weight: 600; color: var(--foreground); }
+  .fpo-ok { color: var(--ok); font-weight: 600; }
+  .fpo-acts { display: flex; gap: 8px; }
+  .fpo-err { flex-basis: 100%; }
   .fprog { display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-2); }
   .fprog ul { display: flex; flex-direction: column; }
   .fprog-row { display: grid; grid-template-columns: 200px minmax(0, 1fr) auto; gap: 8px 16px; align-items: center; padding: 10px 0; border-top: 1px solid var(--line); }
@@ -996,6 +1004,8 @@ main:focus { outline: none; }
     .bord-prog { padding: 0 16px 12px; }
     .bord-sent { padding: 0 16px 10px; }
     .bship { margin: 0 16px 12px; }
+    .fpo-acts { width: 100%; }
+    .fpo-acts .btn { flex: 1; min-height: 44px; }
     .bstyle summary { grid-template-columns: 52px minmax(0, 1fr) 16px; gap: 10px 12px; padding: 12px 16px; }
     .bstyle summary .bstyle-prog, .bstyle summary .chip { grid-column: 1 / -1; }
     .bstyle summary .chip { justify-self: start; }

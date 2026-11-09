@@ -5,19 +5,24 @@ import { PHOTO_BUCKET } from "@/lib/storage";
 import { FactoryOrder, type PanelOrder, type StyleInfo } from "./factory-order";
 import type { FactoryUpdate } from "./step-update";
 import type { FactoryRound } from "./factory-samples";
+import type { PanelPo } from "./factory-po";
 import { LANG_COOKIE, langOf, words } from "./i18n";
 
 // The factory's panel. `preview` is a factory's id when the orders team is looking at it from inside the app:
 // the same panel, read for that factory, with nothing to press.
 export async function FactoryView({ preview }: { preview?: string }) {
   const supabase = await createClient(preview ? { "x-preview-factory": preview } : undefined);
-  const [me, { data, error }, { data: ups }, { data: fileRows }, { data: detailRows }, { data: sampleRows }] = await Promise.all([
+  const [me, { data, error }, { data: ups }, { data: fileRows }, { data: detailRows }, { data: sampleRows }, { data: poRows }] = await Promise.all([
     getMe(), supabase.rpc("factory_tna"), supabase.rpc("factory_step_updates"),
     // Each style's tech pack, cutting program, fabric and sizes, as the orders team entered them.
     supabase.rpc("factory_line_files"), supabase.rpc("factory_line_details"),
     // Every sample round of its styles, with Sourcingo's and the buyer's answers.
     supabase.rpc("factory_samples"),
+    // The factory POs Sourcingo has sent, to open and accept.
+    supabase.rpc("factory_po_list"),
   ]);
+  const pos = (poRows ?? []) as PanelPo[];
+  const toAccept = pos.filter((p) => !p.accepted_at && (data as { orders?: { order_id: string }[] } | null)?.orders?.some((o) => o.order_id === p.order_id)).length;
   const files = (fileRows ?? []) as { line_id: string; kind: string; path: string; file_name: string | null }[];
   const rawRounds = (sampleRows ?? []) as (Omit<FactoryRound, "photos" | "answerPhotos"> & { photos: string[]; answer_photos: string[] })[];
   const paths = [...files.map((f) => f.path), ...rawRounds.flatMap((r) => [...r.photos, ...r.answer_photos])];
@@ -62,7 +67,8 @@ export async function FactoryView({ preview }: { preview?: string }) {
               {w.needDates(waiting.length)}
             </p>
           )}
-          {panel.orders.map((o) => <FactoryOrder key={o.order_id} order={o} now={now} companyId={me?.companyId ?? ""} updates={updates} rounds={rounds.filter((r) => r.order_id === o.order_id)} lang={lang} info={info} />)}
+          {toAccept > 0 && <p className="text-[13px] font-semibold text-warn">{w.posToAccept(toAccept)}</p>}
+          {panel.orders.map((o) => <FactoryOrder key={o.order_id} order={o} now={now} companyId={me?.companyId ?? ""} updates={updates} rounds={rounds.filter((r) => r.order_id === o.order_id)} lang={lang} info={info} po={pos.find((p) => p.order_id === o.order_id)} />)}
         </>
       )}
     </>

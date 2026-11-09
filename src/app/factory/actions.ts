@@ -47,3 +47,14 @@ export async function sendSample(lineId: string, stage: string, note: string, ph
   revalidatePath("/factory");
   return {};
 }
+
+// The factory accepts its PO in the panel, the same as Accept on the PO's emailed link. Reminders stop.
+export async function acceptPoInPanel(orderId: string): Promise<{ error?: string }> {
+  const me = await getMe();
+  if (me?.role !== "factory") return { error: "This login is not set up for a factory." };
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("factory_accept_po", { p_order: orderId });
+  if (error) return { error: friendly(error) };
+  revalidatePath("/factory");
+  return {};
+}
