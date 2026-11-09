@@ -13,6 +13,7 @@ import {
 } from "../dispatch-actions";
 import { closeShort } from "../actions";
 import { latinDigits } from "@/lib/digits";
+import { belowCost } from "@/lib/goods";
 
 // Each style's pieces across the order's dispatches: ordered, bought, billed (invoiced) and shipped.
 // unit: "m" for a fabric style (bought by the metre), "pcs" for a garment.
@@ -216,7 +217,13 @@ export function OrderDispatch({ orderId, orderNo, companyId, open, owner, factor
               <Copies d={d} pending={pending} onAttach={(kind, file) => attach(d.id, kind, file)} />
 
               {d.invoicedAt && (
-                <p className="mt-2 text-[13px]">Invoice <b>{d.invoiceNo}</b>{shared.length > 0 && ` (one invoice with ${shared.map((i) => `part ${i + 1}`).join(" and ")})`}{d.invoiceTaxable != null && `: ${money(Math.round(d.invoiceTaxable + (d.invoiceGst ?? 0)))} with GST${shared.length ? " for this part" : ""}`}, made {dayTimeAt(new Date(d.invoicedAt))}.</p>
+                <p className="mt-2 text-[13px]">Invoice <b>{d.invoiceNo}</b>{shared.length > 0 && ` (one invoice with ${shared.map((i) => `part ${i + 1}`).join(" and ")})`}{d.invoiceTaxable != null && `: ${money(Math.round(d.invoiceTaxable + (d.invoiceGst ?? 0)))} with GST${shared.length ? " for this part" : ""}`}, made {dayTimeAt(new Date(d.invoicedAt))}.
+                  {belowCost(d.purchaseTaxable, d.invoiceTaxable) > 0 && !shared.length && (
+                    <span className="mt-1 block font-semibold text-bad" role="status">
+                      {money(belowCost(d.purchaseTaxable, d.invoiceTaxable))} below the factory bill of {money(Math.round(d.purchaseTaxable))} before GST. Check the amount and the invoice number.
+                    </span>
+                  )}
+                </p>
               )}
               {d.ewayNo && (
                 <p className="text-[13px]">E-way bill <b className="num">{d.ewayNo}</b>{d.ewayDate && ` of ${day(d.ewayDate)}`}{d.ewayValidUntil && `, valid till ${day(d.ewayValidUntil)}`}{d.ewayFromTally && ", from Tally"}. {d.ewayUrl && <a className="link" href={d.ewayUrl} target="_blank" rel="noreferrer">Open</a>}</p>
@@ -420,7 +427,9 @@ function InvoiceStep({ d, unit, bills, buyerInTally, today, late, pending, onSav
   const auto = buyerInTally && !!sale && sale.taxable > 0;
   const [manual, setManual] = useState(false);
   const [bad, setBad] = useState<Bad>(null);
-  const put = (k: keyof typeof v, x: string) => { setV({ ...v, [k]: k === "taxable" ? amountText(x) : x }); setBad((b) => (b?.k === k ? null : b)); };
+  // An amount below the factory bill is saved only after a second tap.
+  const [lossOk, setLossOk] = useState(false);
+  const put = (k: keyof typeof v, x: string) => { setV({ ...v, [k]: k === "taxable" ? amountText(x) : x }); setBad((b) => (b?.k === k ? null : b)); if (k === "taxable") setLossOk(false); };
   function submit(e: React.FormEvent) {
     e.preventDefault();
     const form = e.currentTarget as HTMLFormElement;
@@ -429,6 +438,10 @@ function InvoiceStep({ d, unit, bills, buyerInTally, today, late, pending, onSav
     if (!isDate(v.invoice_date)) return no("invoice_date", "Enter the invoice date.");
     if (v.invoice_date > today) return no("invoice_date", "The invoice date can\u2019t be after today.");
     if (!(n(v.taxable) > 0)) return no("taxable", "Enter the invoice value before GST.");
+    if (belowCost(d.purchaseTaxable, n(v.taxable)) > 0 && !lossOk) {
+      setLossOk(true);
+      return no("taxable", `This is ${money(belowCost(d.purchaseTaxable, n(v.taxable)))} below the factory bill of ${money(Math.round(d.purchaseTaxable))}. Check it, then tap Save again if it is right.`);
+    }
     setBad(null);
     onSave(v);
   }

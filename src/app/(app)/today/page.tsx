@@ -7,7 +7,7 @@ import { day, dayNear, daysBetween, money, riskLate, dueDate, nowMs, planDueAt, 
 import { NO_COMPANY } from "@/lib/names";
 import { poWaitDays, PO_WAIT_DAYS } from "@/lib/order-checks";
 import { forecast, paceLookup } from "@/lib/progress";
-import { HOLD_HOURS, heldHours, heldText } from "@/lib/goods";
+import { belowCost, HOLD_HOURS, heldHours, heldText } from "@/lib/goods";
 import { createClient } from "@/lib/supabase/server";
 import { loadShipProgress, orderShip, partText } from "@/lib/shipments";
 import { Icon } from "@/components/nav";
@@ -152,7 +152,7 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
     : none;
   // Dispatches of every order, shipped ones too: an order marked shipped still waits for the buyer's GRN.
   const dispP = team
-    ? fetchAll((a, z) => supabase.from("dispatches").select("id, order_id, purchase_bill_no, purchased_at, invoice_due_at, invoiced_at, eway_at, shipped_at, grn_due_on, grn_at")
+    ? fetchAll((a, z) => supabase.from("dispatches").select("id, order_id, purchase_bill_no, purchase_taxable, invoice_no, invoice_taxable, purchased_at, invoice_due_at, invoiced_at, eway_at, shipped_at, grn_due_on, grn_at")
         .eq("company_id", companyId).is("cancelled_at", null).is("grn_at", null).order("id").range(a, z))
     : none;
   // Orders that shipped long ago but were never closed: 30+ days past the ship date and packed or further.
@@ -638,6 +638,13 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
     const o = orderOf.get(d.order_id);
     if (!o) continue;
     const item = { href: `/orders/${o.id}#dispatch`, code: o.order_no, title: `${buyerOf.get(o.buyer_id) ?? ""} · bill ${d.purchase_bill_no}` };
+    // Invoiced for less than the factory charged us: a loss, or more likely a wrong amount or invoice number.
+    const under = belowCost(d.purchase_taxable, d.invoice_taxable);
+    if (d.invoiced_at && under > 0) {
+      now_.push({ ...item, key: `loss:${d.id}`, sev: "bad",
+        detail: `Invoice ${d.invoice_no ?? ""} is ${money(Math.round(Number(d.invoice_taxable)))} before GST, but the factory bill is ${money(Math.round(Number(d.purchase_taxable)))}. Check the invoice amount and number.`,
+        chip: { text: `${money(under)} below cost`, cls: "bad" }, action: "Check invoice", sort: d.invoiced_at });
+    }
     if (!d.invoiced_at) {
       const late = Date.parse(d.invoice_due_at) < now;
       (late ? now_ : soon).push({ ...item, key: `inv:${d.id}`, sev: late ? "bad" : "warn",
