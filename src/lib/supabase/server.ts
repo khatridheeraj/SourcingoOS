@@ -1,12 +1,14 @@
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 
-export async function createClient() {
+// `headers` adds request headers, such as the one that asks the read functions for a buyer's or factory's preview.
+export async function createClient(headers?: Record<string, string>) {
   const cookieStore = await cookies();
   return createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
     {
+      ...(headers ? { global: { headers } } : {}),
       cookies: {
         getAll: () => cookieStore.getAll(),
         setAll(cookiesToSet) {

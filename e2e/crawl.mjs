@@ -19,7 +19,9 @@ const roles = (arg("--roles") ?? "owner,manager,merch,quality,accounts,factory,b
 if (shots) fs.mkdirSync(shots, { recursive: true });
 
 const STAFF = ["/today", "/", "/?status=late", "/orders/new", "/inquiries", "/inquiries/new", "/pos", "/goods", "/updates", "/samples", "/brief",
-  "/buyers", "/factories", "/styles", "/reports", "/payments", "/payables", "/tally", "/team", "/activity", "/feedback"];
+  "/buyers", "/factories", "/styles", "/reports", "/payments", "/payables", "/tally", "/team", "/activity", "/feedback",
+  // "See what they see": a factory's panel as the team previews it (buyer previews are followed from the Buyers list).
+  "/preview/factory/20000000-0000-0000-0000-000000000003"];
 const VIEWS = quick ? [["phone", false]] : [["phone", false], ["desk", false], ["phone", true], ["desk", true]];
 
 const browser = await pw.chromium.launch({ executablePath: process.env.E2E_CHROMIUM || undefined });
@@ -32,7 +34,7 @@ async function detailLinks(page) {
   const keep = new Set();
   for (const h of hrefs) {
     if (!h || !h.startsWith("/")) continue;
-    const m = /^\/(orders|inquiries|pos|payments\/(cheques|invoices))\/[0-9a-f-]{36}(\/[a-z-]+)?$/.exec(h.split("#")[0].split("?")[0]);
+    const m = /^\/(orders|inquiries|pos|payments\/(cheques|invoices)|preview\/buyer)\/[0-9a-f-]{36}(\/[a-z-]+)?$/.exec(h.split("#")[0].split("?")[0]);
     if (m) keep.add(h.split("#")[0]);
   }
   return [...keep];
