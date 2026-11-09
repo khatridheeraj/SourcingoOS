@@ -83,6 +83,35 @@ async function readIncomingPo(db: SupabaseClient, id: string): Promise<void> {
   }
 }
 
+// An email from an unknown sender waits for the owner only when it could be a PO. One that plainly isn't (a phone
+// bill, tax mail, a job application) is set aside as "Not a PO" straight away, by the same free test known senders'
+// emails get (Dheeraj, 25 Oct 2026: obvious non-PO emails are set aside without asking). Never uses the AI key.
+async function screenHeld(db: SupabaseClient, id: string): Promise<void> {
+  try {
+    const { data: row } = await db.from("incoming_pos")
+      .select("company_id, files, email_from, email_subject, email_body, status").eq("id", id).single();
+    if (!row || row.status !== "held") return;
+    const files: PoFile[] = [];
+    for (const f of (row.files ?? []) as StoredFile[]) {
+      const { data } = await db.storage.from(PO_BUCKET).download(f.path);
+      if (!data) return; // Can't look inside: leave it for the owner.
+      files.push({ name: f.name, type: f.type, bytes: new Uint8Array(await data.arrayBuffer()) });
+    }
+    const [{ data: buyers }, { data: names }] = await Promise.all([
+      db.from("buyers").select("id, code").eq("company_id", row.company_id).eq("active", true),
+      db.from("buyer_names").select("buyer_id, real_name").eq("company_id", row.company_id),
+    ]);
+    const nameOf = new Map((names ?? []).map((n) => [n.buyer_id as string, n.real_name as string]));
+    const pos = await readPos(null, files, { from: row.email_from, subject: row.email_subject, body: row.email_body },
+      (buyers ?? []).map((b) => ({ code: b.code as string, name: nameOf.get(b.id as string) ?? null })));
+    if (pos.length === 0) {
+      await db.from("incoming_pos").update({ status: "not_po", closed_at: new Date().toISOString() }).eq("id", id).eq("status", "held");
+    }
+  } catch {
+    // Anything unexpected: it stays held for the owner, as before.
+  }
+}
+
 // Keeps the reading going after the answer is sent.
 function inBackground(work: Promise<void>) {
   const rt = (globalThis as { EdgeRuntime?: { waitUntil(p: Promise<unknown>): void } }).EdgeRuntime;
@@ -127,6 +156,8 @@ async function ready(db: SupabaseClient, body: Record<string, unknown>) {
   if (row.status === "receiving") {
     await db.from("incoming_pos").update({ status: "reading" }).eq("id", row.id);
     inBackground(readIncomingPo(db, row.id));
+  } else if (row.status === "held") {
+    inBackground(screenHeld(db, row.id));
   }
   return json({ ok: true });
 }

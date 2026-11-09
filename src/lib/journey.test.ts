@@ -113,3 +113,24 @@ test("Quality posts production from the floor, and confirms the factory's own up
   assert.equal(j({ role: "quality", pendingUpdates: 2 }).next.action.kind, "review");
   assert.equal(j({ pendingUpdates: 2 }).next.action.kind, "review");
 });
+
+test("goods all sent without a final QC: Quality records it, the team waits, the owner may close", () => {
+  const sent = { dispatch: { count: 1, uninvoiced: 0, unshipped: 0, billedAll: true }, steps: steps(3, "2026-10-10"), due: "2026-10-20" };
+  const team = j(sent);
+  assert.equal(team.stage, "ship");
+  assert.equal(team.next.action.kind, "none");
+  assert.equal(team.next.who, "Quality");
+  assert.equal(j({ ...sent, role: "owner" }).next.action.kind, "ship");
+  // Quality doesn't see Dispatch; the pieces shipped tell it the goods went.
+  const q = j({ ...sent, role: "quality", dispatch: null, shipped: { any: true, all: true } });
+  assert.equal(q.next.action.kind, "qc");
+  assert.equal(q.stage, "ship");
+});
+test("goods all sent with the final QC passed: Mark shipped stays as the fallback", () => {
+  const r = j({ dispatch: { count: 1, uninvoiced: 0, unshipped: 0, billedAll: true }, finalPassed: true });
+  assert.equal(r.next.action.kind, "ship");
+});
+test("an open order whose every piece went out is not late on the clock", () => {
+  assert.deepEqual(shipClock("2026-10-01", today, "open", true), { n: "✓", unit: "Sent", tone: "ok" });
+  assert.equal(shipClock("2026-10-01", today, "open", false).tone, "bad");
+});
