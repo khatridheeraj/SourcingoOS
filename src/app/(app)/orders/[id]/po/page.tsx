@@ -20,7 +20,7 @@ export default async function OrderPoPage({ params }: PageProps<"/orders/[id]/po
   const [{ data: o }, { data: co }, { data: prices }] = await Promise.all([
     supabase.from("orders").select("id, order_no, buyer_id, buyer_po, po_date, ship_date, buyer_terms, created_at, order_lines(id, style, description, colour, qty, fabric, sizes, position, product)")
       .eq("id", id).is("order_lines.removed_at", null).maybeSingle(),
-    supabase.from("companies").select("name, address, gstin").eq("id", me.companyId).maybeSingle(),
+    supabase.from("companies").select("name, legal_name, address, gstin, phone, email").eq("id", me.companyId).maybeSingle(),
     supabase.rpc("line_prices", { p_orders: [id] }),
   ]);
   if (!o) notFound();
@@ -34,6 +34,10 @@ export default async function OrderPoPage({ params }: PageProps<"/orders/[id]/po
   const total = qtyTotal(rows);
   const priced = rows.length > 0 && rows.every((r) => r.rate != null);
   const value = rows.reduce((t, r) => t + r.qty * (r.rate ?? 0), 0);
+  // The registered name (as on the factory PO and our GST invoices), not the short name the app shows.
+  const us = co?.legal_name || co?.name || "";
+  const fabric = rows.filter((r) => r.product === "fabric").length;
+  const per = fabric === 0 ? "per piece" : fabric === rows.length ? "per metre" : "per piece (per metre for fabric)";
 
   return (
     <>
@@ -65,9 +69,10 @@ export default async function OrderPoPage({ params }: PageProps<"/orders/[id]/po
         <section className="challan-parties">
           <div>
             <span className="challan-label">Supplier</span>
-            <b>{co?.name}</b>
+            <b>{us}</b>
             {co?.address && <p className="whitespace-pre-line">{co.address}</p>}
             {co?.gstin && <p>GSTIN {co.gstin}</p>}
+            {(co?.phone || co?.email) && <p>{[co.phone, co.email].filter(Boolean).join(" · ")}</p>}
           </div>
           <div>
             <span className="challan-label">Order</span>
@@ -109,7 +114,7 @@ export default async function OrderPoPage({ params }: PageProps<"/orders/[id]/po
         <div>
           <span className="challan-label">Terms</span>
           <ol className="po-terms">
-            <li>Rates are per piece, before GST. GST is charged as applicable on the invoice.</li>
+            <li>Rates are {per}, before GST. GST is charged as applicable on the invoice.</li>
             {b?.credit_days != null && <li>Payment {b.credit_days} days from the invoice date.</li>}
             {o.buyer_terms && <li className="whitespace-pre-line">{o.buyer_terms}</li>}
             <li>Quote PO no. {o.buyer_po} on every communication about this order.</li>
@@ -123,7 +128,7 @@ export default async function OrderPoPage({ params }: PageProps<"/orders/[id]/po
             <small>Name, signature and stamp · Date</small>
           </div>
           <div>
-            <span>Accepted for {co?.name}</span>
+            <span>Accepted for {us}</span>
             <i />
             <small>Authorised signatory</small>
           </div>

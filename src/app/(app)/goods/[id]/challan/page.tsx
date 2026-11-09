@@ -22,7 +22,7 @@ export default async function ChallanPage({ params }: PageProps<"/goods/[id]/cha
   const [{ data: o }, { data: dl }, { data: co }] = await Promise.all([
     supabase.from("orders").select("id, order_no, buyer_id, buyer_po, po_date, order_lines(id, style, description, colour, qty, sizes, product)").eq("id", d.order_id).maybeSingle(),
     supabase.from("dispatch_lines").select("line_id, qty").eq("dispatch_id", id),
-    supabase.from("companies").select("name, address, gstin").eq("id", me.companyId).maybeSingle(),
+    supabase.from("companies").select("name, legal_name, address, gstin").eq("id", me.companyId).maybeSingle(),
   ]);
   if (!o) notFound();
   const [{ data: b }, { data: bn }] = await Promise.all([
@@ -51,7 +51,7 @@ export default async function ChallanPage({ params }: PageProps<"/goods/[id]/cha
       <article className="challan">
         <header className="challan-top">
           <div>
-            <b className="challan-co">{co?.name}</b>
+            <b className="challan-co">{co?.legal_name || co?.name}</b>
             {co?.address ? <p className="whitespace-pre-line">{co.address}</p> : <p className="text-warn no-print">{owner ? "Add our address and GSTIN once." : "The owner adds our address and GSTIN once."}</p>}
             {co?.gstin && <p>GSTIN {co.gstin}</p>}
             {owner && <AddressFix dispatchId={d.id} kind="company" id={me.companyId} address={co?.address ?? ""} gstin={co?.gstin ?? ""} />}
@@ -123,7 +123,7 @@ export default async function ChallanPage({ params }: PageProps<"/goods/[id]/cha
             <small>Receiver&apos;s name, signature and stamp · Date</small>
           </div>
           <div>
-            <span>For {co?.name}</span>
+            <span>For {co?.legal_name || co?.name}</span>
             <i />
             <small>Authorised signatory</small>
           </div>

@@ -69,7 +69,7 @@ export function FactoryList({ factories, openStyles }: { factories: Factory[]; o
             <label className="field"><span>Name <i>*</i></span><input className="inp" value={editing.name} onChange={set("name")} required autoFocus {...at("name")} />{err("name")}</label>
             <label className="field"><span>City</span><input className="inp" value={editing.city} onChange={set("city")} /></label>
             <label className="field"><span>Contact person</span><input className="inp" value={editing.contact_name} onChange={set("contact_name")} /></label>
-            <label className="field"><span>Phone</span><input className="inp" type="tel" value={editing.phone} onChange={set("phone")} /></label>
+            <label className="field"><span>Phone</span><input className="inp" type="tel" value={editing.phone} onChange={set("phone")} placeholder="98290 12345" {...at("phone")} />{err("phone")}</label>
             <label className="field"><span>Email</span><input className="inp" type="email" value={editing.email} onChange={set("email")} {...at("email")} />{err("email")}</label>
             <label className="field"><span>GSTIN</span><input className="inp code" maxLength={24} value={editing.gstin} onChange={set("gstin")} placeholder="08ABCDE1234F1Z5" autoCapitalize="characters" {...at("gstin")} />{err("gstin")}</label>
             <label className="field sm:col-span-2"><span>Address (printed on its POs)</span><textarea className="inp" rows={2} maxLength={500} value={editing.address} onChange={set("address")} /></label>
