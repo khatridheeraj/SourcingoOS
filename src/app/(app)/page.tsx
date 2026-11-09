@@ -51,7 +51,7 @@ export default async function OrdersPage({ searchParams }: PageProps<"/">) {
     fetchAll(page),
     loadBuyers(),
     loadFactories(),
-    fetchAll((a, z) => supabase.from("orders").select("status, ship_date, revised_ship_date").eq("company_id", companyId).order("id").range(a, z)),
+    fetchAll((a, z) => supabase.from("orders").select("id, status, ship_date, revised_ship_date").eq("company_id", companyId).order("id").range(a, z)),
     fetchAll((a, z) => supabase.from("qc_checks").select("line_id, result").eq("company_id", companyId).in("kind", SHIP_QC).is("cancelled_at", null)
       .order("checked_on", { ascending: false }).order("created_at", { ascending: false }).order("id").range(a, z)),
     loadPace(),
@@ -91,9 +91,12 @@ export default async function OrdersPage({ searchParams }: PageProps<"/">) {
   const buyerById = new Map(buyers.map((b) => [b.id, b]));
   const factoryById = new Map(factories.map((f) => [f.id, f]));
   const today = todayIST();
-  const isLate = (o: { status: string; ship_date: string | null; revised_ship_date: string | null }) => {
+  // Late: open and past its ship date with goods still to send. An order whose every piece went out isn't late.
+  const isLate = (o: { id: string; status: string; ship_date: string | null; revised_ship_date: string | null }) => {
     const due = dueDate(o);
-    return o.status === "open" && !!due && due < today;
+    if (o.status !== "open" || !due || due >= today) return false;
+    const sh = orderShip(shipRows, o.id);
+    return !(sh.shipped > 0 && sh.toShip === 0);
   };
   const prices = canEditOrders(me?.role);
   // Rates come separately: the database gives them only to the orders team and Accounts.
@@ -133,6 +136,7 @@ export default async function OrdersPage({ searchParams }: PageProps<"/">) {
         count: ds.length, uninvoiced: ds.filter((d) => !d.invoiced_at).length, unshipped: ds.filter((d) => !d.shipped_at).length,
         billedAll: !!o.closed_short_at || lines.every((l) => (shipRows.find((r) => r.line_id === l.id)?.billed ?? 0) >= l.qty),
       } : null,
+      shipped: (() => { const sh = orderShip(shipRows, o.id); return { any: sh.shipped > 0, all: sh.shipped > 0 && sh.toShip === 0 }; })(),
       due: dueDate(o),
       riskDays: styleProgress(lines.map((l) => l.id), steps ?? [], dueDate(o), today, paceLookup(pace, lines, factoryName),
         (id) => (fpos as { order_id: string; factory_id: string; released_at: string | null }[]).some((p) => p.order_id === o.id && p.factory_id === lines.find((l) => l.id === id)?.factory_id && !!p.released_at)).riskDays,
@@ -256,7 +260,7 @@ export default async function OrdersPage({ searchParams }: PageProps<"/">) {
                 {col.length === 0 ? <p className="board-empty">Nothing here</p> : col.map((r) => (
                   <Link key={r.id} href={`/orders/${r.id}`} className={`ocard tone-${r.journey!.next.tone}`}>
                     <span className="ocard-top"><span className="code">{r.order_no}</span>
-                      <ShipClock c={shipClock(r.due, today, r.status)} size="sm" /></span>
+                      <ShipClock c={shipClock(r.due, today, r.status, !!r.ship && r.ship.shipped > 0 && r.ship.toShip === 0)} size="sm" /></span>
                     <b className="ocard-buyer">{r.buyer}</b>
                     <span className="ocard-sub">PO {r.buyer_po} · {r.qtyText}{r.value != null ? ` · ${moneyShort(r.value)}` : ""}</span>
                     <span className="ocard-next">{nextText(r.journey!)}</span>

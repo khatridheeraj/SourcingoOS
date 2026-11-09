@@ -174,6 +174,10 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
       ])
     : [{ data: [] }, { data: [] }, { data: [] }, { data: [] }];
   const shipOf = (o: { id: string }) => orderShip(shipRows ?? [], o.id);
+  // Goods already went out: production steps and the ship date are history now, so they don't raise alarms.
+  const went = (o: { id: string }) => shipOf(o).shipped > 0;
+  // Every piece has gone: only the final QC record (or closing) is left.
+  const allGone = (o: { id: string }) => { const sh = shipOf(o); return sh.shipped > 0 && sh.toShip === 0; };
 
   const buyerOf = new Map(buyers.map((b) => [b.id, buyerName(b)]));
   const factoryName = new Map(factories.map((f) => [f.id, f.name]));
@@ -247,7 +251,7 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
   const pastDue = new Set<string>();
   for (const o of team ? active : []) {
     const due = dueDate(o);
-    if (!due || due >= today || stageReached(o.stage, "packed")) continue;
+    if (!due || due >= today || stageReached(o.stage, "packed") || went(o)) continue;
     pastDue.add(o.id);
     now_.push({ key: `date:${o.id}`, href: `/orders/${o.id}#ship`, ...base(o), sev: "bad",
       detail: `Was due ${dm(due)}. Agree a new ship date with the buyer and the factory, and say why it moved.`,
@@ -367,7 +371,7 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
   for (const s of live) if (!s.done_on && s.planned_on && s.planned_on < today && (!quality || qcOpen(s))) overdueBy.set(s.order_id, [...(overdueBy.get(s.order_id) ?? []), s]);
   for (const o of active) {
     const late = overdueBy.get(o.id);
-    if (!late || pastDue.has(o.id)) continue;
+    if (!late || pastDue.has(o.id) || went(o)) continue;
     // Targets past on a plan that isn't locked yet: the Start production line above covers them.
     if (team && !releasedFor(o)) continue;
     const due = dueDate(o);
@@ -487,7 +491,7 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
   for (const o of active) {
     const due = dueDate(o);
     const notPassed = (o.order_lines ?? []).filter((l) => latest(l.id, SHIP_QC)?.result !== "pass");
-    if (!due || due < today || due > addDays(today, 14) || !notPassed.length) continue;
+    if (!due || due < today || due > addDays(today, 14) || !notPassed.length || went(o)) continue;
     const chip = when(due, today);
     soon.push({ key: `ship:${o.id}`, href: `/orders/${o.id}#qc`, sev: chip.cls, ...base(o),
       detail: `Ships ${dm(due)} · final QC not passed for ${notPassed.length === (o.order_lines ?? []).length ? "any style" : notPassed.map((l) => l.style).join(", ")}`,
@@ -593,10 +597,23 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
 
   // Orders sent in parts: the rest still to send (late once the ship date has passed), and orders whose every
   // piece has shipped but which are still open.
-  for (const o of team ? open : []) {
+  for (const o of open) {
     const sh = shipOf(o);
     const due = dueDate(o);
     const href = `/orders/${o.id}#dispatch`;
+    // Everything went but the final QC isn't on record: the order closes by itself once Quality records it.
+    const qcMissing = sh.shipped > 0 && sh.toShip === 0 && !(o.order_lines ?? []).every((l) => latest(l.id, SHIP_QC)?.result === "pass");
+    if (qcMissing) {
+      const unit = unitOfAll(o.order_lines ?? []);
+      if (team) waiting.push({ key: `sentqc:${o.id}`, href: `/orders/${o.id}#qc`, sev: "", ...base(o),
+        detail: `All ${qty(sh.ordered)} ${unit} went out. Once Quality records the final QC, the order closes by itself.`,
+        chip: { text: "Waiting on Quality", cls: "" }, action: "See QC", sort: due ?? "" });
+      else if (quality) now_.push({ key: `sentqc:${o.id}`, href: `/orders/${o.id}#qc`, sev: "warn", ...base(o),
+        detail: `All ${qty(sh.ordered)} ${unit} went out with no final QC on record. Record it and the order closes.`,
+        chip: { text: "Final QC missing", cls: "warn" }, action: "Record QC", qc: { orderId: o.id, kind: "final" }, sort: due ?? "" });
+      continue;
+    }
+    if (!team) continue;
     if (sh.part) {
       const late = !!due && due < today;
       (late ? now_ : soon).push({ key: `part:${o.id}`, href, sev: late ? "bad" : "warn", ...base(o),
@@ -689,7 +706,7 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
   const qs = (t: string) => `/today?${new URLSearchParams({ ...(sp.who ? { who: String(sp.who) } : {}), tab: t })}`;
 
   // The day in numbers, for the header line.
-  const late = active.filter((o) => { const d = dueDate(o); return !!d && d < today; });
+  const late = active.filter((o) => { const d = dueDate(o); return !!d && d < today && !allGone(o); });
   const shipSoon = active.filter((o) => { const d = dueDate(o); return !!d && d >= today && d <= addDays(today, 14); });
   const allLines = open.flatMap((o) => o.order_lines ?? []);
   const book = allLines.reduce((s, l) => s + l.qty * Number(priceOf.get(l.id)?.buyer_rate ?? 0), 0);

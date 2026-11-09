@@ -47,6 +47,8 @@ export type JourneyInput = {
   pendingUpdates: number;
   dispatch: { count: number; uninvoiced: number; unshipped: number; billedAll: boolean } | null;
   shipBlocker?: string | null;
+  // Pieces gone out, from ship_progress (every staff role sees it, unlike Dispatch): any at all, and every piece.
+  shipped?: { any: boolean; all: boolean };
   // The date the order ships by: the new ship date when it moved, else the buyer's.
   due?: string | null;
   // Days the latest style will likely miss the ship date by (late steps push later ones back). When it is known
@@ -142,7 +144,7 @@ function route(j: JourneyInput): Journey {
 
   // Goods already went out (old orders, part shipments): what's left is shipping the rest or closing short,
   // not chasing production steps or a final QC nobody will record now.
-  const sent = !!j.dispatch && j.dispatch.count - j.dispatch.unshipped > 0;
+  const sent = (!!j.dispatch && j.dispatch.count - j.dispatch.unshipped > 0) || !!j.shipped?.any;
 
   // 4. Production, with samples and factory updates first when they are waiting.
   if (!j.packedAll && !sent) {
@@ -181,6 +183,21 @@ function route(j: JourneyInput): Journey {
     } : { title: "Final QC due", detail: "Packed. Quality records the final QC for each style before it ships.", action: { kind: "qc" }, label: "See QC", tone: "warn", who: "Quality" } };
   }
 
+  // Every part billed and sent, but the final QC isn't on record. The order closes by itself once Quality records
+  // it (the database does that), so the team waits instead of being offered a "Mark shipped" it would refuse.
+  // The owner may still close it without the record.
+  const dd = j.dispatch;
+  const allSent = dd ? dd.count > 0 && dd.uninvoiced === 0 && dd.unshipped === 0 && dd.billedAll : !!j.shipped?.all;
+  if (allSent && !j.finalPassed) {
+    if (owner) {
+      return { ...base, stage: "ship", next: { title: "Sent, with no final QC on record", detail: "Every part is billed and sent. Once Quality records the final QC, the order closes by itself. Or close it now as the owner.", action: { kind: "ship" }, label: "Mark shipped", tone: "warn" } };
+    }
+    if (qcRole) {
+      return { ...base, stage: "ship", next: { title: "Record the final QC", detail: "The goods have gone out with no final QC on record. Record it for each style and the order closes by itself.", action: { kind: "qc" }, label: "Record QC", tone: "warn" } };
+    }
+    return { ...base, stage: "ship", next: wait("Sent. Waiting for the final QC", "Every part is billed and sent. Once Quality records the final QC, the order closes by itself.", "Quality") };
+  }
+
   // 6. Dispatch: factory bill, our invoice, transport, then shipped.
   if (!team) return { ...base, stage: "ship", next: wait("Ready to ship", "Final QC passed. The orders team handles the bills and transport.") };
   const d = j.dispatch;
@@ -195,7 +212,7 @@ function route(j: JourneyInput): Journey {
   }
   return { ...base, stage: "ship", next: {
     title: d.billedAll ? "Mark the order shipped" : "Ship the rest, or close short",
-    detail: d.billedAll ? "Everything is billed and sent. Close the order." : "Part of the order has gone. Ship the rest from Dispatch, or close it short with a reason.",
+    detail: d.billedAll ? "Everything is billed and sent. It usually closes by itself; if it hasn't, close it here." : "Part of the order has gone. Ship the rest from Dispatch, or close it short with a reason.",
     action: d.billedAll ? { kind: "ship" } : { kind: "dispatch" }, label: d.billedAll ? "Mark shipped" : "Open dispatch", tone: "ok",
   } };
 }
@@ -204,8 +221,10 @@ export const stageIndex = (k: StageKey) => (k === "done" ? STAGES.length : STAGE
 
 // How long until an order ships, said the way people count it: "12 days to ship", "Ships today", "5 days late".
 export type Clock = { n: string; unit: string; tone: "bad" | "warn" | "ok" | "calm" | "muted" };
-export function shipClock(due: string | null, today: string, status: string): Clock {
+// sent: every piece of an open order has already gone out, so the ship date can't be missed any more.
+export function shipClock(due: string | null, today: string, status: string, sent = false): Clock {
   if (status === "shipped") return { n: "✓", unit: "Shipped", tone: "ok" };
+  if (sent && status === "open") return { n: "✓", unit: "Sent", tone: "ok" };
   if (status === "cancelled") return { n: "–", unit: "Cancelled", tone: "muted" };
   if (!due) return { n: "–", unit: "No ship date", tone: "muted" };
   const d = Math.round((Date.parse(due) - Date.parse(today)) / 86_400_000);
