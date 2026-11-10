@@ -15,7 +15,7 @@ export const AREAS: Record<string, { label: string; tables: string[] }> = {
   quality: { label: "Quality checks and visits", tables: ["qc_checks", "qc_photos", "qc_comments", "floor_updates"] },
   dispatch: { label: "Dispatch", tables: ["dispatches", "dispatch_lines", "dispatch_photos"] },
   pos: { label: "Buyer POs", tables: ["incoming_pos"] },
-  payments: { label: "Payments", tables: ["invoices", "credit_notes", "cheques", "cheque_allocations"] },
+  payments: { label: "Payments", tables: ["invoices", "credit_notes", "cheques", "cheque_allocations", "factory_claims"] },
   masters: { label: "Buyers and factories", tables: ["buyers", "buyer_names", "factories"] },
   team: { label: "Team and settings", tables: ["companies", "profiles", "members", "invites", "inbound_keys", "ai_keys"] },
   tally: { label: "Tally", tables: ["tally_settings", "tally_vouchers"] },
@@ -33,7 +33,7 @@ const TABLE: Record<string, string> = {
   tally_settings: "Tally settings", tally_vouchers: "Tally voucher",
   // Read "Added inquiries Areeba" and "Changed order po files" before these had names.
   inquiries: "inquiry", inquiry_notes: "inquiry note", order_po_files: "buyer PO file", factory_chases: "reminder to the factory",
-  supplier_terms: "supplier's payment terms", order_notes: "team note",
+  supplier_terms: "supplier's payment terms", order_notes: "team note", factory_claims: "factory claim",
 };
 export const tableLabel = (t: string) => TABLE[t] ?? t.replace(/_/g, " ");
 

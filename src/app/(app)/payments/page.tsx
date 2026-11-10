@@ -204,7 +204,7 @@ export default async function PaymentsPage({ searchParams }: PageProps<"/payment
                 const r = totals.get(x.id);
                 return (
                   <tr key={x.id}>
-                    <td className="whitespace-nowrap">{buyerLabel(x.id)}</td>
+                    <td className="whitespace-nowrap"><Link className="link" href={`/payments/statement/${x.id}`}>{buyerLabel(x.id)}</Link></td>
                     <td><CreditDays buyerId={x.id} value={x.credit_days} /></td>
                     <td className="r num">{r?.open ? <Link className="link" href={`/payments?tab=invoices&buyer=${x.id}`}>{r.open}</Link> : ""}</td>
                     <td className="r num whitespace-nowrap">{r?.outstanding ? money(r.outstanding) : ""}</td>

@@ -1305,6 +1305,7 @@ main:focus { outline: none; }
   .challan-sign i { display: block; height: 52px; border-bottom: 1px solid var(--foreground); }
   .challan-sign small { color: var(--muted); }
   .challan-note { font-size: 12px; }
+  .challan-h { margin: 0; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
   .po-terms { display: grid; gap: 4px; margin: 4px 0 0; padding-left: 18px; list-style: decimal; color: var(--muted); line-height: 1.45; }
   @media (max-width: 640px) { .challan { padding: 18px 16px; } }
 }
@@ -2543,5 +2544,24 @@ main:focus { outline: none; }
     .pk-line { grid-template-columns: 1fr 1fr; }
     .pk-line .pk-style { grid-column: 1 / -1; }
     .pk-acts .btn.primary { width: 100%; min-height: 44px; margin-left: 0; }
+  }
+}
+
+/* Factory claims: the raise form inside a bill, and the claims list. */
+@layer components {
+  .claim-form { display: flex; flex-direction: column; gap: 12px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
+  .claim-form h3 { font-size: 14px; font-weight: 600; }
+  .claim-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px 12px; }
+  .claim-grid .inp.num { text-align: right; }
+  .claim-done { margin-top: 12px; font-size: 13px; }
+  .claim-row { display: flex; align-items: center; gap: 12px; padding-right: 16px; }
+  .claim-row > a { display: block; flex: 1; min-width: 0; padding: 11px 0 11px 16px; }
+  .claim-row b { display: block; font-size: 14px; font-weight: 600; }
+  .claim-row b .code { margin-right: 6px; color: var(--muted); font-weight: 500; }
+  .claim-row small { display: block; font-size: 12.5px; color: var(--muted); }
+  .claim-amt { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; flex: none; }
+  @media (max-width: 640px) {
+    .claim-grid { grid-template-columns: 1fr 1fr; }
+    .claim-form .btn.primary { flex: 1; min-height: 44px; }
   }
 }

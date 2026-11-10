@@ -180,6 +180,10 @@ select c.id, v.guid, v.vtype, v.kind, v.number, current_date - v.ago, v.party, v
           ('e2e-pay-1', 'Payment', 'payment', '41', 5, 'Flavia Test Creation', 20250, '[{"name":"PB-T-090","amount":20250}]'),
           ('e2e-pur-3', 'Purchase', 'purchase', 'JTT-44', 50, 'Jaipur Test Trims', 18500, '[{"name":"JTT-44","amount":18500}]')) v (guid, vtype, kind, number, ago, party, amount, bills);
 insert into public.supplier_terms (company_id, ledger, msme) select c.id, 'Jaipur Test Trims', 'micro' from public.companies c;
+-- A factory claim raised against Flavia's newer bill, not booked in Tally yet: Bills to pay keeps it back.
+insert into public.factory_claims (company_id, claim_no, ledger, bill, claim_date, reason, pieces, amount, note, created_by)
+select c.id, 'CL-0001', 'Flavia Test Creation', 'PB-T-101', current_date - 2, 'short', 40, 9800, '40 pcs short against the challan', '00000000-0000-0000-0000-0000000000a5'
+from public.companies c;
 
 -- 13. A fabric order, like a mill order for cambric: both styles typed in as Fabric, so they skip the garment steps.
 set role authenticated;
