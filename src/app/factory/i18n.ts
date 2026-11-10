@@ -121,6 +121,16 @@ const EN = {
   samplesApproved: (n: number) => `${n} approved`,
   allSamplesApproved: "Every sample approved",
   howItWorks: "How this works",
+  purchaseOrder: "Purchase order",
+  poSent: (no: string, d: string, n: number) => `${/^f?po\b|^fpo/i.test(no) ? "" : "PO "}${no} · sent ${d} · ${n} ${n === 1 ? "style" : "styles"}`,
+  poWaiting: "Please accept",
+  poAccepted: (d: string) => `Accepted ${d}`,
+  openPo: "Open PO",
+  acceptPo: "Accept PO",
+  accepting: "Accepting…",
+  poAcceptedToast: (no: string) => `${/^f?po\b|^fpo/i.test(no) ? "" : "PO "}${no} accepted. Thank you.`,
+  poHelp: "Open the PO to see every style with its photo, rate and terms, or save it as a PDF. Tap Accept PO once you agree. Reminders stop when you accept.",
+  posToAccept: (n: number) => `${n} ${n === 1 ? "PO is" : "POs are"} waiting for you to accept.`,
 };
 
 const HI: typeof EN = {
@@ -221,6 +231,16 @@ const HI: typeof EN = {
   samplesApproved: (n: number) => `${n} अप्रूव हुए`,
   allSamplesApproved: "सारे सैंपल अप्रूव हुए",
   howItWorks: "यह कैसे काम करता है",
+  purchaseOrder: "परचेज़ ऑर्डर",
+  poSent: (no: string, d: string, n: number) => `${/^f?po\b|^fpo/i.test(no) ? "" : "PO "}${no} · ${d} को भेजा · ${n} स्टाइल`,
+  poWaiting: "कृपया स्वीकार करें",
+  poAccepted: (d: string) => `${d} को स्वीकार किया`,
+  openPo: "PO खोलें",
+  acceptPo: "PO स्वीकार करें",
+  accepting: "स्वीकार हो रहा है…",
+  poAcceptedToast: (no: string) => `${/^f?po\b|^fpo/i.test(no) ? "" : "PO "}${no} स्वीकार हो गया। धन्यवाद।`,
+  poHelp: "PO खोलकर हर स्टाइल की फोटो, रेट और शर्तें देखें, या PDF सेव करें। सहमत हों तो PO स्वीकार करें दबाएँ। स्वीकार करते ही रिमाइंडर बंद हो जाते हैं।",
+  posToAccept: (n: number) => `${n} PO आपकी स्वीकृति का इंतज़ार कर रहे हैं।`,
 };
 
 export type Words = typeof EN;
@@ -234,6 +254,7 @@ export const stepName = (lang: Lang, stage: string, label: string | null | undef
 // one not listed here stays as it came.
 const ERRORS_HI: Record<string, string> = {
   "This login is not set up for a factory.": "यह लॉगिन फैक्ट्री के लिए नहीं बना है।",
+  "This PO has not been sent to you yet.": "यह PO अभी आपको भेजा नहीं गया है।",
   "Pick the date the step was done.": "स्टेप जिस दिन पूरा हुआ, वह तारीख चुनें।",
   "Add at least one photo of the work.": "काम की कम से कम एक फोटो लगाएँ।",
   "You can update only your own styles on a released PO.": "आप सिर्फ़ अपने स्टाइल की खबर भेज सकते हैं, और वह भी PO रिलीज़ होने के बाद।",

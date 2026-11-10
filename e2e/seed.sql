@@ -78,6 +78,10 @@ select pg_temp.plan(:'o_late', 6, 20);
 select pg_temp.plan(:'o_qc', 13, 0);
 select pg_temp.plan(:'o_over', 12, 6);
 update public.factory_pos set plan_requested_on = current_date - 1 where order_id = :'o_fac';
+-- Factory POs sent by email: the factory login's still waits for acceptance, one other was accepted on its link.
+update public.factory_pos set mailed_at = now() - interval '2 days' where factory_id = '20000000-0000-0000-0000-000000000001' and released_at is not null;
+update public.factory_pos set mailed_at = now() - interval '9 days', accepted_at = now() - interval '8 days', accepted_via = 'link'
+where order_id = :'o_prod' and factory_id = '20000000-0000-0000-0000-000000000002';
 
 -- Leads.
 insert into public.inquiries (company_id, inquiry_no, buyer_id, product, est_qty, status, next_follow_up)
