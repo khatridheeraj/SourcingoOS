@@ -4,7 +4,7 @@ import { briefText, buildBrief, teamCopy, type BriefData } from "@/lib/brief";
 import { createClient } from "@/lib/supabase/server";
 import { BriefShare } from "./brief-share";
 import { PageTabs } from "@/components/page-tabs";
-import { REPORT_TABS } from "@/lib/page-groups";
+import { reportTabs } from "@/lib/page-groups";
 
 // The morning brief: what is at risk, late or waiting today, in one screen and one message to send.
 // The same brief arrives by email at 9 am from the Gmail script.
@@ -21,7 +21,7 @@ export default async function BriefPage() {
 
   return (
     <>
-      {canEditOrders(me?.role) && <PageTabs tabs={REPORT_TABS} label="Reports" />}
+      {canEditOrders(me?.role) && <PageTabs tabs={reportTabs(me?.role)} label="Reports" />}
       <div className="head">
         <div className="grow">
           <p className="text-[12.5px] font-semibold uppercase tracking-wide text-muted">Morning brief · {b.title}</p>

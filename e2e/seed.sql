@@ -206,3 +206,7 @@ select o.company_id, o.id, v.body, v.mentions::uuid[], v.done::uuid[], v.by::uui
           ('Seen it today. Stitching is fine, about 200 pieces done. Collars still on the machine.', '{00000000-0000-0000-0000-0000000000a1}', '{}', '00000000-0000-0000-0000-0000000000a4', '2 hours'))
   v (body, mentions, done, by, ago)
 where o.id = :'o_slip';
+
+-- Most open orders are looked after by the merchandiser, a few by the manager (team board, hand over).
+update public.orders set merchandiser_id = case when order_no in ('SO-0001', 'SO-0002') then '00000000-0000-0000-0000-0000000000a2'::uuid
+  else '00000000-0000-0000-0000-0000000000a3'::uuid end where status = 'open' and merchandiser_id is null and order_no <> 'SO-0004';

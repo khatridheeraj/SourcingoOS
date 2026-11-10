@@ -10,8 +10,6 @@ type Item = { icon: IconName; title: string; text: string };
 
 // What changed for this person's work, shown once on Home until they close it. Remembered on this phone or computer only.
 // Kept to three lines: Home is for today's work, not reading.
-const HOME: Item = { icon: "home", title: "Home is one short list", text: "Everything an order needs sits together under its name, with a small button for each job. What used to take six screens fits in two." };
-const RED: Item = { icon: "clock", title: "Red means really late", text: "A step past its target shows amber while the ship date still holds; red is kept for orders that will miss it." };
 // Quality owns the updates from the factory floor (26 Oct 2026).
 const FLOOR: Item = { icon: "factories", title: "Live from the factory floor", text: "Quality visits the factories and posts every style's step with photos. See it on each order under Styles, and on Home." };
 // Team notes and the calendar (10 Nov 2026).
