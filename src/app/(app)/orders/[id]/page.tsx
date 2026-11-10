@@ -16,6 +16,7 @@ import { OrderDispatch, type Dispatch, type DispatchFactory, type TallyBills } f
 import { OrderHistory } from "./order-history";
 import { OrderMargin } from "./order-margin";
 import { OrderProduction } from "./order-production";
+import { type Severity } from "@/lib/defects";
 import { OrderQc, type QcCheck } from "./order-qc";
 import { OrderStyles, type Baseline, type ExtraStep, type FactoryGroup, type StepQc } from "./order-styles";
 import { forecast, paceLookup } from "@/lib/progress";
@@ -115,12 +116,13 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
   const people = new Map(team.map((m) => [m.user_id, personName(m)]));
   // Photos come from private storage through links that work for an hour.
   const qcIds = (qc ?? []).map((c) => c.id);
-  const [{ data: photoRows }, { data: commentRows }] = qcIds.length
+  const [{ data: photoRows }, { data: commentRows }, { data: defectRows }] = qcIds.length
     ? await Promise.all([
         supabase.from("qc_photos").select("id, qc_id, path, kind, file_name").in("qc_id", qcIds).is("removed_at", null).order("created_at"),
         supabase.from("qc_comments").select("id, qc_id, body, created_by, created_at").in("qc_id", qcIds).order("created_at"),
+        supabase.from("qc_defects").select("check_id, defect, pieces, severity").in("check_id", qcIds).is("removed_at", null).order("position"),
       ])
-    : [{ data: [] }, { data: [] }];
+    : [{ data: [] }, { data: [] }, { data: [] }];
   const stylePaths = lines.map((l) => l.photo_path).filter(Boolean) as string[];
   const dispatchPaths = [...(dRows ?? []).flatMap((d) => [d.bill_path, d.invoice_path, d.eway_path, d.lr_path, d.grn_path]), ...dispatchPhotos.map((p) => p.path)].filter(Boolean) as string[];
   const allPaths = [...(photoRows ?? []).map((p) => p.path), ...stylePaths, ...dispatchPaths, ...(stepUps ?? []).flatMap((u) => u.photos as string[]), ...(lineFiles ?? []).map((f) => f.path),
@@ -137,6 +139,7 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
       .map((p) => ({ id: p.id, url: urlByPath.get(p.path)!, name: p.file_name || "Report" })),
     comments: (commentRows ?? []).filter((m) => m.qc_id === c.id)
       .map((m) => ({ id: m.id, body: m.body, at: m.created_at, by: (m.created_by && people.get(m.created_by)) || "Someone" })),
+    defectList: (defectRows ?? []).filter((d) => d.check_id === c.id).map((d) => ({ defect: d.defect, pieces: d.pieces, severity: d.severity as Severity })),
   }));
   // Each style passes or fails its own final QC; the order is ready to ship when all of them have passed.
   const finalPassed = lines.length > 0 && lines.every((l) => checks.find((c) => c.line_id === l.id && SHIP_QC.includes(c.kind) && !c.cancelled_at)?.result === "pass");
@@ -450,7 +453,7 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
         </section>
       </div>
       <div data-sec="qc">
-      <OrderQc orderId={o.id} companyId={o.company_id} open={o.status === "open"} canRecord={canRecordQc(me?.role)} today={todayIST()} checks={checks} finalPassed={finalPassed}
+      <OrderQc orderId={o.id} orderNo={o.order_no} companyId={o.company_id} open={o.status === "open"} canRecord={canRecordQc(me?.role)} today={todayIST()} checks={checks} finalPassed={finalPassed}
         styles={lines.map((l) => ({ id: l.id, style: l.style, colour: str(l.colour), qty: l.qty, product: l.product }))} />
       </div>
       {canEdit && (

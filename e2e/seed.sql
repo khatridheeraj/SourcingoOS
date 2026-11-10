@@ -106,7 +106,14 @@ insert into public.factory_pos (company_id, order_id, factory_id, lock_requested
 select company_id, :'o_appr', '20000000-0000-0000-0000-000000000002', now() - interval '3 hours', '00000000-0000-0000-0000-0000000000a3', 7
 from public.orders where id = :'o_appr';
 
--- 8. Final QC passed: ready to ship.
+-- 8. Final QC failed first, with its defect list, then passed: ready to ship.
+insert into public.qc_checks (company_id, order_id, line_id, kind, checked_on, result, pieces_checked, defects, notes, checked_by)
+select l.company_id, l.order_id, l.id, 'final', current_date - 4, 'fail', 80, 14, 'Shade off on one roll; seams to redo', '00000000-0000-0000-0000-0000000000a4'
+from public.order_lines l where l.order_id = :'o_over';
+insert into public.qc_defects (company_id, check_id, position, defect, pieces, severity, created_by)
+select q.company_id, q.id, v.pos, v.defect, v.pcs, v.sev, '00000000-0000-0000-0000-0000000000a4'
+from public.qc_checks q, (values (1, 'Shade variation', 6, 'major'), (2, 'Open seam', 5, 'major'), (3, 'Loose threads', 3, 'minor')) v (pos, defect, pcs, sev)
+where q.order_id = :'o_over' and q.result = 'fail';
 update public.line_stages set done_on = planned_on where order_id = :'o_over' and stage in ('packed', 'final_qc');
 insert into public.qc_checks (company_id, order_id, line_id, kind, checked_on, result, pieces_checked, checked_by)
 select l.company_id, l.order_id, l.id, 'final', current_date - 1, 'pass', 80, '00000000-0000-0000-0000-0000000000a4'

@@ -551,3 +551,19 @@ export async function restoreOrder(id: string): Promise<{ error?: string }> {
   revalidatePath("/", "layout");
   return {};
 }
+
+// Saves a check's defect list (Quality and the owner). Replaces the list; the database keeps the old one.
+export async function saveQcDefects(orderId: string, qcId: string, rows: { defect: string; pieces: string; severity: string }[]): Promise<{ error?: string }> {
+  const me = await getMe();
+  if (!canRecordQc(me?.role)) return { error: "Only Quality writes defect lists." };
+  const list = rows.filter((r) => r.defect.trim() || r.pieces.trim());
+  for (const [i, r] of list.entries()) {
+    if (!r.defect.trim()) return { error: `Line ${i + 1}: write the defect.` };
+    if (!/^\d{1,7}$/.test(r.pieces.trim()) || Number(r.pieces) < 1) return { error: `Line ${i + 1}: how many pieces have ${r.defect.trim()}?` };
+  }
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("save_qc_defects", { p_check: qcId, p_rows: list.map((r) => ({ defect: r.defect.trim(), pieces: Number(r.pieces), severity: r.severity })) });
+  if (error) return { error: friendly(error) };
+  revalidatePath(`/orders/${orderId}`);
+  return {};
+}

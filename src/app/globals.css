@@ -2566,3 +2566,16 @@ main:focus { outline: none; }
     .claim-form .btn.primary { flex: 1; min-height: 44px; }
   }
 }
+
+/* QC defect lists under a check. */
+@layer components {
+  .qc-defects { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 10px; margin-top: 8px; font-size: 13px; }
+  .qc-defects.edit { flex-direction: column; align-items: stretch; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-2); }
+  .def-rows { display: flex; flex-direction: column; gap: 8px; }
+  .def-row { display: grid; grid-template-columns: minmax(0, 1fr) 72px 104px auto; gap: 8px; align-items: center; }
+  .def-row .inp.num { text-align: right; }
+  @media (max-width: 640px) {
+    .def-row { grid-template-columns: 80px minmax(0, 1fr) auto; }
+    .def-row input:first-child { grid-column: 1 / -1; }
+  }
+}
