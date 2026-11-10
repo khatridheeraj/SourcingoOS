@@ -4,6 +4,7 @@ import { dayNear as day, daysBetween, qty, qtyTotal, qtyU, todayIST, TNA_STEPS, 
 import { PHOTO_BUCKET } from "@/lib/storage";
 import { getMe } from "@/lib/auth";
 import { BuyerSamples, type BuyerSample } from "./buyer-samples";
+import { BuyerMoney, type BuyerInvoice } from "./buyer-money";
 
 type Step = { stage: string; label: string | null; planned_on: string | null; done_on: string | null };
 type FinalQc = { result: string; checked_on: string; pieces_checked: number | null; photos: string[] };
@@ -42,9 +43,12 @@ const SHOWN = 3;
 // the same page, read for that buyer, with nothing to press.
 export async function BuyerView({ preview }: { preview?: string }) {
   const supabase = await createClient(preview ? { "x-preview-buyer": preview } : undefined);
-  const [me, { data, error }, { data: sampleRows }, { data: shipRows }] = await Promise.all([
+  const [me, { data, error }, { data: sampleRows }, { data: shipRows }, { data: moneyRow }] = await Promise.all([
     getMe(), supabase.rpc("buyer_orders"), supabase.rpc("buyer_samples"), supabase.rpc("buyer_shipments"),
+    // Its invoices and what is still to be paid.
+    supabase.rpc("buyer_money"),
   ]);
+  const invoices = ((moneyRow as { invoices?: BuyerInvoice[] } | null)?.invoices ?? []);
   const shipments = (shipRows ?? []) as Shipment[];
   const { buyer, orders } = (data ?? { buyer: "", orders: [] }) as { buyer: string; orders: Order[] };
   const rawSamples = (sampleRows ?? []) as (Omit<BuyerSample, "styleUrl" | "answerPhotos"> & { photo_path: string | null; answer_photos: string[] })[];
@@ -215,9 +219,11 @@ export async function BuyerView({ preview }: { preview?: string }) {
               </section>
             );
           })}
-          <p className="muted text-center text-[12.5px]">Questions about an order? Message your Sourcingo merchandiser.</p>
         </>
       )}
+      {/* Money owed shows even when no order is open. */}
+      <BuyerMoney invoices={invoices} />
+      {(orders.length > 0 || invoices.length > 0) && <p className="muted text-center text-[12.5px]">Questions about an order? Message your Sourcingo merchandiser.</p>}
     </>
   );
 }
