@@ -173,6 +173,17 @@ select company_id, buyer_id, '118230', 'ICICI Bank', current_date + 20, 80000, '
 returning id as chq2 \gset
 insert into public.cheque_allocations (company_id, cheque_id, invoice_id, amount)
 select company_id, :'chq2', id, 80000 from public.invoices where id = :'inv';
+-- Areeba (the buyer login) has one invoice past due and part paid, one not due yet, and one paid in full.
+insert into public.invoices (company_id, invoice_no, buyer_id, invoice_date, amount, due_date)
+select c.id, v.no, :'ah', current_date - v.ago, v.amount, current_date - v.ago + 30 from public.companies c,
+  (values ('INV-T-075', 50, 120000), ('INV-T-110', 5, 86400), ('INV-T-060', 70, 64000)) v (no, ago, amount);
+insert into public.cheques (company_id, buyer_id, cheque_no, bank, cheque_date, amount, status, received_on, deposited_on, cleared_on)
+select c.id, :'ah', v.no, 'HDFC Bank', current_date - v.ago, v.amount, 'cleared', current_date - v.ago, current_date - v.ago, current_date - v.ago + 2
+from public.companies c, (values ('220101', 45, 64000), ('220188', 12, 50000)) v (no, ago, amount);
+insert into public.cheque_allocations (company_id, cheque_id, invoice_id, amount)
+select q.company_id, q.id, i.id, q.amount from public.cheques q join public.invoices i on i.company_id = q.company_id
+  and i.invoice_no = case q.cheque_no when '220101' then 'INV-T-060' else 'INV-T-075' end
+where q.cheque_no in ('220101', '220188');
 
 -- 12. Bills to pay, as read from Tally: Flavia has an old bill part paid and now overdue, and a newer one not due yet
 -- (together they match its ledger balance); Jaipur Test Trims, a micro enterprise and not a factory, is past 45 days.
