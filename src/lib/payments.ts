@@ -300,3 +300,21 @@ export function autoSplit(amount: number, open: { id: string; left: number }[]) 
   }
   return out;
 }
+
+// A buyer's statement of account: every invoice with money left on it, oldest first, with what was billed, credited
+// and received, the balance and how late it is; the cheques we hold that will pay some of it; and what was paid lately.
+export function buyerStatement(b: Books, buyerId: string, today: string, paidSince = addDays(today, -90)) {
+  const mine = b.invoices.filter((i) => i.buyer_id === buyerId && i.state !== "cancelled");
+  const open = mine.filter((i) => i.outstanding > 0).sort((a, z) => a.invoice_date.localeCompare(z.invoice_date) || a.invoice_no.localeCompare(z.invoice_no))
+    .map((i) => ({ ...i, late: i.due && i.due < today ? daysBetween(i.due, today) : 0 }));
+  const paid = mine.filter((i) => i.state === "paid" && i.invoice_date >= paidSince).sort((a, z) => z.invoice_date.localeCompare(a.invoice_date));
+  const held = b.cheques.filter((c) => c.buyer_id === buyerId && ((c.status === "in_hand" && !c.stale) || c.status === "deposited"))
+    .sort((a, z) => a.cheque_date.localeCompare(z.cheque_date));
+  const sum = (xs: { outstanding: number }[]) => paise(xs.reduce((a, x) => a + x.outstanding, 0));
+  return {
+    open, paid, held,
+    total: sum(open),
+    overdue: sum(open.filter((i) => i.late > 0)),
+    heldTotal: paise(held.reduce((a, c) => a + n(c.amount), 0)),
+  };
+}

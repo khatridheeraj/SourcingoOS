@@ -19,6 +19,10 @@ import { caught } from "@/lib/errors";
 import { wholeText } from "@/lib/digits";
 
 // fabricOrder: a fabric style, whose TNA skips the garment-making steps.
+// Steps many garment orders need beyond the standard ones: trims and packing material must be in-house before
+// stitching and packing, and value-adds go out to job workers. One tap adds them to a style.
+const COMMON_EXTRAS = ["Trims in-house", "Packing material in-house", "Embroidery", "Washing"];
+
 export type StyleRow = { id: string; style: string; colour: string; qty: number; photoUrl: string | null; hasRate: boolean; fabricOrder: boolean; detail: StyleDetail };
 export type FactoryGroup = {
   factoryId: string | null;
@@ -176,17 +180,17 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
     setNotice("Targets filled from the standard days. Check them, then save.");
   }
 
-  function addExtra(lineId: string) {
-    const label = (newStep[lineId] ?? "").trim().slice(0, 60);
+  function addExtra(lineId: string, preset?: string) {
+    const label = (preset ?? newStep[lineId] ?? "").trim().slice(0, 60);
     if (!label) return;
     if (allSteps(lineId).some((s) => s.label.toLowerCase() === label.toLowerCase() && !get(lineId, s.key).not_needed)) {
       return setError(`This style already has a step called ${label}.`);
     }
     const stage = `extra_${Array.from(crypto.getRandomValues(new Uint8Array(4)), (b) => b.toString(16).padStart(2, "0")).join("")}`;
     setExtras((x) => ({ ...x, [lineId]: [...(x[lineId] ?? []), { stage, label }] }));
-    setNewStep((n) => ({ ...n, [lineId]: "" }));
+    if (!preset) setNewStep((n) => ({ ...n, [lineId]: "" }));
     setError("");
-    setNotice("");
+    setNotice(preset ? `${label} added. Give it a target, then save.` : "");
   }
   const unsaved = (g: FactoryGroup) => changed.some((r) => g.lines.some((l) => l.id === r.line_id));
 
@@ -684,6 +688,13 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
                               aria-label={`New step for ${l.style}`} onChange={(e) => setNewStep((n) => ({ ...n, [l.id]: e.target.value }))}
                               onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addExtra(l.id); } }} />
                             <button type="button" className="btn sm" onClick={() => addExtra(l.id)}>Add step</button>
+                            {COMMON_EXTRAS.some((x) => !allSteps(l.id).some((s) => s.label.toLowerCase() === x.toLowerCase())) && (
+                              <div className="step-presets" role="group" aria-label={`Common extra steps for ${l.style}`}>
+                                {COMMON_EXTRAS.filter((x) => !allSteps(l.id).some((s) => s.label.toLowerCase() === x.toLowerCase())).map((x) => (
+                                  <button key={x} type="button" className="chip-pick" onClick={() => addExtra(l.id, x)}>+ {x}</button>
+                                ))}
+                              </div>
+                            )}
                           </div>
                         )}
                       </div>

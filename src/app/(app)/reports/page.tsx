@@ -7,7 +7,7 @@ import { addDays } from "@/lib/payments";
 import { buildReport, percent, RANGES, type FactoryScore } from "@/lib/reports";
 import { createClient } from "@/lib/supabase/server";
 import { PageTabs } from "@/components/page-tabs";
-import { REPORT_TABS } from "@/lib/page-groups";
+import { reportTabs } from "@/lib/page-groups";
 
 // Below 80% on time or passed is a problem worth a call; below 90% is worth watching.
 const tone = (a: number, b: number) => (!b ? "" : a / b >= 0.9 ? "text-ok" : a / b >= 0.8 ? "text-warn" : "text-bad");
@@ -33,7 +33,7 @@ export default async function ReportsPage({ searchParams }: PageProps<"/reports"
 
   return (
     <>
-      <PageTabs tabs={REPORT_TABS} label="Reports" />
+      <PageTabs tabs={reportTabs(me?.role)} label="Reports" />
       <div className="head">
         <div className="grow">
           <h1>Reports</h1>

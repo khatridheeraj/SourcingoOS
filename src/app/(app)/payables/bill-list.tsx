@@ -7,8 +7,11 @@ import { toast } from "@/components/toast";
 import { day, dayNear, money } from "@/lib/format";
 import { type Due, GROUPS, isMsme45, MSME_DAYS, MSME_LABEL, type Payable } from "@/lib/payables";
 import { saveBillNote } from "./actions";
+import { ClaimForm } from "./claim-form";
 
-export type BillRow = Payable & { key: string; name: string; due: Due };
+// claimed: open claims (debit notes not yet in Tally) that come off what to pay.
+export type BillRow = Payable & { key: string; name: string; due: Due; claimed: number; claims: { claim_no: string; amount: number }[] };
+const toPay = (r: BillRow) => Math.max(0, r.open - r.claimed);
 
 const dm = (d: string) => dayNear(d);
 
@@ -20,9 +23,9 @@ let reopen: string | null = null;
 function listText(rows: BillRow[], today: string) {
   const by = new Map<string, BillRow[]>();
   for (const r of rows) by.set(r.name, [...(by.get(r.name) ?? []), r]);
-  const total = rows.reduce((a, r) => a + r.open, 0);
+  const total = rows.reduce((a, r) => a + toPay(r), 0);
   const lines = [...by].map(([name, bs], i) =>
-    `${i + 1}. ${name}: ${money(Math.round(bs.reduce((a, r) => a + r.open, 0)))} (${bs.map((b) => `${b.bill} ${money(Math.round(b.open))}${b.due_on ? `, due ${dm(b.due_on)}` : ""}`).join("; ")})`);
+    `${i + 1}. ${name}: ${money(Math.round(bs.reduce((a, r) => a + toPay(r), 0)))} (${bs.map((b) => `${b.bill} ${money(Math.round(toPay(b)))}${b.claimed ? ` after claim ${b.claims.map((c) => c.claim_no).join(", ")}` : ""}${b.due_on ? `, due ${dm(b.due_on)}` : ""}`).join("; ")})`);
   return [`*Payments to make, ${dm(today)}*`, ...lines, `*Total ${money(Math.round(total))}* on ${rows.length} ${rows.length === 1 ? "bill" : "bills"}`].join("\n");
 }
 
@@ -30,7 +33,7 @@ function listText(rows: BillRow[], today: string) {
 export function BillList({ rows, today }: { rows: BillRow[]; today: string }) {
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const chosen = rows.filter((r) => picked.has(r.key));
-  const sum = chosen.reduce((a, r) => a + r.open, 0);
+  const sum = chosen.reduce((a, r) => a + toPay(r), 0);
   const toggle = (keys: string[], on: boolean) => setPicked((s) => {
     const n = new Set(s);
     for (const k of keys) if (on) n.add(k); else n.delete(k);
@@ -69,7 +72,7 @@ export function BillList({ rows, today }: { rows: BillRow[]; today: string }) {
               </div>
             </header>
             <ul className="bills">
-              {list.map((r) => <Bill key={r.key} r={r} picked={picked.has(r.key)} onPick={(on) => toggle([r.key], on)} />)}
+              {list.map((r) => <Bill key={r.key} r={r} today={today} picked={picked.has(r.key)} onPick={(on) => toggle([r.key], on)} />)}
             </ul>
           </section>
         );
@@ -89,7 +92,7 @@ export function BillList({ rows, today }: { rows: BillRow[]; today: string }) {
   );
 }
 
-function Bill({ r, picked, onPick }: { r: BillRow; picked: boolean; onPick: (on: boolean) => void }) {
+function Bill({ r, today, picked, onPick }: { r: BillRow; today: string; picked: boolean; onPick: (on: boolean) => void }) {
   const msme = isMsme45(r.msme);
   const box = useRef<HTMLDetailsElement>(null);
   useEffect(() => {
@@ -119,10 +122,11 @@ function Bill({ r, picked, onPick }: { r: BillRow; picked: boolean; onPick: (on:
                 {r.amount != null && r.amount !== r.open && <span>{money(Math.round(r.open))} left of {money(Math.round(r.amount))}</span>}
               </span>
             </span>
-            {(msme || r.order_no || r.note) && (
+            {(msme || r.order_no || r.note || r.claimed > 0) && (
               <span className="bill-tags">
                 {msme && <span className="chip warn">{MSME_LABEL[r.msme!]} · {MSME_DAYS} days</span>}
                 {r.order_no && <span className="chip code">{r.order_no}</span>}
+                {r.claimed > 0 && <span className="chip warn">Claim {money(Math.round(r.claimed))} · pay {money(Math.round(toPay(r)))}</span>}
                 {r.note && <span className="bill-note">{r.note}</span>}
               </span>
             )}
@@ -132,13 +136,13 @@ function Bill({ r, picked, onPick }: { r: BillRow; picked: boolean; onPick: (on:
             {r.due.tone ? <span className={`chip ${r.due.tone}`}>{r.due.text}</span> : <span className="text-xs muted">{r.due.text}</span>}
           </span>
         </summary>
-        <BillMore r={r} />
+        <BillMore r={r} today={today} />
       </details>
     </li>
   );
 }
 
-function BillMore({ r }: { r: BillRow }) {
+function BillMore({ r, today }: { r: BillRow; today: string }) {
   const router = useRouter();
   const [note, setNote] = useState(r.note ?? "");
   const [error, setError] = useState("");
@@ -174,6 +178,7 @@ function BillMore({ r }: { r: BillRow }) {
     } else {
       facts.push(`${r.days} days from the bill date${r.days === 60 ? " (the usual terms)" : ""}.`);
     }
+    for (const c of r.claims) facts.push(`Claim ${c.claim_no} for ${money(Math.round(c.amount))} isn't in Tally yet, so it comes off what to pay. Book the debit note in Tally against ${r.bill}.`);
     if (isMsme45(r.msme) && r.due.key === "overdue") facts.push("Past the MSME limit: interest at three times the bank rate runs, and the amount can't be claimed as an expense until the year it is paid (income tax 43B(h)).");
   }
   return (
@@ -192,6 +197,7 @@ function BillMore({ r }: { r: BillRow }) {
           {error && <p className="text-xs text-bad">{error}</p>}
         </form>
       )}
+      {r.bill && <ClaimForm ledger={r.ledger} bill={r.bill} orderId={r.order_id} today={today} open={toPay(r)} />}
     </div>
   );
 }

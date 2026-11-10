@@ -537,7 +537,9 @@ main:focus { outline: none; }
   .step-row.warn .step-state { color: var(--warn); }
   .step-row.bad .step-state { color: var(--bad); }
   .step-state .nn { display: flex; align-items: center; gap: 6px; font-weight: 400; margin-top: 2px; }
-  .step-add { display: flex; gap: 8px; padding: 10px 14px; border-top: 1px solid var(--line); background: var(--surface-2); }
+  .step-add { display: flex; flex-wrap: wrap; gap: 8px; padding: 10px 14px; border-top: 1px solid var(--line); background: var(--surface-2); }
+  .step-presets { display: flex; flex-wrap: wrap; gap: 6px; width: 100%; }
+  .step-presets .chip-pick { height: 30px; font-size: 12.5px; }
   .step-add .inp { max-width: 320px; padding: 5px 8px; font-size: 13px; }
   .savebar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 16px; }
   .savebar.dirty {
@@ -1311,6 +1313,7 @@ main:focus { outline: none; }
   .challan-sign i { display: block; height: 52px; border-bottom: 1px solid var(--foreground); }
   .challan-sign small { color: var(--muted); }
   .challan-note { font-size: 12px; }
+  .challan-h { margin: 0; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
   .po-terms { display: grid; gap: 4px; margin: 4px 0 0; padding-left: 18px; list-style: decimal; color: var(--muted); line-height: 1.45; }
   @media (max-width: 640px) { .challan { padding: 18px 16px; } }
 }
@@ -2452,5 +2455,135 @@ main:focus { outline: none; }
     .cash-out { grid-area: flow; justify-self: end; }
     .cash-item { padding-left: 16px; }
     .cash-none { padding-left: 16px; }
+  }
+}
+
+/* Team notes on an order: a quiet chat, tags in indigo, notes waiting on me marked amber. */
+@layer components {
+  .talk-list { display: flex; flex-direction: column; }
+  .talk-row { display: grid; grid-template-columns: 32px minmax(0, 1fr); column-gap: 10px; padding: 12px 0; border-top: 1px solid var(--line); }
+  .talk-row:first-child { border-top: 0; padding-top: 4px; }
+  .talk-row.for-me { box-shadow: inset 3px 0 0 var(--warn); padding-left: 10px; margin-left: -10px; }
+  .talk-av { width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; font-size: 12px; font-weight: 600; color: var(--muted); background: var(--surface-2, var(--bg)); box-shadow: inset 0 0 0 1px var(--line); }
+  .talk-meta { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+  .talk-meta b { font-size: 14px; font-weight: 600; }
+  .talk-meta span { font-size: 12.5px; color: var(--muted); }
+  .talk-body { margin-top: 2px; font-size: 14px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .talk-tag { color: var(--accent); font-weight: 600; }
+  .talk-to { margin-top: 4px; font-size: 12.5px; color: var(--muted); }
+  .talk-acts { display: flex; gap: 10px; align-items: center; margin-top: 8px; }
+  .talk-new { display: flex; flex-direction: column; gap: 12px; margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--line); }
+  .talk-new textarea { min-height: 84px; resize: vertical; }
+  .talk-people { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  .chip-pick {
+    height: 32px; padding: 0 12px; border-radius: 9px; font-size: 13px; font-weight: 500; color: var(--muted);
+    background: var(--surface); box-shadow: inset 0 0 0 1px var(--line-strong); transition: background 0.12s, color 0.12s, box-shadow 0.12s;
+  }
+  .chip-pick[aria-pressed="true"] { color: var(--accent); background: var(--accent-soft); box-shadow: inset 0 0 0 1.5px var(--accent); }
+  @media (max-width: 640px) {
+    .talk-new .btn.primary { width: 100%; min-height: 44px; }
+  }
+}
+
+/* Calendar: one block per day that has something on it, each line led by what kind of thing it is. */
+@layer components {
+  .cal-h { flex-wrap: wrap; gap: 8px; }
+  .cal { display: flex; flex-direction: column; }
+  .cal-day { border-top: 1px solid var(--line); padding: 12px 16px 4px; }
+  .cal-day:first-child { border-top: 0; }
+  .cal-date { display: flex; align-items: baseline; gap: 8px; font-size: 14px; font-weight: 600; }
+  .cal-date .num { color: var(--muted); font-weight: 500; font-size: 13px; }
+  .cal-date small { margin-left: auto; font-size: 12px; font-weight: 500; color: var(--faint); font-variant-numeric: tabular-nums; }
+  .cal .tasks { margin: 4px -16px 0; }
+  .cal-free { padding: 2px 0 10px; font-size: 13px; color: var(--faint); }
+  .cal-item { grid-template-columns: 108px minmax(0, 1fr); align-items: start; }
+  .cal-kind { font-size: 12.5px; font-weight: 600; color: var(--muted); padding-top: 1px; overflow-wrap: anywhere; }
+  .cal-kind.k-ship { color: var(--accent); }
+  .cal-item .code { margin-right: 6px; color: var(--muted); font-weight: 500; }
+  @media (max-width: 640px) {
+    .cal-day { padding: 12px 14px 4px; }
+    .cal .tasks { margin: 4px -14px 0; }
+    .cal-item { grid-template-columns: minmax(0, 1fr); gap: 2px; }
+  }
+}
+
+/* Team board: one card per person; week in review: plain rows. */
+@layer components {
+  .tb { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 12px; }
+  .tb-card { padding: 16px; display: flex; flex-direction: column; gap: 12px; margin: 0; }
+  .tb-head { display: flex; gap: 10px; align-items: flex-start; }
+  .tb-head .sev { width: 8px; height: 8px; margin-top: 7px; border-radius: 50%; background: var(--line-strong); flex: none; }
+  .tb-head .sev.warn { background: var(--warn); box-shadow: 0 0 0 3px var(--warn-soft); }
+  .tb-head .sev.bad { background: var(--bad); box-shadow: 0 0 0 3px var(--bad-soft); }
+  .tb-head b { display: block; font-size: 15px; font-weight: 600; }
+  .tb-head small { display: block; font-size: 12.5px; color: var(--muted); }
+  .tb-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px 12px; }
+  .tb-stats dt { font-size: 12px; color: var(--muted); }
+  .tb-stats dd { font-size: 20px; font-weight: 600; letter-spacing: -0.02em; }
+  .tb-stats small { font-size: 11.5px; color: var(--faint); }
+  .tb-hand { align-self: flex-start; }
+  .tb-hand-box { display: flex; flex-direction: column; gap: 12px; border-top: 1px solid var(--line); padding-top: 12px; }
+  .tb-orders { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; max-height: 220px; overflow-y: auto; }
+  .tb-orders label { display: flex; gap: 8px; align-items: center; font-size: 13.5px; min-height: 32px; }
+  .wk-row > a, .wk-row > span { display: block; padding: 11px 16px 11px 20px; }
+  .wk-row b { display: block; font-size: 14px; font-weight: 600; }
+  .wk-row b .code { margin-right: 6px; color: var(--muted); font-weight: 500; }
+  .wk-row small { display: block; font-size: 12.5px; color: var(--muted); }
+  @media (max-width: 640px) {
+    .tb { grid-template-columns: minmax(0, 1fr); }
+    .wk-row > a, .wk-row > span { padding-left: 16px; }
+    .tb-hand-box .btn.primary { flex: 1; min-height: 44px; }
+  }
+}
+
+/* Packing list editor: one card per run of cartons. */
+@layer components {
+  .pk-rows { display: flex; flex-direction: column; }
+  .pk-row { display: flex; flex-direction: column; gap: 10px; padding: 14px 16px; border-top: 1px solid var(--line); }
+  .pk-row:first-child { border-top: 0; }
+  .pk-row.bad { box-shadow: inset 3px 0 0 var(--bad); }
+  .pk-line { display: grid; grid-template-columns: 96px 96px minmax(0, 1fr); gap: 10px; }
+  .pk-sizes { display: grid; grid-template-columns: repeat(auto-fill, minmax(72px, 1fr)); gap: 8px; }
+  .pk-sizes .inp, .pk-line .inp.num { text-align: right; }
+  .pk-foot { display: flex; justify-content: space-between; gap: 10px; align-items: center; }
+  .pk-acts { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; padding: 14px 16px; border-top: 1px solid var(--line); }
+  .pk-acts .btn.primary { margin-left: auto; }
+  .pack-print { margin-top: 16px; }
+  @media (max-width: 640px) {
+    .pk-line { grid-template-columns: 1fr 1fr; }
+    .pk-line .pk-style { grid-column: 1 / -1; }
+    .pk-acts .btn.primary { width: 100%; min-height: 44px; margin-left: 0; }
+  }
+}
+
+/* Factory claims: the raise form inside a bill, and the claims list. */
+@layer components {
+  .claim-form { display: flex; flex-direction: column; gap: 12px; margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
+  .claim-form h3 { font-size: 14px; font-weight: 600; }
+  .claim-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px 12px; }
+  .claim-grid .inp.num { text-align: right; }
+  .claim-done { margin-top: 12px; font-size: 13px; }
+  .claim-row { display: flex; align-items: center; gap: 12px; padding-right: 16px; }
+  .claim-row > a { display: block; flex: 1; min-width: 0; padding: 11px 0 11px 16px; }
+  .claim-row b { display: block; font-size: 14px; font-weight: 600; }
+  .claim-row b .code { margin-right: 6px; color: var(--muted); font-weight: 500; }
+  .claim-row small { display: block; font-size: 12.5px; color: var(--muted); }
+  .claim-amt { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; flex: none; }
+  @media (max-width: 640px) {
+    .claim-grid { grid-template-columns: 1fr 1fr; }
+    .claim-form .btn.primary { flex: 1; min-height: 44px; }
+  }
+}
+
+/* QC defect lists under a check. */
+@layer components {
+  .qc-defects { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 10px; margin-top: 8px; font-size: 13px; }
+  .qc-defects.edit { flex-direction: column; align-items: stretch; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-2); }
+  .def-rows { display: flex; flex-direction: column; gap: 8px; }
+  .def-row { display: grid; grid-template-columns: minmax(0, 1fr) 72px 104px auto; gap: 8px; align-items: center; }
+  .def-row .inp.num { text-align: right; }
+  @media (max-width: 640px) {
+    .def-row { grid-template-columns: 80px minmax(0, 1fr) auto; }
+    .def-row input:first-child { grid-column: 1 / -1; }
   }
 }
