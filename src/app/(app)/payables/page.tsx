@@ -1,19 +1,20 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { getMe } from "@/lib/auth";
-import { dayAt, money, todayIST } from "@/lib/format";
+import { day, dayAt, money, todayIST } from "@/lib/format";
 import { bySupplier, dueOf, isMsme45, lakh, MSME_DAYS, MSME_LABEL, supplierName, totals } from "@/lib/payables";
 import { dm } from "@/lib/quick";
 import { createClient } from "@/lib/supabase/server";
 import { isFinance } from "../payments/load";
 import { BillList, type BillRow } from "./bill-list";
-import { loadPayables } from "./load";
+import { loadClaims, loadPayables } from "./load";
+import { billKey, CLAIM_REASON, openByBill } from "@/lib/claims";
 import { TermsForm } from "./terms-form";
 import { PageTabs } from "@/components/page-tabs";
 import { MONEY_TABS } from "@/lib/page-groups";
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
-const VIEWS = [{ key: "due", label: "By due date" }, { key: "suppliers", label: "By supplier" }];
+const VIEWS = [{ key: "due", label: "By due date" }, { key: "suppliers", label: "By supplier" }, { key: "claims", label: "Claims" }];
 const WHO = [{ key: "all", label: "All" }, { key: "factories", label: "Factories" }, { key: "others", label: "Other suppliers" }];
 
 // Bills to pay: every supplier bill in Tally with money left on it, when it falls due, and the MSME 45-day limit.
@@ -28,7 +29,8 @@ export default async function PayablesPage({ searchParams }: PageProps<"/payable
   const one = p("s");
   const today = todayIST();
   const supabase = await createClient();
-  const { bills, error, readAt, tallyOn } = await loadPayables(supabase);
+  const [{ bills, error, readAt, tallyOn }, { claims }] = await Promise.all([loadPayables(supabase), loadClaims(supabase)]);
+  const claimOn = openByBill(claims);
 
   const shown = bills
     .filter((b) => who === "all" || (who === "factories") === !!b.factory_id)
@@ -36,7 +38,10 @@ export default async function PayablesPage({ searchParams }: PageProps<"/payable
   const t = totals(shown, today);
   const link = (extra: Record<string, string>) => `/payables?${new URLSearchParams(Object.entries({ view, who, s: one, ...extra }).filter(([, v]) => v && v !== "all" && v !== "due"))}`;
   const rows: BillRow[] = shown
-    .map((b) => ({ ...b, key: `${b.ledger}|${b.bill ?? ""}`, name: supplierName(b), due: dueOf(b, today) }))
+    .map((b) => {
+      const c = b.bill ? claimOn.get(billKey(b.ledger, b.bill)) : undefined;
+      return { ...b, key: `${b.ledger}|${b.bill ?? ""}`, name: supplierName(b), due: dueOf(b, today), claimed: c?.amount ?? 0, claims: (c?.claims ?? []).map((x) => ({ claim_no: x.claim_no, amount: Number(x.amount) })) };
+    })
     .sort((a, z) => (a.due_on ?? "9").localeCompare(z.due_on ?? "9") || z.open - a.open);
   const suppliers = bySupplier(shown, today);
   // Name who the late MSME bills are owed to, so the banner says whom to pay first without hunting the list.
@@ -103,6 +108,8 @@ export default async function PayablesPage({ searchParams }: PageProps<"/payable
 
           {!shown.length ? (
             <div className="empty"><b>{error ? "Couldn't load the bills" : bills.length ? "No bills here" : "Nothing to pay"}</b>{bills.length ? "Try All." : "Every bill in Tally is paid."}</div>
+          ) : view === "claims" ? (
+            <ClaimsList claims={claims.filter((c) => !one || c.ledger === one)} today={today} />
           ) : view === "suppliers" ? (
             <section className="card" aria-label="Suppliers">
               <ul className="suppliers">
@@ -156,5 +163,47 @@ export default async function PayablesPage({ searchParams }: PageProps<"/payable
         </p>
       </details>
     </>
+  );
+}
+
+type ClaimView = Awaited<ReturnType<typeof loadClaims>>["claims"][number];
+// Every claim raised, newest first: open ones (not in Tally yet) on top, then booked, then cancelled.
+function ClaimsList({ claims, today }: { claims: ClaimView[]; today: string }) {
+  const order = { open: 0, booked: 1, cancelled: 2 } as const;
+  const list = [...claims].sort((a, z) => order[a.state] - order[z.state] || z.claim_date.localeCompare(a.claim_date));
+  const open = list.filter((c) => c.state === "open");
+  if (!list.length) {
+    return <div className="empty"><b>No claims yet</b>Open a bill under By due date and tap Raise a claim when goods come short, fail QC or arrive late.</div>;
+  }
+  return (
+    <section className="card" aria-labelledby="claims-h">
+      <header className="card-h">
+        <div className="min-w-0">
+          <h2 id="claims-h">Factory claims</h2>
+          <p>{open.length ? <><b className="text-warn">{open.length} not in Tally yet</b>, {money(Math.round(open.reduce((a, c) => a + Number(c.amount), 0)))} kept back from payments</> : "Every claim is booked in Tally"}</p>
+        </div>
+      </header>
+      <ul className="rows">
+        {list.map((c) => (
+          <li key={c.id} className="claim-row">
+            <Link href={`/payables/claims/${encodeURIComponent(c.claim_no)}`} className="min-w-0">
+              <b><span className="code">{c.claim_no}</span>{supplierName({ factory: null, ledger: c.ledger })}</b>
+              <small className="dots"><span>
+                <span>{CLAIM_REASON[c.reason]}</span>
+                {c.bill && <span>bill {c.bill}</span>}
+                {c.order_no && <span>{c.order_no}</span>}
+                <span>{dm(c.claim_date)}{c.claim_date.slice(0, 4) !== today.slice(0, 4) ? ` ${c.claim_date.slice(0, 4)}` : ""}</span>
+              </span></small>
+            </Link>
+            <span className="claim-amt">
+              <b className={`num ${c.state === "cancelled" ? "muted line-through" : ""}`}>{money(Math.round(Number(c.amount)))}</b>
+              {c.state === "open" ? <span className="chip warn">Not in Tally yet</span>
+                : c.state === "booked" ? <span className="text-xs text-ok">In Tally {c.booked?.number ? `${c.booked.number}, ` : ""}{day(c.booked!.on)}</span>
+                : <span className="text-xs muted">Cancelled</span>}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }

@@ -10,6 +10,8 @@ These rules keep every screen consistent. Every change follows them, including t
 - **Your approvals** (owner only, above To do) holds everything only the owner can clear: factory POs sent for approval and
   emails from unknown senders. Each line says what it is, who asked and how long it has waited, with Approve and Send back
   right there. These never also show in To do. The Home menu item counts them.
+- A note that tags me (order Notes tab) is a To do line in its order's block, amber, with Reply, until I reply on that order or tap Done.
+- **Calendar** (a tab beside To do) answers "what is coming". One block per day that has something on it; late work stays on To do.
 - Red means the ship date will be missed. A step past its target while the ship date still holds is amber ("needs an update").
 - **Orders** answers "where is everything". On a computer it is a board with one column per stage; on a phone it is a list of cards.
 - **An order** answers "where is this order, and what do I do next". The hero, then the journey card with one next step, then one work area at a time.

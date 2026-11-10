@@ -24,10 +24,10 @@ import { MarkShipped } from "../orders/mark-shipped";
 import { sampleLabel, type SampleStatus } from "@/lib/samples";
 import { isFinance, loadBooks } from "../payments/load";
 import { paymentTodos } from "@/lib/payments";
-import { loadPayables } from "../payables/load";
+import { loadClaims, loadPayables } from "../payables/load";
 import { bySupplier, dueOf, lakh as rupees, totals } from "@/lib/payables";
 import { PageTabs } from "@/components/page-tabs";
-import { HOME_TABS } from "@/lib/page-groups";
+import { HOME_TABS, HOME_TABS_QUALITY } from "@/lib/page-groups";
 import { type Approval, Approvals } from "./approvals";
 
 type Sev = "bad" | "warn" | "ok" | "";
@@ -84,8 +84,16 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
   const owner = me?.role === "owner";
   // Bills to pay, for the owner and Accounts: read alongside everything else.
   const payP = isFinance(me?.role) ? loadPayables(supabase) : null;
+  const claimsP = isFinance(me?.role) ? loadClaims(supabase) : null;
   // Money to collect from buyers (cheques to deposit, Tally settlements, overdue invoices), for the same people.
   const booksP = isFinance(me?.role) ? loadBooks() : null;
+
+  // Team notes that tag me and that I haven't dealt with yet (replied on the order or tapped Done).
+  const notesP = me?.id && me.companyId ? Promise.all([
+    supabase.from("order_notes").select("id, order_id, body, created_by, created_at, orders(order_no, buyer_id, buyer_po, removed_at)")
+      .eq("company_id", me.companyId).contains("mentions", [me.id]).not("done_by", "cs", `{${me.id}}`).order("created_at").limit(50),
+    loadTeam(),
+  ]) : null;
 
   // Every read's error is kept: a list that failed to load must not show as "nothing to do".
   const errors: string[] = [];
@@ -241,6 +249,24 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
   const now_: Item[] = [];
   const soon: Item[] = [];
   const waiting: Item[] = [];
+  // A colleague tagged me in a note: it sits with the order's other jobs until I reply or tap Done.
+  if (notesP) {
+    const [{ data: tags, error: tagErr }, people] = await notesP;
+    if (tagErr) errors.push(tagErr.message);
+    const nameOf = new Map(people.map((m) => [m.user_id, personName(m)]));
+    for (const n of tags ?? []) {
+      const o = (Array.isArray(n.orders) ? n.orders[0] : n.orders) as { order_no: string; buyer_id: string; buyer_po: string | null; removed_at: string | null } | null;
+      if (!o || o.removed_at) continue;
+      const text = n.body.replace(/\s+/g, " ");
+      now_.push({
+        key: `note:${n.id}`, href: `/orders/${n.order_id}#talk`, sev: "warn", code: o.order_no,
+        title: `${buyerOf.get(o.buyer_id) ?? ""}${o.buyer_po ? ` · PO ${o.buyer_po}` : ""}`,
+        chip: { text: `${nameOf.get(n.created_by) ?? "Someone"} tagged you`, cls: "warn" },
+        detail: `\u201c${text.length > 140 ? `${text.slice(0, 137)}…` : text}\u201d · ${waitedText(n.created_at, now)} ago`,
+        action: "Reply", sort: n.created_at,
+      });
+    }
+  }
   const noTargets: { o: (typeof open)[number]; n: number }[] = [];
   // Factory plans and POs are the orders team's work; Quality doesn't see them.
   const noPoAsked = new Set<string>();
@@ -708,7 +734,12 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
     }
   }
 
-  const lists = { now: now_.sort(bySev), soon: soon.sort(bySev), waiting: waiting.sort(bySev) };
+  // Accounts' Home is money and paperwork (Dheeraj, 10 Nov 2026: complete the team panels): invoices to make, losses,
+  // e-way bills, GRNs, goods held with us and notes that tag them. Ship dates, plans and factory chasing stay with the
+  // merchandisers, so they don't bury the money work.
+  const accounts = me?.role === "accounts";
+  const mine = (i: Item) => !accounts || /^(loss|inv|held|disp|grn|note|allshipped):/.test(i.key);
+  const lists = { now: now_.filter(mine).sort(bySev), soon: soon.filter(mine).sort(bySev), waiting: waiting.filter(mine).sort(bySev) };
   const tab = TABS.some((t) => t.key === sp.tab) ? (sp.tab as keyof typeof lists) : lists.now.length || !lists.soon.length ? "now" : "soon";
   const qs = (t: string) => `/today?${new URLSearchParams({ ...(sp.who ? { who: String(sp.who) } : {}), tab: t })}`;
 
@@ -721,6 +752,8 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
   const pay = payP ? await payP : null;
   if (pay?.error) errors.push(pay.error.message);
   const payT = pay ? totals(pay.bills, today) : null;
+  // Claims raised but not booked in Tally yet: Accounts books each debit note there by hand.
+  const openClaims = claimsP ? (await claimsP).claims.filter((c) => c.state === "open") : [];
   // Suppliers with bills overdue or due this week, the most overdue first.
   const books = booksP ? await booksP : null;
   if (books?.error) errors.push(books.error.message);
@@ -734,7 +767,7 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
   const nowCount = lists.now.length;
   // The greeting counts money jobs that can't wait too, for the owner and Accounts.
   const headCount = nowCount + approvals.length + collect.filter((a) => a.sev === "bad").length;
-  const toChase = chaseList.filter((f) => !f.chased).length;
+  const toChase = accounts ? 0 : chaseList.filter((f) => !f.chased).length;
 
   // One block per order: everything an order needs sits together under its name, worst first, so the same order
   // never shows up three times down the list. Work that isn't about one order (buyer POs, inquiries) stands alone.
@@ -776,7 +809,7 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
           </ul>
         </section>
       )}
-      {payT && (payT.overdue > 0 || payT.week > 0) && (
+      {payT && (payT.overdue > 0 || payT.week > 0 || openClaims.length > 0) && (
         <section className="card money-card" aria-labelledby="pay-h">
           <header className="card-h">
             <div className="min-w-0">
@@ -790,6 +823,15 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
             <Link href="/payables" className="btn sm">Plan</Link>
           </header>
           <ul className="tasks">
+            {openClaims.length > 0 && (
+              <li className="task">
+                <span className="sev warn" aria-hidden />
+                <Link href="/payables?view=claims" className="task-text">
+                  <b>Book {openClaims.length === 1 ? `claim ${openClaims[0].claim_no}` : `${openClaims.length} factory claims`} in Tally</b>
+                  <span>{rupees(openClaims.reduce((a, c) => a + Number(c.amount), 0))} kept back from payments until Tally has the debit {openClaims.length === 1 ? "note" : "notes"}</span>
+                </Link>
+              </li>
+            )}
             {payDue.map((s) => (
               <li key={s.ledger} className="task">
                 <span className={`sev ${s.overdue ? "bad" : "warn"}`} aria-hidden />
@@ -807,7 +849,7 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
 
   return (
     <>
-      {team && <PageTabs tabs={HOME_TABS} label="Home" />}
+      {(team || quality) && <PageTabs tabs={team ? HOME_TABS : HOME_TABS_QUALITY} label="Home" />}
       <section className="day" aria-label="Your day">
         <div className="day-main">
           <span className="day-date">{longDay.format(ist(today))}</span>

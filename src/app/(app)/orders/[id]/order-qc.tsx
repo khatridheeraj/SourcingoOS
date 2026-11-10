@@ -7,6 +7,8 @@ import { REPORT_ACCEPT, REPORT_MAX_MB, uploadPhotos, uploadReports } from "@/lib
 import { caught } from "@/lib/errors";
 import { shipQcNote } from "@/lib/ship-qc";
 import { qcCountsProblem } from "@/lib/qc-input";
+import type { Defect } from "@/lib/defects";
+import { QcDefects } from "./qc-defects";
 import { addQcComment, addQcFiles, cancelQc, recordQc, removeQcPhoto, sameQc, type QcFile, type QcInput } from "../actions";
 
 export type QcCheck = {
@@ -15,6 +17,7 @@ export type QcCheck = {
   photos: { id: string; url: string }[];
   reports: { id: string; url: string; name: string }[];
   comments: { id: string; by: string; at: string; body: string }[];
+  defectList: Defect[];
 };
 
 const pct = (d: number, p: number | null) => (p ? `${((d / p) * 100).toFixed(1)}%` : "");
@@ -65,7 +68,8 @@ export type QcStyle = { id: string; style: string; colour: string; qty: number; 
 
 // Sampling and production inspections, kept separately for each style of the order. Saved checks are cancelled, never edited.
 // The Quality team records them with proof; everyone else can read them and comment.
-export function OrderQc({ orderId, companyId, open, canRecord, today, checks, finalPassed, styles }: {
+export function OrderQc({ orderId, orderNo, companyId, open, canRecord, today, checks, finalPassed, styles }: {
+  orderNo: string;
   orderId: string;
   companyId: string;
   open: boolean;
@@ -336,6 +340,10 @@ export function OrderQc({ orderId, companyId, open, canRecord, today, checks, fi
                     {c.defects} {c.defects === 1 ? "defect" : "defects"}
                     {c.pieces_checked ? ` (${pct(c.defects, c.pieces_checked)})` : ""}
                   </div>
+                )}
+                {!c.cancelled_at && (
+                  <QcDefects orderId={orderId} qcId={c.id} list={c.defectList} can={editable} failed={c.result === "fail"}
+                    message={{ order: orderNo, style: st.style, kind: qcKindLabel(c.kind), on: day(c.checked_on), checked: c.pieces_checked, notes: c.notes }} />
                 )}
                 {c.notes && <div className="mt-1.5 whitespace-pre-line">{c.notes}</div>}
                 {c.cancelled_at && <div className="muted mt-1.5">Cancelled: {c.cancel_reason}</div>}

@@ -4,7 +4,7 @@ import { Fragment } from "react";
 import { notFound } from "next/navigation";
 import { canEditOrders, canEnterDone, canRecordQc, getMe } from "@/lib/auth";
 import { fetchAll } from "@/lib/fetch-all";
-import { day, dayAt, dayAtNear, dayNear, money, moneyShort, qty, qtyTotal, qtyU, unitOf, unitOfAll, SHIP_QC, stageReached, STATUS, TNA_STEPS, todayIST } from "@/lib/format";
+import { day, dayAt, dayAtNear, dayTimeNear, dayNear, money, moneyShort, qty, qtyTotal, qtyU, unitOf, unitOfAll, SHIP_QC, stageReached, STATUS, TNA_STEPS, todayIST } from "@/lib/format";
 import { areaOf, journey, shipClock } from "@/lib/journey";
 import { fileNamesStyle, styleKey } from "@/lib/po-match";
 import { Outlook, PhotoStack, ShipClock } from "@/components/order-ui";
@@ -16,6 +16,7 @@ import { OrderDispatch, type Dispatch, type DispatchFactory, type TallyBills } f
 import { OrderHistory } from "./order-history";
 import { OrderMargin } from "./order-margin";
 import { OrderProduction } from "./order-production";
+import { type Severity } from "@/lib/defects";
 import { OrderQc, type QcCheck } from "./order-qc";
 import { OrderStyles, type Baseline, type ExtraStep, type FactoryGroup, type StepQc } from "./order-styles";
 import { forecast, paceLookup } from "@/lib/progress";
@@ -36,6 +37,8 @@ import { DeletePo } from "./delete-po";
 import { OrderFloor, type FloorUpdate } from "./order-floor";
 import { floorLine, floorStatus } from "@/lib/floor";
 import { BuyerLink } from "../../buyers/buyer-link";
+import { OrderTalk, type Note } from "./order-talk";
+import { isPartner, type Role } from "@/lib/auth-roles";
 
 const str = (v: unknown) => (v == null ? "" : String(v));
 
@@ -59,7 +62,7 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
     .map((l) => ({ ...l, buyer_rate: priceOf.get(l.id)?.buyer_rate ?? null, factory_rate: priceOf.get(l.id)?.factory_rate ?? null }));
   // How late each factory usually runs, for the forecast; read alongside everything else.
   const paceP = loadPace();
-  const [{ data: qc }, team, me, { data: lineStages }, { data: factoryPos }, { data: stepUps }, { data: lineFiles }, { data: shipRows }, { data: floorRows }] = await Promise.all([
+  const [{ data: qc }, team, me, { data: lineStages }, { data: factoryPos }, { data: stepUps }, { data: lineFiles }, { data: shipRows }, { data: floorRows }, { data: noteRows }] = await Promise.all([
     supabase
       .from("qc_checks")
       .select("id, line_id, kind, checked_on, result, pieces_checked, defects, notes, checked_by, cancelled_at, cancel_reason")
@@ -81,6 +84,8 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
     // What Quality saw on its factory visits, newest first.
     supabase.from("floor_updates").select("id, line_id, stage, status, qty_done, expected_on, note, photos, created_by, created_at").eq("order_id", id)
       .order("created_at", { ascending: false }).limit(60),
+    // The team's notes on this order, oldest first like a chat.
+    supabase.from("order_notes").select("id, body, mentions, done_by, photos, created_by, created_at").eq("order_id", id).order("created_at").limit(300),
   ]);
   const ship = orderShip(shipRows);
   const canEdit = canEditOrders(me?.role);
@@ -111,16 +116,17 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
   const people = new Map(team.map((m) => [m.user_id, personName(m)]));
   // Photos come from private storage through links that work for an hour.
   const qcIds = (qc ?? []).map((c) => c.id);
-  const [{ data: photoRows }, { data: commentRows }] = qcIds.length
+  const [{ data: photoRows }, { data: commentRows }, { data: defectRows }] = qcIds.length
     ? await Promise.all([
         supabase.from("qc_photos").select("id, qc_id, path, kind, file_name").in("qc_id", qcIds).is("removed_at", null).order("created_at"),
         supabase.from("qc_comments").select("id, qc_id, body, created_by, created_at").in("qc_id", qcIds).order("created_at"),
+        supabase.from("qc_defects").select("check_id, defect, pieces, severity").in("check_id", qcIds).is("removed_at", null).order("position"),
       ])
-    : [{ data: [] }, { data: [] }];
+    : [{ data: [] }, { data: [] }, { data: [] }];
   const stylePaths = lines.map((l) => l.photo_path).filter(Boolean) as string[];
   const dispatchPaths = [...(dRows ?? []).flatMap((d) => [d.bill_path, d.invoice_path, d.eway_path, d.lr_path, d.grn_path]), ...dispatchPhotos.map((p) => p.path)].filter(Boolean) as string[];
   const allPaths = [...(photoRows ?? []).map((p) => p.path), ...stylePaths, ...dispatchPaths, ...(stepUps ?? []).flatMap((u) => u.photos as string[]), ...(lineFiles ?? []).map((f) => f.path),
-    ...(floorRows ?? []).flatMap((u) => u.photos as string[])];
+    ...(floorRows ?? []).flatMap((u) => u.photos as string[]), ...(noteRows ?? []).flatMap((n) => n.photos as string[])];
   const { data: signed } = allPaths.length
     ? await supabase.storage.from(PHOTO_BUCKET).createSignedUrls(allPaths, 3600)
     : { data: [] };
@@ -133,6 +139,7 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
       .map((p) => ({ id: p.id, url: urlByPath.get(p.path)!, name: p.file_name || "Report" })),
     comments: (commentRows ?? []).filter((m) => m.qc_id === c.id)
       .map((m) => ({ id: m.id, body: m.body, at: m.created_at, by: (m.created_by && people.get(m.created_by)) || "Someone" })),
+    defectList: (defectRows ?? []).filter((d) => d.check_id === c.id).map((d) => ({ defect: d.defect, pieces: d.pieces, severity: d.severity as Severity })),
   }));
   // Each style passes or fails its own final QC; the order is ready to ship when all of them have passed.
   const finalPassed = lines.length > 0 && lines.every((l) => checks.find((c) => c.line_id === l.id && SHIP_QC.includes(c.kind) && !c.cancelled_at)?.result === "pass");
@@ -325,8 +332,18 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
     riskDays: outlook?.level === "risk" ? outlook.daysLate : 0,
     today,
   });
+  // Team notes: who wrote them, who they tag, and which still wait on me.
+  const staff = team.filter((m) => m.active && !isPartner(m.role as Role)).map((m) => ({ id: m.user_id, name: personName(m) }));
+  const notes: Note[] = (noteRows ?? []).map((n) => ({
+    id: n.id, body: n.body, when: dayTimeNear(n.created_at, today), byMe: n.created_by === me?.id, by: people.get(n.created_by) ?? "Someone",
+    tags: (n.mentions as string[]).map((u) => (u === me?.id ? "you" : people.get(u) ?? "someone")),
+    forMe: !!me?.id && (n.mentions as string[]).includes(me.id) && !(n.done_by as string[]).includes(me.id),
+    photos: (n.photos as string[]).map((p) => urlByPath.get(p)).filter(Boolean) as string[],
+  }));
+  const notesForMe = notes.filter((n) => n.forMe).length;
   const tabs: SectionTab[] = [
     { id: "tna", label: "Styles", count: pendingUpdates.length || behind || undefined, tone: pendingUpdates.length ? "info" : outlook?.level === "risk" ? "bad" : "warn" },
+    { id: "talk", label: "Notes", count: notesForMe || undefined, tone: "warn" },
     { id: "samples", label: "Samples", count: samplesToAct || undefined, tone: "warn" },
     { id: "qc", label: "QC" },
     ...(canEdit ? [{ id: "dispatch", label: "Dispatch" }] : []),
@@ -436,7 +453,7 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
         </section>
       </div>
       <div data-sec="qc">
-      <OrderQc orderId={o.id} companyId={o.company_id} open={o.status === "open"} canRecord={canRecordQc(me?.role)} today={todayIST()} checks={checks} finalPassed={finalPassed}
+      <OrderQc orderId={o.id} orderNo={o.order_no} companyId={o.company_id} open={o.status === "open"} canRecord={canRecordQc(me?.role)} today={todayIST()} checks={checks} finalPassed={finalPassed}
         styles={lines.map((l) => ({ id: l.id, style: l.style, colour: str(l.colour), qty: l.qty, product: l.product }))} />
       </div>
       {canEdit && (
@@ -505,6 +522,9 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
       {me?.role === "owner" && (
         <div data-sec="details"><DeletePo orderId={o.id} orderNo={o.order_no} buyerPo={o.buyer_po} warnings={deleteWarnings} blocked={deleteBlocked} /></div>
       )}
+      <div data-sec="talk">
+        <OrderTalk orderId={o.id} companyId={o.company_id} meId={me?.id ?? ""} notes={notes} team={staff} canWrite={!!me?.role && !isPartner(me.role)} />
+      </div>
       <div data-sec="history"><OrderHistory orderId={o.id} /></div>
       </OrderSections>
     </>

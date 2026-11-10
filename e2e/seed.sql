@@ -106,7 +106,14 @@ insert into public.factory_pos (company_id, order_id, factory_id, lock_requested
 select company_id, :'o_appr', '20000000-0000-0000-0000-000000000002', now() - interval '3 hours', '00000000-0000-0000-0000-0000000000a3', 7
 from public.orders where id = :'o_appr';
 
--- 8. Final QC passed: ready to ship.
+-- 8. Final QC failed first, with its defect list, then passed: ready to ship.
+insert into public.qc_checks (company_id, order_id, line_id, kind, checked_on, result, pieces_checked, defects, notes, checked_by)
+select l.company_id, l.order_id, l.id, 'final', current_date - 4, 'fail', 80, 14, 'Shade off on one roll; seams to redo', '00000000-0000-0000-0000-0000000000a4'
+from public.order_lines l where l.order_id = :'o_over';
+insert into public.qc_defects (company_id, check_id, position, defect, pieces, severity, created_by)
+select q.company_id, q.id, v.pos, v.defect, v.pcs, v.sev, '00000000-0000-0000-0000-0000000000a4'
+from public.qc_checks q, (values (1, 'Shade variation', 6, 'major'), (2, 'Open seam', 5, 'major'), (3, 'Loose threads', 3, 'minor')) v (pos, defect, pcs, sev)
+where q.order_id = :'o_over' and q.result = 'fail';
 update public.line_stages set done_on = planned_on where order_id = :'o_over' and stage in ('packed', 'final_qc');
 insert into public.qc_checks (company_id, order_id, line_id, kind, checked_on, result, pieces_checked, checked_by)
 select l.company_id, l.order_id, l.id, 'final', current_date - 1, 'pass', 80, '00000000-0000-0000-0000-0000000000a4'
@@ -200,6 +207,10 @@ select c.id, v.guid, v.vtype, v.kind, v.number, current_date - v.ago, v.party, v
           ('e2e-pay-1', 'Payment', 'payment', '41', 5, 'Flavia Test Creation', 20250, '[{"name":"PB-T-090","amount":20250}]'),
           ('e2e-pur-3', 'Purchase', 'purchase', 'JTT-44', 50, 'Jaipur Test Trims', 18500, '[{"name":"JTT-44","amount":18500}]')) v (guid, vtype, kind, number, ago, party, amount, bills);
 insert into public.supplier_terms (company_id, ledger, msme) select c.id, 'Jaipur Test Trims', 'micro' from public.companies c;
+-- A factory claim raised against Flavia's newer bill, not booked in Tally yet: Bills to pay keeps it back.
+insert into public.factory_claims (company_id, claim_no, ledger, bill, claim_date, reason, pieces, amount, note, created_by)
+select c.id, 'CL-0001', 'Flavia Test Creation', 'PB-T-101', current_date - 2, 'short', 40, 9800, '40 pcs short against the challan', '00000000-0000-0000-0000-0000000000a5'
+from public.companies c;
 
 -- 13. A fabric order, like a mill order for cambric: both styles typed in as Fabric, so they skip the garment steps.
 set role authenticated;
@@ -217,3 +228,16 @@ reset role;
 insert into public.factory_pos (company_id, order_id, factory_id, released_at, po_no)
 select o.company_id, o.id, '20000000-0000-0000-0000-000000000002', now() - interval '40 days', 'FPO-' || o.order_no from public.orders o where o.id = :'o_slip';
 select pg_temp.plan(:'o_slip', 9, 0);
+
+-- Team notes (0080): the owner asks the merchandiser and Quality about the slipping order; Quality has answered.
+insert into public.order_notes (company_id, order_id, body, mentions, done_by, created_by, created_at)
+select o.company_id, o.id, v.body, v.mentions::uuid[], v.done::uuid[], v.by::uuid, now() - v.ago::interval from public.orders o,
+  (values ('Buyer called about AH-SHIRT-04. @Merch can you get a firm date from Shree, and @Quality please check the stitching on your next visit.',
+           '{00000000-0000-0000-0000-0000000000a3,00000000-0000-0000-0000-0000000000a4}', '{00000000-0000-0000-0000-0000000000a4}', '00000000-0000-0000-0000-0000000000a1', '5 hours'),
+          ('Seen it today. Stitching is fine, about 200 pieces done. Collars still on the machine.', '{00000000-0000-0000-0000-0000000000a1}', '{}', '00000000-0000-0000-0000-0000000000a4', '2 hours'))
+  v (body, mentions, done, by, ago)
+where o.id = :'o_slip';
+
+-- Most open orders are looked after by the merchandiser, a few by the manager (team board, hand over).
+update public.orders set merchandiser_id = case when order_no in ('SO-0001', 'SO-0002') then '00000000-0000-0000-0000-0000000000a2'::uuid
+  else '00000000-0000-0000-0000-0000000000a3'::uuid end where status = 'open' and merchandiser_id is null and order_no <> 'SO-0004';

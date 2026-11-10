@@ -203,6 +203,7 @@ export function OrderDispatch({ orderId, orderNo, companyId, open, owner, factor
                   ? <span className="chip" title="Linked by itself once Accounts books this bill in Tally.">Not in Tally yet</span>
                   : tallyOff ? <span className="chip bad">Tally says {money(d.purchaseTallyAmount)}</span> : <span className="chip ok">In Tally</span>}
                 <span className="ml-auto flex gap-2">
+                  <a href={`/goods/${d.id}/packing`} className="btn sm">Packing list</a>
                   <a href={`/goods/${d.id}/challan`} className="btn sm">Delivery challan</a>
                   {!d.invoicedAt && <button type="button" className="btn sm ghost" disabled={pending} onClick={() => cancel(d.id)}>Cancel</button>}
                 </span>

@@ -41,3 +41,29 @@ export async function saveBillNote(ledger: string, bill: string, hold: boolean, 
   const r = await call("save_bill_note", { p_ledger: ledger, p_bill: bill, p_hold: hold, p_note: note });
   return r.error ? r : { ok: hold ? `Bill ${bill} is on hold` : note.trim() ? `Note saved on ${bill}` : `Bill ${bill} released` };
 }
+
+export type ClaimInput = { ledger: string; bill: string | null; orderId: string | null; date: string; reason: string; pieces: string; amount: string; note: string };
+
+// Raises a factory claim (a debit note to send the factory). The amount is what was typed, or pieces times the rate.
+export async function raiseClaim(c: ClaimInput): Promise<Result> {
+  const pieces = c.pieces.trim();
+  if (pieces && !/^\d{1,8}$/.test(pieces)) return { error: "Pieces must be a whole number." };
+  const amount = Number(c.amount.replace(/[^\d.]/g, ""));
+  if (!c.amount.trim() || !Number.isFinite(amount) || amount <= 0) return { error: "Write the amount to claim." };
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(c.date)) return { error: "Pick the claim date." };
+  if (!isFinance((await getMe())?.role)) return { error: "Only Accounts and the owner can raise factory claims." };
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("raise_factory_claim", {
+    p_ledger: c.ledger, p_bill: c.bill, p_order: c.orderId, p_date: c.date, p_reason: c.reason,
+    p_pieces: pieces ? Number(pieces) : null, p_amount: Math.round(amount * 100) / 100, p_note: c.note,
+  });
+  if (error) return { error: friendly(error) };
+  revalidatePath("/payables");
+  revalidatePath("/today");
+  return { ok: String(data) };
+}
+
+export async function cancelClaim(id: string, reason: string): Promise<Result> {
+  const r = await call("cancel_factory_claim", { p_id: id, p_reason: reason });
+  return r.error ? r : { ok: "Claim cancelled." };
+}

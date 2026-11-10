@@ -12,6 +12,7 @@ import { canEditOrders, canEnterDone, canRecordQc, getMe, roleLabel } from "@/li
 import { todayIST } from "@/lib/format";
 import { heldSince } from "@/lib/goods";
 import { createClient } from "@/lib/supabase/server";
+import { isPartner } from "@/lib/auth-roles";
 
 export default async function AppLayout({ children }: LayoutProps<"/">) {
   const me = await getMe();
@@ -23,7 +24,7 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
   // Buyer POs waiting for the orders team, and Help's counts, shown on the menu.
   const supabase = await createClient();
   const today = todayIST();
-  const [pos, counts, due, held, samples, asks, unknown] = await Promise.all([
+  const [pos, counts, due, held, samples, asks, unknown, tags] = await Promise.all([
     canEditOrders(me.role) && me.companyId
       ? supabase.from("incoming_pos").select("id", { count: "exact", head: true }).eq("company_id", me.companyId).in("status", ["to_check", "failed"])
       : Promise.resolve({ count: 0 }),
@@ -49,6 +50,10 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
     me.role === "owner" && me.companyId
       ? supabase.from("incoming_pos").select("id", { count: "exact", head: true }).eq("company_id", me.companyId).eq("status", "held")
       : Promise.resolve({ count: 0 }),
+    // Team notes that tag me and that I haven't dealt with yet.
+    me.companyId && me.role && !isPartner(me.role)
+      ? supabase.from("order_notes").select("id", { count: "exact", head: true }).eq("company_id", me.companyId).contains("mentions", [me.id]).not("done_by", "cs", `{${me.id}}`)
+      : Promise.resolve({ count: 0 }),
   ]);
   const toCheck = pos.count ?? 0;
   const help = (counts.data ?? {}) as { unseen?: number; new?: number | null; owner?: string | null };
@@ -57,7 +62,7 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
   const money = me.role === "owner" || me.role === "accounts";
   // Ten places, in the order the work flows. Pages that belong together share one menu item and a tab row on top
   // (Home and its chase list, Buyer emails, Money, Reports), so nobody hunts through near-duplicate pages.
-  const home = { href: "/today", label: "Home", icon: "home" as const, also: ["/updates"], count: (asks.count ?? 0) + (unknown.count ?? 0) };
+  const home = { href: "/today", label: "Home", icon: "home" as const, also: ["/updates", "/calendar"], count: (asks.count ?? 0) + (unknown.count ?? 0) + (tags.count ?? 0) };
   const orders = { href: "/", label: "Orders", icon: "orders" as const };
   const inbox = { href: "/pos", label: "Buyer emails", icon: "inbox" as const, count: toCheck + (due.count ?? 0), also: ["/inquiries"] };
   const samplesItem = { href: "/samples", label: "Samples", icon: "sample" as const, count: samples.count ?? 0 };
