@@ -131,6 +131,19 @@ const EN = {
   poAcceptedToast: (no: string) => `${/^f?po\b|^fpo/i.test(no) ? "" : "PO "}${no} accepted. Thank you.`,
   poHelp: "Open the PO to see every style with its photo, rate and terms, or save it as a PDF. Tap Accept PO once you agree. Reminders stop when you accept.",
   posToAccept: (n: number) => `${n} ${n === 1 ? "PO is" : "POs are"} waiting for you to accept.`,
+  money: "Bills and payments",
+  moneyOpen: (amt: string, n: number) => `${amt} still to be paid on ${n} ${n === 1 ? "bill" : "bills"}`,
+  moneyAllPaid: "Every bill paid",
+  moneyRead: (d: string) => `From Sourcingo's accounts, updated ${d}`,
+  billsToPay: "Bills still to be paid",
+  billLeft: (amt: string) => `${amt} left`,
+  earlierBalance: "Earlier balance",
+  paidRecently: "Paid in the last 4 months",
+  payment: "Payment",
+  debitNote: "Debit note",
+  forBills: (b: string) => `for ${b}`,
+  noPayments: "No payments in the last 4 months.",
+  moneyHelp: "Bills and payments come from Sourcingo's accounts. If a bill is missing or an amount looks wrong, tell Sourcingo through Help.",
 };
 
 const HI: typeof EN = {
@@ -241,6 +254,19 @@ const HI: typeof EN = {
   poAcceptedToast: (no: string) => `${/^f?po\b|^fpo/i.test(no) ? "" : "PO "}${no} स्वीकार हो गया। धन्यवाद।`,
   poHelp: "PO खोलकर हर स्टाइल की फोटो, रेट और शर्तें देखें, या PDF सेव करें। सहमत हों तो PO स्वीकार करें दबाएँ। स्वीकार करते ही रिमाइंडर बंद हो जाते हैं।",
   posToAccept: (n: number) => `${n} PO आपकी स्वीकृति का इंतज़ार कर रहे हैं।`,
+  money: "बिल और पेमेंट",
+  moneyOpen: (amt: string, n: number) => `${n} बिल के ${amt} का पेमेंट बाकी`,
+  moneyAllPaid: "सारे बिल का पेमेंट हो गया",
+  moneyRead: (d: string) => `Sourcingo के अकाउंट्स से, ${d} तक का`,
+  billsToPay: "जिन बिल का पेमेंट बाकी है",
+  billLeft: (amt: string) => `${amt} बाकी`,
+  earlierBalance: "पुराना बैलेंस",
+  paidRecently: "पिछले 4 महीने के पेमेंट",
+  payment: "पेमेंट",
+  debitNote: "डेबिट नोट",
+  forBills: (b: string) => `${b} के लिए`,
+  noPayments: "पिछले 4 महीने में कोई पेमेंट नहीं।",
+  moneyHelp: "बिल और पेमेंट Sourcingo के अकाउंट्स से आते हैं। कोई बिल छूटा हो या रकम गलत लगे तो मदद में बताएँ।",
 };
 
 export type Words = typeof EN;
