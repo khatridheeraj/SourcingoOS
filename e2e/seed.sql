@@ -241,3 +241,14 @@ where o.id = :'o_slip';
 -- Most open orders are looked after by the merchandiser, a few by the manager (team board, hand over).
 update public.orders set merchandiser_id = case when order_no in ('SO-0001', 'SO-0002') then '00000000-0000-0000-0000-0000000000a2'::uuid
   else '00000000-0000-0000-0000-0000000000a3'::uuid end where status = 'open' and merchandiser_id is null and order_no <> 'SO-0004';
+
+-- 13. The buyer wrote on its page about the late order, the merchandiser answered, and a newer question still waits.
+insert into public.buyer_messages (company_id, order_id, body, from_buyer, created_by, created_at, answered_at, answered_by)
+select o.company_id, o.id, v.body, v.from_buyer, v.by::uuid, now() - v.ago::interval,
+       case when v.answered then now() - interval '20 hours' end, case when v.answered then '00000000-0000-0000-0000-0000000000a3'::uuid end
+from public.orders o, (values
+  ('Is AH-TUNIC-07 still on for the ship date? Our store launch depends on it.', true, '00000000-0000-0000-0000-0000000000a7', '26 hours', true),
+  ('The factory is a few days behind on stitching. We will confirm a new date by Friday.', false, '00000000-0000-0000-0000-0000000000a3', '20 hours', false),
+  ('Thanks. Please also send the carton marking for approval before packing.', true, '00000000-0000-0000-0000-0000000000a7', '3 hours', false))
+  v (body, from_buyer, by, ago, answered)
+where o.id = :'o_late';

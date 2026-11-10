@@ -38,6 +38,7 @@ import { OrderFloor, type FloorUpdate } from "./order-floor";
 import { floorLine, floorStatus } from "@/lib/floor";
 import { BuyerLink } from "../../buyers/buyer-link";
 import { OrderTalk, type Note } from "./order-talk";
+import { BuyerThread, type BuyerLine } from "./buyer-thread";
 import { isPartner, type Role } from "@/lib/auth-roles";
 
 const str = (v: unknown) => (v == null ? "" : String(v));
@@ -62,7 +63,7 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
     .map((l) => ({ ...l, buyer_rate: priceOf.get(l.id)?.buyer_rate ?? null, factory_rate: priceOf.get(l.id)?.factory_rate ?? null }));
   // How late each factory usually runs, for the forecast; read alongside everything else.
   const paceP = loadPace();
-  const [{ data: qc }, team, me, { data: lineStages }, { data: factoryPos }, { data: stepUps }, { data: lineFiles }, { data: shipRows }, { data: floorRows }, { data: noteRows }] = await Promise.all([
+  const [{ data: qc }, team, me, { data: lineStages }, { data: factoryPos }, { data: stepUps }, { data: lineFiles }, { data: shipRows }, { data: floorRows }, { data: noteRows }, { data: buyerRows }] = await Promise.all([
     supabase
       .from("qc_checks")
       .select("id, line_id, kind, checked_on, result, pieces_checked, defects, notes, checked_by, cancelled_at, cancel_reason")
@@ -86,6 +87,8 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
       .order("created_at", { ascending: false }).limit(60),
     // The team's notes on this order, oldest first like a chat.
     supabase.from("order_notes").select("id, body, mentions, done_by, photos, created_by, created_at").eq("order_id", id).order("created_at").limit(300),
+    // What the buyer wrote on its page about this order, and the team's answers.
+    supabase.from("buyer_messages").select("id, body, from_buyer, created_by, created_at, answered_at").eq("order_id", id).order("created_at").limit(300),
   ]);
   const ship = orderShip(shipRows);
   const canEdit = canEditOrders(me?.role);
@@ -341,9 +344,15 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
     photos: (n.photos as string[]).map((p) => urlByPath.get(p)).filter(Boolean) as string[],
   }));
   const notesForMe = notes.filter((n) => n.forMe).length;
+  const buyerLines: BuyerLine[] = (buyerRows ?? []).map((m) => ({
+    id: m.id, body: m.body, fromBuyer: m.from_buyer, by: people.get(m.created_by) ?? "Someone", when: dayTimeNear(m.created_at, today),
+    open: m.from_buyer && !m.answered_at,
+  }));
+  const buyerWaiting = buyerLines.filter((l) => l.open).length;
   const tabs: SectionTab[] = [
     { id: "tna", label: "Styles", count: pendingUpdates.length || behind || undefined, tone: pendingUpdates.length ? "info" : outlook?.level === "risk" ? "bad" : "warn" },
     { id: "talk", label: "Notes", count: notesForMe || undefined, tone: "warn" },
+    { id: "buyer-talk", label: "Buyer", count: buyerWaiting || undefined, tone: "warn" },
     { id: "samples", label: "Samples", count: samplesToAct || undefined, tone: "warn" },
     { id: "qc", label: "QC" },
     ...(canEdit ? [{ id: "dispatch", label: "Dispatch" }] : []),
@@ -524,6 +533,9 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
       )}
       <div data-sec="talk">
         <OrderTalk orderId={o.id} companyId={o.company_id} meId={me?.id ?? ""} notes={notes} team={staff} canWrite={!!me?.role && !isPartner(me.role)} />
+      </div>
+      <div data-sec="buyer-talk">
+        <BuyerThread orderId={o.id} buyer={buyerLabel || "The buyer"} lines={buyerLines} canWrite={!!me?.role && !isPartner(me.role)} />
       </div>
       <div data-sec="history"><OrderHistory orderId={o.id} /></div>
       </OrderSections>
