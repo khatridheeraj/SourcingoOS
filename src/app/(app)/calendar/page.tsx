@@ -87,6 +87,7 @@ export default async function CalendarPage({ searchParams }: PageProps<"/calenda
             {" "}Late work is on <Link href="/today" className="link">To do</Link>.
           </p>
         </div>
+        {(me.role === "owner" || me.role === "manager") && <Link href="/calendar/visits" className="btn">Factory visit plan</Link>}
       </div>
 
       {errors.length > 0 && <div className="errbox">Some of the calendar couldn&apos;t load, so days may look emptier than they are. Reload to try again. ({[...new Set(errors)].join("; ")})</div>}

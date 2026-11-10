@@ -2487,6 +2487,7 @@ main:focus { outline: none; }
   .cal-date .num { color: var(--muted); font-weight: 500; font-size: 13px; }
   .cal-date small { margin-left: auto; font-size: 12px; font-weight: 500; color: var(--faint); font-variant-numeric: tabular-nums; }
   .cal .tasks { margin: 4px -16px 0; }
+  .cal-free { padding: 2px 0 10px; font-size: 13px; color: var(--faint); }
   .cal-item { grid-template-columns: 108px minmax(0, 1fr); align-items: start; }
   .cal-kind { font-size: 12.5px; font-weight: 600; color: var(--muted); padding-top: 1px; overflow-wrap: anywhere; }
   .cal-kind.k-ship { color: var(--accent); }
