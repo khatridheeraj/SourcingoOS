@@ -144,6 +144,17 @@ const EN = {
   forBills: (b: string) => `for ${b}`,
   noPayments: "No payments in the last 4 months.",
   moneyHelp: "Bills and payments come from Sourcingo's accounts. If a bill is missing or an amount looks wrong, tell Sourcingo through Help.",
+  qcTitle: "Quality checks",
+  qcSum: (n: number) => `${n} ${n === 1 ? "check" : "checks"}`,
+  qcPassed: "Passed",
+  qcFailed: "Failed",
+  qcRecheck: "Re-check",
+  qcChecked: (n: string) => `${n} pcs checked`,
+  qcDefects: (n: number) => `${n} ${n === 1 ? "defect" : "defects"}`,
+  qcReport: "QC report",
+  qcEarlier: (n: number) => `Earlier checks (${n})`,
+  qcToFix: (s: string) => `Final QC failed for ${s}. Fix the goods, then ask Sourcingo for a re-check.`,
+  qcHelp: "Quality checks are the visits by Sourcingo's QC team. Each shows what was checked, what was found and the photos. Goods leave only after the Final QC passes.",
 };
 
 const HI: typeof EN = {
@@ -267,6 +278,17 @@ const HI: typeof EN = {
   forBills: (b: string) => `${b} के लिए`,
   noPayments: "पिछले 4 महीने में कोई पेमेंट नहीं।",
   moneyHelp: "बिल और पेमेंट Sourcingo के अकाउंट्स से आते हैं। कोई बिल छूटा हो या रकम गलत लगे तो मदद में बताएँ।",
+  qcTitle: "क्वालिटी चेक",
+  qcSum: (n: number) => `${n} चेक`,
+  qcPassed: "पास",
+  qcFailed: "फेल",
+  qcRecheck: "री-चेक",
+  qcChecked: (n: string) => `${n} पीस चेक हुए`,
+  qcDefects: (n: number) => `${n} डिफेक्ट`,
+  qcReport: "QC रिपोर्ट",
+  qcEarlier: (n: number) => `पुराने चेक (${n})`,
+  qcToFix: (s: string) => `${s} का फाइनल QC फेल हुआ। माल ठीक करें, फिर Sourcingo से री-चेक माँगें।`,
+  qcHelp: "क्वालिटी चेक Sourcingo की QC टीम की विज़िट हैं। हर चेक में दिखता है क्या चेक हुआ, क्या मिला और फोटो। फाइनल QC पास होने के बाद ही माल जाता है।",
 };
 
 export type Words = typeof EN;
