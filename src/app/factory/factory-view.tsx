@@ -7,13 +7,14 @@ import type { FactoryUpdate } from "./step-update";
 import type { FactoryRound } from "./factory-samples";
 import type { PanelPo } from "./factory-po";
 import { FactoryMoney, type FactoryMoneyData } from "./factory-money";
+import type { FactoryCheck } from "./factory-qc";
 import { LANG_COOKIE, langOf, words } from "./i18n";
 
 // The factory's panel. `preview` is a factory's id when the orders team is looking at it from inside the app:
 // the same panel, read for that factory, with nothing to press.
 export async function FactoryView({ preview }: { preview?: string }) {
   const supabase = await createClient(preview ? { "x-preview-factory": preview } : undefined);
-  const [me, { data, error }, { data: ups }, { data: fileRows }, { data: detailRows }, { data: sampleRows }, { data: poRows }, { data: moneyRow }] = await Promise.all([
+  const [me, { data, error }, { data: ups }, { data: fileRows }, { data: detailRows }, { data: sampleRows }, { data: poRows }, { data: moneyRow }, { data: qcRows }] = await Promise.all([
     getMe(), supabase.rpc("factory_tna"), supabase.rpc("factory_step_updates"),
     // Each style's tech pack, cutting program, fabric and sizes, as the orders team entered them.
     supabase.rpc("factory_line_files"), supabase.rpc("factory_line_details"),
@@ -23,12 +24,15 @@ export async function FactoryView({ preview }: { preview?: string }) {
     supabase.rpc("factory_po_list"),
     // Its bills and payments, from Sourcingo's accounts.
     supabase.rpc("factory_money"),
+    // What Sourcingo's Quality team found on its styles.
+    supabase.rpc("factory_qc"),
   ]);
   const pos = (poRows ?? []) as PanelPo[];
   const toAccept = pos.filter((p) => !p.accepted_at && (data as { orders?: { order_id: string }[] } | null)?.orders?.some((o) => o.order_id === p.order_id)).length;
   const files = (fileRows ?? []) as { line_id: string; kind: string; path: string; file_name: string | null }[];
   const rawRounds = (sampleRows ?? []) as (Omit<FactoryRound, "photos" | "answerPhotos"> & { photos: string[]; answer_photos: string[] })[];
-  const paths = [...files.map((f) => f.path), ...rawRounds.flatMap((r) => [...r.photos, ...r.answer_photos])];
+  const rawChecks = (qcRows ?? []) as (Omit<FactoryCheck, "photos" | "reports"> & { files: { path: string; kind: string; name: string | null }[] })[];
+  const paths = [...files.map((f) => f.path), ...rawRounds.flatMap((r) => [...r.photos, ...r.answer_photos]), ...rawChecks.flatMap((c) => c.files.map((f) => f.path))];
   const { data: signed } = paths.length ? await supabase.storage.from(PHOTO_BUCKET).createSignedUrls(paths, 3600) : { data: [] };
   const urlOf = new Map((signed ?? []).filter((x) => x.signedUrl).map((x) => [x.path, x.signedUrl]));
   const info: Record<string, StyleInfo> = {};
@@ -43,6 +47,11 @@ export async function FactoryView({ preview }: { preview?: string }) {
   const updates = (ups ?? []) as FactoryUpdate[];
   const rounds: FactoryRound[] = rawRounds.map(({ answer_photos, ...r }) => ({
     ...r, photos: r.photos.map((p) => urlOf.get(p)).filter((u): u is string => !!u), answerPhotos: answer_photos.map((p) => urlOf.get(p)).filter((u): u is string => !!u),
+  }));
+  const checks: FactoryCheck[] = rawChecks.map(({ files: qf, ...c }) => ({
+    ...c,
+    photos: qf.filter((f) => f.kind !== "report").map((f) => urlOf.get(f.path)).filter((u): u is string => !!u),
+    reports: qf.filter((f) => f.kind === "report").flatMap((f) => { const url = urlOf.get(f.path); return url ? [{ name: f.name || "Report", url }] : []; }),
   }));
   const panel = (data ?? { factory: "", orders: [] }) as { factory: string; orders: PanelOrder[] };
   const waiting = panel.orders.filter((o) => !o.released_at);
@@ -71,7 +80,7 @@ export async function FactoryView({ preview }: { preview?: string }) {
             </p>
           )}
           {toAccept > 0 && <p className="text-[13px] font-semibold text-warn">{w.posToAccept(toAccept)}</p>}
-          {panel.orders.map((o) => <FactoryOrder key={o.order_id} order={o} now={now} companyId={me?.companyId ?? ""} updates={updates} rounds={rounds.filter((r) => r.order_id === o.order_id)} lang={lang} info={info} po={pos.find((p) => p.order_id === o.order_id)} />)}
+          {panel.orders.map((o) => <FactoryOrder key={o.order_id} order={o} now={now} companyId={me?.companyId ?? ""} updates={updates} rounds={rounds.filter((r) => r.order_id === o.order_id)} lang={lang} info={info} po={pos.find((p) => p.order_id === o.order_id)} checks={checks.filter((c) => c.order_id === o.order_id)} />)}
         </>
       )}
       {moneyRow && <FactoryMoney data={moneyRow as FactoryMoneyData} lang={lang} />}
