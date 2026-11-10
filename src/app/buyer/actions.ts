@@ -30,3 +30,18 @@ export async function sendBuyerMessage(orderId: string, body: string): Promise<{
   revalidatePath("/buyer");
   return {};
 }
+
+// The buyer sends a new PO: its files are already uploaded to the company's PO folder under this PO's id.
+export async function sendPo(id: string, files: { path: string; name: string; type: string; size: number }[], po: string, note: string): Promise<{ error?: string }> {
+  const me = await getMe();
+  if (me?.role !== "buyer") return { error: "This login is not set up for a buyer." };
+  if (!files.length) return { error: "Pick the PO file first." };
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("buyer_send_po", {
+    p_id: id, p_files: files.map((f) => ({ path: f.path, name: f.name.slice(0, 200), type: f.type, size: f.size })),
+    p_po: po.trim().slice(0, 100), p_note: note.trim().slice(0, 1000),
+  });
+  if (error) return { error: friendly(error) };
+  revalidatePath("/buyer");
+  return {};
+}

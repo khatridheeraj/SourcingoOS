@@ -34,3 +34,25 @@ export async function askToRead(supabase: SupabaseClient, id: string): Promise<{
     return { error: "The PO reader didn't answer. Try Read again in a minute." };
   }
 }
+
+// POs a buyer sent from its page wait (status "receiving") until someone on the orders team is signed in, because only
+// the team may ask the reader. Home and Buyer POs call this: it finds them and asks for each to be read once the page
+// has been sent, so nobody waits for it.
+export async function readBuyerSentPos(supabase: SupabaseClient): Promise<void> {
+  const { data } = await supabase.from("incoming_pos").select("id, buyer_po_uploads!inner(incoming_id)")
+    .eq("status", "receiving").eq("source", "upload").limit(5);
+  if (!data?.length) return;
+  // The session is read now: request data can't be read once the page has gone.
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) return;
+  const { after } = await import("next/server");
+  after(async () => {
+    for (const r of data) {
+      await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/po-inbox`, {
+        method: "POST",
+        headers: { "content-type": "application/json", apikey: process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!, authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify({ action: "read", id: r.id }),
+      }).catch(() => undefined);
+    }
+  });
+}

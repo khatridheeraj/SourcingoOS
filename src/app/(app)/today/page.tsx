@@ -2,6 +2,7 @@ import type { LinePrice } from "@/lib/margin";
 import Link from "next/link";
 import { canEditOrders, canRecordQc, getMe } from "@/lib/auth";
 import { isPartner } from "@/lib/auth-roles";
+import { readBuyerSentPos } from "@/lib/po-inbox";
 import { fetchAll } from "@/lib/fetch-all";
 import { buyerName, loadBuyers, loadFactories, loadPace, loadTeam, personName } from "@/lib/data";
 import { day, dayNear, daysBetween, money, riskLate, dueDate, nowMs, planDueAt, PLAN_HOURS, qcKindLabel, qty, qtyTotal, SHIP_QC, stageReached, TNA_STEPS, todayIST, unitOfAll, dayTimeAt } from "@/lib/format";
@@ -84,6 +85,8 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
   const team = canEditOrders(me?.role);
   const owner = me?.role === "owner";
   // Bills to pay, for the owner and Accounts: read alongside everything else.
+  // A PO a buyer sent from its page is read as soon as someone on the orders team opens Home.
+  if (canEditOrders(me?.role)) await readBuyerSentPos(supabase);
   const payP = isFinance(me?.role) ? loadPayables(supabase) : null;
   const claimsP = isFinance(me?.role) ? loadClaims(supabase) : null;
   // Money to collect from buyers (cheques to deposit, Tally settlements, overdue invoices), for the same people.
