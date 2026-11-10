@@ -2525,3 +2525,23 @@ main:focus { outline: none; }
     .tb-hand-box .btn.primary { flex: 1; min-height: 44px; }
   }
 }
+
+/* Packing list editor: one card per run of cartons. */
+@layer components {
+  .pk-rows { display: flex; flex-direction: column; }
+  .pk-row { display: flex; flex-direction: column; gap: 10px; padding: 14px 16px; border-top: 1px solid var(--line); }
+  .pk-row:first-child { border-top: 0; }
+  .pk-row.bad { box-shadow: inset 3px 0 0 var(--bad); }
+  .pk-line { display: grid; grid-template-columns: 96px 96px minmax(0, 1fr); gap: 10px; }
+  .pk-sizes { display: grid; grid-template-columns: repeat(auto-fill, minmax(72px, 1fr)); gap: 8px; }
+  .pk-sizes .inp, .pk-line .inp.num { text-align: right; }
+  .pk-foot { display: flex; justify-content: space-between; gap: 10px; align-items: center; }
+  .pk-acts { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; padding: 14px 16px; border-top: 1px solid var(--line); }
+  .pk-acts .btn.primary { margin-left: auto; }
+  .pack-print { margin-top: 16px; }
+  @media (max-width: 640px) {
+    .pk-line { grid-template-columns: 1fr 1fr; }
+    .pk-line .pk-style { grid-column: 1 / -1; }
+    .pk-acts .btn.primary { width: 100%; min-height: 44px; margin-left: 0; }
+  }
+}

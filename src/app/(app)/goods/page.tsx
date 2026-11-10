@@ -156,6 +156,7 @@ export default async function GoodsPage({ searchParams }: PageProps<"/goods">) {
                         grnLateHere && <span className="chip bad">GRN was due {dm(d.grn_due_on!)}</span>
                       )}
                       <Link href={`/goods/${d.id}/challan`} prefetch={false} className="link text-[13px]">{d.challan_no ? `Challan ${d.challan_no}` : "Delivery challan"}</Link>
+                      <Link href={`/goods/${d.id}/packing`} prefetch={false} className="link text-[13px]">Packing list</Link>
                     </div>
                   </div>
                   <div className="todo-chip" />

@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { canEditOrders, getMe } from "@/lib/auth";
 import { friendly } from "@/lib/errors";
 import { createClient } from "@/lib/supabase/server";
+import type { PackRow } from "@/lib/packing";
 
 // Gives a dispatch its delivery challan number the first time it is printed.
 export async function issueChallan(dispatchId: string): Promise<{ error?: string }> {
@@ -29,5 +30,16 @@ export async function setCompanyDetails(dispatchId: string, address: string, gst
   const { error } = await supabase.rpc("set_company_details", { p_address: address, p_gstin: gstin.replace(/\s+/g, "") });
   if (error) return { error: friendly(error) };
   revalidatePath(`/goods/${dispatchId}/challan`);
+  return {};
+}
+
+// Saves a lot's packing list as a whole: runs of identical cartons with pieces per size.
+export async function savePackingList(dispatchId: string, rows: PackRow[]): Promise<{ error?: string }> {
+  if (!canEditOrders((await getMe())?.role)) return { error: "Only the orders team makes packing lists." };
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("save_packing_list", { p_dispatch: dispatchId, p_rows: rows });
+  if (error) return { error: friendly(error) };
+  revalidatePath(`/goods/${dispatchId}/packing`);
+  revalidatePath("/goods");
   return {};
 }
