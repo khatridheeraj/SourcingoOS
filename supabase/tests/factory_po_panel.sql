@@ -1,4 +1,4 @@
--- Factory POs in the factory's panel (0076): the factory sees the POs sent to it and accepts one in the panel.
+-- Factory POs in the factory's panel (0077): the factory sees the POs sent to it and accepts one in the panel.
 \set ON_ERROR_STOP 1
 \set QUIET 1
 
