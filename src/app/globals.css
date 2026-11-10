@@ -537,7 +537,9 @@ main:focus { outline: none; }
   .step-row.warn .step-state { color: var(--warn); }
   .step-row.bad .step-state { color: var(--bad); }
   .step-state .nn { display: flex; align-items: center; gap: 6px; font-weight: 400; margin-top: 2px; }
-  .step-add { display: flex; gap: 8px; padding: 10px 14px; border-top: 1px solid var(--line); background: var(--surface-2); }
+  .step-add { display: flex; flex-wrap: wrap; gap: 8px; padding: 10px 14px; border-top: 1px solid var(--line); background: var(--surface-2); }
+  .step-presets { display: flex; flex-wrap: wrap; gap: 6px; width: 100%; }
+  .step-presets .chip-pick { height: 30px; font-size: 12.5px; }
   .step-add .inp { max-width: 320px; padding: 5px 8px; font-size: 13px; }
   .savebar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 16px; }
   .savebar.dirty {
