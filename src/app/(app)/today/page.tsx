@@ -1,6 +1,7 @@
 import type { LinePrice } from "@/lib/margin";
 import Link from "next/link";
 import { canEditOrders, canRecordQc, getMe } from "@/lib/auth";
+import { isPartner } from "@/lib/auth-roles";
 import { fetchAll } from "@/lib/fetch-all";
 import { buyerName, loadBuyers, loadFactories, loadPace, loadTeam, personName } from "@/lib/data";
 import { day, dayNear, daysBetween, money, riskLate, dueDate, nowMs, planDueAt, PLAN_HOURS, qcKindLabel, qty, qtyTotal, SHIP_QC, stageReached, TNA_STEPS, todayIST, unitOfAll, dayTimeAt } from "@/lib/format";
@@ -94,6 +95,11 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
       .eq("company_id", me.companyId).contains("mentions", [me.id]).not("done_by", "cs", `{${me.id}}`).order("created_at").limit(50),
     loadTeam(),
   ]) : null;
+  // What buyers wrote on their page that no one has answered yet. Each waits on its order's merchandiser (the owner's
+  // when no one owns the order).
+  const buyerMsgP = me?.id && me.companyId && !isPartner(me.role) ? supabase.from("buyer_messages")
+    .select("id, order_id, body, created_at, orders(order_no, buyer_id, buyer_po, merchandiser_id, removed_at)")
+    .eq("company_id", me.companyId).eq("from_buyer", true).is("answered_at", null).order("created_at").limit(100) : null;
 
   // Every read's error is kept: a list that failed to load must not show as "nothing to do".
   const errors: string[] = [];
@@ -264,6 +270,30 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
         chip: { text: `${nameOf.get(n.created_by) ?? "Someone"} tagged you`, cls: "warn" },
         detail: `\u201c${text.length > 140 ? `${text.slice(0, 137)}…` : text}\u201d · ${waitedText(n.created_at, now)} ago`,
         action: "Reply", sort: n.created_at,
+      });
+    }
+  }
+  // A buyer wrote about an order: one line per order with its newest message, until someone answers.
+  if (buyerMsgP) {
+    const { data: msgs, error: msgErr } = await buyerMsgP;
+    if (msgErr) errors.push(msgErr.message);
+    const byOrder = new Map<string, { n: number; body: string; at: string; first: string; o: { order_no: string; buyer_id: string; buyer_po: string | null } }>();
+    for (const m of msgs ?? []) {
+      const o = (Array.isArray(m.orders) ? m.orders[0] : m.orders) as { order_no: string; buyer_id: string; buyer_po: string | null; merchandiser_id: string | null; removed_at: string | null } | null;
+      if (!o || o.removed_at) continue;
+      if (o.merchandiser_id ? o.merchandiser_id !== me?.id : me?.role !== "owner") continue;
+      const was = byOrder.get(m.order_id);
+      byOrder.set(m.order_id, { n: (was?.n ?? 0) + 1, body: m.body, at: m.created_at, first: was?.first ?? m.created_at, o });
+    }
+    for (const [orderId, x] of byOrder) {
+      const text = x.body.replace(/\s+/g, " ");
+      const buyer = buyerOf.get(x.o.buyer_id) ?? "The buyer";
+      now_.push({
+        key: `buyer-msg:${orderId}`, href: `/orders/${orderId}#buyer-talk`, sev: "warn", code: x.o.order_no,
+        title: `${buyerOf.get(x.o.buyer_id) ?? ""}${x.o.buyer_po ? ` · PO ${x.o.buyer_po}` : ""}`,
+        chip: { text: x.n > 1 ? `${buyer} wrote ${x.n} times` : `${buyer} wrote`, cls: "warn" },
+        detail: `\u201c${text.length > 140 ? `${text.slice(0, 137)}…` : text}\u201d · ${waitedText(x.first, now)} ago`,
+        action: "Answer", sort: x.first,
       });
     }
   }

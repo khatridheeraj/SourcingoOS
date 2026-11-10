@@ -16,3 +16,17 @@ export async function answerSample(id: string, approved: boolean, note: string, 
   revalidatePath("/buyer");
   return {};
 }
+
+// The buyer writes to Sourcingo about one of its open POs. The order's merchandiser sees it on Home until answered.
+export async function sendBuyerMessage(orderId: string, body: string): Promise<{ error?: string }> {
+  const me = await getMe();
+  if (me?.role !== "buyer") return { error: "This login is not set up for a buyer." };
+  const text = body.trim();
+  if (!text) return { error: "Write your message first." };
+  if (text.length > 2000) return { error: "Keep the message under 2,000 characters." };
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("post_buyer_message", { p_order: orderId, p_body: text });
+  if (error) return { error: friendly(error) };
+  revalidatePath("/buyer");
+  return {};
+}
