@@ -197,3 +197,12 @@ reset role;
 insert into public.factory_pos (company_id, order_id, factory_id, released_at, po_no)
 select o.company_id, o.id, '20000000-0000-0000-0000-000000000002', now() - interval '40 days', 'FPO-' || o.order_no from public.orders o where o.id = :'o_slip';
 select pg_temp.plan(:'o_slip', 9, 0);
+
+-- Team notes (0080): the owner asks the merchandiser and Quality about the slipping order; Quality has answered.
+insert into public.order_notes (company_id, order_id, body, mentions, done_by, created_by, created_at)
+select o.company_id, o.id, v.body, v.mentions::uuid[], v.done::uuid[], v.by::uuid, now() - v.ago::interval from public.orders o,
+  (values ('Buyer called about AH-SHIRT-04. @Merch can you get a firm date from Shree, and @Quality please check the stitching on your next visit.',
+           '{00000000-0000-0000-0000-0000000000a3,00000000-0000-0000-0000-0000000000a4}', '{00000000-0000-0000-0000-0000000000a4}', '00000000-0000-0000-0000-0000000000a1', '5 hours'),
+          ('Seen it today. Stitching is fine, about 200 pieces done. Collars still on the machine.', '{00000000-0000-0000-0000-0000000000a1}', '{}', '00000000-0000-0000-0000-0000000000a4', '2 hours'))
+  v (body, mentions, done, by, ago)
+where o.id = :'o_slip';

@@ -11,7 +11,7 @@ export const ENTRY_COLUMNS = "id, table_name, row_id, action, actor, source, at,
 export type Names = { people: Map<string, string>; buyers: Map<string, string>; factories: Map<string, string>; orders: Map<string, string> };
 
 export const AREAS: Record<string, { label: string; tables: string[] }> = {
-  orders: { label: "Orders and TNA", tables: ["orders", "order_lines", "line_stages", "factory_pos"] },
+  orders: { label: "Orders and TNA", tables: ["orders", "order_lines", "line_stages", "factory_pos", "order_notes"] },
   quality: { label: "Quality checks and visits", tables: ["qc_checks", "qc_photos", "qc_comments", "floor_updates"] },
   dispatch: { label: "Dispatch", tables: ["dispatches", "dispatch_lines", "dispatch_photos"] },
   pos: { label: "Buyer POs", tables: ["incoming_pos"] },
@@ -33,7 +33,7 @@ const TABLE: Record<string, string> = {
   tally_settings: "Tally settings", tally_vouchers: "Tally voucher",
   // Read "Added inquiries Areeba" and "Changed order po files" before these had names.
   inquiries: "inquiry", inquiry_notes: "inquiry note", order_po_files: "buyer PO file", factory_chases: "reminder to the factory",
-  supplier_terms: "supplier's payment terms",
+  supplier_terms: "supplier's payment terms", order_notes: "team note",
 };
 export const tableLabel = (t: string) => TABLE[t] ?? t.replace(/_/g, " ");
 

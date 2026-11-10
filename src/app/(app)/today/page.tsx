@@ -27,7 +27,7 @@ import { paymentTodos } from "@/lib/payments";
 import { loadPayables } from "../payables/load";
 import { bySupplier, dueOf, lakh as rupees, totals } from "@/lib/payables";
 import { PageTabs } from "@/components/page-tabs";
-import { HOME_TABS } from "@/lib/page-groups";
+import { HOME_TABS, HOME_TABS_QUALITY } from "@/lib/page-groups";
 import { type Approval, Approvals } from "./approvals";
 
 type Sev = "bad" | "warn" | "ok" | "";
@@ -86,6 +86,13 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
   const payP = isFinance(me?.role) ? loadPayables(supabase) : null;
   // Money to collect from buyers (cheques to deposit, Tally settlements, overdue invoices), for the same people.
   const booksP = isFinance(me?.role) ? loadBooks() : null;
+
+  // Team notes that tag me and that I haven't dealt with yet (replied on the order or tapped Done).
+  const notesP = me?.id && me.companyId ? Promise.all([
+    supabase.from("order_notes").select("id, order_id, body, created_by, created_at, orders(order_no, buyer_id, buyer_po, removed_at)")
+      .eq("company_id", me.companyId).contains("mentions", [me.id]).not("done_by", "cs", `{${me.id}}`).order("created_at").limit(50),
+    loadTeam(),
+  ]) : null;
 
   // Every read's error is kept: a list that failed to load must not show as "nothing to do".
   const errors: string[] = [];
@@ -241,6 +248,24 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
   const now_: Item[] = [];
   const soon: Item[] = [];
   const waiting: Item[] = [];
+  // A colleague tagged me in a note: it sits with the order's other jobs until I reply or tap Done.
+  if (notesP) {
+    const [{ data: tags, error: tagErr }, people] = await notesP;
+    if (tagErr) errors.push(tagErr.message);
+    const nameOf = new Map(people.map((m) => [m.user_id, personName(m)]));
+    for (const n of tags ?? []) {
+      const o = (Array.isArray(n.orders) ? n.orders[0] : n.orders) as { order_no: string; buyer_id: string; buyer_po: string | null; removed_at: string | null } | null;
+      if (!o || o.removed_at) continue;
+      const text = n.body.replace(/\s+/g, " ");
+      now_.push({
+        key: `note:${n.id}`, href: `/orders/${n.order_id}#talk`, sev: "warn", code: o.order_no,
+        title: `${buyerOf.get(o.buyer_id) ?? ""}${o.buyer_po ? ` · PO ${o.buyer_po}` : ""}`,
+        chip: { text: `${nameOf.get(n.created_by) ?? "Someone"} tagged you`, cls: "warn" },
+        detail: `\u201c${text.length > 140 ? `${text.slice(0, 137)}…` : text}\u201d · ${waitedText(n.created_at, now)} ago`,
+        action: "Reply", sort: n.created_at,
+      });
+    }
+  }
   const noTargets: { o: (typeof open)[number]; n: number }[] = [];
   // Factory plans and POs are the orders team's work; Quality doesn't see them.
   const noPoAsked = new Set<string>();
@@ -807,7 +832,7 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
 
   return (
     <>
-      {team && <PageTabs tabs={HOME_TABS} label="Home" />}
+      {(team || quality) && <PageTabs tabs={team ? HOME_TABS : HOME_TABS_QUALITY} label="Home" />}
       <section className="day" aria-label="Your day">
         <div className="day-main">
           <span className="day-date">{longDay.format(ist(today))}</span>

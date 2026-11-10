@@ -4,7 +4,7 @@ import { useState, useSyncExternalStore } from "react";
 import { Icon, type IconName } from "@/components/nav";
 
 const KEY = "sourcingo:whats-new";
-const VERSION = "2026-10-26-floor";
+const VERSION = "2026-11-10-notes";
 
 type Item = { icon: IconName; title: string; text: string };
 
@@ -14,16 +14,19 @@ const HOME: Item = { icon: "home", title: "Home is one short list", text: "Every
 const RED: Item = { icon: "clock", title: "Red means really late", text: "A step past its target shows amber while the ship date still holds; red is kept for orders that will miss it." };
 // Quality owns the updates from the factory floor (26 Oct 2026).
 const FLOOR: Item = { icon: "factories", title: "Live from the factory floor", text: "Quality visits the factories and posts every style's step with photos. See it on each order under Styles, and on Home." };
+// Team notes and the calendar (10 Nov 2026).
+const NOTES: Item = { icon: "notes", title: "Talk on the order, not WhatsApp", text: "Every order has Notes. Write what happened, tag a colleague with @ and their name, add photos. It shows on their Home until they reply." };
+const CAL: Item = { icon: "clock", title: "Calendar", text: "Home > Calendar shows what falls on each coming day: ship dates, inspections, samples, factory plans, and bills and cheques for money people." };
 const MONEY: Item = { icon: "payments", title: "Money first", text: "Money to collect and bills to pay lead Home, and each line says how late it is." };
 const FOR: Record<string, Item[]> = {
-  orders: [FLOOR, HOME, RED],
+  orders: [NOTES, CAL, FLOOR],
   quality: [
+    NOTES,
     { icon: "factories", title: "Factory visits", text: "Home lists the factories to visit, late steps first. Tap Start visit, then post each style's step: done, on track, late or a problem, with photos." },
-    HOME,
-    { icon: "check", title: "QC in four taps", text: "Tap Record QC on a Home row or an order: styles are already picked, tap Pass or Fail, take photos, save." },
+    CAL,
   ],
-  owner: [FLOOR, HOME, RED],
-  accounts: [MONEY, HOME],
+  owner: [NOTES, CAL, FLOOR],
+  accounts: [NOTES, CAL, MONEY],
 };
 
 const read = () => { try { return localStorage.getItem(KEY); } catch { return VERSION; } };
