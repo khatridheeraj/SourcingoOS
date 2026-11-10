@@ -118,6 +118,13 @@ update public.line_stages set done_on = planned_on where order_id = :'o_over' an
 insert into public.qc_checks (company_id, order_id, line_id, kind, checked_on, result, pieces_checked, checked_by)
 select l.company_id, l.order_id, l.id, 'final', current_date - 1, 'pass', 80, '00000000-0000-0000-0000-0000000000a4'
 from public.order_lines l where l.order_id = :'o_over';
+-- The factory login's late order: Quality failed its Inline check with a note, then passed Mid-line.
+insert into public.qc_checks (company_id, order_id, line_id, kind, checked_on, result, pieces_checked, defects, notes, checked_by)
+select l.company_id, l.order_id, l.id, 'inline', current_date - 6, 'fail', 40, 6, 'Loose threads at the side seam and uneven hem on 6 pieces. Fix before Mid-line.', '00000000-0000-0000-0000-0000000000a4'::uuid
+from public.order_lines l where l.order_id = :'o_late'
+union all
+select l.company_id, l.order_id, l.id, 'midline', current_date - 2, 'pass', 60, 1, null, '00000000-0000-0000-0000-0000000000a4'::uuid
+from public.order_lines l where l.order_id = :'o_late';
 
 -- 9. Buyer POs: one read and waiting past the 2-day flag with a point to check, one just in, one set aside.
 insert into public.incoming_pos (company_id, source, email_id, email_from, email_subject, received_at, status, buyer_id, buyer_po, read)
