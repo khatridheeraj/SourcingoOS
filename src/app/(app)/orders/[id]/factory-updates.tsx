@@ -17,18 +17,20 @@ export function FactoryUpdates({ orderId, updates, canReview }: { orderId: strin
   const [reason, setReason] = useState("");
   const [error, setError] = useState<{ id: string; text: string } | null>(null);
   const [busy, setBusy] = useState("");
+  // Updates whose photos stay inside; every other confirmed photo goes on the buyer's page.
+  const [inside, setInside] = useState<string[]>([]);
   const [pending, start] = useTransition();
 
   function answer(u: PendingUpdate, confirm: boolean) {
     setError(null);
     setBusy(u.id);
     start(async () => {
-      const res = await reviewStepUpdate(orderId, u.id, confirm, confirm ? "" : reason);
+      const res = await reviewStepUpdate(orderId, u.id, confirm, confirm ? "" : reason, !inside.includes(u.id));
       setBusy("");
       if (res.error) return setError({ id: u.id, text: res.error });
       setDeclining("");
       setReason("");
-      toast(confirm ? `${u.style} ${u.step} marked done ${day(u.doneOn)}.` : `Sent back to ${u.factory}.`);
+      toast(confirm ? `${u.style} ${u.step} marked done ${day(u.doneOn)}${inside.includes(u.id) ? "" : ", photos on the buyer's page"}.` : `Sent back to ${u.factory}.`);
       router.refresh();
     });
   }
@@ -41,7 +43,7 @@ export function FactoryUpdates({ orderId, updates, canReview }: { orderId: strin
         <span className="chip info">{updates.length}</span>
       </div>
       <p className="muted mb-3 text-[13px]">
-        {canReview ? "Check the photos. Confirm puts the done date in; Not yet sends it back to the factory with your reason." : "The orders team or Quality confirms these."}
+        {canReview ? "Check the photos. Confirm puts the done date in and shows the photos to the buyer, without the factory's name; Not yet sends it back to the factory with your reason." : "The orders team or Quality confirms these."}
       </p>
       <ul className="fupd-list">
         {updates.map((u) => (
@@ -73,6 +75,11 @@ export function FactoryUpdates({ orderId, updates, canReview }: { orderId: strin
                 </div>
               ) : (
                 <div className="fupd-acts">
+                  <label className="row text-[13px] fupd-share">
+                    <input type="checkbox" checked={!inside.includes(u.id)} disabled={pending}
+                      onChange={(e) => setInside((x) => (e.target.checked ? x.filter((i) => i !== u.id) : [...x, u.id]))} />
+                    Buyer sees these photos
+                  </label>
                   <button type="button" className="btn done-btn" disabled={pending} onClick={() => answer(u, true)}>
                     {busy === u.id ? "Saving…" : <><span aria-hidden className="done-tick">✓</span>Confirm</>}
                   </button>

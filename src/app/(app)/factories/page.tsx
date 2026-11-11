@@ -5,6 +5,8 @@ import { canEditOrders, getMe } from "@/lib/auth";
 import { loadFactories } from "@/lib/data";
 import { fetchAll } from "@/lib/fetch-all";
 import { createClient } from "@/lib/supabase/server";
+import { factoryRecord, recordLine, type RecordFacts } from "@/lib/factory-record";
+import { todayIST } from "@/lib/format";
 import { FactoryBoard } from "./factory-board";
 import { FactoryList } from "./factory-list";
 
@@ -13,12 +15,20 @@ export default async function FactoriesPage({ searchParams }: PageProps<"/factor
   const view = sp.view === "list" ? "list" : "work";
   const [me, supabase] = await Promise.all([getMe(), createClient()]);
   if (!canEditOrders(me?.role)) redirect("/");
-  const [factories, { data: lines }] = await Promise.all([
+  const [factories, { data: lines }, { data: recs }] = await Promise.all([
     loadFactories(),
     // Read page by page: a busy company has more than 1,000 open styles. Only the list shows the counts.
     view === "work" ? { data: [] } : fetchAll((a, z) => supabase.from("order_lines").select("factory_id, orders!inner(status)").eq("company_id", me?.companyId ?? NO_COMPANY)
       .eq("orders.status", "open").is("removed_at", null).not("factory_id", "is", null).order("id").range(a, z)),
+    // Each factory's record, in one line per row.
+    view === "work" ? { data: [] } : supabase.rpc("factory_records"),
   ]);
+  const today = todayIST();
+  const records: Record<string, { line: string; tone: string; verified: boolean }> = {};
+  for (const f of (recs ?? []) as RecordFacts[]) {
+    const r = factoryRecord(f, today);
+    if (f.factory_id) records[f.factory_id] = { line: recordLine(f, r), tone: r.level === "watch" ? "warn" : "", verified: !!r.visit?.current };
+  }
   const openStyles: Record<string, number> = {};
   for (const l of lines ?? []) if (l.factory_id) openStyles[l.factory_id] = (openStyles[l.factory_id] ?? 0) + 1;
   return (
@@ -35,7 +45,7 @@ export default async function FactoriesPage({ searchParams }: PageProps<"/factor
         <Link href="/factories" aria-current={view === "work" ? "page" : undefined}>Work</Link>
         <Link href="/factories?view=list" aria-current={view === "list" ? "page" : undefined}>Factory list <span>{factories.length}</span></Link>
       </nav>
-      {view === "work" ? <FactoryBoard factories={factories} /> : <FactoryList factories={factories} openStyles={openStyles} />}
+      {view === "work" ? <FactoryBoard factories={factories} /> : <FactoryList factories={factories} openStyles={openStyles} records={records} />}
     </>
   );
 }

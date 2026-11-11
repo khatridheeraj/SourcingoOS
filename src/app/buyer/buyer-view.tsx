@@ -9,11 +9,16 @@ import { BuyerTalk, type BuyerMessage } from "./buyer-talk";
 import { BuyerSendPo, type SentPo } from "./buyer-send-po";
 import { BuyerCosting } from "./buyer-costing";
 import { costingState, type BuyerCostingAsk } from "./costing-state";
+import { buyerLine, factoryRecord, type RecordFacts } from "@/lib/factory-record";
 
 type Step = { stage: string; label: string | null; planned_on: string | null; done_on: string | null };
 type FinalQc = { result: string; checked_on: string; pieces_checked: number | null; photos: string[] };
 type Line = { id: string; style: string; colour: string | null; description: string | null; qty: number; product?: string; shipped?: number; photo_path: string | null; steps: Step[]; final_qc: FinalQc | null };
 type Shipment = { id: string; order_id: string; shipped_on: string; pieces: number; cartons: number | null; transporter: string | null; lr_no: string | null; lr_date: string | null; invoice_no: string | null; received_on: string | null; received_qty: number | null };
+// A step photo the factory sent and Sourcingo's team checked and approved for the buyer.
+type StepPhoto = { order_id: string; line_id: string; stage: string; done_on: string; photos: string[] };
+// Who makes a PO, by city and record, never by name.
+type Maker = RecordFacts & { order_id: string; line_ids: string[] };
 type Order = { id: string; order_no: string; buyer_po: string | null; po_date: string | null; status: string; ship_date: string | null; revised_ship_date: string | null; closed_short?: boolean; lines: Line[] };
 
 const stepName = (s: Step) => s.label ?? TNA_STEPS.find((t) => t.key === s.stage)?.label ?? s.stage;
@@ -47,7 +52,7 @@ const SHOWN = 3;
 // the same page, read for that buyer, with nothing to press.
 export async function BuyerView({ preview }: { preview?: string }) {
   const supabase = await createClient(preview ? { "x-preview-buyer": preview } : undefined);
-  const [me, { data, error }, { data: sampleRows }, { data: shipRows }, { data: moneyRow }, { data: talkRows }, { data: sentRows }, { data: costRows }] = await Promise.all([
+  const [me, { data, error }, { data: sampleRows }, { data: shipRows }, { data: moneyRow }, { data: talkRows }, { data: sentRows }, { data: photoRows }, { data: makerRows }, { data: costRows }] = await Promise.all([
     getMe(), supabase.rpc("buyer_orders"), supabase.rpc("buyer_samples"), supabase.rpc("buyer_shipments"),
     // Its invoices and what is still to be paid.
     supabase.rpc("buyer_money"),
@@ -55,9 +60,15 @@ export async function BuyerView({ preview }: { preview?: string }) {
     supabase.rpc("buyer_messages_mine"),
     // The POs it sent from this page and whether each is an order yet.
     supabase.rpc("buyer_sent_pos"),
+    // Step photos from the factory floor, once our team has approved them.
+    supabase.rpc("buyer_step_photos"),
+    // How reliably the factories making its orders deliver.
+    supabase.rpc("buyer_factory_records"),
     // The costings it asked for and Sourcingo's prices.
     supabase.rpc("buyer_costings_mine"),
   ]);
+  const stepPhotos = (photoRows ?? []) as StepPhoto[];
+  const makers = (makerRows ?? []) as Maker[];
   const rawAsks = (costRows ?? []) as (Omit<BuyerCostingAsk, "photoUrls"> & { photos: string[] })[];
   const sent = (sentRows ?? []) as SentPo[];
   const talk = ((talkRows ?? []) as (Omit<BuyerMessage, "when"> & { at: string })[]);
@@ -75,6 +86,7 @@ export async function BuyerView({ preview }: { preview?: string }) {
     ...orders.flatMap((o) => o.lines.flatMap((l) => [l.photo_path, ...(l.final_qc?.photos ?? [])])),
     ...rawSamples.flatMap((s) => [s.photo_path, ...s.photos, ...s.answer_photos]),
     ...rawAsks.flatMap((a) => a.photos.slice(0, 1)),
+    ...stepPhotos.flatMap((p) => p.photos),
   ].filter((p): p is string => !!p))];
   const { data: signed } = paths.length ? await supabase.storage.from(PHOTO_BUCKET).createSignedUrls(paths, 3600) : { data: [] };
   const url = new Map((signed ?? []).filter((s) => s.signedUrl).map((s) => [s.path, s.signedUrl]));
@@ -125,6 +137,15 @@ export async function BuyerView({ preview }: { preview?: string }) {
             const ordered = o.lines.reduce((n, l) => n + Number(l.qty), 0);
             const sent = o.lines.reduce((n, l) => n + Number(l.shipped ?? 0), 0);
             const left = ship ? daysBetween(today, ship) : null;
+            // Who makes it: one line per factory, naming the styles only when the PO has more than one maker.
+            const made = makers.filter((m) => m.order_id === o.id).flatMap((m) => {
+              const text = buyerLine(m, factoryRecord(m, today));
+              if (!text) return [];
+              const styles = o.lines.filter((l) => m.line_ids.includes(l.id)).map((l) => l.style);
+              return [{ key: m.line_ids.join(), text, styles }];
+            });
+            const photosOf = (l: Line, stage: string) => stepPhotos.filter((p) => p.line_id === l.id && p.stage === stage)
+              .flatMap((p) => p.photos).map((p) => url.get(p)).filter((u): u is string => !!u);
             // Hiding just one style saves nothing, so a PO is cut only when two or more would be hidden.
             const cut = lines.length > SHOWN + 1 ? SHOWN : lines.length;
             // Photos only when this PO has at least one; a column of empty boxes tells the buyer nothing.
@@ -160,6 +181,7 @@ export async function BuyerView({ preview }: { preview?: string }) {
                       <ol className="btimeline">
                         {l.steps.map((s) => {
                           const now = s === w.next;
+                          const shots = s.done_on ? photosOf(l, s.stage) : [];
                           return (
                             <li key={s.stage} className={s.done_on ? "done" : now ? "now" : ""}>
                               <i aria-hidden>{s.done_on ? "✓" : ""}</i>
@@ -168,6 +190,17 @@ export async function BuyerView({ preview }: { preview?: string }) {
                                 {s.done_on ? `Done ${day(s.done_on)}` : now ? (s.planned_on && s.planned_on >= today ? `In progress, by ${day(s.planned_on)}` : "In progress")
                                   : s.planned_on && s.planned_on >= today ? `Planned ${day(s.planned_on)}` : null}
                               </small>
+                              {shots.length > 0 && (
+                                <span className="bstep-photos">
+                                  {shots.map((u, i) => (
+                                    <a key={u} href={u} target="_blank" rel="noreferrer" aria-label={`${stepName(s)} photo ${i + 1} of ${l.style}`}>
+                                      {/* eslint-disable-next-line @next/next/no-img-element -- short-lived signed links, not for the image optimiser */}
+                                      <img src={u} alt="" loading="lazy" />
+                                    </a>
+                                  ))}
+                                  <small>Checked by Sourcingo</small>
+                                </span>
+                              )}
                             </li>
                           );
                         })}
@@ -219,6 +252,16 @@ export async function BuyerView({ preview }: { preview?: string }) {
                     ) : <span className="muted">Ship date to be confirmed</span>}
                   </div>
                 </header>
+                {made.length > 0 && (
+                  <ul className="bmaker">
+                    {made.map((m) => (
+                      <li key={m.key}>
+                        <svg viewBox="0 0 16 16" aria-hidden><path d="M8 1.5l5.5 2v4.2c0 3.2-2.3 5.7-5.5 6.8-3.2-1.1-5.5-3.6-5.5-6.8V3.5z" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" /><path d="M5.6 8.1l1.7 1.7 3.2-3.4" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                        <span>{made.length > 1 && <b className="code">{m.styles.join(", ")}: </b>}{m.text}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
                 {!shipped && sent > 0 && (
                   <p className="bord-sent"><span className="chip ok">Part shipped</span> {qty(sent)} of {qty(ordered)} {unitOfAll(o.lines)} sent · {qty(ordered - sent)} to follow</p>
                 )}

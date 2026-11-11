@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useRef, useState, useTransition } from "react";
 import { toast } from "@/components/toast";
 import type { Factory } from "@/lib/data";
@@ -10,7 +11,9 @@ import { FactoryLink } from "./factory-link";
 const blank: FactoryInput = { name: "", city: "", contact_name: "", phone: "", notes: "", active: true, address: "", gstin: "", email: "" };
 type Bad = { field?: keyof FactoryInput; msg: string } | null;
 
-export function FactoryList({ factories, openStyles }: { factories: Factory[]; openStyles: Record<string, number> }) {
+export type RecordCell = { line: string; tone: string; verified: boolean };
+
+export function FactoryList({ factories, openStyles, records = {} }: { factories: Factory[]; openStyles: Record<string, number>; records?: Record<string, RecordCell> }) {
   const [editing, setEditing] = useState<FactoryInput | null>(null);
   const [bad, setBad] = useState<Bad>(null);
   const [pending, start] = useTransition();
@@ -89,14 +92,19 @@ export function FactoryList({ factories, openStyles }: { factories: Factory[]; o
       ) : (
         <div className="table-wrap">
           <table className="tbl stack">
-            <thead><tr><th>Name</th><th>City</th><th>Contact</th><th>Phone</th><th className="r">Open styles</th><th></th><th></th></tr></thead>
+            <thead><tr><th>Name</th><th>City</th><th>Contact</th><th>Phone</th><th>Record</th><th className="r">Open styles</th><th></th><th></th></tr></thead>
             <tbody>
               {factories.map((f) => (
                 <tr key={f.id}>
-                  <td className="font-semibold">{f.name}</td>
+                  <td className="font-semibold"><Link className="link" href={`/factories/${f.id}`}>{f.name}</Link></td>
                   <td>{f.city}</td>
                   <td data-label={f.contact_name ? "Contact" : undefined}>{f.contact_name}</td>
                   <td>{f.phone && <a className="link" href={`tel:${f.phone}`}>{f.phone}</a>}</td>
+                  <td data-label="Record">
+                    <Link href={`/factories/${f.id}`} className={`text-[13px] ${records[f.id]?.tone === "warn" ? "text-warn" : "muted"}`}>
+                      {records[f.id]?.verified && <span className="chip mr-1.5">Verified</span>}{records[f.id]?.line ?? "Open record"}
+                    </Link>
+                  </td>
                   <td className="r num" data-label="Open styles">{openStyles[f.id] ?? 0}</td>
                   <td>{!f.active && <span className="chip">Inactive</span>}</td>
                   <td className="r">

@@ -12,12 +12,14 @@ import type { FactoryCount } from "./factory-counts";
 import type { DateAsk } from "./factory-date-ask";
 import type { ReadyNotice } from "./factory-ready";
 import { LANG_COOKIE, langOf, words } from "./i18n";
+import { FactoryRecordCard } from "./factory-record";
+import type { RecordFacts } from "@/lib/factory-record";
 
 // The factory's panel. `preview` is a factory's id when the orders team is looking at it from inside the app:
 // the same panel, read for that factory, with nothing to press.
 export async function FactoryView({ preview }: { preview?: string }) {
   const supabase = await createClient(preview ? { "x-preview-factory": preview } : undefined);
-  const [me, { data, error }, { data: ups }, { data: fileRows }, { data: detailRows }, { data: sampleRows }, { data: poRows }, { data: moneyRow }, { data: qcRows }, { data: countRows }, { data: askRows }, { data: readyRows }] = await Promise.all([
+  const [me, { data, error }, { data: ups }, { data: fileRows }, { data: detailRows }, { data: sampleRows }, { data: poRows }, { data: moneyRow }, { data: qcRows }, { data: countRows }, { data: askRows }, { data: readyRows }, { data: recordRow }] = await Promise.all([
     getMe(), supabase.rpc("factory_tna"), supabase.rpc("factory_step_updates"),
     // Each style's tech pack, cutting program, fabric and sizes, as the orders team entered them.
     supabase.rpc("factory_line_files"), supabase.rpc("factory_line_details"),
@@ -35,6 +37,8 @@ export async function FactoryView({ preview }: { preview?: string }) {
     supabase.rpc("factory_date_asks_mine"),
     // Its goods-ready notices, and whether Sourcingo saw them.
     supabase.rpc("factory_ready_mine"),
+    // Its record: what buyers and Sourcingo choose factories by.
+    supabase.rpc("factory_record_mine"),
   ]);
   const counts = (countRows ?? []) as FactoryCount[];
   const asks = (askRows ?? []) as DateAsk[];
@@ -95,6 +99,7 @@ export async function FactoryView({ preview }: { preview?: string }) {
           {panel.orders.map((o) => <FactoryOrder key={o.order_id} order={o} now={now} companyId={me?.companyId ?? ""} updates={updates} rounds={rounds.filter((r) => r.order_id === o.order_id)} lang={lang} info={info} po={pos.find((p) => p.order_id === o.order_id)} checks={checks.filter((c) => c.order_id === o.order_id)} counts={counts} asks={asks} ready={ready} canWrite={me?.role === "factory"} />)}
         </>
       )}
+      <FactoryRecordCard facts={(recordRow ?? null) as RecordFacts | null} lang={lang} />
       {moneyRow && <FactoryMoney data={moneyRow as FactoryMoneyData} lang={lang} />}
     </>
   );
