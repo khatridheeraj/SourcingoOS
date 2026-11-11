@@ -63,7 +63,7 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
     .map((l) => ({ ...l, buyer_rate: priceOf.get(l.id)?.buyer_rate ?? null, factory_rate: priceOf.get(l.id)?.factory_rate ?? null }));
   // How late each factory usually runs, for the forecast; read alongside everything else.
   const paceP = loadPace();
-  const [{ data: qc }, team, me, { data: lineStages }, { data: factoryPos }, { data: stepUps }, { data: lineFiles }, { data: shipRows }, { data: floorRows }, { data: noteRows }, { data: buyerRows }] = await Promise.all([
+  const [{ data: qc }, team, me, { data: lineStages }, { data: factoryPos }, { data: stepUps }, { data: lineFiles }, { data: shipRows }, { data: floorRows }, { data: noteRows }, { data: buyerRows }, { data: countRows }] = await Promise.all([
     supabase
       .from("qc_checks")
       .select("id, line_id, kind, checked_on, result, pieces_checked, defects, notes, checked_by, cancelled_at, cancel_reason")
@@ -89,6 +89,8 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
     supabase.from("order_notes").select("id, body, mentions, done_by, photos, created_by, created_at").eq("order_id", id).order("created_at").limit(300),
     // What the buyer wrote on its page about this order, and the team's answers.
     supabase.from("buyer_messages").select("id, body, from_buyer, created_by, created_at, answered_at").eq("order_id", id).order("created_at").limit(300),
+    // The factory's own piece counts, newest first: the first of each style is its latest.
+    supabase.from("factory_counts").select("line_id, counted_on, cut, stitched, packed").eq("order_id", id).order("counted_on", { ascending: false }).limit(200),
   ]);
   const ship = orderShip(shipRows);
   const canEdit = canEditOrders(me?.role);
@@ -204,6 +206,13 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
       photos: (u.photos as string[]).map((p) => urlByPath.get(p)).filter((x): x is string => !!x),
     };
   });
+  // Each style's latest piece count from the factory: "11 Nov: cut 600 · stitched 420 · packed 120 of 700 pcs".
+  const countByStyle: Record<string, string> = {};
+  for (const c of countRows ?? []) {
+    const l = lines.find((x) => x.id === c.line_id);
+    if (!l || countByStyle[c.line_id]) continue;
+    countByStyle[c.line_id] = `${dayNear(c.counted_on)}: cut ${qty(c.cut)} · stitched ${qty(c.stitched)} · packed ${qty(c.packed)} of ${qtyU(l.qty, l.product)}`;
+  }
   // Each style's latest word from the floor, while its step is still open (a problem stays: a failed Inline can follow its done date).
   const floorByStyle: Record<string, { text: string; cls: string }> = {};
   const seenFloor = new Set<string>();
@@ -440,6 +449,7 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
         baselines={Object.fromEntries((lineStages ?? []).filter((r) => r.baseline_on).map((r): [string, Baseline] => [`${r.line_id}:${r.stage}`, { on: String(r.baseline_on), note: str(r.target_note) }]))}
         qc={stepQc}
         floor={floorByStyle}
+        counts={countByStyle}
         hasBuyerPo={poDocs.length > 0}
       />
       </div>
