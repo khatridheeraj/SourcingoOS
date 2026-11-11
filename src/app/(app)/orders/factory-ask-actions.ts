@@ -19,3 +19,17 @@ export async function answerFactoryDate(orderId: string, askId: string, agree: b
   revalidatePath("/today");
   return {};
 }
+
+// The orders team saw a factory's goods-ready notice, with a word back if it wants ("Final QC on 14 Nov").
+export async function goodsReadySeen(orderId: string, id: string, note: string): Promise<{ error?: string }> {
+  const me = await getMe();
+  if (!canEditOrders(me?.role)) return { error: "Only the orders team can do that." };
+  const text = note.trim();
+  if (text.length > 300) return { error: "Keep the note under 300 characters." };
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("factory_ready_seen", { p_id: id, p_note: text || null });
+  if (error) return { error: friendly(error) };
+  revalidatePath(`/orders/${orderId}`);
+  revalidatePath("/today");
+  return {};
+}

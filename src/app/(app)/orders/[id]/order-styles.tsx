@@ -1,6 +1,7 @@
 "use client";
 
 import { FactoryAskBox, type FactoryAsk } from "./factory-ask";
+import { GoodsReadyBox, type GoodsReady } from "./goods-ready";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
@@ -80,7 +81,7 @@ function verdict(c: Cell, today: string): { text: string; cls: string } | null {
 
 // Every style as its own card with its full TNA, grouped by factory. A factory's plan is asked for and entered first;
 // its PO is released only once nothing is missing, and actual dates are entered after that.
-export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDone, isOwner, today, now, dueDate, groups, initial, initialExtras, factoryDates, baselines, qc, floor = {}, counts = {}, asks = {}, hasBuyerPo }: {
+export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDone, isOwner, today, now, dueDate, groups, initial, initialExtras, factoryDates, baselines, qc, floor = {}, counts = {}, asks = {}, ready = {}, hasBuyerPo }: {
   orderId: string;
   orderNo: string;
   companyId: string;
@@ -104,6 +105,7 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
   // The factory's own latest piece count on each style, as one line.
   counts?: Record<string, string>;
   asks?: Record<string, FactoryAsk[]>;
+  ready?: Record<string, GoodsReady[]>;
   // The buyer's PO is on file: a factory PO is locked and released only against a PO received from the buyer.
   hasBuyerPo: boolean;
 }) {
@@ -486,6 +488,7 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
                   <Link href={`/orders/${orderId}/factory-po/${g.factoryId}`} className="btn sm" title="Our PO to this factory: email it to accept, or print it">Factory PO</Link>
                 </div>
               )}
+              {g.factoryId && released && <GoodsReadyBox orderId={orderId} notices={ready[g.factoryId] ?? []} canEdit={canEdit} />}
               {editable && g.factoryId && !released && (
                 <details className="fac-tools">
                 <summary>Plan by hand: targets, buffer, ask the factory</summary>
