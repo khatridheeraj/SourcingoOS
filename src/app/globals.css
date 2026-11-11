@@ -2650,7 +2650,6 @@ main:focus { outline: none; }
   }
 }
 
-<<<<<<< HEAD
 /* Shop orders: styles open to factories, a catalogue on the factory panel, and the team's quote board. */
 @layer components {
   .mkt-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 14px; }
@@ -2724,7 +2723,6 @@ main:focus { outline: none; }
   .mkt-open[open] > summary { padding-bottom: 0; }
   @media (max-width: 640px) { .mkt-open > summary { padding-left: 84px; } }
 }
-=======
 /* Factory Record: who makes a buyer's PO (by city and record, never by name), approved step photos on the buyer's
    timeline, the factory's own record in its panel, and the team's "Buyer sees these photos" switch. */
 .bmaker { list-style: none; margin: 0; padding: 0 18px 12px; display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--muted); }
@@ -2746,4 +2744,3 @@ main:focus { outline: none; }
   .bmaker { padding: 0 16px 10px; }
 }
 .bstep-photos small { align-self: center; font-size: 12px; color: var(--muted); white-space: nowrap; }
->>>>>>> origin/main
