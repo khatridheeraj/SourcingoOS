@@ -207,12 +207,13 @@ export async function saveLineStages(orderId: string, rows: LineStageInput[]): P
 }
 
 // Confirms a factory's "step done" update (its done date goes in) or sends it back with a reason the factory sees.
-export async function reviewStepUpdate(orderId: string, updateId: string, confirm: boolean, note: string): Promise<{ error?: string }> {
+// buyerSees: the photos go on the buyer's page once confirmed; false keeps them inside (a name board in the shot, say).
+export async function reviewStepUpdate(orderId: string, updateId: string, confirm: boolean, note: string, buyerSees = true): Promise<{ error?: string }> {
   const me = await getMe();
   if (!canEnterDone(me?.role)) return { error: "Only the orders team and Quality confirm factory updates." };
   if (!confirm && !note.trim()) return { error: "Say why, so the factory knows what to fix." };
   const supabase = await createClient();
-  const { error } = await supabase.rpc("review_step_update", { p_id: updateId, p_confirm: confirm, p_note: note.trim().slice(0, 300) });
+  const { error } = await supabase.rpc("review_step_update", { p_id: updateId, p_confirm: confirm, p_note: note.trim().slice(0, 300), p_buyer_sees: buyerSees });
   if (error) return { error: friendly(error) };
   revalidatePath("/today");
   revalidatePath(`/orders/${orderId}`);
