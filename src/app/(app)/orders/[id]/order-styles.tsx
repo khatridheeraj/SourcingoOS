@@ -1,5 +1,6 @@
 "use client";
 
+import { FactoryAskBox, type FactoryAsk } from "./factory-ask";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
@@ -79,7 +80,7 @@ function verdict(c: Cell, today: string): { text: string; cls: string } | null {
 
 // Every style as its own card with its full TNA, grouped by factory. A factory's plan is asked for and entered first;
 // its PO is released only once nothing is missing, and actual dates are entered after that.
-export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDone, isOwner, today, now, dueDate, groups, initial, initialExtras, factoryDates, baselines, qc, floor = {}, counts = {}, hasBuyerPo }: {
+export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDone, isOwner, today, now, dueDate, groups, initial, initialExtras, factoryDates, baselines, qc, floor = {}, counts = {}, asks = {}, hasBuyerPo }: {
   orderId: string;
   orderNo: string;
   companyId: string;
@@ -102,6 +103,7 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
   floor?: Record<string, { text: string; cls: string }>;
   // The factory's own latest piece count on each style, as one line.
   counts?: Record<string, string>;
+  asks?: Record<string, FactoryAsk[]>;
   // The buyer's PO is on file: a factory PO is locked and released only against a PO received from the buyer.
   hasBuyerPo: boolean;
 }) {
@@ -654,6 +656,7 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
                         {sm.outlook && <p className={`style-outlook ${sm.outlook.cls}`}>{sm.outlook.text}</p>}
                         {floor[l.id] && <p className={`style-floor ${floor[l.id].cls}`}>From the floor <b>{floor[l.id].text}</b></p>}
                         {counts[l.id] && <p className="style-floor">Factory count <b className="num">{counts[l.id]}</b></p>}
+                        <FactoryAskBox orderId={orderId} asks={asks[l.id] ?? []} canEdit={canEdit} />
                       </div>
                       <div className="style-side">
                         {dirty && <span className="chip warn">Unsaved</span>}
