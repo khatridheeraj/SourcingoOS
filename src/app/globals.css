@@ -928,6 +928,55 @@ main:focus { outline: none; }
   .fsteps > summary { cursor: pointer; padding: 10px 2px; font-size: 13.5px; font-weight: 600; color: var(--accent); width: fit-content; }
   .fsteps[open] > summary { margin-bottom: 8px; }
   .fsmp-sum { font-size: 13px; color: var(--muted); }
+  /* An inquiry's costing: the buyer's sample, the costing built line by line, the price sent and the buyer's answer. */
+  .cost-wait { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; padding: 12px 14px; border-radius: 12px; background: var(--surface-2); font-size: 13.5px; }
+  .cost-wait > .btn.primary { align-self: flex-start; }
+  .cost-answer { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; margin-top: 12px; }
+  .cost-answer q { background: var(--surface); }
+  .cost-sent { display: flex; flex-direction: column; gap: 6px; margin-top: 12px; }
+  .cost-sent-h { display: flex; flex-direction: column; gap: 2px; }
+  .cost-sent-h > b { font-size: 22px; font-weight: 650; letter-spacing: -0.01em; }
+  .cost-sent-h > b small, .bcost-quote > b small { font-size: 13px; font-weight: 500; color: var(--muted); }
+  .cost-build { display: flex; flex-direction: column; gap: 10px; margin-top: 14px; }
+  .cost-build h3 { margin-top: 4px; font-size: 13.5px; font-weight: 600; }
+  .cost-build h3 small { font-weight: 400; color: var(--muted); }
+  .cost-rows { display: flex; flex-direction: column; gap: 8px; }
+  .cost-row { display: grid; gap: 8px; align-items: center; }
+  .cost-row.cfab { grid-template-columns: minmax(0, 1fr) 96px 112px 88px 32px; }
+  .cost-row.coth { grid-template-columns: minmax(0, 1fr) 120px 32px; }
+  .cost-row > .btn { justify-content: center; padding: 0; width: 32px; color: var(--muted); }
+  .cost-num { display: flex; align-items: center; gap: 6px; min-width: 0; }
+  .cost-num > span { font-size: 13px; color: var(--muted); }
+  .cost-num > .inp { width: 100%; min-width: 0; text-align: right; }
+  .cost-amt { text-align: right; font-size: 13.5px; font-weight: 500; }
+  .cost-add { align-self: flex-start; }
+  .cost-sum { display: flex; flex-direction: column; margin: 4px 0; border-top: 1px solid var(--line); }
+  .cost-sum > div { display: flex; justify-content: space-between; align-items: center; gap: 12px; min-height: 36px; padding: 6px 0; border-bottom: 1px solid var(--line); font-size: 13.5px; }
+  .cost-sum dt { color: var(--muted); }
+  .cost-sum .tot dt, .cost-sum .tot dd { font-weight: 600; color: var(--foreground); }
+  .cost-sum .cost-num { width: 112px; }
+  .cost-build > .row .btn.primary { min-width: 0; }
+  .cost-detail > summary { width: fit-content; padding: 10px 0 4px; font-size: 13.5px; font-weight: 600; color: var(--accent); cursor: pointer; }
+  @media (max-width: 640px) {
+    .cost-row.cfab { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 32px; }
+    .cost-row.cfab > .inp:first-child { grid-column: 1 / -1; }
+    .cost-row.cfab .cost-amt { display: none; }
+    .cost-row.cfab + .cost-row.cfab { padding-top: 8px; border-top: 1px dashed var(--line); }
+    .cost-wait > .btn.primary, .cost-build > .row .btn.primary { align-self: stretch; width: 100%; min-height: 44px; }
+  }
+  /* The buyer's costings: each ask with where it stands, Sourcingo's price and Accept / Ask to revise. */
+  .bcost.wait { border-color: var(--warn-line); }
+  .bcost .card-h p { margin-top: 2px; font-size: 13px; color: var(--muted); }
+  .bcost-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 12px; padding: 14px 16px 4px; }
+  .bcost-item { display: flex; flex-direction: column; gap: 10px; padding: 14px; border: 1px solid var(--line); border-radius: 12px; }
+  .bcost-item .bsmp-h { align-items: flex-start; }
+  .bcost-quote { display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border-radius: 10px; background: var(--surface-2); }
+  .bcost-quote > b { font-size: 22px; font-weight: 650; letter-spacing: -0.01em; }
+  .bcost-quote .muted { font-size: 12.5px; }
+  .bcost-quote q { margin-top: 4px; background: var(--surface); }
+  .bcost-new { padding: 12px 16px 16px; }
+  .bcost > .bmore { border-top: 1px solid var(--line); }
+  @media (max-width: 640px) { .bcost-list { grid-template-columns: minmax(0, 1fr); padding: 12px 12px 4px; } .bcost-new .btn { width: 100%; min-height: 44px; } }
   /* The buyer's samples to approve. */
   .bsmp { border-color: var(--warn-line); }
   .bsmp-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 12px; padding: 14px 16px 16px; }

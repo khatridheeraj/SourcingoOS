@@ -112,6 +112,12 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
     .select("id, order_id, ready_on, lines, cartons, created_at, factories(name), orders(order_no, buyer_id, buyer_po, merchandiser_id, removed_at, status)")
     .eq("company_id", me.companyId).is("seen_at", null).order("created_at").limit(100) : null;
 
+  // Costings buyers asked for on their page: the sample to receive, the price to work out, the answer to act on.
+  // Each waits on the inquiry's merchandiser (the owner's when no one has it).
+  const costAskP = me?.id && me.companyId && canEditOrders(me.role) ? supabase.from("inquiries")
+    .select("id, inquiry_no, buyer_id, product, est_qty, status, merchandiser_id, sample_in_on, quoted_price, buyer_answer, buyer_answer_note, buyer_answer_at, answer_seen_at, created_at")
+    .eq("company_id", me.companyId).eq("asked_on_page", true).in("status", ["new", "quoted"]).order("created_at").limit(200) : null;
+
   // Every read's error is kept: a list that failed to load must not show as "nothing to do".
   const errors: string[] = [];
   const keep = <R extends { error: { message: string } | null }>(r: R) => {
@@ -348,6 +354,33 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
         detail: `${qty(pcs)} pcs in ${x.cartons} ${x.cartons === 1 ? "carton" : "cartons"} from ${dm(x.ready_on)}. Plan Final QC and pickup · ${waitedText(x.created_at, now)} ago`,
         action: "Plan QC", sort: x.created_at,
       });
+    }
+  }
+  // A buyer's costing ask: its sample still to come (waiting), its price to work out, or its answer to act on.
+  if (costAskP) {
+    const { data: asks, error: cErr } = await costAskP;
+    if (cErr) errors.push(cErr.message);
+    for (const a of asks ?? []) {
+      if (a.merchandiser_id ? a.merchandiser_id !== me?.id : me?.role !== "owner") continue;
+      const base_ = { href: `/inquiries/${a.id}`, code: a.inquiry_no, title: `${buyerOf.get(a.buyer_id ?? "") ?? ""} · ${a.product}` };
+      const answered = !!a.buyer_answer && !a.answer_seen_at;
+      if (a.status === "quoted" && answered && a.buyer_answer === "accepted") {
+        now_.push({ key: `cost-ok:${a.id}`, ...base_, sev: "warn", chip: { text: `Accepted ${money(Number(a.quoted_price))}`, cls: "ok" },
+          detail: `Accepted on their page${a.buyer_answer_note ? `: \u201c${a.buyer_answer_note.slice(0, 120)}\u201d` : ""}. Make the order when the PO comes · ${waitedText(a.buyer_answer_at!, now)} ago`,
+          action: "Make the order", sort: a.buyer_answer_at! });
+      } else if (a.status === "quoted" && answered) {
+        now_.push({ key: `cost-rev:${a.id}`, ...base_, sev: "warn", chip: { text: "Asked to revise", cls: "warn" },
+          detail: `${a.buyer_answer_note ? `\u201c${a.buyer_answer_note.slice(0, 140)}\u201d` : `Wants a new price on ${money(Number(a.quoted_price))}`} · ${waitedText(a.buyer_answer_at!, now)} ago`,
+          action: "Revise price", sort: a.buyer_answer_at! });
+      } else if (a.status === "new" && a.sample_in_on) {
+        now_.push({ key: `cost-due:${a.id}`, ...base_, sev: "warn", chip: { text: "Costing to send", cls: "warn" },
+          detail: `Sample in since ${dm(a.sample_in_on)}${a.est_qty ? ` · ${qty(a.est_qty)} pcs` : ""}. Work out the price and send it to their page`,
+          action: "Cost it", sort: a.sample_in_on });
+      } else if (a.status === "new") {
+        waiting.push({ key: `cost-smp:${a.id}`, ...base_, sev: "",
+          detail: `Asked for a costing ${waitedText(a.created_at, now)} ago. Mark the sample when it reaches the office`,
+          action: "Sample arrived", sort: a.created_at });
+      }
     }
   }
   const noTargets: { o: (typeof open)[number]; n: number }[] = [];

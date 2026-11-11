@@ -7,6 +7,8 @@ import { BuyerSamples, type BuyerSample } from "./buyer-samples";
 import { BuyerMoney, type BuyerInvoice } from "./buyer-money";
 import { BuyerTalk, type BuyerMessage } from "./buyer-talk";
 import { BuyerSendPo, type SentPo } from "./buyer-send-po";
+import { BuyerCosting } from "./buyer-costing";
+import { costingState, type BuyerCostingAsk } from "./costing-state";
 
 type Step = { stage: string; label: string | null; planned_on: string | null; done_on: string | null };
 type FinalQc = { result: string; checked_on: string; pieces_checked: number | null; photos: string[] };
@@ -45,7 +47,7 @@ const SHOWN = 3;
 // the same page, read for that buyer, with nothing to press.
 export async function BuyerView({ preview }: { preview?: string }) {
   const supabase = await createClient(preview ? { "x-preview-buyer": preview } : undefined);
-  const [me, { data, error }, { data: sampleRows }, { data: shipRows }, { data: moneyRow }, { data: talkRows }, { data: sentRows }] = await Promise.all([
+  const [me, { data, error }, { data: sampleRows }, { data: shipRows }, { data: moneyRow }, { data: talkRows }, { data: sentRows }, { data: costRows }] = await Promise.all([
     getMe(), supabase.rpc("buyer_orders"), supabase.rpc("buyer_samples"), supabase.rpc("buyer_shipments"),
     // Its invoices and what is still to be paid.
     supabase.rpc("buyer_money"),
@@ -53,7 +55,10 @@ export async function BuyerView({ preview }: { preview?: string }) {
     supabase.rpc("buyer_messages_mine"),
     // The POs it sent from this page and whether each is an order yet.
     supabase.rpc("buyer_sent_pos"),
+    // The costings it asked for and Sourcingo's prices.
+    supabase.rpc("buyer_costings_mine"),
   ]);
+  const rawAsks = (costRows ?? []) as (Omit<BuyerCostingAsk, "photoUrls"> & { photos: string[] })[];
   const sent = (sentRows ?? []) as SentPo[];
   const talk = ((talkRows ?? []) as (Omit<BuyerMessage, "when"> & { at: string })[]);
   const invoices = ((moneyRow as { invoices?: BuyerInvoice[] } | null)?.invoices ?? []);
@@ -69,6 +74,7 @@ export async function BuyerView({ preview }: { preview?: string }) {
   const paths = [...new Set([
     ...orders.flatMap((o) => o.lines.flatMap((l) => [l.photo_path, ...(l.final_qc?.photos ?? [])])),
     ...rawSamples.flatMap((s) => [s.photo_path, ...s.photos, ...s.answer_photos]),
+    ...rawAsks.flatMap((a) => a.photos.slice(0, 1)),
   ].filter((p): p is string => !!p))];
   const { data: signed } = paths.length ? await supabase.storage.from(PHOTO_BUCKET).createSignedUrls(paths, 3600) : { data: [] };
   const url = new Map((signed ?? []).filter((s) => s.signedUrl).map((s) => [s.path, s.signedUrl]));
@@ -77,6 +83,10 @@ export async function BuyerView({ preview }: { preview?: string }) {
     ...s, styleUrl: (photo_path && url.get(photo_path)) || null,
     photos: s.photos.map((p) => url.get(p)).filter((u): u is string => !!u), answerPhotos: answer_photos.map((p) => url.get(p)).filter((u): u is string => !!u),
   }));
+  const asks: BuyerCostingAsk[] = rawAsks.map(({ photos, ...a }) => ({ ...a, photoUrls: photos.slice(0, 1).map((p) => url.get(p)).filter((u): u is string => !!u) }));
+  // A price waiting for the buyer's answer, or a sample Sourcingo still needs, goes to the top with the samples.
+  const costingFirst = asks.some((a) => costingState(a, today).waits);
+  const costing = <BuyerCosting companyId={me?.companyId ?? ""} asks={asks} canWrite={canWrite} today={today} />;
   const open = orders.filter((o) => o.status === "open");
   const styles = open.flatMap((o) => o.lines);
   const passed = styles.filter((l) => l.final_qc?.result === "pass").length;
@@ -99,6 +109,7 @@ export async function BuyerView({ preview }: { preview?: string }) {
       </div>
       {error && <div className="errbox">{error.message}</div>}
       <BuyerSamples companyId={me?.companyId ?? ""} samples={samples} />
+      {costingFirst && costing}
 
       {orders.length === 0 && !error ? (
         <div className="empty"><b>No open orders right now</b>Send your next PO below, or email it as usual. It shows here as soon as Sourcingo enters it.</div>
@@ -233,6 +244,7 @@ export async function BuyerView({ preview }: { preview?: string }) {
           })}
         </>
       )}
+      {!costingFirst && costing}
       <BuyerSendPo companyId={me?.companyId ?? ""} sent={sent} canSend={canWrite} />
       {/* Money owed shows even when no order is open. */}
       <BuyerMoney invoices={invoices} />
