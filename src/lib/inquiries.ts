@@ -46,18 +46,39 @@ export type Inquiry = {
   sample_sent_on: string | null;
   sample_note: string | null;
   incoming_po_id: string | null;
+  // Asked by the buyer on its own page for the costing of an exact sample (0092).
+  asked_on_page: boolean;
+  sample_in_on: string | null;
+  sample_in_note: string | null;
+  costing_draft: unknown;
+  buyer_answer: "accepted" | "changes" | null;
+  buyer_answer_note: string | null;
+  buyer_answer_at: string | null;
+  answer_seen_at: string | null;
 };
-export const INQUIRY_COLUMNS = "id, inquiry_no, buyer_id, prospect, contact_name, contact, source, product, est_qty, unit, target_price, quoted_price, merchandiser_id, next_follow_up, status, lost_reason, order_id, notes, photos, status_at, updated_at, created_by, created_at, sample_sent_on, sample_note, incoming_po_id";
+export const INQUIRY_COLUMNS = "id, inquiry_no, buyer_id, prospect, contact_name, contact, source, product, est_qty, unit, target_price, quoted_price, merchandiser_id, next_follow_up, status, lost_reason, order_id, notes, photos, status_at, updated_at, created_by, created_at, sample_sent_on, sample_note, incoming_po_id, asked_on_page, sample_in_on, sample_in_note, costing_draft, buyer_answer, buyer_answer_note, buyer_answer_at, answer_seen_at";
 
 export const isOpenInquiry = (status: string) => status === "new" || status === "quoted";
 
 // Where an inquiry stands on its way to an order, for the steps shown on it.
 export const STAGES = ["Asked", "Quoted", "Sample sent", "Order"] as const;
-export function stageOf(i: Pick<Inquiry, "status" | "sample_sent_on">): number {
+// A costing the buyer asked for on its page starts from its own sample, so the sample comes in before the price.
+export const PAGE_STAGES = ["Asked", "Sample in", "Quoted", "Order"] as const;
+type Staged = Pick<Inquiry, "status" | "sample_sent_on"> & Partial<Pick<Inquiry, "asked_on_page" | "sample_in_on">>;
+export const stagesFor = (i: { asked_on_page?: boolean }) => (i.asked_on_page ? PAGE_STAGES : STAGES);
+export function stageOf(i: Staged): number {
   if (i.status === "converted") return 3;
+  if (i.asked_on_page) return i.status === "quoted" ? 2 : i.sample_in_on ? 1 : 0;
   if (i.sample_sent_on) return 2;
   return i.status === "quoted" ? 1 : 0;
 }
 
 // An open inquiry with no follow-up date and nothing done on it for this many days has gone quiet.
 export const QUIET_DAYS = 30;
+
+// The buyer answered the latest price on its page and no one has acted on it yet.
+export const answerOpen = (i: Pick<Inquiry, "status" | "buyer_answer" | "answer_seen_at">) =>
+  isOpenInquiry(i.status) && !!i.buyer_answer && !i.answer_seen_at;
+// A costing the team owes: the buyer's sample is in and no price has gone, or the buyer asked to revise it.
+export const costingDue = (i: Pick<Inquiry, "status" | "asked_on_page" | "sample_in_on" | "buyer_answer" | "answer_seen_at">) =>
+  i.asked_on_page && ((i.status === "new" && !!i.sample_in_on) || (i.status === "quoted" && i.buyer_answer === "changes" && !i.answer_seen_at));

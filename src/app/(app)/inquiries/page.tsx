@@ -4,7 +4,7 @@ import { canEditOrders, getMe } from "@/lib/auth";
 import { buyerName, loadBuyers, loadTeam, personName } from "@/lib/data";
 import { fetchAll } from "@/lib/fetch-all";
 import { dayNear, daysBetween, money, qty, todayIST } from "@/lib/format";
-import { INQUIRY_COLUMNS, isOpenInquiry, QUIET_DAYS, STAGES, stageOf, type Inquiry } from "@/lib/inquiries";
+import { answerOpen, costingDue, INQUIRY_COLUMNS, isOpenInquiry, QUIET_DAYS, stageOf, stagesFor, type Inquiry } from "@/lib/inquiries";
 import { addDays } from "@/lib/payments";
 import { createClient } from "@/lib/supabase/server";
 import { InquiryButton, InquirySheet, type StepInquiry } from "./inquiry-step";
@@ -53,7 +53,7 @@ export default async function InquiriesPage({ searchParams }: PageProps<"/inquir
   const who = (i: Inquiry) => (i.buyer_id ? buyerOf.get(i.buyer_id) ?? "Buyer" : i.prospect ?? "");
   const lastTouch = (i: Inquiry) => [i.updated_at, i.created_at, lastNote.get(i.id) ?? ""].sort().at(-1)!.slice(0, 10);
   const due = (i: Inquiry) => isOpenInquiry(i.status) && !!i.next_follow_up && i.next_follow_up <= today;
-  const quiet = (i: Inquiry) => isOpenInquiry(i.status) && !i.next_follow_up && daysBetween(lastTouch(i), today) >= QUIET_DAYS;
+  const quiet = (i: Inquiry) => isOpenInquiry(i.status) && !i.next_follow_up && !answerOpen(i) && daysBetween(lastTouch(i), today) >= QUIET_DAYS;
   const matches = (i: Inquiry) => !q || [i.inquiry_no, who(i), i.product, i.contact_name, i.contact, i.merchandiser_id ? people.get(i.merchandiser_id) : ""]
     .join(" ").toLowerCase().includes(q);
 
@@ -62,15 +62,19 @@ export default async function InquiriesPage({ searchParams }: PageProps<"/inquir
     id: i.id, no: i.inquiry_no, title: who(i), product: i.product, status: i.status, stage: stageOf(i), hasBuyer: !!i.buyer_id,
     price: i.quoted_price != null ? String(i.quoted_price) : i.target_price != null ? String(i.target_price) : "", quoted: i.quoted_price,
     unit: i.unit, estQty: i.est_qty, sampleSentOn: i.sample_sent_on, contactName: i.contact_name ?? "", contact: i.contact ?? "", nextFollowUp: i.next_follow_up ?? "",
+    fromPage: i.asked_on_page, accepted: i.buyer_answer === "accepted",
   });
 
   // The open list, by what to do: follow up today, send a price, wait on the buyer, and the ones gone quiet.
   const byDue = (a: Inquiry, b: Inquiry) => (a.next_follow_up ?? "9999").localeCompare(b.next_follow_up ?? "9999") || b.created_at.localeCompare(a.created_at);
   const shown = open.filter(matches);
+  // A buyer-page ask needs a price once its sample is in (or the buyer asked to revise); before that it waits on the buyer.
+  const needsPrice = (i: Inquiry) => (i.asked_on_page ? costingDue(i) : stageOf(i) === 0);
   const groups = [
-    { key: "due", title: "Follow up now", hint: "Send a message, then pick the next day.", rows: shown.filter(due).sort(byDue) },
-    { key: "price", title: "Needs a price", hint: "Asked, not priced yet.", rows: shown.filter((i) => !due(i) && !quiet(i) && stageOf(i) === 0).sort(byDue) },
-    { key: "wait", title: "Waiting on the buyer", hint: "Price or sample sent. Back here on its follow-up day.", rows: shown.filter((i) => !due(i) && !quiet(i) && stageOf(i) > 0).sort(byDue) },
+    { key: "answer", title: "Buyer answered", hint: "Accepted on their page: make the order. Asked to revise: send a new price.", rows: shown.filter((i) => answerOpen(i) && i.buyer_answer === "accepted").sort(byDue) },
+    { key: "due", title: "Follow up now", hint: "Send a message, then pick the next day.", rows: shown.filter((i) => due(i) && !(answerOpen(i) && i.buyer_answer === "accepted")).sort(byDue) },
+    { key: "price", title: "Needs a price", hint: "Asked, not priced yet.", rows: shown.filter((i) => !due(i) && !quiet(i) && !(answerOpen(i) && i.buyer_answer === "accepted") && needsPrice(i)).sort(byDue) },
+    { key: "wait", title: "Waiting on the buyer", hint: "Price or sample sent, or their sample not in yet. Back here on its follow-up day.", rows: shown.filter((i) => !due(i) && !quiet(i) && !(answerOpen(i) && i.buyer_answer === "accepted") && !needsPrice(i)).sort(byDue) },
   ];
   const quietRows = shown.filter(quiet).sort((a, b) => lastTouch(b).localeCompare(lastTouch(a)));
   const closed = all.filter((i) => matches(i) && (view === "all" || (view === "won" ? i.status === "converted" : view === "lost" ? i.status === "lost" : false)));
@@ -94,7 +98,7 @@ export default async function InquiriesPage({ searchParams }: PageProps<"/inquir
     const isDue = due(i);
     const late = isDue && i.next_follow_up ? daysBetween(i.next_follow_up, today) : 0;
     const price = i.quoted_price != null ? `${money(i.quoted_price)} quoted` : i.target_price != null ? `${money(i.target_price)} target` : "";
-    const bits = [i.est_qty ? `${qty(i.est_qty)} ${i.unit}` : "", price, i.merchandiser_id && i.merchandiser_id !== me?.id ? people.get(i.merchandiser_id) : ""].filter(Boolean);
+    const bits = [i.asked_on_page ? "Buyer page" : "", i.est_qty ? `${qty(i.est_qty)} ${i.unit}` : "", price, i.merchandiser_id && i.merchandiser_id !== me?.id ? people.get(i.merchandiser_id) : ""].filter(Boolean);
     const when = i.status === "converted" ? null
       : i.status === "lost" ? <span key="w" className="!whitespace-normal">Lost: {i.lost_reason}</span>
       : isDue ? <span key="w" className="text-bad">{late ? `${plural(late, "day")} late` : "Due today"}</span>
@@ -108,7 +112,8 @@ export default async function InquiriesPage({ searchParams }: PageProps<"/inquir
           <span className="inq-what">{i.product}</span>
           <span className="inq-meta dots">
             <span>
-              {i.status === "converted" ? <span className="text-ok">Order {orderNo.get(i.order_id ?? "") ?? ""}</span> : i.status !== "lost" ? <span className="inq-stage">{STAGES[s]}</span> : null}
+              {i.status === "converted" ? <span className="text-ok">Order {orderNo.get(i.order_id ?? "") ?? ""}</span> : i.status !== "lost" ? <span className="inq-stage">{i.asked_on_page && s === 0 ? "Waiting for their sample" : stagesFor(i)[s]}</span> : null}
+              {i.asked_on_page && answerOpen(i) && <span className={i.buyer_answer === "accepted" ? "text-ok" : "text-warn"}>{i.buyer_answer === "accepted" ? "Accepted" : "Asked to revise"}</span>}
               {bits.map((b) => <span key={b}>{b}</span>)}
               {when}
             </span>

@@ -10,6 +10,7 @@ import { ignoreSender, setAside } from "../pos/actions";
 import { addDays } from "@/lib/payments";
 import { buyerByDomain, parseInquiry } from "@/lib/inquiry-parse";
 import { inquiryProblem, priceText, qtyText, type InquiryField } from "@/lib/inquiry-input";
+import { cleanSheet, priceNum, sheetProblem, totals, type Sheet } from "@/lib/costing";
 
 export type InquiryInput = {
   buyer_id: string;
@@ -224,5 +225,68 @@ export async function addInquiryBuyer(id: string, code: string, realName: string
   if (!data?.length) return { error: "The buyer was added, but this inquiry is closed. Pick them on a new inquiry or order." };
   revalidatePath("/inquiries");
   revalidatePath(`/inquiries/${id}`);
+  return {};
+}
+
+const touched = (id: string) => {
+  revalidatePath("/inquiries");
+  revalidatePath(`/inquiries/${id}`);
+  revalidatePath("/today");
+  revalidatePath("/buyer");
+};
+
+// The buyer's sample reached the office (or, with no date, it hadn't after all). The costing can start.
+export async function setSampleIn(id: string, on: string, note: string): Promise<{ error?: string }> {
+  const t = await team();
+  if ("error" in t) return { error: t.error };
+  if (!isDate(on)) return { error: "Enter the day the sample came as a date." };
+  if (on && on > todayIST()) return { error: "The sample can't arrive in the future. Pick today or an earlier day." };
+  const { data, error } = await t.supabase.from("inquiries")
+    .update({ sample_in_on: on || null, sample_in_note: on ? note.trim().slice(0, 300) || null : null })
+    .eq("id", id).in("status", ["new", "quoted"]).select("id");
+  if (error) return { error: friendly(error) };
+  if (!data?.length) return { error: "Only open inquiries can be changed. Reload the page." };
+  touched(id);
+  return {};
+}
+
+// Keeps the costing being worked out, so it is there next time. Never reaches the buyer.
+export async function saveCostingDraft(id: string, sheet: Sheet): Promise<{ error?: string }> {
+  const t = await team();
+  if ("error" in t) return { error: t.error };
+  const draft = { fabrics: sheet.fabrics.slice(0, 12), costs: sheet.costs.slice(0, 20), margin: String(sheet.margin ?? "").slice(0, 10) };
+  if (JSON.stringify(draft).length > 20000) return { error: "That costing is too long to keep. Remove some rows." };
+  const { data, error } = await t.supabase.from("inquiries").update({ costing_draft: draft }).eq("id", id).in("status", ["new", "quoted"]).select("id");
+  if (error) return { error: friendly(error) };
+  if (!data?.length) return { error: "Only open inquiries can be changed. Reload the page." };
+  revalidatePath(`/inquiries/${id}`);
+  return {};
+}
+
+// Sends the quote: the costing as worked out, and the price a piece. On a buyer-page ask the buyer sees the price,
+// how long it holds and the note; the costs and the margin stay inside.
+export async function sendCosting(id: string, sheet: Sheet, price: string, validTill: string, note: string): Promise<{ error?: string }> {
+  const t = await team();
+  if ("error" in t) return { error: t.error };
+  const bad = sheetProblem(sheet, price);
+  if (bad) return { error: bad };
+  if (!isDate(validTill)) return { error: "Enter how long the price holds as a date." };
+  if (validTill && validTill < todayIST()) return { error: "The price can't end in the past. Pick a later day." };
+  const { error } = await t.supabase.rpc("send_costing", {
+    p_inquiry: id, p_sheet: cleanSheet(sheet), p_cost: totals(sheet).cost, p_price: priceNum(price),
+    p_valid_till: validTill || null, p_note: note.trim().slice(0, 1000),
+  });
+  if (error) return { error: friendly(error) };
+  touched(id);
+  return {};
+}
+
+// The team has dealt with the buyer's answer some other way (a call, a message): it leaves Home.
+export async function answerSeen(id: string): Promise<{ error?: string }> {
+  const t = await team();
+  if ("error" in t) return { error: t.error };
+  const { error } = await t.supabase.from("inquiries").update({ answer_seen_at: new Date().toISOString() }).eq("id", id).is("answer_seen_at", null);
+  if (error) return { error: friendly(error) };
+  touched(id);
   return {};
 }
