@@ -72,3 +72,15 @@ export async function saveFactoryCounts(rows: { lineId: string; cut: number; sti
   revalidatePath("/factory");
   return {};
 }
+
+// The factory asks for a new date on one step of its style, with the reason. Sourcingo agrees or says no.
+export async function askNewDate(lineId: string, stage: string, newOn: string, reason: string): Promise<{ error?: string }> {
+  const me = await getMe();
+  if (me?.role !== "factory") return { error: "This login is not set up for a factory." };
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(newOn)) return { error: "Pick the new date." };
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("ask_factory_date", { p_line: lineId, p_stage: stage, p_new: newOn, p_reason: reason });
+  if (error) return { error: friendly(error) };
+  revalidatePath("/factory");
+  return {};
+}

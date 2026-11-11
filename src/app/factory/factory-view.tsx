@@ -9,13 +9,14 @@ import type { PanelPo } from "./factory-po";
 import { FactoryMoney, type FactoryMoneyData } from "./factory-money";
 import type { FactoryCheck } from "./factory-qc";
 import type { FactoryCount } from "./factory-counts";
+import type { DateAsk } from "./factory-date-ask";
 import { LANG_COOKIE, langOf, words } from "./i18n";
 
 // The factory's panel. `preview` is a factory's id when the orders team is looking at it from inside the app:
 // the same panel, read for that factory, with nothing to press.
 export async function FactoryView({ preview }: { preview?: string }) {
   const supabase = await createClient(preview ? { "x-preview-factory": preview } : undefined);
-  const [me, { data, error }, { data: ups }, { data: fileRows }, { data: detailRows }, { data: sampleRows }, { data: poRows }, { data: moneyRow }, { data: qcRows }, { data: countRows }] = await Promise.all([
+  const [me, { data, error }, { data: ups }, { data: fileRows }, { data: detailRows }, { data: sampleRows }, { data: poRows }, { data: moneyRow }, { data: qcRows }, { data: countRows }, { data: askRows }] = await Promise.all([
     getMe(), supabase.rpc("factory_tna"), supabase.rpc("factory_step_updates"),
     // Each style's tech pack, cutting program, fabric and sizes, as the orders team entered them.
     supabase.rpc("factory_line_files"), supabase.rpc("factory_line_details"),
@@ -29,8 +30,11 @@ export async function FactoryView({ preview }: { preview?: string }) {
     supabase.rpc("factory_qc"),
     // Its last piece count (cut, stitched, packed) on each style.
     supabase.rpc("factory_counts_mine"),
+    // Its asks for a new date on a step, and Sourcingo's answers.
+    supabase.rpc("factory_date_asks_mine"),
   ]);
   const counts = (countRows ?? []) as FactoryCount[];
+  const asks = (askRows ?? []) as DateAsk[];
   const pos = (poRows ?? []) as PanelPo[];
   const toAccept = pos.filter((p) => !p.accepted_at && (data as { orders?: { order_id: string }[] } | null)?.orders?.some((o) => o.order_id === p.order_id)).length;
   const files = (fileRows ?? []) as { line_id: string; kind: string; path: string; file_name: string | null }[];
@@ -84,7 +88,7 @@ export async function FactoryView({ preview }: { preview?: string }) {
             </p>
           )}
           {toAccept > 0 && <p className="text-[13px] font-semibold text-warn">{w.posToAccept(toAccept)}</p>}
-          {panel.orders.map((o) => <FactoryOrder key={o.order_id} order={o} now={now} companyId={me?.companyId ?? ""} updates={updates} rounds={rounds.filter((r) => r.order_id === o.order_id)} lang={lang} info={info} po={pos.find((p) => p.order_id === o.order_id)} checks={checks.filter((c) => c.order_id === o.order_id)} counts={counts} canWrite={me?.role === "factory"} />)}
+          {panel.orders.map((o) => <FactoryOrder key={o.order_id} order={o} now={now} companyId={me?.companyId ?? ""} updates={updates} rounds={rounds.filter((r) => r.order_id === o.order_id)} lang={lang} info={info} po={pos.find((p) => p.order_id === o.order_id)} checks={checks.filter((c) => c.order_id === o.order_id)} counts={counts} asks={asks} canWrite={me?.role === "factory"} />)}
         </>
       )}
       {moneyRow && <FactoryMoney data={moneyRow as FactoryMoneyData} lang={lang} />}

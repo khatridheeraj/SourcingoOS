@@ -103,6 +103,10 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
   const buyerMsgP = me?.id && me.companyId && !isPartner(me.role) ? supabase.from("buyer_messages")
     .select("id, order_id, body, created_at, orders(order_no, buyer_id, buyer_po, merchandiser_id, removed_at)")
     .eq("company_id", me.companyId).eq("from_buyer", true).is("answered_at", null).order("created_at").limit(100) : null;
+  // A factory asked for a new date on a step: it waits on the order's merchandiser (the owner's when no one owns it).
+  const factoryAskP = me?.id && me.companyId && canEditOrders(me.role) ? supabase.from("factory_date_asks")
+    .select("id, order_id, stage, new_on, reason, created_at, order_lines(style), factories(name), orders(order_no, buyer_id, buyer_po, merchandiser_id, removed_at, status)")
+    .eq("company_id", me.companyId).is("answered_at", null).order("created_at").limit(100) : null;
 
   // Every read's error is kept: a list that failed to load must not show as "nothing to do".
   const errors: string[] = [];
@@ -297,6 +301,28 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
         chip: { text: x.n > 1 ? `${buyer} wrote ${x.n} times` : `${buyer} wrote`, cls: "warn" },
         detail: `\u201c${text.length > 140 ? `${text.slice(0, 137)}…` : text}\u201d · ${waitedText(x.first, now)} ago`,
         action: "Answer", sort: x.first,
+      });
+    }
+  }
+  // A factory asked for a new date: one line per ask, until someone agrees or says no on the order.
+  if (factoryAskP) {
+    const { data: asks, error: askErr } = await factoryAskP;
+    if (askErr) errors.push(askErr.message);
+    for (const x of asks ?? []) {
+      const one = <T,>(v: T | T[] | null): T | null => (Array.isArray(v) ? v[0] ?? null : v);
+      const o = one(x.orders as unknown as { order_no: string; buyer_id: string; buyer_po: string | null; merchandiser_id: string | null; removed_at: string | null; status: string } | null);
+      if (!o || o.removed_at || o.status !== "open") continue;
+      if (o.merchandiser_id ? o.merchandiser_id !== me?.id : me?.role !== "owner") continue;
+      const style = one(x.order_lines as unknown as { style: string } | null)?.style ?? "";
+      const factory = one(x.factories as unknown as { name: string } | null)?.name ?? "The factory";
+      const step = TNA_STEPS.find((t) => t.key === x.stage)?.label ?? "a step";
+      const why = x.reason.replace(/\s+/g, " ");
+      now_.push({
+        key: `factory-ask:${x.id}`, href: `/orders/${x.order_id}?tab=styles`, sev: "warn", code: o.order_no,
+        title: `${buyerOf.get(o.buyer_id) ?? ""}${o.buyer_po ? ` · PO ${o.buyer_po}` : ""}`,
+        chip: { text: `${factory} asks for a new date`, cls: "warn" },
+        detail: `${style} ${step} to ${dm(x.new_on)}: \u201c${why.length > 120 ? `${why.slice(0, 117)}…` : why}\u201d · ${waitedText(x.created_at, now)} ago`,
+        action: "Answer", sort: x.created_at,
       });
     }
   }

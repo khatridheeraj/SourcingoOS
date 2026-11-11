@@ -277,3 +277,14 @@ select l.company_id, l.order_id, l.id, l.factory_id, current_date - v.ago, v.cut
 from public.order_lines l, (values (1, 640, 380, 0), (0, 700, 455, 60)) v (ago, cut, stitched, packed)
 where l.order_id = :'o_late'
   and exists (select 1 from public.members where factory_id = l.factory_id and role = 'factory');
+
+-- 16. The factory asks for a new date on the late order's style: Cutting is waiting for an answer; Finishing was agreed.
+insert into public.factory_date_asks (company_id, order_id, line_id, factory_id, stage, old_on, new_on, reason, created_by, created_at,
+                                      agreed, answer, answered_by, answered_at)
+select l.company_id, l.order_id, l.id, l.factory_id, v.stage, current_date + v.old_in, current_date + v.new_in, v.reason,
+       (select user_id from public.members where factory_id = l.factory_id and role = 'factory' limit 1), now() - interval '3 hours',
+       v.agreed, v.answer, case when v.agreed is not null then (select coalesce(o.merchandiser_id, (select user_id from public.members m where m.company_id = o.company_id and m.role = 'owner' limit 1)) from public.orders o where o.id = l.order_id) end, case when v.agreed is not null then now() - interval '1 hour' end
+from public.order_lines l, (values ('cutting', 2, 6, 'Fabric reached us 4 days late from the mill.', null::boolean, null),
+                                   ('finishing', 12, 14, 'Washing unit closed two days for Diwali.', true, 'Fine, keep packing on time.')) v (stage, old_in, new_in, reason, agreed, answer)
+where l.order_id = :'o_late'
+  and exists (select 1 from public.members where factory_id = l.factory_id and role = 'factory');

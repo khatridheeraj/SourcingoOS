@@ -4,7 +4,7 @@ import { Fragment } from "react";
 import { notFound } from "next/navigation";
 import { canEditOrders, canEnterDone, canRecordQc, getMe } from "@/lib/auth";
 import { fetchAll } from "@/lib/fetch-all";
-import { day, dayAt, dayAtNear, dayTimeNear, dayNear, money, moneyShort, qty, qtyTotal, qtyU, unitOf, unitOfAll, SHIP_QC, stageReached, STATUS, TNA_STEPS, todayIST } from "@/lib/format";
+import { day, dayAt, dayAtNear, dayTimeNear, dayNear, money, moneyShort, qty, qtyTotal, qtyU, unitOf, unitOfAll, SHIP_QC, stageReached, STATUS, TNA_STEPS, todayIST, nowMs } from "@/lib/format";
 import { areaOf, journey, shipClock } from "@/lib/journey";
 import { fileNamesStyle, styleKey } from "@/lib/po-match";
 import { Outlook, PhotoStack, ShipClock } from "@/components/order-ui";
@@ -18,6 +18,7 @@ import { OrderMargin } from "./order-margin";
 import { OrderProduction } from "./order-production";
 import { type Severity } from "@/lib/defects";
 import { OrderQc, type QcCheck } from "./order-qc";
+import type { FactoryAsk } from "./factory-ask";
 import { OrderStyles, type Baseline, type ExtraStep, type FactoryGroup, type StepQc } from "./order-styles";
 import { forecast, paceLookup } from "@/lib/progress";
 import { loadPace, loadTeam, loadTerms, personName } from "@/lib/data";
@@ -63,7 +64,7 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
     .map((l) => ({ ...l, buyer_rate: priceOf.get(l.id)?.buyer_rate ?? null, factory_rate: priceOf.get(l.id)?.factory_rate ?? null }));
   // How late each factory usually runs, for the forecast; read alongside everything else.
   const paceP = loadPace();
-  const [{ data: qc }, team, me, { data: lineStages }, { data: factoryPos }, { data: stepUps }, { data: lineFiles }, { data: shipRows }, { data: floorRows }, { data: noteRows }, { data: buyerRows }, { data: countRows }] = await Promise.all([
+  const [{ data: qc }, team, me, { data: lineStages }, { data: factoryPos }, { data: stepUps }, { data: lineFiles }, { data: shipRows }, { data: floorRows }, { data: noteRows }, { data: buyerRows }, { data: countRows }, { data: askRows }] = await Promise.all([
     supabase
       .from("qc_checks")
       .select("id, line_id, kind, checked_on, result, pieces_checked, defects, notes, checked_by, cancelled_at, cancel_reason")
@@ -91,6 +92,10 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
     supabase.from("buyer_messages").select("id, body, from_buyer, created_by, created_at, answered_at").eq("order_id", id).order("created_at").limit(300),
     // The factory's own piece counts, newest first: the first of each style is its latest.
     supabase.from("factory_counts").select("line_id, counted_on, cut, stitched, packed").eq("order_id", id).order("counted_on", { ascending: false }).limit(200),
+    // The factory's asks for a new date on a step: every open one, and those answered in the last 30 days.
+    supabase.from("factory_date_asks").select("id, line_id, stage, old_on, new_on, reason, created_at, agreed, answer, answered_at")
+      .eq("order_id", id).or(`answered_at.is.null,answered_at.gt.${new Date(nowMs() - 30 * 86_400_000).toISOString()}`)
+      .order("created_at", { ascending: false }).limit(100),
   ]);
   const ship = orderShip(shipRows);
   const canEdit = canEditOrders(me?.role);
@@ -212,6 +217,15 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
     const l = lines.find((x) => x.id === c.line_id);
     if (!l || countByStyle[c.line_id]) continue;
     countByStyle[c.line_id] = `${dayNear(c.counted_on)}: cut ${qty(c.cut)} · stitched ${qty(c.stitched)} · packed ${qty(c.packed)} of ${qtyU(l.qty, l.product)}`;
+  }
+  // The factory's asks for a new date, per style, newest first.
+  const asksByStyle: Record<string, FactoryAsk[]> = {};
+  for (const r of askRows ?? []) {
+    const row = (lineStages ?? []).find((x) => x.line_id === r.line_id && x.stage === r.stage);
+    (asksByStyle[r.line_id] ??= []).push({
+      id: r.id, step: str(row?.label) || TNA_STEPS.find((t) => t.key === r.stage)?.label || r.stage, target: str(row?.planned_on), oldOn: str(r.old_on), newOn: String(r.new_on), reason: r.reason, at: r.created_at,
+      agreed: r.agreed as boolean | null, answer: str(r.answer),
+    });
   }
   // Each style's latest word from the floor, while its step is still open (a problem stays: a failed Inline can follow its done date).
   const floorByStyle: Record<string, { text: string; cls: string }> = {};
@@ -450,6 +464,7 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
         qc={stepQc}
         floor={floorByStyle}
         counts={countByStyle}
+        asks={asksByStyle}
         hasBuyerPo={poDocs.length > 0}
       />
       </div>
