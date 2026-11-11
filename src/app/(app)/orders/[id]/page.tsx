@@ -19,6 +19,7 @@ import { OrderProduction } from "./order-production";
 import { type Severity } from "@/lib/defects";
 import { OrderQc, type QcCheck } from "./order-qc";
 import type { FactoryAsk } from "./factory-ask";
+import type { GoodsReady } from "./goods-ready";
 import { OrderStyles, type Baseline, type ExtraStep, type FactoryGroup, type StepQc } from "./order-styles";
 import { forecast, paceLookup } from "@/lib/progress";
 import { loadPace, loadTeam, loadTerms, personName } from "@/lib/data";
@@ -64,7 +65,7 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
     .map((l) => ({ ...l, buyer_rate: priceOf.get(l.id)?.buyer_rate ?? null, factory_rate: priceOf.get(l.id)?.factory_rate ?? null }));
   // How late each factory usually runs, for the forecast; read alongside everything else.
   const paceP = loadPace();
-  const [{ data: qc }, team, me, { data: lineStages }, { data: factoryPos }, { data: stepUps }, { data: lineFiles }, { data: shipRows }, { data: floorRows }, { data: noteRows }, { data: buyerRows }, { data: countRows }, { data: askRows }] = await Promise.all([
+  const [{ data: qc }, team, me, { data: lineStages }, { data: factoryPos }, { data: stepUps }, { data: lineFiles }, { data: shipRows }, { data: floorRows }, { data: noteRows }, { data: buyerRows }, { data: countRows }, { data: askRows }, { data: readyRows }] = await Promise.all([
     supabase
       .from("qc_checks")
       .select("id, line_id, kind, checked_on, result, pieces_checked, defects, notes, checked_by, cancelled_at, cancel_reason")
@@ -96,6 +97,10 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
     supabase.from("factory_date_asks").select("id, line_id, stage, old_on, new_on, reason, created_at, agreed, answer, answered_at")
       .eq("order_id", id).or(`answered_at.is.null,answered_at.gt.${new Date(nowMs() - 30 * 86_400_000).toISOString()}`)
       .order("created_at", { ascending: false }).limit(100),
+    // The factory's goods-ready notices: the one waiting, and those seen in the last 30 days.
+    supabase.from("factory_ready").select("id, factory_id, ready_on, lines, cartons, note, photos, created_at, seen_at, seen_note")
+      .eq("order_id", id).or(`seen_at.is.null,seen_at.gt.${new Date(nowMs() - 30 * 86_400_000).toISOString()}`)
+      .order("created_at", { ascending: false }).limit(50),
   ]);
   const ship = orderShip(shipRows);
   const canEdit = canEditOrders(me?.role);
@@ -136,7 +141,7 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
   const stylePaths = lines.map((l) => l.photo_path).filter(Boolean) as string[];
   const dispatchPaths = [...(dRows ?? []).flatMap((d) => [d.bill_path, d.invoice_path, d.eway_path, d.lr_path, d.grn_path]), ...dispatchPhotos.map((p) => p.path)].filter(Boolean) as string[];
   const allPaths = [...(photoRows ?? []).map((p) => p.path), ...stylePaths, ...dispatchPaths, ...(stepUps ?? []).flatMap((u) => u.photos as string[]), ...(lineFiles ?? []).map((f) => f.path),
-    ...(floorRows ?? []).flatMap((u) => u.photos as string[]), ...(noteRows ?? []).flatMap((n) => n.photos as string[])];
+    ...(floorRows ?? []).flatMap((u) => u.photos as string[]), ...(noteRows ?? []).flatMap((n) => n.photos as string[]), ...(readyRows ?? []).flatMap((r) => r.photos as string[])];
   const { data: signed } = allPaths.length
     ? await supabase.storage.from(PHOTO_BUCKET).createSignedUrls(allPaths, 3600)
     : { data: [] };
@@ -217,6 +222,18 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
     const l = lines.find((x) => x.id === c.line_id);
     if (!l || countByStyle[c.line_id]) continue;
     countByStyle[c.line_id] = `${dayNear(c.counted_on)}: cut ${qty(c.cut)} · stitched ${qty(c.stitched)} · packed ${qty(c.packed)} of ${qtyU(l.qty, l.product)}`;
+  }
+  // The factory's goods-ready notices, per factory, newest first.
+  const readyByFactory: Record<string, GoodsReady[]> = {};
+  for (const r of readyRows ?? []) {
+    const ls = r.lines as { line_id: string; pieces: number }[];
+    (readyByFactory[r.factory_id] ??= []).push({
+      id: r.id, readyOn: String(r.ready_on), cartons: r.cartons, note: str(r.note), at: r.created_at,
+      pieces: ls.reduce((n, x) => n + x.pieces, 0),
+      styles: ls.map((x) => `${lines.find((l) => l.id === x.line_id)?.style ?? "Style"} ${qty(x.pieces)}`).join(" · "),
+      photos: (r.photos as string[]).map((p) => urlByPath.get(p)).filter((x): x is string => !!x),
+      seenAt: str(r.seen_at), seenNote: str(r.seen_note),
+    });
   }
   // The factory's asks for a new date, per style, newest first.
   const asksByStyle: Record<string, FactoryAsk[]> = {};
@@ -465,6 +482,7 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
         floor={floorByStyle}
         counts={countByStyle}
         asks={asksByStyle}
+        ready={readyByFactory}
         hasBuyerPo={poDocs.length > 0}
       />
       </div>

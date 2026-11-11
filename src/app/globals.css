@@ -902,7 +902,15 @@ main:focus { outline: none; }
   .fask-new textarea { max-width: 640px; }
   .fask-new .btn { justify-self: start; }
   @media (max-width: 640px) { .fask-new .btn { justify-self: stretch; min-height: 44px; } }
+  .frdy-lines { display: grid; gap: 6px; max-width: 640px; }
+  .frdy-more { margin-top: 10px; }
+  .frdy-more > summary { font-size: 13.5px; font-weight: 600; color: var(--accent); cursor: pointer; min-height: 32px; display: flex; align-items: center; }
+  .frdy-more > summary:focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; border-radius: 6px; }
+  .frdy-line { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 13.5px; }
+  .frdy-line .inp { width: 110px; flex: none; text-align: right; }
   .fask-team { display: grid; gap: 8px; margin-top: 8px; }
+  .fready-photos { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+  .fready-photos img { width: 64px; height: 64px; object-fit: cover; border-radius: 8px; border: 1px solid var(--line); }
   .fask-ask { display: grid; gap: 4px; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface-2); font-size: 13.5px; }
   .fask-ask.open { border-color: var(--warn); }
   .fask-why { font-size: 13px; color: var(--muted); }

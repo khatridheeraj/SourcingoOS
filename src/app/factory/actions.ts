@@ -84,3 +84,15 @@ export async function askNewDate(lineId: string, stage: string, newOn: string, r
   revalidatePath("/factory");
   return {};
 }
+
+// The factory's goods are ready: from which day, the pieces of each style, the cartons and photos of the packed goods.
+export async function sendGoodsReady(orderId: string, readyOn: string, lines: { line_id: string; pieces: number }[], cartons: number, note: string, photos: string[]): Promise<{ error?: string }> {
+  const me = await getMe();
+  if (me?.role !== "factory") return { error: "This login is not set up for a factory." };
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(readyOn)) return { error: "Pick the day the goods are ready: within a week back or a month ahead." };
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("factory_goods_ready", { p_order: orderId, p_ready_on: readyOn, p_lines: lines, p_cartons: cartons, p_note: note, p_photos: photos });
+  if (error) return { error: friendly(error) };
+  revalidatePath("/factory");
+  return {};
+}

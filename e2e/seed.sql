@@ -288,3 +288,14 @@ from public.order_lines l, (values ('cutting', 2, 6, 'Fabric reached us 4 days l
                                    ('finishing', 12, 14, 'Washing unit closed two days for Diwali.', true, 'Fine, keep packing on time.')) v (stage, old_in, new_in, reason, agreed, answer)
 where l.order_id = :'o_late'
   and exists (select 1 from public.members where factory_id = l.factory_id and role = 'factory');
+
+-- 17. The factory says the late order's goods are ready, with two photos; nobody has marked it seen yet.
+insert into public.factory_ready (company_id, order_id, factory_id, ready_on, lines, cartons, note, photos, created_by, created_at)
+select l.company_id, l.order_id, l.factory_id, current_date + 2, jsonb_build_array(jsonb_build_object('line_id', l.id, 'pieces', 680)), 28,
+       '5-ply cartons, about 14 kg each. 20 pieces still in finishing.',
+       array[l.company_id || '/' || l.order_id || '/factory/' || l.id || '/ready-1.jpg', l.company_id || '/' || l.order_id || '/factory/' || l.id || '/ready-2.jpg'],
+       (select user_id from public.members where factory_id = l.factory_id and role = 'factory' limit 1), now() - interval '2 hours'
+from public.order_lines l
+where l.order_id = :'o_late'
+  and exists (select 1 from public.members where factory_id = l.factory_id and role = 'factory')
+limit 1;

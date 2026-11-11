@@ -107,6 +107,10 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
   const factoryAskP = me?.id && me.companyId && canEditOrders(me.role) ? supabase.from("factory_date_asks")
     .select("id, order_id, stage, new_on, reason, created_at, order_lines(style), factories(name), orders(order_no, buyer_id, buyer_po, merchandiser_id, removed_at, status)")
     .eq("company_id", me.companyId).is("answered_at", null).order("created_at").limit(100) : null;
+  // A factory says its goods are ready: Final QC and pickup wait on the order's merchandiser (the owner's when no one owns it).
+  const readyP = me?.id && me.companyId && canEditOrders(me.role) ? supabase.from("factory_ready")
+    .select("id, order_id, ready_on, lines, cartons, created_at, factories(name), orders(order_no, buyer_id, buyer_po, merchandiser_id, removed_at, status)")
+    .eq("company_id", me.companyId).is("seen_at", null).order("created_at").limit(100) : null;
 
   // Every read's error is kept: a list that failed to load must not show as "nothing to do".
   const errors: string[] = [];
@@ -323,6 +327,26 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
         chip: { text: `${factory} asks for a new date`, cls: "warn" },
         detail: `${style} ${step} to ${dm(x.new_on)}: \u201c${why.length > 120 ? `${why.slice(0, 117)}…` : why}\u201d · ${waitedText(x.created_at, now)} ago`,
         action: "Answer", sort: x.created_at,
+      });
+    }
+  }
+  // A factory's goods are ready: one line per notice, until someone marks it seen on the order.
+  if (readyP) {
+    const { data: rows, error: rErr } = await readyP;
+    if (rErr) errors.push(rErr.message);
+    for (const x of rows ?? []) {
+      const one = <T,>(v: T | T[] | null): T | null => (Array.isArray(v) ? v[0] ?? null : v);
+      const o = one(x.orders as unknown as { order_no: string; buyer_id: string; buyer_po: string | null; merchandiser_id: string | null; removed_at: string | null; status: string } | null);
+      if (!o || o.removed_at || o.status !== "open") continue;
+      if (o.merchandiser_id ? o.merchandiser_id !== me?.id : me?.role !== "owner") continue;
+      const factory = one(x.factories as unknown as { name: string } | null)?.name ?? "The factory";
+      const pcs = (x.lines as { pieces: number }[]).reduce((n, l) => n + l.pieces, 0);
+      now_.push({
+        key: `goods-ready:${x.id}`, href: `/orders/${x.order_id}?tab=styles`, sev: "warn", code: o.order_no,
+        title: `${buyerOf.get(o.buyer_id) ?? ""}${o.buyer_po ? ` · PO ${o.buyer_po}` : ""}`,
+        chip: { text: `${factory}: goods ready`, cls: "warn" },
+        detail: `${qty(pcs)} pcs in ${x.cartons} ${x.cartons === 1 ? "carton" : "cartons"} from ${dm(x.ready_on)}. Plan Final QC and pickup · ${waitedText(x.created_at, now)} ago`,
+        action: "Plan QC", sort: x.created_at,
       });
     }
   }
