@@ -92,6 +92,19 @@ select c.id, 'INQ-T2', :'nv', 'Denim jackets, 2 washes', 800, 720, 'quoted', cur
 -- A buyer login for Areeba.
 insert into public.members (company_id, user_id, role, buyer_id) select c.id, '00000000-0000-0000-0000-0000000000a7', 'buyer', :'ah' from public.companies c;
 
+-- Costings Areeba asked for on its page (0092): one waiting for its sample, one with the sample in, one priced.
+insert into public.inquiries (id, company_id, inquiry_no, buyer_id, product, est_qty, target_price, status, asked_on_page, source, notes)
+select '30000000-0000-0000-0000-000000000001', c.id, 'INQ-T3', :'ah', 'Printed cotton co-ord set', 600, 450, 'new', true, 'other', 'Sizes S to XL, 2 colours.' from public.companies c;
+insert into public.inquiries (id, company_id, inquiry_no, buyer_id, product, est_qty, status, asked_on_page, source, sample_in_on, sample_in_note)
+select '30000000-0000-0000-0000-000000000002', c.id, 'INQ-T4', :'ah', 'Rayon kaftan with lace', 400, 'new', true, 'other', current_date - 1, '1 pc, size M' from public.companies c;
+insert into public.inquiries (id, company_id, inquiry_no, buyer_id, product, est_qty, status, asked_on_page, source, sample_in_on)
+select '30000000-0000-0000-0000-000000000003', c.id, 'INQ-T5', :'ah', 'Linen shirt dress', 800, 'new', true, 'other', current_date - 4 from public.companies c;
+insert into public.inquiry_costings (company_id, inquiry_id, sheet, cost, price, qty, valid_till, note, created_by)
+select c.id, '30000000-0000-0000-0000-000000000003',
+  '{"fabrics":[{"name":"Linen","metres":2.6,"rate":210}],"costs":[{"name":"Trims and accessories","amount":28},{"name":"Stitching (CMT)","amount":140},{"name":"Packing","amount":12}],"margin":15}',
+  726, 835, 800, current_date + 14, 'Ex-factory Jaipur, 45 days after PO.', '00000000-0000-0000-0000-0000000000a1' from public.companies c;
+update public.inquiries set status = 'quoted', quoted_price = 835 where id = '30000000-0000-0000-0000-000000000003';
+
 -- 7. Plan done and sent to the owner for approval.
 set role authenticated;
 select pg_temp.as_user('00000000-0000-0000-0000-0000000000a1');

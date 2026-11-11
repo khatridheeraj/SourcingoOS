@@ -6,7 +6,7 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import { WaIcon } from "@/components/order-sheet";
 import { toast } from "@/components/toast";
 import { dayNear, money, qty } from "@/lib/format";
-import { LOST_REASONS, STAGES } from "@/lib/inquiries";
+import { LOST_REASONS, STAGES, stagesFor } from "@/lib/inquiries";
 import { addDays } from "@/lib/payments";
 import { waLink } from "@/lib/whatsapp";
 import { addInquiryNote, setInquirySample, setInquiryStatus } from "./actions";
@@ -28,6 +28,9 @@ export type StepInquiry = {
   contactName: string;
   contact: string;
   nextFollowUp: string;
+  // Asked on the buyer's page: the price comes from the costing, after the buyer's sample is in.
+  fromPage?: boolean;
+  accepted?: boolean;
 };
 
 type Mode = "" | "quote" | "sample" | "lost";
@@ -37,6 +40,11 @@ const FOLLOW = [{ d: 1, label: "Tomorrow" }, { d: 3, label: "In 3 days" }, { d: 
 export function chaseText(i: StepInquiry): string {
   const hi = `Hi${i.contactName ? ` ${i.contactName.split(/\s+/)[0]}` : ""},`;
   const what = `${i.product}${i.estQty ? ` (${qty(i.estQty)} ${i.unit})` : ""}`;
+  if (i.fromPage) {
+    if (i.stage === 0) return `${hi} thank you for asking for the costing of ${what} (${i.no}). Please send or bring the sample to our office marked ${i.no}, and we will share the price once it arrives.`;
+    if (i.stage === 1) return `${hi} your ${i.product} sample (${i.no}) has reached us. We are working out the price and will share it on your Sourcingo page shortly.`;
+    if (i.stage === 2) return `${hi} our price for ${what} is on your Sourcingo page. Please accept it there, or tell us what to change.`;
+  }
   if (i.stage === 2) return `${hi} did you get the ${i.product} sample we sent? Please share your comments, so we can go ahead with the order.`;
   if (i.stage === 1) return `${hi} following up on our price${i.quoted != null ? ` of ${money(i.quoted)} a ${i.unit === "m" ? "metre" : "piece"}` : ""} for ${what}. Shall we go ahead with a sample or the order?`;
   return `${hi} thank you for the inquiry for ${what}. We are working on the price and will share it shortly. Could you confirm the quantity and the delivery date you need?`;
@@ -77,8 +85,9 @@ export function InquiryNext({ i, today, onDone }: { i: StepInquiry; today: strin
     });
   }
 
-  const order = i.hasBuyer
-    ? <Link href={`/orders/new?inquiry=${i.id}`} className={`btn ${i.stage >= 1 ? "primary" : ""}`}>{i.stage >= 1 ? "Buyer confirmed: make the order" : "Make the order"}</Link>
+  const confirmed = i.fromPage ? !!i.accepted : i.stage >= 1;
+  const order = i.hasBuyer && (!i.fromPage || i.stage >= 2)
+    ? <Link href={`/orders/new?inquiry=${i.id}`} className={`btn ${confirmed ? "primary" : ""}`}>{confirmed ? "Buyer confirmed: make the order" : "Make the order"}</Link>
     : null;
   const quoteBtn = <button type="button" className={`btn ${i.stage === 0 ? "primary" : ""}`} aria-expanded={mode === "quote"} onClick={() => setMode(mode === "quote" ? "" : "quote")}>{i.stage === 0 ? "We sent the price" : "Change the price"}</button>;
   const sampleBtn = i.stage < 2
@@ -88,7 +97,8 @@ export function InquiryNext({ i, today, onDone }: { i: StepInquiry; today: strin
   return (
     <div className="inq-next">
       <div className="inq-acts">
-        {i.stage === 0 ? <>{quoteBtn}{sampleBtn}{order}</> : <>{order}{sampleBtn}{quoteBtn}</>}
+        {/* A buyer-page ask gets its price from the costing card, and the sample is the buyer's own. */}
+        {i.fromPage ? order : i.stage === 0 ? <>{quoteBtn}{sampleBtn}{order}</> : <>{order}{sampleBtn}{quoteBtn}</>}
         <button type="button" className="btn ghost text-bad" aria-expanded={mode === "lost"} onClick={() => setMode(mode === "lost" ? "" : "lost")}>Lost</button>
       </div>
       {!i.hasBuyer && i.stage >= 1 && <p className="mt-2 text-[13px] text-muted">To make the order, the owner first adds {i.title} as a buyer on this inquiry&apos;s page.</p>}
@@ -153,10 +163,10 @@ export function InquiryNext({ i, today, onDone }: { i: StepInquiry; today: strin
 }
 
 // The stages across the top of an inquiry: Asked, Quoted, Sample sent, Order.
-export function StageBar({ stage, lost }: { stage: number; lost?: boolean }) {
+export function StageBar({ stage, lost, labels = STAGES }: { stage: number; lost?: boolean; labels?: readonly string[] }) {
   return (
     <ol className={`inq-stages ${lost ? "is-lost" : ""}`} aria-label="Where it stands">
-      {STAGES.map((s, n) => (
+      {labels.map((s, n) => (
         <li key={s} className={n < stage ? "done" : n === stage ? "now" : ""} aria-current={n === stage ? "step" : undefined}>{s}</li>
       ))}
     </ol>
@@ -190,7 +200,7 @@ export function InquirySheet({ today }: { today: string }) {
           <div className="row !flex-nowrap items-start">
             <div className="min-w-0 grow">
               <h2 id="inq-sheet-h" className="text-[16px] font-semibold">{i.title} · {i.product}</h2>
-              <p className="text-[13px] text-muted"><span className="code">{i.no}</span> · {STAGES[i.stage]}</p>
+              <p className="text-[13px] text-muted"><span className="code">{i.no}</span> · {stagesFor({ asked_on_page: i.fromPage })[i.stage]}</p>
             </div>
             <button type="button" className="btn ghost sm" onClick={close} aria-label="Close">✕</button>
           </div>
