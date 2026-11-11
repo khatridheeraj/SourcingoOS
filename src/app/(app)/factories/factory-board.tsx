@@ -155,6 +155,7 @@ export function BoardView({ board: { cards, total, noFactory }, today, noFactori
             <div className="row">
               {c.waiting > 0 && <span className="chip warn">{c.waiting} not released</span>}
               {c.atRisk > 0 && <span className="chip bad">{c.atRisk} behind</span>}
+              <Link className="btn sm" href={`/factories/${c.f.id}`}>Record</Link>
               {c.f.phone && <a className="btn sm" href={`tel:${c.f.phone}`}>Call</a>}
             </div>
           </div>
