@@ -252,3 +252,20 @@ from public.orders o, (values
   ('Thanks. Please also send the carton marking for approval before packing.', true, '00000000-0000-0000-0000-0000000000a7', '3 hours', false))
   v (body, from_buyer, by, ago, answered)
 where o.id = :'o_late';
+
+-- 14. The buyer sent two POs from its page: one is already order AH-2201, the newer one waits in Buyer POs to be checked.
+insert into public.incoming_pos (id, company_id, source, received_at, files, status, buyer_id, buyer_po, order_id, email_from, email_subject, email_body,
+                                 read, read_at, created_by)
+select v.id::uuid, c.id, 'upload', now() - v.ago::interval,
+       jsonb_build_array(jsonb_build_object('path', c.id || '/' || v.id || '/a.pdf', 'name', v.file, 'type', 'application/pdf', 'size', 48000)),
+       v.status, :'ah', v.po, case when v.status = 'added' then :'o_new'::uuid end, 'Areeba Test House (their page)',
+       'PO ' || v.po || ' sent from the buyer page', v.note,
+       case when v.status = 'to_check' then '{"po_number":"AH-2302","lines":[{"style":"AH-SKIRT-09","qty":500,"rate":350}],"doubts":[]}'::jsonb end,
+       now() - v.ago::interval + interval '2 minutes', '00000000-0000-0000-0000-0000000000a7'
+from public.companies c, (values
+  ('30000000-0000-0000-0000-0000000000b1', '9 days', 'added', 'AH-2201', 'AH-2201.pdf', null),
+  ('30000000-0000-0000-0000-0000000000b2', '5 hours', 'to_check', 'AH-2302', 'AH-2302 summer.pdf', 'Delivery needed by 15 Jan, please.'))
+  v (id, ago, status, po, file, note);
+insert into public.buyer_po_uploads (incoming_id, company_id, buyer_id, buyer_po, note, created_by, created_at)
+select i.id, i.company_id, i.buyer_id, i.buyer_po, i.email_body, i.created_by, i.received_at
+from public.incoming_pos i where i.id in ('30000000-0000-0000-0000-0000000000b1', '30000000-0000-0000-0000-0000000000b2');

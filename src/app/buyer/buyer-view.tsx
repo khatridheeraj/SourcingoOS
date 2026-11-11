@@ -6,6 +6,7 @@ import { getMe } from "@/lib/auth";
 import { BuyerSamples, type BuyerSample } from "./buyer-samples";
 import { BuyerMoney, type BuyerInvoice } from "./buyer-money";
 import { BuyerTalk, type BuyerMessage } from "./buyer-talk";
+import { BuyerSendPo, type SentPo } from "./buyer-send-po";
 
 type Step = { stage: string; label: string | null; planned_on: string | null; done_on: string | null };
 type FinalQc = { result: string; checked_on: string; pieces_checked: number | null; photos: string[] };
@@ -44,13 +45,16 @@ const SHOWN = 3;
 // the same page, read for that buyer, with nothing to press.
 export async function BuyerView({ preview }: { preview?: string }) {
   const supabase = await createClient(preview ? { "x-preview-buyer": preview } : undefined);
-  const [me, { data, error }, { data: sampleRows }, { data: shipRows }, { data: moneyRow }, { data: talkRows }] = await Promise.all([
+  const [me, { data, error }, { data: sampleRows }, { data: shipRows }, { data: moneyRow }, { data: talkRows }, { data: sentRows }] = await Promise.all([
     getMe(), supabase.rpc("buyer_orders"), supabase.rpc("buyer_samples"), supabase.rpc("buyer_shipments"),
     // Its invoices and what is still to be paid.
     supabase.rpc("buyer_money"),
     // What it and Sourcingo wrote on each open PO.
     supabase.rpc("buyer_messages_mine"),
+    // The POs it sent from this page and whether each is an order yet.
+    supabase.rpc("buyer_sent_pos"),
   ]);
+  const sent = (sentRows ?? []) as SentPo[];
   const talk = ((talkRows ?? []) as (Omit<BuyerMessage, "when"> & { at: string })[]);
   const invoices = ((moneyRow as { invoices?: BuyerInvoice[] } | null)?.invoices ?? []);
   const shipments = (shipRows ?? []) as Shipment[];
@@ -97,7 +101,7 @@ export async function BuyerView({ preview }: { preview?: string }) {
       <BuyerSamples companyId={me?.companyId ?? ""} samples={samples} />
 
       {orders.length === 0 && !error ? (
-        <div className="empty"><b>No open orders right now</b>Orders appear here as soon as Sourcingo enters your PO.</div>
+        <div className="empty"><b>No open orders right now</b>Send your next PO below, or email it as usual. It shows here as soon as Sourcingo enters it.</div>
       ) : (
         <>
           {orders.map((o) => {
@@ -229,6 +233,7 @@ export async function BuyerView({ preview }: { preview?: string }) {
           })}
         </>
       )}
+      <BuyerSendPo companyId={me?.companyId ?? ""} sent={sent} canSend={canWrite} />
       {/* Money owed shows even when no order is open. */}
       <BuyerMoney invoices={invoices} />
       {(orders.length > 0 || invoices.length > 0) && <p className="muted text-center text-[12.5px]">Questions about an order? Write under its PO above, or message your Sourcingo merchandiser.</p>}

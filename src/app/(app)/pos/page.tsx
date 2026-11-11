@@ -4,7 +4,7 @@ import { canEditOrders, getMe } from "@/lib/auth";
 import { buyerName, loadBuyers } from "@/lib/data";
 import { dayTimeNear, nowMs, qty } from "@/lib/format";
 import { poWaitDays, PO_WAIT_DAYS } from "@/lib/order-checks";
-import type { PoReading } from "@/lib/po-inbox";
+import { readBuyerSentPos, type PoReading } from "@/lib/po-inbox";
 import { comparePo, poNoKey } from "@/lib/po-match";
 import { createClient } from "@/lib/supabase/server";
 import { AddPo } from "./add-po";
@@ -33,6 +33,8 @@ export default async function IncomingPosPage({ searchParams }: PageProps<"/pos"
   const shown = sp.show === "added" || sp.show === "not_po" ? "done" : sp.show;
   const tab = ALL_TABS.some((t) => t.key === shown && (t.key !== "held" || owner)) ? String(shown) : "to_check";
   const supabase = await createClient();
+  // A PO a buyer sent from its page is read now that someone on the team is here.
+  await readBuyerSentPos(supabase);
   // Each tab reads its own rows and count, so an old PO still to check never drops off behind newer set-aside mail.
   const statuses = (k: string) => ALL_TABS.find((t) => t.key === k)!.statuses;
   const [{ data, error }, buyers, { data: aiKey }, ...counts] = await Promise.all([
