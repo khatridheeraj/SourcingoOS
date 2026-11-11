@@ -155,6 +155,18 @@ const EN = {
   qcEarlier: (n: number) => `Earlier checks (${n})`,
   qcToFix: (s: string) => `Final QC failed for ${s}. Fix the goods, then ask Sourcingo for a re-check.`,
   qcHelp: "Quality checks are the visits by Sourcingo's QC team. Each shows what was checked, what was found and the photos. Goods leave only after the Final QC passes.",
+  cntTitle: "Pieces so far",
+  cntLast: (d: string) => `Last sent ${d}`,
+  cntNone: "Not sent yet",
+  cntCut: "Cut",
+  cntStitched: "Stitched",
+  cntPacked: "Packed",
+  cntOf: (n: string) => `of ${n} pcs`,
+  cntSave: "Save counts",
+  cntSaving: "Saving…",
+  cntSaved: "Saved. Sourcingo sees it now.",
+  cntNothing: "Change a number first.",
+  cntHelp: "Each evening, fill how many pieces of each style are cut, stitched and packed so far (the total, not just today). Sending again the same day replaces that day's count.",
 };
 
 const HI: typeof EN = {
@@ -289,6 +301,18 @@ const HI: typeof EN = {
   qcEarlier: (n: number) => `पुराने चेक (${n})`,
   qcToFix: (s: string) => `${s} का फाइनल QC फेल हुआ। माल ठीक करें, फिर Sourcingo से री-चेक माँगें।`,
   qcHelp: "क्वालिटी चेक Sourcingo की QC टीम की विज़िट हैं। हर चेक में दिखता है क्या चेक हुआ, क्या मिला और फोटो। फाइनल QC पास होने के बाद ही माल जाता है।",
+  cntTitle: "अब तक कितने पीस",
+  cntLast: (d: string) => `आखिरी बार ${d} को भेजा`,
+  cntNone: "अभी नहीं भेजा",
+  cntCut: "कटिंग",
+  cntStitched: "सिलाई",
+  cntPacked: "पैक",
+  cntOf: (n: string) => `${n} पीस में से`,
+  cntSave: "गिनती सेव करें",
+  cntSaving: "सेव हो रहा है…",
+  cntSaved: "सेव हो गया। Sourcingo को अभी दिख रहा है।",
+  cntNothing: "पहले कोई संख्या बदलें।",
+  cntHelp: "हर शाम हर स्टाइल के कितने पीस कटे, सिले और पैक हुए, अब तक का कुल भरें (सिर्फ आज का नहीं)। उसी दिन दोबारा भेजने पर उस दिन की गिनती बदल जाती है।",
 };
 
 export type Words = typeof EN;
@@ -321,6 +345,10 @@ const ERRORS_HI: Record<string, string> = {
   "Enter the dates as dates.": "तारीखें सही तरह से भरें।",
   "Couldn't read that photo.": "यह फोटो खुल नहीं पाई।",
   "You don't have permission to do that.": "आपको यह करने की इजाज़त नहीं है।",
+  "You can count only your own styles on a released PO.": "आप सिर्फ़ अपने स्टाइल गिन सकते हैं, और वह भी PO रिलीज़ होने के बाद।",
+  "Fill cut, stitched and packed (0 if none yet).": "कटिंग, सिलाई और पैक भरें (अभी नहीं हुआ तो 0)।",
+  "Stitched can't be more than cut.": "सिलाई कटिंग से ज़्यादा नहीं हो सकती।",
+  "Packed can't be more than stitched.": "पैक सिलाई से ज़्यादा नहीं हो सकता।",
   "Something went wrong. Try again.": "कुछ गड़बड़ हो गई। फिर से कोशिश करें।",
   "You were signed out, so this didn't save. Sign in again in a new tab, then come back and tap this again.": "आप लॉगआउट हो गए, इसलिए यह नहीं गया। नए टैब में अपना फैक्ट्री लिंक खोलकर फिर से लॉगिन करें, फिर यहाँ वापस आकर दोबारा भेजें।",
   "The connection dropped, so this may not have saved. Check the network and try again.": "इंटरनेट बीच में कट गया, इसलिए शायद यह नहीं गया। इंटरनेट देखकर फिर से भेजें।",
@@ -340,6 +368,7 @@ const ERROR_PATTERNS_HI: [RegExp, (m: RegExpMatchArray) => string][] = [
     (m) => `${m[1]} iPhone/Samsung की HEIC फोटो है, जो यहाँ नहीं खुलती। कैमरा सेटिंग में JPEG ("Most compatible") चुनें, या फोटो JPG में भेजें।`],
   [/^Couldn't open (.+) as a photo\.$/, (m) => `${m[1]} फोटो की तरह नहीं खुली।`],
   [/^(.+) is not a photo\.$/, (m) => `${m[1]} फोटो नहीं है।`],
+  [/^That is more than double the (\d+) pieces ordered\. Check the numbers\.$/, (m) => `यह ऑर्डर के ${m[1]} पीस के दोगुने से ज़्यादा है। संख्या जाँचें।`],
   [/^Couldn't upload (.+?): .*(exceed|too large|size|payload)/i, (m) => `${m[1]} बहुत बड़ी है, इसलिए नहीं गई। छोटी फोटो भेजें।`],
   [/^Couldn't upload (.+?): /, (m) => `${m[1]} नहीं गई। इंटरनेट देखकर फिर से भेजें।`],
 ];

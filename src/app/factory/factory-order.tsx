@@ -11,6 +11,7 @@ import { FactoryProgress, type FactoryUpdate } from "./step-update";
 import { FactorySamples, type FactoryRound } from "./factory-samples";
 import { FactoryPo, type PanelPo } from "./factory-po";
 import { FactoryQc, type FactoryCheck } from "./factory-qc";
+import { FactoryCounts, type FactoryCount } from "./factory-counts";
 
 type Stage = { stage: string; label: string | null; factory_on: string | null; planned_on: string | null; done_on: string | null };
 export type PanelOrder = {
@@ -48,9 +49,9 @@ function Info({ info, lang }: { info?: StyleInfo; lang: Lang }) {
 }
 
 // One order in the factory's panel: its styles, and the factory's date for every TNA step.
-export function FactoryOrder({ order, now, companyId, updates, rounds, lang, info, po, checks = [] }: {
+export function FactoryOrder({ order, now, companyId, updates, rounds, lang, info, po, checks = [], counts = [], canWrite = false }: {
   order: PanelOrder; now: string; companyId: string; updates: FactoryUpdate[]; rounds: FactoryRound[]; lang: Lang; info: Record<string, StyleInfo>; po?: PanelPo;
-  checks?: FactoryCheck[];
+  checks?: FactoryCheck[]; counts?: FactoryCount[]; canWrite?: boolean;
 }) {
   const router = useRouter();
   const w = words(lang);
@@ -173,6 +174,7 @@ export function FactoryOrder({ order, now, companyId, updates, rounds, lang, inf
       {/* After release the work comes first: mark a step done, send a sample. The step list folds away below. */}
       {po && <FactoryPo po={po} lang={lang} />}
       {released && <FactoryProgress companyId={companyId} order={order} updates={updates.filter((u) => u.order_id === order.order_id)} lang={lang} />}
+      {released && <FactoryCounts order={order} counts={counts.filter((c) => order.lines.some((l) => l.id === c.line_id))} lang={lang} canWrite={canWrite} />}
       {released && <FactorySamples companyId={companyId} order={order} rounds={rounds} lang={lang} />}
       {released && <FactoryQc checks={checks} lang={lang} />}
       <Fold released={released} summary={w.allSteps(doneSteps, totalSteps)}>
@@ -258,6 +260,7 @@ export function FactoryOrder({ order, now, companyId, updates, rounds, lang, inf
         <p>{released ? w.releasedHelp : w.planHelp}</p>
         {po && <p>{w.poHelp}</p>}
         {released && <p>{w.sendProgressHelp}</p>}
+        {released && <p>{w.cntHelp}</p>}
         {released && <p>{w.samplesHelp}</p>}
         {released && checks.length > 0 && <p>{w.qcHelp}</p>}
       </details>

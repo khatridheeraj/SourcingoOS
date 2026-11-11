@@ -58,3 +58,17 @@ export async function acceptPoInPanel(orderId: string): Promise<{ error?: string
   revalidatePath("/factory");
   return {};
 }
+
+// The factory's piece counts so far (cut, stitched, packed) for the styles it changed. Each is today's count for that
+// style; sending again the same day replaces it.
+export async function saveFactoryCounts(rows: { lineId: string; cut: number; stitched: number; packed: number }[]): Promise<{ error?: string; style?: string }> {
+  const me = await getMe();
+  if (me?.role !== "factory") return { error: "This login is not set up for a factory." };
+  const supabase = await createClient();
+  for (const r of rows) {
+    const { error } = await supabase.rpc("post_factory_count", { p_line: r.lineId, p_cut: r.cut, p_stitched: r.stitched, p_packed: r.packed, p_note: null });
+    if (error) return { error: friendly(error), style: r.lineId };
+  }
+  revalidatePath("/factory");
+  return {};
+}

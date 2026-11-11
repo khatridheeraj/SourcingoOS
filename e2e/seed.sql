@@ -269,3 +269,11 @@ from public.companies c, (values
 insert into public.buyer_po_uploads (incoming_id, company_id, buyer_id, buyer_po, note, created_by, created_at)
 select i.id, i.company_id, i.buyer_id, i.buyer_po, i.email_body, i.created_by, i.received_at
 from public.incoming_pos i where i.id in ('30000000-0000-0000-0000-0000000000b1', '30000000-0000-0000-0000-0000000000b2');
+
+-- 15. The factory's own piece counts on the late order's style: yesterday and today.
+insert into public.factory_counts (company_id, order_id, line_id, factory_id, counted_on, cut, stitched, packed, created_by)
+select l.company_id, l.order_id, l.id, l.factory_id, current_date - v.ago, v.cut, v.stitched, v.packed,
+       (select user_id from public.members where factory_id = l.factory_id and role = 'factory' limit 1)
+from public.order_lines l, (values (1, 640, 380, 0), (0, 700, 455, 60)) v (ago, cut, stitched, packed)
+where l.order_id = :'o_late'
+  and exists (select 1 from public.members where factory_id = l.factory_id and role = 'factory');
