@@ -479,6 +479,10 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
                 <h3 className="font-bold text-[14px]">{g.factoryName}</h3>
                 {status && <span className={`chip ${status.cls}`}>{status.text}</span>}
                 <span className="muted text-xs">{g.lines.length} {g.lines.length === 1 ? "style" : "styles"}{target && g.factoryId ? ` · target date ${dm(target)}` : ""}</span>
+                {/* Before a PO is released, any of these styles can go to factories for quotes ("Shop orders"). */}
+                {canEdit && open && !released && (
+                  <Link href={`/factories/market/new?order=${orderId}`} className="link ml-auto text-[13px]">Get factory quotes</Link>
+                )}
               </div>
               {canEdit && g.factoryId && released && (
                 <div className="row">

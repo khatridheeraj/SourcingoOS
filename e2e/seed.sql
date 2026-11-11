@@ -299,3 +299,19 @@ from public.order_lines l
 where l.order_id = :'o_late'
   and exists (select 1 from public.members where factory_id = l.factory_id and role = 'factory')
 limit 1;
+
+-- 18. Shop orders: the just-in order's two styles are open to factories. The dress's quotes closed yesterday with two
+-- quotes in (a job on Home); the kurta is still open, so the factory login can quote on it.
+reset role;
+insert into public.market_listings (id, company_id, order_id, line_id, target_rate, ready_by, closes_on, note, opened_by, opened_at)
+select v.id::uuid, l.company_id, l.order_id, l.id, v.target, current_date + 48, current_date + v.closes, v.note, '00000000-0000-0000-0000-0000000000a1', now() - interval '3 days'
+from public.order_lines l,
+     (values ('AH-DRESS-01', '30000000-0000-0000-0000-000000000001', 380::numeric, -1, 'Stitch as the approved fit sample. Trims supplied by Sourcingo.'),
+             ('AH-KURTA-02', '30000000-0000-0000-0000-000000000002', null::numeric, 3, null)) v (style, id, target, closes, note)
+where l.order_id = :'o_new' and l.style = v.style;
+insert into public.market_quotes (company_id, listing_id, factory_id, rate, ready_on, note, created_by, created_at, updated_at)
+select m.company_id, m.id, v.factory::uuid, v.rate, current_date + v.ready, v.note, '00000000-0000-0000-0000-0000000000a6', now() - v.ago::interval, now() - v.ago::interval
+from public.market_listings m,
+     (values ('20000000-0000-0000-0000-000000000002', 372::numeric, 45, 'Own stitching unit, 60 machines. Can start cutting in 5 days.', '2 days'),
+             ('20000000-0000-0000-0000-000000000003', 355::numeric, 52, null, '1 day')) v (factory, rate, ready, note, ago)
+where m.id = '30000000-0000-0000-0000-000000000001';

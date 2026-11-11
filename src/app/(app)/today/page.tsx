@@ -111,6 +111,10 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
   const readyP = me?.id && me.companyId && canEditOrders(me.role) ? supabase.from("factory_ready")
     .select("id, order_id, ready_on, lines, cartons, created_at, factories(name), orders(order_no, buyer_id, buyer_po, merchandiser_id, removed_at, status)")
     .eq("company_id", me.companyId).is("seen_at", null).order("created_at").limit(100) : null;
+  // Styles open to factories whose quotes have closed: choose a factory, or reopen when none quoted.
+  const marketP = me?.id && me.companyId && canEditOrders(me.role) ? supabase.from("market_listings")
+    .select("id, order_id, closes_on, order_lines(style), orders(order_no, buyer_id, buyer_po, merchandiser_id, removed_at, status), market_quotes!market_quotes_listing_id_fkey(withdrawn_at)")
+    .eq("company_id", me.companyId).is("closed_at", null).lte("closes_on", todayIST()).order("closes_on").limit(100) : null;
 
   // Every read's error is kept: a list that failed to load must not show as "nothing to do".
   const errors: string[] = [];
@@ -347,6 +351,26 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
         chip: { text: `${factory}: goods ready`, cls: "warn" },
         detail: `${qty(pcs)} pcs in ${x.cartons} ${x.cartons === 1 ? "carton" : "cartons"} from ${dm(x.ready_on)}. Plan Final QC and pickup · ${waitedText(x.created_at, now)} ago`,
         action: "Plan QC", sort: x.created_at,
+      });
+    }
+  }
+  // Quotes closed on a style open to factories: one line per style until someone awards it or closes it.
+  if (marketP) {
+    const { data: rows, error: mErr } = await marketP;
+    if (mErr) errors.push(mErr.message);
+    for (const x of rows ?? []) {
+      const one = <T,>(v: T | T[] | null): T | null => (Array.isArray(v) ? v[0] ?? null : v);
+      const o = one(x.orders as unknown as { order_no: string; buyer_id: string; buyer_po: string | null; merchandiser_id: string | null; removed_at: string | null; status: string } | null);
+      if (!o || o.removed_at || o.status !== "open") continue;
+      if (o.merchandiser_id ? o.merchandiser_id !== me?.id : me?.role !== "owner") continue;
+      const style = one(x.order_lines as unknown as { style: string } | null)?.style ?? "A style";
+      const n = ((x.market_quotes ?? []) as { withdrawn_at: string | null }[]).filter((q) => !q.withdrawn_at).length;
+      now_.push({
+        key: `market:${x.id}`, href: `/factories/market/${x.id}`, sev: "warn", code: o.order_no,
+        title: `${buyerOf.get(o.buyer_id) ?? ""}${o.buyer_po ? ` · PO ${o.buyer_po}` : ""}`,
+        chip: { text: n ? `${style}: ${n} factory ${n === 1 ? "quote" : "quotes"}` : `${style}: no factory quoted`, cls: "warn" },
+        detail: n ? `Quotes closed ${dm(x.closes_on)}. Choose a factory` : `Quotes closed ${dm(x.closes_on)}. Pick a factory yourself or close it`,
+        action: n ? "Choose" : "Open", sort: `${x.closes_on}T00:00:00Z`,
       });
     }
   }
