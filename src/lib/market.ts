@@ -6,6 +6,8 @@ export type MarketQuote = {
   created_at: string; updated_at: string; withdrawn_at: string | null;
   // Styles this factory has made or is making with us (any order, not removed).
   styles_with_us: number;
+  // The factory's record with us in one line (from factoryRecord/recordLine); watch marks a record the team should watch.
+  record?: { line: string; watch: boolean } | null;
 };
 
 export type QuoteRow = MarketQuote & { margin: number | null; marginPct: number | null; daysLate: number; best: boolean };

@@ -47,7 +47,7 @@ export default async function ListingPage({ params }: PageProps<"/factories/mark
 
       <section className="card">
         <div className="card-h">
-          <div><h2>Quotes</h2><p>{ranked.length ? "Best first: on time, then cheapest, then the factory we know better." : open ? "No quotes yet. Factories see this style in Shop orders now." : "No quotes came in."}{withdrawn ? ` ${withdrawn} taken back.` : ""}</p></div>
+          <div><h2>Quotes</h2><p>{ranked.length ? "Best first: on time, then cheapest, then the factory we know better. Each line shows the factory's record with us." : open ? "No quotes yet. Factories see this style in Shop orders now." : "No quotes came in."}{withdrawn ? ` ${withdrawn} taken back.` : ""}</p></div>
           {open && <CloseListing id={l.id} />}
         </div>
         {ranked.length > 0 && (
@@ -58,9 +58,10 @@ export default async function ListingPage({ params }: PageProps<"/factories/mark
                   <b>{q.factory}{q.city ? <span className="muted font-normal"> · {q.city}</span> : null}</b>
                   <small className="num">
                     Ready {day(q.ready_on)}{q.daysLate > 0 ? <span className="text-warn font-semibold"> · {q.daysLate} {q.daysLate === 1 ? "day" : "days"} after ready-by</span> : " · on time"}
-                    {" · "}{q.styles_with_us ? `${q.styles_with_us} ${q.styles_with_us === 1 ? "style" : "styles"} with us` : "New to us"}
+                    {q.record ? null : <>{" · "}{q.styles_with_us ? `${q.styles_with_us} ${q.styles_with_us === 1 ? "style" : "styles"} with us` : "New to us"}</>}
                     {" · quoted "}{dayAtNear(q.updated_at || q.created_at)}
                   </small>
+                  {q.record && <small className={`num ${q.record.watch ? "text-warn font-semibold" : ""}`}>Record with us: {q.record.line}</small>}
                   {q.note && <small>{q.note}</small>}
                 </div>
                 <div className="mkt-q-rate num">
