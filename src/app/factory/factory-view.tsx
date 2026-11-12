@@ -13,13 +13,14 @@ import type { DateAsk } from "./factory-date-ask";
 import type { ReadyNotice } from "./factory-ready";
 import { LANG_COOKIE, langOf, words } from "./i18n";
 import { FactoryRecordCard } from "./factory-record";
+import { FactoryGuarantee, type FactoryGuaranteeData } from "./factory-guarantee";
 import type { RecordFacts } from "@/lib/factory-record";
 
 // The factory's panel. `preview` is a factory's id when the orders team is looking at it from inside the app:
 // the same panel, read for that factory, with nothing to press.
 export async function FactoryView({ preview }: { preview?: string }) {
   const supabase = await createClient(preview ? { "x-preview-factory": preview } : undefined);
-  const [me, { data, error }, { data: ups }, { data: fileRows }, { data: detailRows }, { data: sampleRows }, { data: poRows }, { data: moneyRow }, { data: qcRows }, { data: countRows }, { data: askRows }, { data: readyRows }, { data: recordRow }] = await Promise.all([
+  const [me, { data, error }, { data: ups }, { data: fileRows }, { data: detailRows }, { data: sampleRows }, { data: poRows }, { data: moneyRow }, { data: qcRows }, { data: countRows }, { data: askRows }, { data: readyRows }, { data: recordRow }, { data: guarRow }] = await Promise.all([
     getMe(), supabase.rpc("factory_tna"), supabase.rpc("factory_step_updates"),
     // Each style's tech pack, cutting program, fabric and sizes, as the orders team entered them.
     supabase.rpc("factory_line_files"), supabase.rpc("factory_line_details"),
@@ -39,6 +40,8 @@ export async function FactoryView({ preview }: { preview?: string }) {
     supabase.rpc("factory_ready_mine"),
     // Its record: what buyers and Sourcingo choose factories by.
     supabase.rpc("factory_record_mine"),
+    // The Sourcingo Guarantee: when it is paid for each order (nothing until the Guarantee is on).
+    supabase.rpc("factory_guarantee"),
   ]);
   const counts = (countRows ?? []) as FactoryCount[];
   const asks = (askRows ?? []) as DateAsk[];
@@ -100,6 +103,7 @@ export async function FactoryView({ preview }: { preview?: string }) {
         </>
       )}
       <FactoryRecordCard facts={(recordRow ?? null) as RecordFacts | null} lang={lang} />
+      <FactoryGuarantee data={(guarRow ?? null) as FactoryGuaranteeData | null} lang={lang} preview={!!preview} />
       {moneyRow && <FactoryMoney data={moneyRow as FactoryMoneyData} lang={lang} />}
     </>
   );

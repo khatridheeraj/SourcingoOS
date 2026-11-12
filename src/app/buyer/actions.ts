@@ -78,3 +78,16 @@ export async function answerCosting(id: string, accept: boolean, note: string): 
   revalidatePath("/buyer");
   return {};
 }
+
+// The buyer raises a claim on a style of its PO, with photos already uploaded. Sourcingo decides within 7 days.
+export async function raiseClaim(c: import("@/components/claim-form").ClaimInput): Promise<{ error?: string; no?: string }> {
+  const me = await getMe();
+  if (me?.role !== "buyer") return { error: "This login is not set up for a buyer." };
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("raise_buyer_claim", {
+    p_line: c.lineId, p_reason: c.reason, p_pieces: c.pieces, p_ask: c.ask, p_detail: c.detail.trim().slice(0, 800), p_photos: c.photos,
+  });
+  if (error) return { error: friendly(error) };
+  revalidatePath("/buyer");
+  return { no: data as string };
+}

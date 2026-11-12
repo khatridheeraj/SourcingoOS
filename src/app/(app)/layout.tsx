@@ -24,7 +24,7 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
   // Buyer POs waiting for the orders team, and Help's counts, shown on the menu.
   const supabase = await createClient();
   const today = todayIST();
-  const [pos, counts, due, held, samples, asks, unknown, tags] = await Promise.all([
+  const [pos, counts, due, held, samples, asks, unknown, tags, claims] = await Promise.all([
     canEditOrders(me.role) && me.companyId
       ? supabase.from("incoming_pos").select("id", { count: "exact", head: true }).eq("company_id", me.companyId).in("status", ["to_check", "failed"])
       : Promise.resolve({ count: 0 }),
@@ -54,6 +54,10 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
     me.companyId && me.role && !isPartner(me.role)
       ? supabase.from("order_notes").select("id", { count: "exact", head: true }).eq("company_id", me.companyId).contains("mentions", [me.id]).not("done_by", "cs", `{${me.id}}`)
       : Promise.resolve({ count: 0 }),
+    // Buyer claims still to decide (the Guarantee promises a decision within 7 days).
+    canEditOrders(me.role) && me.companyId
+      ? supabase.from("buyer_claims").select("id", { count: "exact", head: true }).eq("company_id", me.companyId).is("decision", null)
+      : Promise.resolve({ count: 0 }),
   ]);
   const toCheck = pos.count ?? 0;
   const help = (counts.data ?? {}) as { unseen?: number; new?: number | null; owner?: string | null };
@@ -73,6 +77,7 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
       samplesItem,
       ...(edit ? [{ href: "/goods", label: "Goods with us", icon: "box" as const, count: held.count ?? 0 }] : []),
       ...(money ? [{ href: "/payments", label: "Money", icon: "payments" as const, also: ["/payables", "/tally"] }] : []),
+      ...(edit || me.role === "quality" ? [{ href: "/guarantee", label: "Guarantee", icon: "shield" as const, count: claims.count ?? 0 }] : []),
     ] },
     { label: "Records", items: [
       ...(edit ? [{ href: "/buyers", label: "Buyers", icon: "buyers" as const }, { href: "/factories", label: "Factories", icon: "factories" as const },
