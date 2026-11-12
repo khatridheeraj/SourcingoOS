@@ -10,6 +10,7 @@ import { BuyerSendPo, type SentPo } from "./buyer-send-po";
 import { BuyerCosting } from "./buyer-costing";
 import { costingState, type BuyerCostingAsk } from "./costing-state";
 import { buyerLine, factoryRecord, type RecordFacts } from "@/lib/factory-record";
+import { BuyerGuarantee, type BuyerGuaranteeData } from "./buyer-guarantee";
 
 type Step = { stage: string; label: string | null; planned_on: string | null; done_on: string | null };
 type FinalQc = { result: string; checked_on: string; pieces_checked: number | null; photos: string[] };
@@ -52,7 +53,7 @@ const SHOWN = 3;
 // the same page, read for that buyer, with nothing to press.
 export async function BuyerView({ preview }: { preview?: string }) {
   const supabase = await createClient(preview ? { "x-preview-buyer": preview } : undefined);
-  const [me, { data, error }, { data: sampleRows }, { data: shipRows }, { data: moneyRow }, { data: talkRows }, { data: sentRows }, { data: photoRows }, { data: makerRows }, { data: costRows }] = await Promise.all([
+  const [me, { data, error }, { data: sampleRows }, { data: shipRows }, { data: moneyRow }, { data: talkRows }, { data: sentRows }, { data: photoRows }, { data: makerRows }, { data: costRows }, { data: guarRow }] = await Promise.all([
     getMe(), supabase.rpc("buyer_orders"), supabase.rpc("buyer_samples"), supabase.rpc("buyer_shipments"),
     // Its invoices and what is still to be paid.
     supabase.rpc("buyer_money"),
@@ -66,7 +67,10 @@ export async function BuyerView({ preview }: { preview?: string }) {
     supabase.rpc("buyer_factory_records"),
     // The costings it asked for and Sourcingo's prices.
     supabase.rpc("buyer_costings_mine"),
+    // The Sourcingo Guarantee: its payment plan per PO and its claims (nothing until the Guarantee is on).
+    supabase.rpc("buyer_guarantee"),
   ]);
+  const guarantee = (guarRow ?? { shown: false }) as BuyerGuaranteeData;
   const stepPhotos = (photoRows ?? []) as StepPhoto[];
   const makers = (makerRows ?? []) as Maker[];
   const rawAsks = (costRows ?? []) as (Omit<BuyerCostingAsk, "photoUrls"> & { photos: string[] })[];
@@ -87,6 +91,7 @@ export async function BuyerView({ preview }: { preview?: string }) {
     ...rawSamples.flatMap((s) => [s.photo_path, ...s.photos, ...s.answer_photos]),
     ...rawAsks.flatMap((a) => a.photos.slice(0, 1)),
     ...stepPhotos.flatMap((p) => p.photos),
+    ...(guarantee.claims ?? []).flatMap((c) => c.photos),
   ].filter((p): p is string => !!p))];
   const { data: signed } = paths.length ? await supabase.storage.from(PHOTO_BUCKET).createSignedUrls(paths, 3600) : { data: [] };
   const url = new Map((signed ?? []).filter((s) => s.signedUrl).map((s) => [s.path, s.signedUrl]));
@@ -120,6 +125,9 @@ export async function BuyerView({ preview }: { preview?: string }) {
         </div>
       </div>
       {error && <div className="errbox">{error.message}</div>}
+      {preview && guarantee.shown && !guarantee.terms?.live && (
+        <p className="muted text-[13px]" role="note">Preview: this buyer sees the Sourcingo Guarantee under each PO only once you turn it on in Guarantee.</p>
+      )}
       <BuyerSamples companyId={me?.companyId ?? ""} samples={samples} />
       {costingFirst && costing}
 
@@ -274,6 +282,8 @@ export async function BuyerView({ preview }: { preview?: string }) {
                   </div>
                 )}
                 <Shipments list={shipments.filter((x) => x.order_id === o.id)} unit={unitOfAll(o.lines)} />
+                <BuyerGuarantee data={guarantee} orderId={o.id} help={o.id === orders.find((x) => guarantee.orders?.some((g) => g.order_id === x.id))?.id} companyId={me?.companyId ?? ""} canWrite={canWrite} today={today} url={url}
+                  styles={o.lines.map((l) => ({ lineId: l.id, orderId: o.id, qty: Number(l.qty), label: [l.style, l.colour].filter(Boolean).join(" · ") }))} />
                 <ul className={list}>{lines.slice(0, cut).map(item)}</ul>
                 {lines.length > cut && (
                   <details className="bmore">
