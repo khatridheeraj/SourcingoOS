@@ -15,7 +15,8 @@ export type QuoteRow = MarketQuote & { margin: number | null; marginPct: number 
 const dayDiff = (a: string, b: string) => Math.round((Date.parse(b) - Date.parse(a)) / 86_400_000);
 
 // Live quotes only, on time first, then cheapest, then the factory we know better, then whoever quoted first.
-// "best" marks the top one, so the merchandiser sees a suggestion without being told what to do.
+// "best" marks the top one, so the merchandiser sees a suggestion without being told what to do. A factory whose record
+// is one to watch is not suggested while another quote is just as on time; the order itself stays as ranked.
 export function rankQuotes(quotes: MarketQuote[], readyBy: string, buyerRate: number | null): QuoteRow[] {
   const rows = quotes.filter((q) => !q.withdrawn_at).map((q) => {
     const margin = buyerRate != null ? Math.round((buyerRate - q.rate) * 100) / 100 : null;
@@ -25,7 +26,8 @@ export function rankQuotes(quotes: MarketQuote[], readyBy: string, buyerRate: nu
     };
   });
   rows.sort((a, b) => (a.daysLate > 0 ? 1 : 0) - (b.daysLate > 0 ? 1 : 0) || a.rate - b.rate || b.styles_with_us - a.styles_with_us || a.created_at.localeCompare(b.created_at));
-  if (rows.length) rows[0].best = true;
+  const pick = rows.find((r) => !r.record?.watch && (r.daysLate > 0) === (rows[0].daysLate > 0)) ?? rows[0];
+  if (pick) pick.best = true;
   return rows;
 }
 

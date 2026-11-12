@@ -27,3 +27,12 @@ test("defaults: ready by ship less buffer, quotes close in 3 days or by ready-by
   assert.deepEqual(openDefaults("2026-11-14", true, "2026-11-11"), { readyBy: "2026-11-12", closesOn: "2026-11-12" });
   assert.deepEqual(openDefaults(null, false, "2026-11-11"), { readyBy: "2026-12-11", closesOn: "2026-11-14" });
 });
+
+test("a factory on a watch record is not suggested while another on-time quote exists", () => {
+  const watch = { line: "55% on time", watch: true };
+  const rows = rankQuotes([q("1", { rate: 150, record: watch }), q("2", { rate: 180 }), q("3", { rate: 120, ready_on: "2026-12-20" })], "2026-12-05", 300);
+  assert.deepEqual(rows.map((r) => r.id), ["1", "2", "3"]);
+  assert.deepEqual(rows.map((r) => r.best), [false, true, false]);
+  const only = rankQuotes([q("1", { record: watch }), q("3", { ready_on: "2026-12-20" })], "2026-12-05", 300);
+  assert.deepEqual(only.map((r) => r.best), [true, false]);
+});
