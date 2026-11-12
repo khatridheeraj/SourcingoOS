@@ -1,5 +1,4 @@
 import { NO_COMPANY } from "@/lib/names";
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { canEditOrders, getMe } from "@/lib/auth";
 import { loadFactories } from "@/lib/data";
@@ -9,6 +8,7 @@ import { factoryRecord, recordLine, type RecordFacts } from "@/lib/factory-recor
 import { todayIST } from "@/lib/format";
 import { FactoryBoard } from "./factory-board";
 import { FactoryList } from "./factory-list";
+import { FactoriesTabs } from "./factories-tabs";
 
 export default async function FactoriesPage({ searchParams }: PageProps<"/factories">) {
   const sp = await searchParams;
@@ -41,10 +41,7 @@ export default async function FactoriesPage({ searchParams }: PageProps<"/factor
           </p>
         </div>
       </div>
-      <nav className="seg" aria-label="Show">
-        <Link href="/factories" aria-current={view === "work" ? "page" : undefined}>Work</Link>
-        <Link href="/factories?view=list" aria-current={view === "list" ? "page" : undefined}>Factory list <span>{factories.length}</span></Link>
-      </nav>
+      <FactoriesTabs at={view} count={factories.length} />
       {view === "work" ? <FactoryBoard factories={factories} /> : <FactoryList factories={factories} openStyles={openStyles} records={records} />}
     </>
   );

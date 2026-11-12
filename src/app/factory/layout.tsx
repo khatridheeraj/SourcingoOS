@@ -6,6 +6,8 @@ import { Toaster } from "@/components/toast";
 import { createClient } from "@/lib/supabase/server";
 import { LANG_COOKIE, langOf, words } from "./i18n";
 import { LangSwitch } from "./lang-switch";
+import { marketWords } from "./market-words";
+import { FactoryTabs } from "./factory-tabs";
 
 // A factory's own panel: only for factory logins. Built to be used on a phone on the factory floor.
 export default async function FactoryLayout({ children }: LayoutProps<"/factory">) {
@@ -14,7 +16,8 @@ export default async function FactoryLayout({ children }: LayoutProps<"/factory"
   if (me.role !== "factory") redirect(me.role === "buyer" ? "/buyer" : "/today");
   const lang = langOf((await cookies()).get(LANG_COOKIE)?.value);
   const w = words(lang);
-  const { data: counts } = await (await createClient()).rpc("help_counts");
+  const supabase = await createClient();
+  const [{ data: counts }, { data: open }] = await Promise.all([supabase.rpc("help_counts"), supabase.rpc("market_open_count")]);
   const unseen = Number((counts as { unseen?: number } | null)?.unseen ?? 0);
 
   return (
@@ -30,7 +33,11 @@ export default async function FactoryLayout({ children }: LayoutProps<"/factory"
           </form>
         )}
       </header>
-      <main className="mx-auto flex w-full max-w-[1180px] flex-1 flex-col gap-[18px] px-4 pb-16 pt-5">{children}</main>
+      <main className="mx-auto flex w-full max-w-[1180px] flex-1 flex-col gap-[18px] px-4 pb-16 pt-5">
+        {/* Its own orders, and the shop of styles Sourcingo is placing now. */}
+        <FactoryTabs label={marketWords(lang).title} tabs={[{ href: "/factory", label: marketWords(lang).tabOrders }, { href: "/factory/market", label: marketWords(lang).tabShop, count: Number((open as number | null) ?? 0) }]} />
+        {children}
+      </main>
       {me.companyId && <HelpChat who="factory" role={me.role} name="" userId={me.id} companyId={me.companyId} lang={lang} unseen={unseen} />}
       <Toaster />
     </div>
