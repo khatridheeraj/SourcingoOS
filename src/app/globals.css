@@ -2961,6 +2961,88 @@ main:focus { outline: none; }
 .match-list li { display: flex; gap: 12px; padding: 12px 0; border-top: 1px solid var(--line); }
 .match-list li:first-child { border-top: 0; padding-top: 0; }
 
+/* Milestone payments (0113): the plan editor on the Guarantee page. */
+.gplan-h .grow { flex: 1 1 160px; min-width: 0; }
+.gplan-h .gplan-edit { flex-basis: 100%; }
+.gplan-edit { display: flex; flex-direction: column; gap: 10px; padding: 8px 0 4px; width: 100%; }
+.gplan-rows { display: flex; flex-direction: column; gap: 10px; }
+.gplan-row { display: grid; grid-template-columns: minmax(0, 1fr) 96px minmax(0, 1fr) 84px auto; align-items: end; gap: 8px; padding: 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-2); }
+.gplan-row .inp { width: 100%; }
+.gplan-row .inp-unit .inp { width: 100%; }
+.gplan-read { grid-column: 1 / -1; font-size: 12px; }
+.gplan-list { display: flex; flex-direction: column; gap: 4px; margin: 6px 0; font-size: 14px; }
+@media (max-width: 640px) {
+  .gplan-row { grid-template-columns: minmax(0, 1fr) 90px; }
+  .gplan-when { grid-column: 1; }
+  .gplan-x { grid-column: 1 / -1; justify-self: start; }
+}
+
+/* Factory payment calendar (/payables/calendar): weekly bars, then one block per day. */
+.pcal-bars { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 6px; align-items: end; padding: 8px 20px 4px; }
+.pcal-bars li { display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 0; }
+.pcal-bar { position: relative; display: flex; flex-direction: column-reverse; width: 100%; max-width: 36px; height: 120px; border-radius: 6px; background: var(--surface-2); overflow: hidden; }
+.pcal-bar i { display: block; width: 100%; }
+.pcal-bars b { min-height: 15px; font-size: 11px; font-weight: 600; white-space: nowrap; }
+.pcal-bars small { font-size: 11px; color: var(--muted); white-space: nowrap; }
+i.pcal-bill { background: var(--foreground); opacity: 0.75; }
+i.pcal-exp { background: var(--muted); opacity: 0.35; }
+.pcal-key { display: flex; gap: 16px; padding: 4px 20px 14px; font-size: 12px; color: var(--muted); }
+.pcal-key span { display: inline-flex; align-items: center; gap: 6px; }
+.pcal-key i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; }
+.pcal-day { margin-top: 12px; }
+.pcal-dh { display: flex; justify-content: space-between; gap: 12px; padding: 12px 20px; border-bottom: 1px solid var(--line); font-size: 14px; }
+.pcal-dh.bad b, .pcal-dh.bad span { color: var(--bad); }
+.pcal-row { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 10px 20px; font-size: 14px; }
+.pcal-row:hover { background: var(--surface-2); }
+.pcal-row small { display: block; font-size: 12px; color: var(--muted); }
+.pcal-day li + li { border-top: 1px solid var(--line); }
+@media (max-width: 640px) {
+  .pcal-bars { gap: 3px; padding: 8px 16px 4px; }
+  .pcal-bars b { display: none; }
+  .pcal-bars small { font-size: 9px; }
+  .pcal-bars li:nth-child(even) small { visibility: hidden; }
+  .pcal-dh, .pcal-row { padding-left: 16px; padding-right: 16px; }
+  .pcal-key { padding: 4px 16px 12px; }
+}
+
+/* Buyer currencies (0114): the currency picker and locked rates on statements and invoices. */
+.print-only { display: none; }
+@media print { .print-only { display: block; } }
+.cur-pick { min-width: 220px; }
+.cur-rate { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; justify-content: flex-end; }
+.cur-rate .inp-unit .inp { width: 96px; }
+.cur-rate .inp-unit .cash-inp { width: 140px; }
+
+/* Margin (/payments/margin). */
+.mgn-amt { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; white-space: nowrap; }
+.mgn-amt small { font-size: 12px; color: var(--muted); }
+.mgn-list .cash-item small { display: block; }
+.mgn-bar { display: block; height: 4px; margin-top: 6px; border-radius: 2px; background: var(--surface-2); overflow: hidden; }
+.mgn-bar i { display: block; height: 100%; background: var(--ok); }
+.mgn-bar i.neg { background: var(--bad); }
+.mgn-list .cash-item { padding: 12px 20px; font-size: 14px; }
+
+/* Door-to-door tracking (0115): TrackLine in order-ui.tsx, the team's tracking page and the buyer's shipments. */
+.trk { display: flex; flex-direction: column; margin: 0; padding: 0; }
+.trk-step { position: relative; display: flex; gap: 12px; min-height: 40px; padding-bottom: 10px; }
+.trk-step > i { position: relative; flex: none; width: 12px; height: 12px; margin-top: 4px; border: 2px solid var(--line-strong, var(--line)); border-radius: 50%; background: var(--surface); }
+.trk-step:not(:last-child)::before { content: ""; position: absolute; left: 5px; top: 18px; bottom: -2px; width: 2px; background: var(--line); }
+.trk-step.done > i { border-color: var(--ok); background: var(--ok); }
+.trk-step.done:not(:last-child)::before { background: var(--ok); opacity: 0.5; }
+.trk-step.now > i { box-shadow: 0 0 0 4px color-mix(in srgb, var(--ok) 20%, transparent); }
+.trk-body { display: flex; flex-direction: column; min-width: 0; font-size: 14px; }
+.trk-step:not(.done) .trk-body b { font-weight: 500; color: var(--muted); }
+.trk-body small { font-size: 12.5px; color: var(--muted); overflow-wrap: anywhere; }
+.trk-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px; }
+.trk-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px 16px; }
+.trk-form { display: flex; flex-direction: column; gap: 10px; }
+.trk-hist li { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 8px 0; font-size: 13.5px; }
+.trk-hist li + li { border-top: 1px solid var(--line); }
+.bship-track { margin-top: 10px; padding: 10px 12px 2px; border: 1px solid var(--line); border-radius: 10px; }
+.bship-track .trk-head { margin-bottom: 8px; font-size: 13px; }
+.bship-track > summary { cursor: pointer; list-style: none; }
+.bship-track > summary::-webkit-details-marker { display: none; }
+.bship-track[open] > summary { margin-bottom: 10px; }
 /* Our record (Reports > Our record): the sales kit's numbers, big and plain. */
 .rec-grid { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); }
 .rec-grid li { display: flex; flex-direction: column; gap: 2px; padding: 16px 20px; border-top: 1px solid var(--line); border-left: 1px solid var(--line); margin: -1px 0 0 -1px; }

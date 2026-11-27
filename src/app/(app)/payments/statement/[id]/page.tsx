@@ -1,9 +1,11 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { fmtCurrency, inCurrency, isCurrency, totalIn, type Currency } from "@/lib/currency";
 import { day, money } from "@/lib/format";
 import { buyerStatement } from "@/lib/payments";
 import { createClient } from "@/lib/supabase/server";
 import { PrintButton } from "../../../goods/[id]/packing/print-button";
+import { BuyerCurrency, InvoiceRate } from "../../currency-forms";
 import { loadBooks } from "../../load";
 
 const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;
@@ -21,14 +23,23 @@ export default async function StatementPage({ params }: PageProps<"/payments/sta
   const supabase = await createClient();
   const [{ data: co }, { data: b }] = await Promise.all([
     supabase.from("companies").select("name, legal_name, address, gstin, phone, email").eq("id", me.companyId!).maybeSingle(),
-    supabase.from("buyers").select("city, delivery_address").eq("id", id).maybeSingle(),
+    supabase.from("buyers").select("city, delivery_address, currency").eq("id", id).maybeSingle(),
   ]);
+  // A buyer invoiced abroad reads each invoice in its own currency, at the rate locked on that invoice.
+  const cur: Currency = isCurrency(b?.currency) ? b.currency : "INR";
+  const abroad = cur !== "INR";
+  const fx = (rupees: number, rate: number | null | undefined) => (abroad ? inCurrency(rupees, rate) : null);
+  const totalFx = abroad ? totalIn(s.open.map((i) => ({ rupees: i.outstanding, rate: i.currency === cur ? i.fx_rate : null }))) : null;
+  const unrated = abroad ? s.open.filter((i) => i.currency !== cur || !i.fx_rate).length : 0;
   const from = co?.legal_name || co?.name || "";
   const text = [
     `*Statement of account, ${day(today)}*`,
     `${buyer}`,
-    ...s.open.map((i) => `${i.invoice_no} of ${day(i.invoice_date)}: ${money(i.outstanding)}${i.late ? `, ${i.late} days past due` : i.due ? `, due ${day(i.due)}` : ""}`),
-    `*Balance ${money(s.total)}*${s.overdue ? `, of which ${money(s.overdue)} is past due` : ""}.`,
+    ...s.open.map((i) => {
+      const f = i.currency === cur ? fx(i.outstanding, i.fx_rate) : null;
+      return `${i.invoice_no} of ${day(i.invoice_date)}: ${f != null ? `${fmtCurrency(f, cur)} (${money(i.outstanding)})` : money(i.outstanding)}${i.late ? `, ${i.late} days past due` : i.due ? `, due ${day(i.due)}` : ""}`;
+    }),
+    `*Balance ${totalFx != null ? `${fmtCurrency(totalFx, cur)} (${money(s.total)})` : money(s.total)}*${s.overdue ? `, of which ${money(s.overdue)} is past due` : ""}.`,
     s.heldTotal ? `Cheques with us: ${money(s.heldTotal)}.` : "",
     from ? `${from}` : "",
   ].filter(Boolean).join("\n");
@@ -39,8 +50,10 @@ export default async function StatementPage({ params }: PageProps<"/payments/sta
         <div className="grow">
           <nav className="crumbs" aria-label="Breadcrumb"><Link href="/payments?tab=buyers">Payments</Link> / {buyer}</nav>
           <h1>Statement for {buyer}</h1>
-          <p>{s.open.length ? <>{plural(s.open.length, "invoice")} unpaid, <b className={s.overdue ? "text-bad" : ""}>{money(s.total)}</b>{s.overdue ? ` (${money(s.overdue)} past due)` : ""}.</> : "Nothing to collect: every invoice is paid."} Print it, or send it on WhatsApp before the follow-up call.</p>
+          <p>{s.open.length ? <>{plural(s.open.length, "invoice")} unpaid, <b className={s.overdue ? "text-bad" : ""}>{totalFx != null ? `${fmtCurrency(totalFx, cur)} (${money(s.total)})` : money(s.total)}</b>{s.overdue ? ` (${money(s.overdue)} past due)` : ""}.</> : "Nothing to collect: every invoice is paid."} Print it, or send it on WhatsApp before the follow-up call.</p>
+          {unrated > 0 && <p className="text-warn text-[13px]">{plural(unrated, "invoice")} without a {cur} rate. Lock each one&apos;s rate below so the buyer sees {cur}.</p>}
         </div>
+        <BuyerCurrency buyerId={id} currency={cur} />
         <div className="row">
           <a className="btn primary" href={`https://wa.me/?text=${encodeURIComponent(text)}`} target="_blank" rel="noreferrer">Send on WhatsApp</a>
           <PrintButton />
@@ -59,6 +72,7 @@ export default async function StatementPage({ params }: PageProps<"/payments/sta
             <dl>
               <div><dt>Date</dt><dd>{day(today)}</dd></div>
               <div><dt>Balance</dt><dd className="num">{money(s.total)}</dd></div>
+              {totalFx != null && <div><dt>In {cur}</dt><dd className="num">{fmtCurrency(totalFx, cur)}</dd></div>}
             </dl>
           </div>
         </header>
@@ -72,9 +86,9 @@ export default async function StatementPage({ params }: PageProps<"/payments/sta
 
         <div className="table-wrap">
           <table className="tbl challan-tbl">
-            <thead><tr><th>Invoice</th><th>Date</th><th className="text-right">Amount</th><th className="text-right">Credit notes</th><th className="text-right">Received</th><th className="text-right">Balance</th><th>Due</th></tr></thead>
+            <thead><tr><th>Invoice</th><th>Date</th><th className="text-right">Amount</th><th className="text-right">Credit notes</th><th className="text-right">Received</th><th className="text-right">Balance</th>{abroad && <th className="text-right">In {cur}</th>}<th>Due</th></tr></thead>
             <tbody>
-              {s.open.length === 0 && <tr><td colSpan={7}>No invoice is waiting for payment.</td></tr>}
+              {s.open.length === 0 && <tr><td colSpan={abroad ? 8 : 7}>No invoice is waiting for payment.</td></tr>}
               {s.open.map((i) => (
                 <tr key={i.id}>
                   <td className="code nw">{i.invoice_no}</td>
@@ -83,12 +97,18 @@ export default async function StatementPage({ params }: PageProps<"/payments/sta
                   <td className="num text-right">{i.credit ? money(i.credit) : ""}</td>
                   <td className="num text-right">{i.received ? money(i.received) : ""}</td>
                   <td className="num text-right">{money(i.outstanding)}</td>
+                  {abroad && (
+                    <td className="num text-right nw">
+                      {i.currency === cur && i.fx_rate ? <>{fmtCurrency(fx(i.outstanding, i.fx_rate)!, cur)}<small className="block muted no-print"><InvoiceRate invoiceId={i.id} currency={cur} rate={Number(i.fx_rate)} today={null} /></small><small className="block muted print-only">at ₹{Number(i.fx_rate)}</small></>
+                        : <span className="no-print"><InvoiceRate invoiceId={i.id} currency={cur} rate={null} today={null} /></span>}
+                    </td>
+                  )}
                   <td className={`nw ${i.late ? "text-bad" : ""}`}>{i.due ? `${day(i.due)}${i.late ? ` · ${i.late} days late` : ""}` : "—"}</td>
                 </tr>
               ))}
             </tbody>
             {s.open.length > 0 && (
-              <tfoot><tr><td colSpan={5}>Balance due{s.overdue ? ` (${money(s.overdue)} past due)` : ""}</td><td className="num text-right">{money(s.total)}</td><td /></tr></tfoot>
+              <tfoot><tr><td colSpan={5}>Balance due{s.overdue ? ` (${money(s.overdue)} past due)` : ""}</td><td className="num text-right">{money(s.total)}</td>{abroad && <td className="num text-right">{totalFx != null ? fmtCurrency(totalFx, cur) : ""}</td>}<td /></tr></tfoot>
             )}
           </table>
         </div>
@@ -126,7 +146,7 @@ export default async function StatementPage({ params }: PageProps<"/payments/sta
             </div>
           </>
         )}
-        <p className="challan-note">Received means a cleared cheque or a payment booked against the invoice. Please tell us if anything here doesn&apos;t match your books.{co?.phone ? ` ${co.phone}` : ""}{co?.email ? ` · ${co.email}` : ""}</p>
+        <p className="challan-note">{abroad ? `Amounts in ${cur} are at the rate written on each invoice. ` : ""}Received means a cleared cheque or a payment booked against the invoice. Please tell us if anything here doesn&apos;t match your books.{co?.phone ? ` ${co.phone}` : ""}{co?.email ? ` · ${co.email}` : ""}</p>
       </article>
     </>
   );
