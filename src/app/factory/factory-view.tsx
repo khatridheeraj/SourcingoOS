@@ -25,7 +25,7 @@ import { removeMyCert, saveMyCapacity, saveMyCert } from "./actions";
 // the same panel, read for that factory, with nothing to press.
 export async function FactoryView({ preview }: { preview?: string }) {
   const supabase = await createClient(preview ? { "x-preview-factory": preview } : undefined);
-  const [me, { data, error }, { data: ups }, { data: fileRows }, { data: detailRows }, { data: sampleRows }, { data: poRows }, { data: moneyRow }, { data: qcRows }, { data: countRows }, { data: askRows }, { data: readyRows }, { data: recordRow }, { data: guarRow }, { data: certRows }, { data: capRow }] = await Promise.all([
+  const [me, { data, error }, { data: ups }, { data: fileRows }, { data: detailRows }, { data: sampleRows }, { data: poRows }, { data: moneyRow }, { data: qcRows }, { data: countRows }, { data: askRows }, { data: readyRows }, { data: recordRow }, { data: guarRow }, { data: certRows }, { data: capRow }, { data: fixRows }, { data: rateRow }] = await Promise.all([
     getMe(), supabase.rpc("factory_tna"), supabase.rpc("factory_step_updates"),
     // Each style's tech pack, cutting program, fabric and sizes, as the orders team entered them.
     supabase.rpc("factory_line_files"), supabase.rpc("factory_line_details"),
@@ -49,6 +49,8 @@ export async function FactoryView({ preview }: { preview?: string }) {
     supabase.rpc("factory_guarantee"),
     // Its certificates, and the free pieces it gave week by week.
     supabase.rpc("factory_certificates_mine"), supabase.rpc("factory_capacity_mine", { p_weeks: 8 }),
+    // The defects Sourcingo found most on its styles lately, and buyers' average rating (once three have rated).
+    supabase.rpc("factory_defects_mine"), supabase.rpc("factory_rating_mine"),
   ]);
   const counts = (countRows ?? []) as FactoryCount[];
   const asks = (askRows ?? []) as DateAsk[];
@@ -114,7 +116,8 @@ export async function FactoryView({ preview }: { preview?: string }) {
           {panel.orders.map((o) => <FactoryOrder key={o.order_id} order={o} now={now} companyId={me?.companyId ?? ""} updates={updates} rounds={rounds.filter((r) => r.order_id === o.order_id)} lang={lang} info={info} po={pos.find((p) => p.order_id === o.order_id)} checks={checks.filter((c) => c.order_id === o.order_id)} counts={counts} asks={asks} ready={ready} canWrite={me?.role === "factory"} />)}
         </>
       )}
-      <FactoryRecordCard facts={(recordRow ?? null) as RecordFacts | null} lang={lang} />
+      <FactoryRecordCard facts={(recordRow ?? null) as RecordFacts | null} lang={lang}
+        fix={(fixRows ?? []) as { defect: string; pieces: number; checks: number }[]} rating={rateRow as { ratings: number; average: number } | null} />
       {cap && <CapacityWeeks weeks={cap.weeks} mode="factory" lang={lang} canEdit={canWrite} save={saveMyCapacity} />}
       {factoryId && <FactoryCerts rows={certs} today={todayIST()} folder={`${me?.companyId}/factory-files/${factoryId}/certs`} mode="factory" lang={lang}
         canEdit={canWrite} actions={{ save: saveMyCert, remove: removeMyCert }} />}

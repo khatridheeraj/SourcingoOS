@@ -9,6 +9,7 @@ import { type CertRow, FactoryCerts } from "@/components/factory-certs";
 import type { FactoryCap } from "@/lib/capacity";
 import { leadFor, leadLine, type LeadRow, MIN_LEAD_ORDERS } from "@/lib/lead-time";
 import { PHOTO_BUCKET } from "@/lib/storage";
+import type { DefectStats } from "@/lib/defects";
 import { checkCert, removeCert, saveCapacity, saveCert } from "./actions";
 import { VisitForm } from "./visit-form";
 
@@ -20,7 +21,7 @@ export default async function FactoryRecordPage({ params }: PageProps<"/factorie
   const me = await getMe();
   if (!canEnterDone(me?.role)) redirect("/");
   const supabase = await createClient();
-  const [{ data }, { data: certRows }, { data: capRows }, { data: leadRows }, { data: kinds }] = await Promise.all([
+  const [{ data }, { data: certRows }, { data: capRows }, { data: leadRows }, { data: kinds }, { data: defRow }, { data: rateRows }] = await Promise.all([
     supabase.rpc("factory_records", { p_factory: id }),
     supabase.from("factory_certificates").select("id, name, cert_no, valid_until, path, file_name, status, status_note, from_factory")
       .eq("factory_id", id).is("removed_at", null).order("name").order("created_at"),
@@ -28,7 +29,13 @@ export default async function FactoryRecordPage({ params }: PageProps<"/factorie
     supabase.rpc("lead_times"),
     // What it mostly makes, so the lead time quoted is for the right kind of goods.
     supabase.from("order_lines").select("product").eq("factory_id", id).is("removed_at", null).limit(500),
+    // The defects our checks find most on its styles, and how buyers rated the orders it made.
+    supabase.rpc("defect_stats", { p_factory: id, p_days: 365 }),
+    supabase.rpc("factory_ratings", { p_factory: id }),
   ]);
+  const topDefects = ((defRow as DefectStats | null)?.top ?? []).slice(0, 5);
+  const ratings = (rateRows ?? []) as { order_id: string; order_no: string; score: number; comment: string | null; created_at: string }[];
+  const avgRating = ratings.length ? Math.round((ratings.reduce((a, r) => a + r.score, 0) / ratings.length) * 10) / 10 : null;
   const f = ((data ?? []) as RecordFacts[])[0];
   if (!f) notFound();
   const rawCerts = (certRows ?? []) as (Omit<CertRow, "url"> & { path: string | null })[];
@@ -121,8 +128,23 @@ export default async function FactoryRecordPage({ params }: PageProps<"/factorie
           <div><dt>Pieces ordered</dt><dd>{qty(f.pieces_ordered ?? 0)}</dd></div>
           <div><dt>Claims raised</dt><dd>{f.claims ? `${f.claims} · ${money(f.claim_amount ?? 0)}` : "None"}</dd></div>
           <div><dt>Asked to move a date</dt><dd>{f.date_asks ? `${f.date_asks} ${f.date_asks === 1 ? "time" : "times"}${r.askRate != null ? ` · ${r.askRate}% of steps` : ""}` : "Never"}</dd></div>
+          <div><dt>Buyers&apos; rating</dt><dd>{avgRating != null ? `${avgRating} of 5 · ${ratings.length} ${ratings.length === 1 ? "order" : "orders"}` : "Not rated yet"}</dd></div>
           <div><dt>Accepts a PO in</dt><dd>{f.accept_hours != null ? hours(Number(f.accept_hours)) : "No PO accepted in the app yet"}</dd></div>
         </dl>
+        {topDefects.length > 0 && (
+          <div className="mt-4">
+            <span className="eyebrow">Defects we find most on its styles</span>
+            <ul className="fixlist">{topDefects.map((t) => <li key={t.defect}><span>{t.defect}</span><span className="num muted">{qty(t.pieces)} pcs · {t.checks} {t.checks === 1 ? "check" : "checks"}</span></li>)}</ul>
+          </div>
+        )}
+        {ratings.some((r) => r.comment) && (
+          <div className="mt-4">
+            <span className="eyebrow">What buyers said</span>
+            <ul className="fixlist">{ratings.filter((r) => r.comment).slice(0, 5).map((r) => (
+              <li key={r.order_id}><span>“{r.comment}”</span><span className="num muted">{r.score}/5 · <Link className="link" href={`/orders/${r.order_id}`}>{r.order_no}</Link></span></li>
+            ))}</ul>
+          </div>
+        )}
       </section>
 
       <section className="panel stack" aria-labelledby="see-h">

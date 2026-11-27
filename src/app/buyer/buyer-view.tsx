@@ -12,6 +12,8 @@ import { costingState, type BuyerCostingAsk } from "./costing-state";
 import { buyerLine, factoryRecord, type RecordFacts } from "@/lib/factory-record";
 import { BuyerGuarantee, type BuyerGuaranteeData } from "./buyer-guarantee";
 import { BuyerWeekCard } from "./buyer-week";
+import { type OrderRating, RateOrder } from "@/components/rate-order";
+import { rateOrder } from "./rate-actions";
 import { addDays, buyerWeek, type WeekShipment } from "@/lib/buyer-week";
 
 type Step = { stage: string; label: string | null; planned_on: string | null; done_on: string | null };
@@ -55,7 +57,7 @@ const SHOWN = 3;
 // the same page, read for that buyer, with nothing to press.
 export async function BuyerView({ preview }: { preview?: string }) {
   const supabase = await createClient(preview ? { "x-preview-buyer": preview } : undefined);
-  const [me, { data, error }, { data: sampleRows }, { data: shipRows }, { data: moneyRow }, { data: talkRows }, { data: sentRows }, { data: photoRows }, { data: makerRows }, { data: costRows }, { data: guarRow }] = await Promise.all([
+  const [me, { data, error }, { data: sampleRows }, { data: shipRows }, { data: moneyRow }, { data: talkRows }, { data: sentRows }, { data: photoRows }, { data: makerRows }, { data: costRows }, { data: guarRow }, { data: ratingRows }] = await Promise.all([
     getMe(), supabase.rpc("buyer_orders"), supabase.rpc("buyer_samples"), supabase.rpc("buyer_shipments"),
     // Its invoices and what is still to be paid.
     supabase.rpc("buyer_money"),
@@ -71,7 +73,10 @@ export async function BuyerView({ preview }: { preview?: string }) {
     supabase.rpc("buyer_costings_mine"),
     // The Sourcingo Guarantee: its payment plan per PO and its claims (nothing until the Guarantee is on).
     supabase.rpc("buyer_guarantee"),
+    // Its own ratings of delivered orders (src/components/rate-order.tsx).
+    supabase.rpc("buyer_ratings_mine"),
   ]);
+  const ratings = (ratingRows ?? []) as OrderRating[];
   const guarantee = (guarRow ?? { shown: false }) as BuyerGuaranteeData;
   const stepPhotos = (photoRows ?? []) as StepPhoto[];
   const makers = (makerRows ?? []) as Maker[];
@@ -276,6 +281,9 @@ export async function BuyerView({ preview }: { preview?: string }) {
                       </li>
                     ))}
                   </ul>
+                )}
+                {(shipped || sent > 0) && (
+                  <RateOrder orderId={o.id} rating={ratings.find((r) => r.order_id === o.id) ?? null} canWrite={canWrite} rate={rateOrder} today={today} />
                 )}
                 {!shipped && sent > 0 && (
                   <p className="bord-sent"><span className="chip ok">Part shipped</span> {qty(sent)} of {qty(ordered)} {unitOfAll(o.lines)} sent · {qty(ordered - sent)} to follow</p>

@@ -200,6 +200,11 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
     ? supabase.from("factory_certificates").select("id, factory_id, name, valid_until, status, created_at, factories(name, active)").eq("company_id", companyId)
         .is("removed_at", null).or(`status.eq.pending,and(status.eq.checked,valid_until.lte.${addDays(today, 30)},valid_until.gte.${addDays(today, -30)})`).limit(100)
     : none;
+  // A buyer rated a delivered order 3 stars or less and nobody has read it yet.
+  const lowP = team
+    ? supabase.from("order_ratings").select("id, order_id, score, comment, created_at, orders(order_no)").eq("company_id", companyId)
+        .lte("score", 3).is("seen_at", null).order("created_at").limit(20)
+    : none;
   // Dispatches of every order, shipped ones too: an order marked shipped still waits for the buyer's GRN.
   const dispP = team
     ? fetchAll((a, z) => supabase.from("dispatches").select("id, order_id, purchase_bill_no, purchase_taxable, invoice_no, invoice_taxable, purchased_at, invoice_due_at, invoiced_at, eway_at, shipped_at, grn_due_on, grn_at")
@@ -809,6 +814,14 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
         action: "Send", sort: weekOf(today),
       });
     }
+  }
+
+  // A low rating from a buyer: read it, call the buyer, and mark it read on Factories > Quality.
+  const { data: lows } = keep(await lowP);
+  for (const r of (lows ?? []) as unknown as { id: string; order_id: string; score: number; comment: string | null; created_at: string; orders: { order_no: string } | null }[]) {
+    now_.push({ key: `rate:${r.id}`, href: "/factories/quality#ratings", sev: "warn", code: r.orders?.order_no,
+      title: `Buyer rated it ${r.score} of 5`, detail: r.comment ? `“${r.comment.slice(0, 90)}${r.comment.length > 90 ? "…" : ""}”` : "No comment: call the buyer to ask why",
+      action: "Read", sort: r.created_at.slice(0, 10) });
   }
 
   // A certificate to check, or one running out: the factory's record (and what buyers read) depends on it.
