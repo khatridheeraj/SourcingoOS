@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { cashAhead, carryDays, type CashItem } from "@/lib/cash";
+import { milestones, type GOrder, type GuaranteeTerms } from "@/lib/guarantee";
 import { USUAL_DAYS } from "@/lib/data";
 import { dayNear, money, todayIST } from "@/lib/format";
 import { lakh, MSME_DAYS } from "@/lib/payables";
@@ -8,6 +9,7 @@ import { PageTabs } from "@/components/page-tabs";
 import { MONEY_TABS } from "@/lib/page-groups";
 import { loadPayables } from "../../payables/load";
 import { loadBooks } from "../load";
+import { CashInHand } from "../currency-forms";
 import { loadOpenOrderMoney } from "./load";
 
 // "28 Dec", and "4 Jan 2027" once the weeks run into next year. A week writes that year once: "4 Jan to 10 Jan 2027".
@@ -20,16 +22,43 @@ export default async function CashPage() {
   const { books, buyerLabel, error } = await loadBooks();
   const supabase = await createClient();
   const today = todayIST();
-  const [payables, { open, unpriced, undated }] = await Promise.all([loadPayables(supabase), loadOpenOrderMoney(books)]);
+  const [payables, { open, unpriced, undated }, { data: co }, { data: termsRow }] = await Promise.all([
+    loadPayables(supabase), loadOpenOrderMoney(books),
+    supabase.from("company_cash").select("amount, as_of").maybeSingle(),
+    supabase.rpc("guarantee_terms"),
+  ]);
+  const opening = co?.amount == null ? null : Number(co.amount);
+  const terms = (termsRow ?? null) as GuaranteeTerms | null;
+
+  // Under the Guarantee a buyer pays in milestones, not its usual credit days after shipping. What is still to bill
+  // on a covered order is spread over its unpaid milestones, each on its day (or the likely one, from the ship date).
+  const extra: CashItem[] = [];
+  const orders = open.map((o) => ({ ...o }));
+  if (terms?.live) {
+    const { data } = await supabase.rpc("guarantee_orders");
+    const gOf = new Map(((data as { orders?: GOrder[] } | null)?.orders ?? []).map((g) => [g.order_id, g]));
+    for (const o of orders) {
+      const g = gOf.get(o.id);
+      if (!g?.priced || o.sale <= 0) continue;
+      const left = milestones(g, g.plan ?? terms.plan, today).filter((m) => m.state !== "paid");
+      const owed = left.reduce((n, m) => n + m.left, 0);
+      if (owed <= 0) continue;
+      for (const m of left) {
+        const likely = m.due ?? plusDays(m.when === "delivered" ? plusDays(o.ships, 14) : o.ships, m.days);
+        extra.push({ amount: (o.sale * m.left) / owed, on: likely < today ? today : likely, label: `${o.orderNo} · ${m.label} (Guarantee)`, href: "/guarantee", kind: "milestone" });
+      }
+      o.sale = 0;
+    }
+  }
 
   const c = cashAhead({
-    today,
+    today, opening: opening ?? 0, extra,
     invoices: books.invoices.filter((i) => i.state !== "cancelled" && i.outstanding > 0 && i.due)
       .map((i) => ({ amount: i.outstanding, due: i.due!, label: `${i.invoice_no} · ${buyerLabel(i.buyer_id)}`, href: `/payments/invoices/${i.id}` })),
     // A bill with no date in Tally is an older balance: it counts as already due.
     bills: payables.bills.filter((b) => !b.hold && b.open > 0)
       .map((b) => ({ amount: b.open, due: b.due_on ?? "2000-01-01", label: `${b.bill ?? "Older balance"} · ${b.factory ?? b.ledger}`, href: "/payables" })),
-    orders: open,
+    orders,
   });
   const carried = open.filter((o) => carryDays(o) > 0).sort((a, z) => z.cost - a.cost);
   const lastWeek = c.weeks.at(-1)!;
@@ -40,7 +69,7 @@ export default async function CashPage() {
       <div className="head">
         <div className="grow">
           <h1>Cash ahead</h1>
-          <p>Money in from buyers and out to factories over the next 12 weeks, so a tight week shows before it comes.</p>
+          <p>Money in from buyers and out to factories over the next 90 days, week by week, so a tight week shows before it comes.</p>
         </div>
       </div>
       {error && <div className="errbox">Couldn&apos;t load the invoices: {error.message}. Reload to try again.</div>}
@@ -50,7 +79,7 @@ export default async function CashPage() {
         <div className={`kpi ${c.lowest ? "bad" : ""}`}>
           <span className="kpi-label"><i aria-hidden />Tightest week</span>
           <b className="num">{c.lowest ? signed(c.lowest.balance) : "No squeeze"}</b>
-          <small>{c.lowest ? `Week of ${short(c.lowest.start)}: more goes out than has come in by then` : "More comes in than goes out, every week"}</small>
+          <small>{c.lowest ? `Week of ${short(c.lowest.start)}: ${opening != null ? "the bank goes below zero" : "more goes out than has come in by then"}` : opening != null ? "The bank stays above zero for 90 days" : "More comes in than goes out, every week"}</small>
         </div>
         <Link href="/payments" className={`kpi ${c.overdueIn ? "warn" : ""}`}>
           <span className="kpi-label"><i aria-hidden />Buyers owe, overdue</span><b className="num">{lakh(c.overdueIn)}</b>
@@ -66,8 +95,11 @@ export default async function CashPage() {
         <div className="card-h">
           <div>
             <h2>Week by week</h2>
-            <p>Running total starts at zero today. Tap a week to see what lands in it.</p>
+            <p className="num">
+              {opening != null ? <>Running total starts from the bank: <b>{signed(opening)}</b>{co?.as_of ? `, as of ${short(co.as_of)}` : ""}.</> : "Running total starts at zero today. Add the bank balance to see real money."} Tap a week to see what lands in it.
+            </p>
           </div>
+          <CashInHand amount={opening} />
         </div>
         <div className="cash-week cash-week-h hide-phone" aria-hidden>
           <span>Week</span><span className="cash-in">In</span><span className="cash-out">Out</span><span className="cash-bal">Running total</span>
@@ -125,7 +157,7 @@ export default async function CashPage() {
         <p>
           In: invoices still owed, on their due date. Out: factory and supplier bills from Tally, on their due date (bills on hold are left out).
           Open orders not billed yet: the buyer rate and factory rate for what is still to ship, from the likely ship date the order page shows,
-          plus the buyer&apos;s credit days for money in and the factory&apos;s days for money out. Anything without days set is taken as {USUAL_DAYS} days,
+          plus the buyer&apos;s credit days for money in and the factory&apos;s days for money out. When the Guarantee is on, a covered order&apos;s money in follows its milestones instead. Anything without days set is taken as {USUAL_DAYS} days,
           and micro and small MSME factories as {MSME_DAYS} at most. Before GST and freight. Tally is only read, never changed.
         </p>
         {(unpriced > 0 || undated > 0) && (
@@ -138,6 +170,7 @@ export default async function CashPage() {
   );
 }
 
+const plusDays = (d: string, n: number) => new Date(Date.parse(`${d}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
 const addTo = (d: string, n: number) => new Date(Date.parse(d) + n * 86_400_000).toISOString().slice(0, 10);
 
 function Item({ x }: { x: CashItem }) {
@@ -145,7 +178,7 @@ function Item({ x }: { x: CashItem }) {
     <>
       <span className="min-w-0">
         <b>{x.label}</b>
-        <small>{dayNear(x.on)}{x.kind === "order" ? " · expected from the order" : x.kind === "bill" ? " · bill in Tally" : " · invoice"}</small>
+        <small>{dayNear(x.on)}{x.kind === "order" ? " · expected from the order" : x.kind === "milestone" ? " · Guarantee milestone" : x.kind === "bill" ? " · bill in Tally" : " · invoice"}</small>
       </span>
       <span className="num">{x.amount < 0 ? `−${money(Math.round(-x.amount))}` : `+${money(Math.round(x.amount))}`}</span>
     </>

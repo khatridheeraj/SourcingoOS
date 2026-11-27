@@ -300,7 +300,7 @@ export async function BuyerView({ preview }: { preview?: string }) {
       {!costingFirst && costing}
       <BuyerSendPo companyId={me?.companyId ?? ""} sent={sent} canSend={canWrite} />
       {/* Money owed shows even when no order is open. */}
-      <BuyerMoney invoices={invoices} />
+      <BuyerMoney invoices={invoices} currency={(moneyRow as { currency?: string } | null)?.currency} />
       {(orders.length > 0 || invoices.length > 0) && <p className="muted text-center text-[12.5px]">Questions about an order? Write under its PO above, or message your Sourcingo merchandiser.</p>}
     </>
   );

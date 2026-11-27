@@ -2893,3 +2893,20 @@ i.pcal-exp { background: var(--muted); opacity: 0.35; }
   .pcal-dh, .pcal-row { padding-left: 16px; padding-right: 16px; }
   .pcal-key { padding: 4px 16px 12px; }
 }
+
+/* Buyer currencies (0114): the currency picker and locked rates on statements and invoices. */
+.print-only { display: none; }
+@media print { .print-only { display: block; } }
+.cur-pick { min-width: 220px; }
+.cur-rate { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; justify-content: flex-end; }
+.cur-rate .inp-unit .inp { width: 96px; }
+.cur-rate .inp-unit .cash-inp { width: 140px; }
+
+/* Margin (/payments/margin). */
+.mgn-amt { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; white-space: nowrap; }
+.mgn-amt small { font-size: 12px; color: var(--muted); }
+.mgn-list .cash-item small { display: block; }
+.mgn-bar { display: block; height: 4px; margin-top: 6px; border-radius: 2px; background: var(--surface-2); overflow: hidden; }
+.mgn-bar i { display: block; height: 100%; background: var(--ok); }
+.mgn-bar i.neg { background: var(--bad); }
+.mgn-list .cash-item { padding: 12px 20px; font-size: 14px; }
