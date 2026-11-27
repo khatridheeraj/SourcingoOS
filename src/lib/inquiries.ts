@@ -55,8 +55,11 @@ export type Inquiry = {
   buyer_answer_note: string | null;
   buyer_answer_at: string | null;
   answer_seen_at: string | null;
+  // Asked on the public website (0096), with the buyer's country.
+  from_site: boolean;
+  country: string | null;
 };
-export const INQUIRY_COLUMNS = "id, inquiry_no, buyer_id, prospect, contact_name, contact, source, product, est_qty, unit, target_price, quoted_price, merchandiser_id, next_follow_up, status, lost_reason, order_id, notes, photos, status_at, updated_at, created_by, created_at, sample_sent_on, sample_note, incoming_po_id, asked_on_page, sample_in_on, sample_in_note, costing_draft, buyer_answer, buyer_answer_note, buyer_answer_at, answer_seen_at";
+export const INQUIRY_COLUMNS = "id, inquiry_no, buyer_id, prospect, contact_name, contact, source, product, est_qty, unit, target_price, quoted_price, merchandiser_id, next_follow_up, status, lost_reason, order_id, notes, photos, status_at, updated_at, created_by, created_at, sample_sent_on, sample_note, incoming_po_id, asked_on_page, sample_in_on, sample_in_note, costing_draft, buyer_answer, buyer_answer_note, buyer_answer_at, answer_seen_at, from_site, country";
 
 export const isOpenInquiry = (status: string) => status === "new" || status === "quoted";
 

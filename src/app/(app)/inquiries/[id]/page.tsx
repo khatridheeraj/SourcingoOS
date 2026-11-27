@@ -52,7 +52,7 @@ export default async function InquiryPage({ params }: PageProps<"/inquiries/[id]
   // The timeline: follow-up notes, with when it was logged and how it ended.
   const events = [
     ...(notes ?? []).map((n) => ({ key: n.id, at: n.created_at, by: (n.created_by && people.get(n.created_by)) || "Someone", text: n.body, sys: false })),
-    { key: "logged", at: i.created_at, by: (i.created_by && people.get(i.created_by)) || "Someone", text: i.asked_on_page ? "Asked on their buyer page" : `Logged from ${sourceLabel(i.source).toLowerCase()}`, sys: true },
+    { key: "logged", at: i.created_at, by: (i.created_by && people.get(i.created_by)) || (i.from_site ? i.contact_name || "The buyer" : "Someone"), text: i.asked_on_page ? "Asked on their buyer page" : i.from_site ? "Asked for a costing on the website" : `Logged from ${sourceLabel(i.source).toLowerCase()}`, sys: true },
     ...(i.status !== "new" && !(i.status === "quoted" && sent.length) ? [{ key: "status", at: i.status_at, by: "", sys: true,
       text: i.status === "quoted" ? `Price sent: ${money(i.quoted_price)} a ${unit}` : i.status === "converted" ? `Became order ${order?.order_no ?? ""}` : `Lost: ${i.lost_reason}` }] : []),
     ...(i.sample_in_on ? [{ key: "sample-in", at: `${i.sample_in_on}T12:00:00+05:30`, by: "", sys: true, text: `Buyer's sample arrived${i.sample_in_note ? `: ${i.sample_in_note}` : ""}` }] : []),
@@ -127,7 +127,7 @@ export default async function InquiryPage({ params }: PageProps<"/inquiries/[id]
           <div><dt>Merchandiser</dt><dd>{(i.merchandiser_id && people.get(i.merchandiser_id)) || "Not assigned"}</dd></div>
           <div><dt>Next follow-up</dt><dd className={due ? "text-bad" : ""}>{open ? day(i.next_follow_up) || "Not set" : "—"}</dd></div>
           {i.sample_sent_on && <div><dt>Sample sent</dt><dd>{day(i.sample_sent_on)}{i.sample_note ? ` · ${i.sample_note}` : ""}</dd></div>}
-          <div><dt>Came by</dt><dd>{i.asked_on_page ? "Their buyer page" : sourceLabel(i.source)} · {dayAt(i.created_at)}</dd></div>
+          <div><dt>Came by</dt><dd>{i.asked_on_page ? "Their buyer page" : i.from_site ? `The website${i.country ? ` · ${i.country}` : ""}` : sourceLabel(i.source)} · {dayAt(i.created_at)}</dd></div>
           {email && <div><dt>From the email</dt><dd><Link href={`/pos/${email.id}`} className="link">{email.email_subject || "Open the email"}</Link></dd></div>}
         </dl>
         {i.notes && <p className="mt-4 whitespace-pre-line text-[14px]">{i.notes}</p>}

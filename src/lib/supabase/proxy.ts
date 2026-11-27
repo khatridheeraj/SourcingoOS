@@ -1,10 +1,11 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { SIGNED_OUT } from "@/lib/errors";
+import { SITE_PATHS } from "@/lib/site";
 
 // /api/brief is answered only for a mailbox Google vouches for. /f/<secret> is a factory link.
 // /po/<token> is one factory PO, to read and accept. /tally-reader is the Tally reader download (no secrets).
-const PUBLIC_PATHS = ["/login", "/auth", "/api/brief", "/f", "/s", "/po", "/tally-reader", "/manifest.webmanifest"];
+const PUBLIC_PATHS = ["/login", "/auth", "/api/brief", "/f", "/s", "/po", "/tally-reader", "/manifest.webmanifest", ...SITE_PATHS];
 
 // Refreshes the Supabase session cookie on every request and sends
 // signed-out visitors to /login.
@@ -29,6 +30,14 @@ export async function updateSession(request: NextRequest) {
 
   const { data } = await supabase.auth.getClaims();
   const path = request.nextUrl.pathname;
+  // The public website lives at the main address for visitors; the team, signed in, gets Orders there as before.
+  if (!data?.claims && path === "/" && request.method === "GET") {
+    const url = request.nextUrl.clone();
+    url.pathname = "/welcome";
+    const rewritten = NextResponse.rewrite(url, { request });
+    response.cookies.getAll().forEach((c) => rewritten.cookies.set(c));
+    return rewritten;
+  }
   if (!data?.claims && !PUBLIC_PATHS.some((p) => path === p || path.startsWith(p + "/"))) {
     // A save (server action) from a page left open after signing out, or after the session ran out elsewhere: a
     // redirect would replay the save against /login and the page would fall over with "couldn't load", losing what
