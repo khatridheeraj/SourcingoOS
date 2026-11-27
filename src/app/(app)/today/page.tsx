@@ -24,6 +24,7 @@ import { Ring } from "@/components/order-ui";
 import { WhatsNew } from "@/components/whats-new";
 import { MarkShipped } from "../orders/mark-shipped";
 import { sampleLabel, type SampleStatus } from "@/lib/samples";
+import { REPLY_HOURS, waitingHours } from "@/lib/inquiries";
 import { isFinance, loadBooks } from "../payments/load";
 import { paymentTodos } from "@/lib/payments";
 import { loadClaims, loadPayables } from "../payables/load";
@@ -183,7 +184,7 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
         .eq("company_id", companyId).in("status", ["to_check", "failed", "held"]).order("received_at").order("id").range(a, z))
     : none;
   const inqsP = team
-    ? fetchAll((a, z) => supabase.from("inquiries").select("id, inquiry_no, buyer_id, prospect, product, next_follow_up, merchandiser_id, status, sample_sent_on, from_site, country, contact_name")
+    ? fetchAll((a, z) => supabase.from("inquiries").select("id, inquiry_no, buyer_id, prospect, product, next_follow_up, merchandiser_id, status, sample_sent_on, from_site, country, contact_name, created_at, first_reply_at")
         .eq("company_id", companyId).in("status", ["new", "quoted"]).lte("next_follow_up", today).order("next_follow_up").order("id").range(a, z))
     : none;
   // Buyers already sent this week's update (the week starts Monday, India time).
@@ -762,12 +763,16 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
   // An ask from the website has no merchandiser yet, so it is everyone's until someone takes it.
   for (const i of (inqs ?? []).filter((x) => who === "all" || x.merchandiser_id === me?.id || (x.from_site && !x.merchandiser_id))) {
     const late = i.next_follow_up! < today;
-    if (i.from_site && i.status === "new" && !i.sample_sent_on) {
-      (late ? now_ : soon).push({
-        key: `inq:${i.id}`, href: `/inquiries/${i.id}`, sev: late ? "bad" : "warn", code: i.inquiry_no,
+    // A website lead stays here until someone marks the first reply; past a day without one it is red.
+    const waiting = i.from_site ? waitingHours(i, nowMs()) : null;
+    if (waiting != null || (i.from_site && i.status === "new" && !i.sample_sent_on && !i.first_reply_at)) {
+      const overdue = waiting != null ? waiting >= REPLY_HOURS : late;
+      (overdue ? now_ : soon).push({
+        key: `inq:${i.id}`, href: `/inquiries/${i.id}`, sev: overdue ? "bad" : "warn", code: i.inquiry_no,
         title: `${i.prospect || ""} · ${i.product}`,
         detail: `New buyer on the website${i.country ? ` · ${i.country}` : ""}${i.contact_name ? ` · ${i.contact_name}` : ""}`,
-        chip: late ? { text: `${plural(daysBetween(i.next_follow_up!, today), "day")} waiting`, cls: "bad" } : { text: "New", cls: "warn" },
+        chip: waiting != null ? { text: overdue ? `No reply in ${waiting >= 48 ? plural(Math.floor(waiting / 24), "day") : `${waiting}h`}` : "New", cls: overdue ? "bad" : "warn" }
+          : late ? { text: `${plural(daysBetween(i.next_follow_up!, today), "day")} waiting`, cls: "bad" } : { text: "New", cls: "warn" },
         action: "Reply", sort: i.next_follow_up!,
       });
       continue;

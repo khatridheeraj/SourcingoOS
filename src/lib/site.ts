@@ -4,7 +4,7 @@
 export const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL ?? "https://sourcingo-os.vercel.app").replace(/\/$/, "");
 
 // Pages anyone may open without signing in ("/" itself shows /welcome to visitors).
-export const SITE_PATHS = ["/welcome", "/how-it-works", "/quality", "/for-factories", "/costing", "/privacy", "/make", "/sitemap.xml", "/robots.txt", "/opengraph-image"];
+export const SITE_PATHS = ["/welcome", "/how-it-works", "/quality", "/for-factories", "/costing", "/privacy", "/make", "/record", "/sitemap.xml", "/robots.txt", "/opengraph-image"];
 
 export const SITE_NAV = [
   { href: "/how-it-works", label: "How it works" },
