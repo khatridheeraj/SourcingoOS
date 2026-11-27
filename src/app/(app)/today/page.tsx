@@ -31,6 +31,7 @@ import { bySupplier, dueOf, lakh as rupees, totals } from "@/lib/payables";
 import { PageTabs } from "@/components/page-tabs";
 import { HOME_TABS, HOME_TABS_QUALITY } from "@/lib/page-groups";
 import { type Approval, Approvals } from "./approvals";
+import { weekOf } from "@/lib/buyer-week";
 
 type Sev = "bad" | "warn" | "ok" | "";
 // One line of the to-do list: what it is, why, and the one button that deals with it.
@@ -184,6 +185,10 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
   const inqsP = team
     ? fetchAll((a, z) => supabase.from("inquiries").select("id, inquiry_no, buyer_id, prospect, product, next_follow_up, merchandiser_id, status, sample_sent_on, from_site, country, contact_name")
         .eq("company_id", companyId).in("status", ["new", "quoted"]).lte("next_follow_up", today).order("next_follow_up").order("id").range(a, z))
+    : none;
+  // Buyers already sent this week's update (the week starts Monday, India time).
+  const updatesP = team
+    ? supabase.from("buyer_updates").select("buyer_id").eq("company_id", companyId).eq("week_of", weekOf(today))
     : none;
   // Factories that asked to join on the website and nobody has called yet.
   const joinP = team
@@ -784,6 +789,20 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
       detail: `Asked to join on the website · makes ${f.makes}`,
       action: "Call", sort: f.created_at.slice(0, 10),
     });
+  }
+
+  // The weekly buyer update: one line until every buyer with an open order (in my view) has heard from us this week.
+  const { data: updated } = keep(await updatesP);
+  if (team) {
+    const told = new Set(((updated ?? []) as { buyer_id: string }[]).map((u) => u.buyer_id));
+    const waitingBuyers = [...new Set(open.map((o) => o.buyer_id))].filter((b) => !told.has(b));
+    if (waitingBuyers.length) {
+      soon.push({
+        key: "buyer-updates", href: "/buyers/updates", sev: "", title: "Weekly buyer updates",
+        detail: `${plural(waitingBuyers.length, "buyer")} still to hear from us this week: what moved, photos, QC and next dates`,
+        action: "Send", sort: weekOf(today),
+      });
+    }
   }
 
   // Orders sent in parts: the rest still to send (late once the ship date has passed), and orders whose every
