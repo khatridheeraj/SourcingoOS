@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { ROLES, STAFF_ROLES } from "@/lib/auth-roles";
+import { can, PERMS, type PermKey, type Perms, type Role, ROLES, STAFF_ROLES } from "@/lib/auth-roles";
 import type { Member } from "@/lib/data";
 import { personName } from "@/lib/names";
 import { cancelInvite, updateMember } from "./actions";
@@ -11,14 +11,21 @@ export function MemberRow({ member, isMe, whatsapp, factoryName, buyerName }: { 
   const [active, setActive] = useState(member.active);
   const [phone, setPhone] = useState(whatsapp);
   const staff = member.role !== "factory" && member.role !== "buyer";
+  // Each switch as it applies now: the owner's choice for this person, else what their role gets.
+  const start0 = Object.fromEntries(PERMS.map((p) => [p.key, can({ role: member.role as Role, perms: member.perms }, p.key)])) as Record<PermKey, boolean>;
+  const [perms, setPerms] = useState(start0);
+  const switches = staff && member.role !== "owner" && role !== "owner";
   const [msg, setMsg] = useState<{ ok?: boolean; text: string } | null>(null);
   const [pending, start] = useTransition();
-  const dirty = role !== member.role || active !== member.active || phone.trim() !== whatsapp;
+  const dirty = role !== member.role || active !== member.active || phone.trim() !== whatsapp || PERMS.some((p) => perms[p.key] !== start0[p.key]);
 
   function save() {
     setMsg(null);
     start(async () => {
-      const res = await updateMember(member.user_id, { role, active, whatsapp: staff ? phone : undefined });
+      // A switch that matches what the new role gets anyway is stored as "follow the role", so a later role change carries it.
+      const next: Perms = {};
+      for (const p of PERMS) next[p.key] = perms[p.key] === can({ role: role as Role }, p.key) ? undefined : perms[p.key];
+      const res = await updateMember(member.user_id, { role, active, whatsapp: staff ? phone : undefined, perms: switches ? next : undefined });
       if (res.whatsapp !== undefined) setPhone(res.whatsapp);
       setMsg(res.error ? { text: res.error } : { ok: true, text: "Saved" });
     });
@@ -42,7 +49,15 @@ export function MemberRow({ member, isMe, whatsapp, factoryName, buyerName }: { 
         ) : <span className="muted">Not needed</span>}
       </td>
       <td>
-        <label className="row text-[13px]"><input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} /> Can sign in</label>
+        <div className="perm-list">
+          <label className="row text-[13px]"><input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} /> Can sign in</label>
+          {switches && PERMS.map((p) => (
+            <label key={p.key} className="row text-[13px]" title={p.hint}>
+              <input type="checkbox" checked={perms[p.key]} onChange={(e) => setPerms({ ...perms, [p.key]: e.target.checked })} /> {p.label}
+            </label>
+          ))}
+          {(member.role === "owner" || role === "owner") && <span className="text-xs muted">Sees everything</span>}
+        </div>
       </td>
       <td className="whitespace-nowrap">
         <button className="btn sm primary" disabled={!dirty || pending} onClick={save}>{pending ? "Saving…" : "Save"}</button>

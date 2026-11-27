@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { ClaimForm, type ClaimStyle } from "@/components/claim-form";
-import { canEditOrders, canEnterDone, getMe } from "@/lib/auth";
+import { can, canEditOrders, canEnterDone, getMe } from "@/lib/auth";
 import { dayNear as day, money, nowMs, todayIST } from "@/lib/format";
 import { buyerPlan, CLAIM_DAYS, CLAIM_REASON, claimClock, factoryPay, type GOrder, type GuaranteeTerms, type Step } from "@/lib/guarantee";
 import { PHOTO_BUCKET } from "@/lib/storage";
@@ -19,7 +19,7 @@ type LineRow = { id: string; style: string; qty: number; orders: { id: string; o
 export default async function GuaranteePage() {
   const me = await getMe();
   if (!canEnterDone(me?.role)) redirect("/");
-  const finance = me?.role === "owner" || me?.role === "accounts";
+  const finance = can(me, "money");
   const edit = canEditOrders(me?.role);
   const today = todayIST();
   const supabase = await createClient();

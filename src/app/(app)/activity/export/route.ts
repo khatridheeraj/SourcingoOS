@@ -3,17 +3,14 @@ import { describe, type Entry, sourceLabel, tableLabel, when, who } from "@/lib/
 import { getMe } from "@/lib/auth";
 import { todayIST } from "@/lib/format";
 import { createClient } from "@/lib/supabase/server";
+import { type Cell, xlsx, XLSX_TYPE } from "@/lib/xlsx";
 import { filterQuery, loadNames, queryActivity, readFilters } from "../query";
 
 const BATCH = 1000;
 const MAX = 50_000;
-// Text from outside (an emailed PO's subject, a note) that starts like a formula is kept as text, so Excel doesn't run it.
-const cell = (raw: string) => {
-  const v = /^[=+\-@\t\r]/.test(raw) ? `'${raw}` : raw;
-  return /[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
-};
 
-// The activity log as a spreadsheet, with the same filters as the screen. Owner only.
+// The activity log as an Excel file, with the same filters as the screen. Owner only.
+// Every cell is written as text or a number, never a formula, so text from outside (an emailed PO's subject) can't run in Excel.
 export async function GET(request: NextRequest) {
   const me = await getMe();
   if (me?.role !== "owner" || !me.companyId) return new NextResponse("Only the owner can download the activity log.", { status: 403 });
@@ -38,20 +35,18 @@ export async function GET(request: NextRequest) {
     before = data[data.length - 1].id;
   }
 
-  const lines = capped
-    ? [cell(`Only the newest ${MAX.toLocaleString("en-IN")} entries are in this file. Narrow the dates or filters to download older ones.`)]
-    : [];
-  lines.push(["When (India time)", "Who", "Came from", "Area", "Record", "What", "Changes", "Entry no."].join(","));
+  const rows: Cell[][] = [["When (India time)", "Who", "Came from", "Area", "Record", "What", "Changes", "Entry no."]];
   for (const e of entries) {
     const d = describe(e, names);
     const detail = d.changes.length ? d.changes.map((c) => `${c.label}: ${c.from} → ${c.to}`) : d.fields.map((x) => `${x.label}: ${x.value}`);
-    lines.push([when(e.at), who(e, names), sourceLabel(e) ?? "App", tableLabel(e.table_name), e.row_id, d.text, detail.join("; "), String(e.id)].map(cell).join(","));
+    rows.push([when(e.at), who(e, names), sourceLabel(e) ?? "App", tableLabel(e.table_name), e.row_id, d.text, detail.join("; "), e.id]);
   }
+  if (capped) rows.push([`Only the newest ${MAX.toLocaleString("en-IN")} entries are in this file. Narrow the dates or filters to download older ones.`]);
   const qs = filterQuery(f);
-  return new NextResponse(`﻿${lines.join("\n")}\n`, {
+  return new NextResponse(Buffer.from(xlsx([{ name: "Activity log", rows, widths: [20, 18, 14, 16, 12, 40, 70, 10] }])), {
     headers: {
-      "Content-Type": "text/csv; charset=utf-8",
-      "Content-Disposition": `attachment; filename="activity-log-${todayIST()}${qs ? "-filtered" : ""}.csv"`,
+      "Content-Type": XLSX_TYPE,
+      "Content-Disposition": `attachment; filename="activity-log-${todayIST()}${qs ? "-filtered" : ""}.xlsx"`,
       "Cache-Control": "no-store",
     },
   });

@@ -21,7 +21,7 @@ const WHO = [{ key: "all", label: "All" }, { key: "factories", label: "Factories
 // Read from Tally only. Paying happens in the bank and is booked in Tally as always; this page follows it.
 export default async function PayablesPage({ searchParams }: PageProps<"/payables">) {
   const me = await getMe();
-  if (!isFinance(me?.role)) redirect("/");
+  if (!isFinance(me)) redirect("/");
   const sp = await searchParams;
   const p = (k: string) => String(sp[k] ?? "").trim();
   const view = VIEWS.some((v) => v.key === p("view")) ? p("view") : "due";

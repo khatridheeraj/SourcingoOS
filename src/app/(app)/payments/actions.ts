@@ -10,7 +10,7 @@ import { isFinance } from "./load";
 type Result = { ok?: string; error?: string; id?: string };
 
 async function call(fn: string, args: Record<string, unknown>) {
-  if (!isFinance((await getMe())?.role)) return { error: "Only Accounts and the owner can change payments.", data: null };
+  if (!isFinance(await getMe())) return { error: "Only Accounts and the owner can change payments.", data: null };
   const supabase = await createClient();
   const { data, error } = await supabase.rpc(fn, args);
   if (error) return { error: friendly(error), data: null };

@@ -1,9 +1,10 @@
 name: Health check
 
-# Hourly during the India working day. A failed run makes GitHub email the owner.
+# Every hour, day and night: is the app up (website, sign-in, database), and are the parts outside the app alive.
+# A failed run makes GitHub email the owner. One short run an hour stays well inside GitHub's free minutes.
 on:
   schedule:
-    - cron: "15 3-16 * * *"
+    - cron: "15 * * * *"
   workflow_dispatch:
 
 permissions:
@@ -20,10 +21,18 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      - name: App, website, sign-in and database answer
+        run: node scripts/uptime.mjs
+      # The rest is about the working day (8:45 am to 10:45 pm in India), so it doesn't email through the night.
       - name: Tally reader, email pickup, PO reading, database size
-        run: node scripts/health.mjs
+        if: always()
+        run: |
+          h=$(date -u +%-H)
+          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ] || { [ "$h" -ge 3 ] && [ "$h" -le 16 ]; }; then node scripts/health.mjs; else echo "Night: skipped"; fi
       - name: Newest production deploy
         if: always()
-        run: node scripts/deploy-status.mjs 3
+        run: |
+          h=$(date -u +%-H)
+          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ] || { [ "$h" -ge 3 ] && [ "$h" -le 16 ]; }; then node scripts/deploy-status.mjs 3; else echo "Night: skipped"; fi
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

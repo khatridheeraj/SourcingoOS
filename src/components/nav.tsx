@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState, useSyncExternalStore } from "react";
 import { openHelp } from "@/components/help/help-chat";
+import "@/components/ops.css";
 
 export type IconName = keyof typeof ICONS;
 // `also`: other pages that live under this item (its tab row), so the item stays lit on them.
@@ -38,6 +39,8 @@ const ICONS = {
   sample: "M7.5 3.5h5l3 3-2 2-1-1v9h-5v-9l-1 1-2-2 3-3Zm0 0a2.5 2.5 0 0 0 5 0M10.5 12.5l1.2 1.2 2.3-2.4",
   bills: "M5.5 2.5h9a1 1 0 0 1 1 1v14l-2-1.3-2 1.3-1.5-1.3-1.5 1.3-2-1.3-2 1.3v-14a1 1 0 0 1 1-1ZM7.5 6.5h5M7.5 9.5h5M7.5 12.5h3",
   shield: "M10 2.5 16 4.7v4.6c0 3.6-2.5 6.4-6 7.7-3.5-1.3-6-4.1-6-7.7V4.7L10 2.5Zm-2.6 7.6 1.9 1.9 3.5-3.7",
+  bell: "M10 3a4.5 4.5 0 0 0-4.5 4.5c0 3.9-1.5 5.5-1.5 5.5h12s-1.5-1.6-1.5-5.5A4.5 4.5 0 0 0 10 3Zm-1.7 12.5a1.8 1.8 0 0 0 3.4 0",
+  download: "M10 3.5v9m0 0L6.5 9M10 12.5 13.5 9M4 15.5h12",
   link: "M8.5 11.5a3 3 0 0 0 4.24 0l2.5-2.5a3 3 0 0 0-4.24-4.24L10 5.76m1.5 2.74a3 3 0 0 0-4.24 0l-2.5 2.5a3 3 0 0 0 4.24 4.24L10 14.24",
 };
 
@@ -55,14 +58,17 @@ export function Icon({ name, size = 18 }: { name: IconName; size?: number }) {
 // The app's side menu. On a phone it becomes a tab bar along the bottom, like a native app,
 // with everything else in a sheet under More.
 // Help sits in the top bar on a phone and above the account on a computer; its dot counts replies not yet read.
-export function Sidebar({ groups, tabs, create = [], user, role, company, helpUnseen = 0 }: {
-  groups: NavGroup[]; tabs: NavItem[]; create?: (NavItem & { hint: string })[]; user: string; role: string; company: string; helpUnseen?: number;
+// The bell opens Notifications (what changed on the orders since you last looked); its dot counts what is new.
+export function Sidebar({ groups, tabs, create = [], user, role, company, helpUnseen = 0, bell = 0 }: {
+  groups: NavGroup[]; tabs: NavItem[]; create?: (NavItem & { hint: string })[]; user: string; role: string; company: string; helpUnseen?: number; bell?: number;
 }) {
   const path = usePathname();
   const [open, setOpen] = useState(false);
   const [making, setMaking] = useState(false);
   const mac = useSyncExternalStore(() => () => {}, () => /Mac|iPhone|iPad/.test(navigator.platform), () => true);
   const at = (href: string) => (href === "/" ? path === "/" || path.startsWith("/orders") : path.startsWith(href));
+  // On Notifications itself everything is being read, so the dot goes.
+  const fresh = at("/notifications") ? 0 : bell;
   const on = (it: NavItem) => at(it.href) || !!it.also?.some(at);
   const initials = user.split(/[\s@.]+/).filter(Boolean).slice(0, 2).map((w) => w[0]?.toUpperCase()).join("");
   // The bottom bar holds the main screens and New; the rest sit in More, whose dot adds up what waits inside it.
@@ -96,6 +102,9 @@ export function Sidebar({ groups, tabs, create = [], user, role, company, helpUn
         <Link href="/today" className="brand"><span className="brand-mark" aria-hidden>S</span>Sourcingo</Link>
         <div className="top-acts">
           <button type="button" className="help-btn" aria-label="Search" onClick={openSearch}><Icon name="search" size={22} /></button>
+          <Link href="/notifications" className="help-btn" aria-label={fresh ? `Notifications, ${fresh} new` : "Notifications"} aria-current={at("/notifications") ? "page" : undefined}>
+            <Icon name="bell" size={22} />{fresh > 0 && <span className="tab-badge">{fresh > 99 ? "99+" : fresh}</span>}
+          </Link>
           <button type="button" className="help-btn" aria-label={helpUnseen ? `Help, ${helpUnseen} new ${helpUnseen === 1 ? "reply" : "replies"}` : "Help"} onClick={() => openHelp(helpUnseen ? "notes" : "ask")}>
             <Icon name="help" size={22} />{helpUnseen > 0 && <span className="tab-badge">{helpUnseen}</span>}
           </button>
@@ -131,6 +140,10 @@ export function Sidebar({ groups, tabs, create = [], user, role, company, helpUn
         <button type="button" className="side-search hide-phone" onClick={openSearch}>
           <Icon name="search" /><span className="grow text-left">Search</span><kbd>{mac ? "⌘K" : "Ctrl K"}</kbd>
         </button>
+        <Link href="/notifications" className="side-bell hide-phone" onClick={() => setOpen(false)} aria-current={at("/notifications") ? "page" : undefined}>
+          <Icon name="bell" /><span className="grow text-left">Notifications</span>
+          {fresh > 0 && <span className="side-count">{fresh > 99 ? "99+" : fresh}</span>}
+        </Link>
         <nav aria-label="All screens" className="side-nav">
           {groups.map((g, i) => (
             <div key={g.label ?? i} className="side-group">

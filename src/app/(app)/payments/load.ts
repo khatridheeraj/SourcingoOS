@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { getMe } from "@/lib/auth";
+import { can, getMe, type Me } from "@/lib/auth";
 import { fetchAll } from "@/lib/fetch-all";
 import { buyerName, loadBuyers } from "@/lib/data";
 import { todayIST } from "@/lib/format";
@@ -7,13 +7,14 @@ import { NO_COMPANY } from "@/lib/names";
 import { type Allocation, type Cheque, type CreditNote, type Invoice, makeBooks, type TallyReceipt, tallyAdvice } from "@/lib/payments";
 import { createClient } from "@/lib/supabase/server";
 
-export const isFinance = (role: string | null | undefined) => role === "owner" || role === "accounts";
+// Money follows the person's switch on Team (Owner and Accounts unless the owner changed it), like is_finance() in the database.
+export const isFinance = (me: Pick<Me, "role" | "perms"> | null | undefined) => can(me, "money");
 
 // Everything the payment screens need, for the company the signed-in person is working in.
 // Sends anyone who isn't the owner or Accounts back to Orders.
 export async function loadBooks() {
   const me = await getMe();
-  if (!isFinance(me?.role)) redirect("/");
+  if (!isFinance(me)) redirect("/");
   const companyId = me?.companyId ?? NO_COMPANY;
   const supabase = await createClient();
   const [inv, cn, chq, alloc, terms, buyers, ledgers, rcpt] = await Promise.all([

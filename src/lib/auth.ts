@@ -1,10 +1,10 @@
 import { cache } from "react";
-import type { Role } from "@/lib/auth-roles";
+import type { Perms, Role } from "@/lib/auth-roles";
 import { createClient } from "@/lib/supabase/server";
 
-export { canEditOrders, canEnterDone, canRecordQc, ROLES, roleLabel, type Role } from "@/lib/auth-roles";
+export { can, canEditOrders, canEnterDone, canRecordQc, ROLES, roleLabel, type Perms, type Role } from "@/lib/auth-roles";
 
-export type Me = { id: string; email: string; fullName: string | null; companyId: string | null; companyName: string | null; role: Role | null };
+export type Me = { id: string; email: string; fullName: string | null; companyId: string | null; companyName: string | null; role: Role | null; perms: Perms };
 
 // The signed-in person and the company they are working in, read once per request.
 // role is null until the owner adds them to a company.
@@ -14,12 +14,12 @@ export const getMe = cache(async (): Promise<Me | null> => {
   const id = data?.claims.sub;
   if (!id) return null;
   const { data: p } = await supabase.from("profiles").select("email, full_name, current_company_id").eq("id", id).maybeSingle();
-  const me: Me = { id, email: p?.email ?? String(data.claims.email ?? ""), fullName: p?.full_name ?? null, companyId: null, companyName: null, role: null };
+  const me: Me = { id, email: p?.email ?? String(data.claims.email ?? ""), fullName: p?.full_name ?? null, companyId: null, companyName: null, role: null, perms: {} };
   if (!p?.current_company_id) return me;
   const [{ data: m }, { data: c }] = await Promise.all([
-    supabase.from("members").select("role, active").eq("company_id", p.current_company_id).eq("user_id", id).maybeSingle(),
+    supabase.from("members").select("role, active, perms").eq("company_id", p.current_company_id).eq("user_id", id).maybeSingle(),
     supabase.from("companies").select("name").eq("id", p.current_company_id).maybeSingle(),
   ]);
   if (!m?.active) return me;
-  return { ...me, companyId: p.current_company_id, companyName: c?.name ?? null, role: m.role as Role };
+  return { ...me, companyId: p.current_company_id, companyName: c?.name ?? null, role: m.role as Role, perms: (m.perms ?? {}) as Perms };
 });
