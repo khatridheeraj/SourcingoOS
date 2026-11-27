@@ -3,12 +3,13 @@ import { redirect } from "next/navigation";
 import { ClaimForm, type ClaimStyle } from "@/components/claim-form";
 import { canEditOrders, canEnterDone, getMe } from "@/lib/auth";
 import { dayNear as day, money, nowMs, todayIST } from "@/lib/format";
-import { buyerPlan, CLAIM_DAYS, CLAIM_REASON, claimClock, factoryPay, type GOrder, type GuaranteeTerms, type Step } from "@/lib/guarantee";
+import { CLAIM_DAYS, CLAIM_REASON, claimClock, DEFAULT_PLAN, factoryPay, milestones, planLine, whenPhrase, type GOrder, type GuaranteeTerms, type Milestone, type Step } from "@/lib/guarantee";
 import { PHOTO_BUCKET } from "@/lib/storage";
 import { createClient } from "@/lib/supabase/server";
 import { raiseClaimForBuyer } from "./actions";
 import { DecideClaim, type TeamClaim } from "./claim-card";
 import { PayButton, TakeBack } from "./pay-button";
+import { PlanEditor } from "./plan-editor";
 import { TermsForm } from "./terms-form";
 
 type Payment = { id: string; order_id: string; kind: "deposit" | "balance" | "factory"; factory_id: string | null; amount: number; paid_on: string; note: string | null };
@@ -24,7 +25,7 @@ export default async function GuaranteePage() {
   const today = todayIST();
   const supabase = await createClient();
   const since = new Date(nowMs() - 120 * 86_400_000).toISOString();
-  const [{ data: termsRow }, { data: claimRows, error }, plan, pays, lineRes] = await Promise.all([
+  const [{ data: termsRow }, { data: claimRows, error }, planRes, pays, lineRes] = await Promise.all([
     supabase.rpc("guarantee_terms"),
     supabase.rpc("guarantee_claims"),
     finance ? supabase.rpc("guarantee_orders") : Promise.resolve({ data: null }),
@@ -35,8 +36,9 @@ export default async function GuaranteePage() {
       .order("position").limit(400) : Promise.resolve({ data: [] }),
   ]);
   const terms = (termsRow ?? { live: false, deposit_pct: 30, pay_days: 15 }) as GuaranteeTerms;
+  const plan = terms.plan?.length ? terms.plan : DEFAULT_PLAN;
   const claims = (claimRows ?? []) as TeamClaim[];
-  const { orders = [], buyers = {} } = ((plan as { data: unknown }).data ?? {}) as { orders?: GOrder[]; buyers?: Record<string, string> };
+  const { orders = [], buyers = {} } = ((planRes as { data: unknown }).data ?? {}) as { orders?: GOrder[]; buyers?: Record<string, string> };
   const payments = ((pays as { data: unknown }).data ?? []) as Payment[];
   const styles: ClaimStyle[] = (((lineRes as { data: unknown }).data ?? []) as LineRow[])
     .map((l) => ({ lineId: l.id, orderId: l.orders.id, qty: l.qty, label: `${l.orders.order_no} · ${l.orders.buyer_po ?? ""} · ${l.style}` }))
@@ -52,13 +54,13 @@ export default async function GuaranteePage() {
 
   // Each order's steps; orders with something owed now come first.
   const rows = orders.map((o) => {
-    const b = buyerPlan(o, terms, today);
+    const b = milestones(o, o.plan ?? plan, today);
     const f = (o.factories ?? []).map((x) => ({ ...x, step: factoryPay(x, terms, today) }));
-    const all = [b.deposit, b.balance, ...f.map((x) => x.step)];
+    const all = [...(o.priced ? b : []), ...f.map((x) => x.step)];
     const rank = all.some((s) => s.state === "late") ? 0 : all.some((s) => s.state === "due") ? 1 : all.some((s) => s.state === "waiting") ? 2 : 3;
     return { o, b, f, rank };
   }).sort((a, z) => a.rank - z.rank);
-  const owedIn = rows.reduce((n, r) => n + (r.o.priced ? [r.b.deposit, r.b.balance].filter((s) => s.state === "due" || s.state === "late").reduce((m, s) => m + s.left, 0) : 0), 0);
+  const owedIn = rows.reduce((n, r) => n + (r.o.priced ? r.b.filter((s) => s.state === "due" || s.state === "late").reduce((m, s) => m + s.left, 0) : 0), 0);
   const owedOut = rows.reduce((n, r) => n + r.f.filter((x) => x.step.state === "due" || x.step.state === "late").reduce((m, x) => m + x.step.left, 0), 0);
   const factoryLate = rows.reduce((n, r) => n + r.f.filter((x) => x.step.state === "late").length, 0);
   const orderNo = new Map(orders.map((o) => [o.order_id, o.order_no]));
@@ -73,7 +75,7 @@ export default async function GuaranteePage() {
             <span className={`chip ${terms.live ? "ok" : ""}`}>{terms.live ? "On for buyers and factories" : "Preview: only the team sees it"}</span>
           </div>
           <p className="muted">
-            Buyers pay {terms.deposit_pct}% with the PO and the rest when the goods pass our Final QC. Factories are paid within {terms.pay_days} days
+            Buyers pay in milestones ({planLine(plan)}), and never the balance before the goods pass our Final QC. Factories are paid within {terms.pay_days} days
             of their pass. A buyer&apos;s claim is decided within {CLAIM_DAYS} days: a remake, a refund, or a clear reason why not.
           </p>
         </div>
@@ -152,15 +154,15 @@ export default async function GuaranteePage() {
                 <li key={o.order_id}>
                   <div className="gplan-h">
                     <Link href={`/orders/${o.order_id}`} className="font-semibold">{o.order_no}</Link>
-                    <span className="muted">{[o.buyer_id && buyers[o.buyer_id], o.buyer_po, o.priced ? money(Number(o.value)) : "Buyer rates missing"].filter(Boolean).join(" · ")}</span>
+                    <span className="muted grow">{[o.buyer_id && buyers[o.buyer_id], o.buyer_po, o.priced ? money(Number(o.value)) : "Buyer rates missing"].filter(Boolean).join(" · ")}</span>
+                    {o.own_plan && <span className="chip">Own plan</span>}
+                    <PlanEditor orderId={o.order_id} plan={o.plan ?? plan} own={o.own_plan} label={`${o.order_no} plan`} />
                   </div>
                   <ul className="fmoney-part">
-                    {o.priced && b.deposit.amount > 0 && <PlanRow label={`Deposit ${terms.deposit_pct}%`} s={b.deposit}
-                      when={b.deposit.state === "paid" ? "Received" : `Due ${day(b.deposit.due, today)}`}
-                      act={<PayButton orderId={o.order_id} kind="deposit" factoryId={null} left={b.deposit.left} today={today} label={`${o.order_no} deposit`} />} />}
-                    {o.priced && <PlanRow label="Balance" s={b.balance}
-                      when={b.balance.state === "paid" ? "Received" : b.balance.due ? `Due: passed Final QC ${day(b.balance.due, today)}` : "Due when every style passes Final QC"}
-                      act={<PayButton orderId={o.order_id} kind="balance" factoryId={null} left={b.balance.left} today={today} label={`${o.order_no} balance`} />} />}
+                    {o.priced && b.map((m, i) => m.amount > 0 && (
+                      <PlanRow key={i} label={`${m.label} ${m.pct}%`} s={m} when={stepWhen(m, today)}
+                        act={<PayButton orderId={o.order_id} kind={i === 0 ? "deposit" : "balance"} factoryId={null} left={m.left} today={today} label={`${o.order_no} ${m.label.toLowerCase()}`} />} />
+                    ))}
                     {f.map((x) => (
                       <PlanRow key={x.factory_id} label={x.name} s={x.step}
                         when={x.step.state === "paid" ? "Paid" : x.step.due ? `Pay by ${day(x.step.due, today)}` : "Paid after its goods pass Final QC"}
@@ -178,7 +180,7 @@ export default async function GuaranteePage() {
                 {payments.map((p) => (
                   <li key={p.id}>
                     <span className="fmoney-id">
-                      <b>{orderNo.get(p.order_id) ?? "Order"} · {p.kind === "factory" ? factoryName.get(p.factory_id ?? "") ?? "Factory" : p.kind === "deposit" ? "Deposit" : "Balance"}</b>
+                      <b>{orderNo.get(p.order_id) ?? "Order"} · {p.kind === "factory" ? factoryName.get(p.factory_id ?? "") ?? "Factory" : "From the buyer"}</b>
                       <small>{[day(p.paid_on, today), p.note].filter(Boolean).join(" · ")}</small>
                     </span>
                     <span className="fmoney-amt"><b>{money(Number(p.amount))}</b><TakeBack id={p.id} /></span>
@@ -200,18 +202,36 @@ export default async function GuaranteePage() {
                 : "Buyers and factories see none of this yet. Look at it through “See exactly what they will see” on Buyers and Factories. Once on, it covers orders entered from that day; older orders keep their terms."}
             </p>
           </div>
-          <TermsForm live={terms.live} depositPct={terms.deposit_pct} payDays={terms.pay_days} />
+          <div className="stack">
+            <div>
+              <h3 className="font-semibold text-[14px]">Default milestones</h3>
+              <ol className="gplan-list">
+                {plan.map((m, i) => <li key={i}><b>{m.label}</b> <span className="num">{m.pct}%</span> <span className="muted">{whenPhrase(m)}</span></li>)}
+              </ol>
+              <p className="muted text-[13px]">Every order follows these unless Accounts gives it its own plan. Changing them changes the plan of every order on the default.</p>
+            </div>
+            <PlanEditor orderId={null} plan={plan} label="Default milestones" />
+          </div>
+          <TermsForm live={terms.live} depositPct={terms.deposit_pct} payDays={terms.pay_days} plan={false} />
         </section>
       )}
 
       <details className="howto">
         <summary>How the Guarantee works</summary>
-        <p>The balance falls due the day the last style of a PO passes Final QC (a re-check that passes counts). A factory&apos;s pay falls due {terms.pay_days} days after its own styles pass.</p>
+        <p>A milestone on the QC pass falls due the day the last style of a PO passes Final QC (a re-check that passes counts). &ldquo;Goods ship&rdquo; is the last part&apos;s LR day; &ldquo;goods delivered&rdquo; is the day the last part&apos;s GRN or delivery is recorded. Money the buyer pays fills the milestones in order.</p>
+        <p> A factory&apos;s pay falls due {terms.pay_days} days after its own styles pass.</p>
         <p>Payments here are our own record of the plan, so everyone sees what is owed. Book them in Tally as usual; the app never writes to Tally.</p>
         <p>An agreed claim can pass to the factory as a factory claim for the same pieces at the factory&apos;s rate. It shows in Bills to pay, and Accounts books the debit note in Tally.</p>
       </details>
     </>
   );
+}
+
+// When a buyer milestone is due, for the team.
+function stepWhen(m: Milestone, today: string) {
+  if (m.state === "paid") return "Received";
+  if (m.due) return `Due ${day(m.due, today)}${m.when !== "po" ? ` · ${whenPhrase(m)}` : ""}`;
+  return `Due ${whenPhrase(m)}`;
 }
 
 function PlanRow({ label, s, when, act }: { label: string; s: Step; when: string; act: React.ReactNode }) {

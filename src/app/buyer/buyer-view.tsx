@@ -17,11 +17,14 @@ import { rateOrder } from "./rate-actions";
 import { BuyerStyles, type BuyerStyle } from "./buyer-styles";
 import { SAMPLE_STEPS } from "@/lib/calendar";
 import { addDays, buyerWeek, type WeekShipment } from "@/lib/buyer-week";
+import { MODE_LABEL, trackLink, trackState, trackSteps, type Mode, type TrackEvent } from "@/lib/tracking";
+import { TrackLine } from "@/components/order-ui";
 
 type Step = { stage: string; label: string | null; planned_on: string | null; done_on: string | null };
 type FinalQc = { result: string; checked_on: string; pieces_checked: number | null; photos: string[] };
 type Line = { id: string; style: string; colour: string | null; description: string | null; qty: number; product?: string; shipped?: number; photo_path: string | null; steps: Step[]; final_qc: FinalQc | null };
-type Shipment = { id: string; order_id: string; shipped_on: string; pieces: number; cartons: number | null; transporter: string | null; lr_no: string | null; lr_date: string | null; invoice_no: string | null; received_on: string | null; received_qty: number | null };
+type Shipment = { id: string; order_id: string; shipped_on: string; pieces: number; cartons: number | null; transporter: string | null; lr_no: string | null; lr_date: string | null; invoice_no: string | null; received_on: string | null; received_qty: number | null;
+  mode?: Mode | null; carrier?: string | null; track_no?: string | null; to?: string | null; eta?: string | null; delivered_on?: string | null; events?: TrackEvent[] };
 // A step photo the factory sent and Sourcingo's team checked and approved for the buyer.
 type StepPhoto = { order_id: string; line_id: string; stage: string; done_on: string; photos: string[] };
 // Who makes a PO, by city and record, never by name.
@@ -344,7 +347,7 @@ export async function BuyerView({ preview }: { preview?: string }) {
       {!costingFirst && costing}
       <BuyerSendPo companyId={me?.companyId ?? ""} sent={sent} canSend={canWrite} />
       {/* Money owed shows even when no order is open. */}
-      <BuyerMoney invoices={invoices} />
+      <BuyerMoney invoices={invoices} currency={(moneyRow as { currency?: string } | null)?.currency} />
       {(orders.length > 0 || invoices.length > 0) && <p className="muted text-center text-[12.5px]">Questions about an order? Write under its PO above, or message your Sourcingo merchandiser.</p>}
     </>
   );
@@ -368,6 +371,7 @@ function Shipments({ list, unit }: { list: Shipment[]; unit: string }) {
               {x.lr_no && <span>LR <b className="code">{x.lr_no}</b>{x.lr_date && x.lr_date !== x.shipped_on ? ` of ${day(x.lr_date)}` : ""}</span>}
               {x.invoice_no && <span>Invoice <b className="code">{x.invoice_no}</b></span>}
             </div>
+            {x.mode && !x.received_on && <ShipTrack x={x} />}
             {x.received_on && (
               <span className="chip ok">Received {day(x.received_on)}{x.received_qty != null && x.received_qty !== x.pieces ? ` · ${qty(x.received_qty)} of ${qty(x.pieces)}` : ""}</span>
             )}
@@ -375,6 +379,31 @@ function Shipments({ list, unit }: { list: Shipment[]; unit: string }) {
         ))}
       </ul>
     </div>
+  );
+}
+
+// How a part travels and where it is now, from the team's tracking updates. Opens to the full journey.
+function ShipTrack({ x }: { x: Shipment }) {
+  const today = todayIST();
+  const t = { mode: x.mode ?? null, carrier: x.carrier ?? null, track_no: x.track_no ?? null, to: x.to ?? null, eta: x.eta ?? null,
+    delivered_on: x.delivered_on ?? null, shipped_on: x.lr_date ?? x.shipped_on, events: x.events ?? [] };
+  const state = trackState(t, today);
+  const link = trackLink(t.carrier, t.track_no);
+  return (
+    <details className="bship-track">
+      <summary className="trk-head">
+        <b>{state.text === "Delivered" ? `Delivered ${day(t.delivered_on, today)}` : trackSteps(t).find((s) => s.current)?.label}</b>
+        {state.text !== "Delivered" && t.eta ? <span className="muted"> · arrives {day(t.eta, today)}</span> : null}
+        <span className="muted">{` · ${MODE_LABEL[t.mode!]}${t.to ? ` to ${t.to}` : ""}`}</span>
+      </summary>
+      <TrackLine steps={trackSteps(t)} eta={t.eta} today={today} />
+      {(t.carrier || t.track_no) && (
+        <p className="text-[12.5px] muted pb-2">
+          {[t.carrier, t.track_no].filter(Boolean).join(" ")}
+          {link && <> · <a className="link" href={link} target="_blank" rel="noopener noreferrer">Track on the carrier&apos;s site</a></>}
+        </p>
+      )}
+    </details>
   );
 }
 
