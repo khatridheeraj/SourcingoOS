@@ -290,3 +290,28 @@ export async function answerSeen(id: string): Promise<{ error?: string }> {
   touched(id);
   return {};
 }
+
+const REPLY_VIA: Record<string, string> = { email: "by email", whatsapp: "on WhatsApp", phone: "by phone", visit: "in person" };
+
+// The first reply to a lead: when and how, so Home stops flagging it and Reports > Leads can show how fast we answer.
+// A follow-up date comes with it (in 3 days) unless one is already set for later.
+export async function markReplied(id: string, via: string): Promise<{ error?: string }> {
+  const t = await team();
+  if ("error" in t) return { error: t.error };
+  if (!REPLY_VIA[via]) return { error: "Pick how you replied." };
+  const today = todayIST();
+  const { data: row, error: readErr } = await t.supabase.from("inquiries").select("next_follow_up, first_reply_at, status").eq("id", id).maybeSingle();
+  if (readErr || !row) return { error: readErr ? friendly(readErr) : "That inquiry isn't there any more." };
+  if (row.first_reply_at) return {};
+  const next = !row.next_follow_up || row.next_follow_up <= today ? addDays(today, 3) : row.next_follow_up;
+  const { error } = await t.supabase.from("inquiries")
+    .update({ first_reply_at: new Date().toISOString(), first_reply_via: via, ...(row.status === "new" || row.status === "quoted" ? { next_follow_up: next } : {}) })
+    .eq("id", id).is("first_reply_at", null);
+  if (error) return { error: friendly(error) };
+  await t.supabase.from("inquiry_notes").insert({ inquiry_id: id, body: `Replied ${REPLY_VIA[via]}.`, created_by: t.me.id });
+  revalidatePath(`/inquiries/${id}`);
+  revalidatePath("/inquiries");
+  revalidatePath("/today");
+  revalidatePath("/reports/leads");
+  return {};
+}

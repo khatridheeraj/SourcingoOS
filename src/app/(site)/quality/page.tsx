@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { siteFacts } from "@/lib/site-data";
 import { Check, CtaBand, Eyebrow, Photo, PrintPattern } from "../parts";
 
@@ -49,9 +50,12 @@ export default async function Quality() {
               order, and a factory on a weak record is not offered new work until it improves.
             </p>
           </div>
-          <ul className="site-list" style={{ marginTop: 0 }}>
-            {RECORD.map((r) => <li key={r}><Check />{r}</li>)}
-          </ul>
+          <div>
+            <ul className="site-list" style={{ marginTop: 0 }}>
+              {RECORD.map((r) => <li key={r}><Check />{r}</li>)}
+            </ul>
+            {facts.record ? <p style={{ marginTop: 24 }}><Link href="/record" className="site-arrow">See our record in numbers →</Link></p> : null}
+          </div>
         </div>
       </section>
 
