@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useRef, useState, useTransition } from "react";
 import { day, QC_KINDS, qcKindLabel, qtyU, SHIP_QC, todayIST, dayTimeAt } from "@/lib/format";
@@ -292,7 +293,10 @@ export function OrderQc({ orderId, orderNo, companyId, open, canRecord, today, c
                 {st.id && <span className="muted text-xs">{[st.colour, qtyU(st.qty, st.product)].filter(Boolean).join(" · ")}</span>}
                 {st.id && fin && <span className={`chip ${fin.result === "pass" ? "ok" : "bad"}`}>Final QC {fin.result === "pass" ? "passed" : "failed"}</span>}
                 {st.id && can && !(adding && q.line_id === st.id) && (
-                  <button type="button" className="btn sm ml-auto" onClick={() => startFor(st.id)}>Record QC</button>
+                  <span className="row ml-auto">
+                    <Link href={`/orders/${orderId}/comment-sheet?line=${st.id}`} className="btn sm">Comment sheet</Link>
+                    <button type="button" className="btn sm" onClick={() => startFor(st.id)}>Record QC</button>
+                  </span>
                 )}
               </div>
               {st.id && fin?.result === "fail" && open && (

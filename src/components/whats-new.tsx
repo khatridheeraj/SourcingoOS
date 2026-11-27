@@ -4,7 +4,7 @@ import { useState, useSyncExternalStore } from "react";
 import { Icon, type IconName } from "@/components/nav";
 
 const KEY = "sourcingo:whats-new";
-const VERSION = "2026-11-10-claims";
+const VERSION = "2026-11-12-comment-sheets";
 
 type Item = { icon: IconName; title: string; text: string };
 
@@ -18,14 +18,16 @@ const CAL: Item = { icon: "clock", title: "Calendar", text: "Home > Calendar sho
 const MONEY: Item = { icon: "payments", title: "Your Home is money now", text: "Money to collect, bills to pay and invoices to make. Order jobs like ship dates and factory chasing stay with the merchandisers." };
 // Factory claims and buyer statements (10 Nov 2026).
 const CLAIMS: Item = { icon: "payments", title: "Factory claims and buyer statements", text: "Raise a claim on a factory bill (Bills to pay, open the bill) and print the debit note. Tap a buyer under Payments > Buyers for a statement to print or WhatsApp." };
+const SHEETS: Item = { icon: "check", title: "Sample comment sheets", text: "On an order's QC tab, tap Comment sheet by the style. Write the points in your own words; the sheet formats them, saves as a QC check with its photos, and downloads the PDF to send to the factory." };
 const FOR: Record<string, Item[]> = {
   orders: [NOTES, CAL, FLOOR],
   quality: [
+    SHEETS,
     NOTES,
     { icon: "factories", title: "Factory visits", text: "Home lists the factories to visit, late steps first. Tap Start visit, then post each style's step: done, on track, late or a problem, with photos." },
     CAL,
   ],
-  owner: [NOTES, CLAIMS, CAL],
+  owner: [SHEETS, NOTES, CLAIMS],
   accounts: [MONEY, CLAIMS, NOTES],
 };
 
