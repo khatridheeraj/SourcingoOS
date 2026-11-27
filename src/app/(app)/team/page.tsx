@@ -3,11 +3,15 @@ import { getMe, ROLES } from "@/lib/auth";
 import { buyerName, loadBuyers, loadFactories, loadInvites, loadTeam } from "@/lib/data";
 import { AddPerson } from "./add-person";
 import { InviteRow, MemberRow } from "./member-row";
+import { createClient } from "@/lib/supabase/server";
 
 export default async function TeamPage() {
   const me = await getMe();
   if (me?.role !== "owner") redirect("/");
-  const [team, invites, factories, buyers] = await Promise.all([loadTeam(), loadInvites(), loadFactories(), loadBuyers()]);
+  const supabase = await createClient();
+  const [team, invites, factories, buyers, { data: phones }] = await Promise.all([loadTeam(), loadInvites(), loadFactories(), loadBuyers(),
+    supabase.from("team_whatsapp").select("user_id, number").eq("company_id", me.companyId!)]);
+  const phoneOf = new Map((phones ?? []).map((p) => [p.user_id as string, (p.number as string | null) ?? ""]));
   const factoryName = new Map(factories.map((f) => [f.id, f.name]));
   const buyerOf = new Map(buyers.map((b) => [b.id, buyerName(b)]));
   return (
@@ -22,9 +26,9 @@ export default async function TeamPage() {
         buyers={buyers.filter((b) => b.active).map((b) => ({ id: b.id, name: buyerName(b) }))} />
       <div className="table-wrap">
         <table className="tbl stack">
-          <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>Access</th><th></th></tr></thead>
+          <thead><tr><th>Name</th><th>Email</th><th>Role</th><th>WhatsApp</th><th>Access</th><th></th></tr></thead>
           <tbody>
-            {team.map((m) => <MemberRow key={m.user_id} member={m} isMe={m.user_id === me.id} factoryName={m.factory_id ? factoryName.get(m.factory_id) : undefined}
+            {team.map((m) => <MemberRow key={m.user_id} member={m} isMe={m.user_id === me.id} whatsapp={phoneOf.get(m.user_id) ?? ""} factoryName={m.factory_id ? factoryName.get(m.factory_id) : undefined}
               buyerName={m.buyer_id ? buyerOf.get(m.buyer_id) : undefined} />)}
             {invites.map((i) => <InviteRow key={i.email} email={i.email} role={i.role} factoryName={i.factory_id ? factoryName.get(i.factory_id) : i.buyer_id ? buyerOf.get(i.buyer_id) : undefined} />)}
           </tbody>

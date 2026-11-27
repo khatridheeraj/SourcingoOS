@@ -11,6 +11,9 @@ These rules keep every screen consistent. Every change follows them, including t
   emails from unknown senders. Each line says what it is, who asked and how long it has waited, with Approve and Send back
   right there. These never also show in To do. The Home menu item counts them.
 - A note that tags me (order Notes tab) is a To do line in its order's block, amber, with Reply, until I reply on that order or tap Done.
+- **Weekly buyer updates** (Buyers > Weekly updates): every buyer with an open order hears from us once a week. Built by
+  `buyerWeek()` in `src/lib/buyer-week.ts` from what the buyer's own page shows, never more. Home keeps one line in This week
+  until all are sent; the buyer's page opens with "What moved this week" (only POs where something moved).
 - **Calendar** (a tab beside To do) answers "what is coming". One block per day that has something on it; late work stays on To do.
 - Red means the ship date will be missed. A step past its target while the ship date still holds is amber ("needs an update").
 - **Orders** answers "where is everything". On a computer it is a board with one column per stage; on a phone it is a list of cards.
@@ -48,8 +51,10 @@ Use these instead of drawing a new version on a screen. A new pattern that more 
 
 ## Public website (`src/app/(site)`)
 - Visitors who aren't signed in get the website at `/` (the proxy shows `/welcome`); the team still gets Orders there.
-  Pages: home, How it works, Quality, For factories, Request a costing, Privacy. Their paths are listed in `src/lib/site.ts`.
+  Pages: home, How it works, Quality, For factories, Request a costing, Privacy, and one page per product (`/make/<slug>`,
+  content in `src/lib/site-products.ts`). Their paths are listed in `src/lib/site.ts`.
 - Same tokens and Inter as the app, on a reading scale: display 58/48/40px (38/34/29 on a phone), lede 19px, body 16px.
+- Photos: only real ones, from `public/site` through `Photo` in `parts.tsx` (WebP, about 1200px wide). Never a photo that shows a factory name, sign or logo, and never another brand's product shoot.
   Styles live in `src/app/(site)/site.css` and are prefixed `site-`. The block-print motif (`PrintPattern`) is the only decoration.
 - Every claim is true today. No made-up numbers, customers or testimonials. Buyers never see factory names.
   The Guarantee shows only when the owner has switched it on (`site_facts()`).

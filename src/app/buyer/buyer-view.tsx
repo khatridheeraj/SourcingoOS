@@ -11,6 +11,8 @@ import { BuyerCosting } from "./buyer-costing";
 import { costingState, type BuyerCostingAsk } from "./costing-state";
 import { buyerLine, factoryRecord, type RecordFacts } from "@/lib/factory-record";
 import { BuyerGuarantee, type BuyerGuaranteeData } from "./buyer-guarantee";
+import { BuyerWeekCard } from "./buyer-week";
+import { addDays, buyerWeek, type WeekShipment } from "@/lib/buyer-week";
 
 type Step = { stage: string; label: string | null; planned_on: string | null; done_on: string | null };
 type FinalQc = { result: string; checked_on: string; pieces_checked: number | null; photos: string[] };
@@ -107,6 +109,10 @@ export async function BuyerView({ preview }: { preview?: string }) {
   const open = orders.filter((o) => o.status === "open");
   const styles = open.flatMap((o) => o.lines);
   const passed = styles.filter((l) => l.final_qc?.result === "pass").length;
+  // What moved in the last seven days, at the top, once something has.
+  const week = buyerWeek({ orders, shipments: shipments as WeekShipment[], photos: stepPhotos, invoices, names: Object.fromEntries(TNA_STEPS.map((t) => [t.key, t.label])), today, since: addDays(today, -7) });
+  const moved = week.counts.steps + week.counts.photos + week.counts.passed + week.counts.reworked + week.counts.shipments > 0;
+  const weekPhotos = week.orders.flatMap((o) => o.photos.flatMap((p) => p.paths)).slice(-8).map((p) => url.get(p)).filter((u): u is string => !!u);
   const nextShip = open.map((o) => o.revised_ship_date ?? o.ship_date).filter((d): d is string => !!d && d >= today).sort()[0];
 
   return (
@@ -128,6 +134,7 @@ export async function BuyerView({ preview }: { preview?: string }) {
       {preview && guarantee.shown && !guarantee.terms?.live && (
         <p className="muted text-[13px]" role="note">Preview: this buyer sees the Sourcingo Guarantee under each PO only once you turn it on in Guarantee.</p>
       )}
+      {moved && !week.empty && <BuyerWeekCard week={week} photoUrls={weekPhotos} title="What moved this week" sub="Last 7 days" compact />}
       <BuyerSamples companyId={me?.companyId ?? ""} samples={samples} />
       {costingFirst && costing}
 
