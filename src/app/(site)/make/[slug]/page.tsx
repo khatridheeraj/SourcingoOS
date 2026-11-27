@@ -3,8 +3,12 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { SITE_PRODUCTS, siteProduct } from "@/lib/site-products";
 import { Check, CtaBand, Eyebrow, PrintPattern, Stages } from "../../parts";
+import { madeBefore } from "@/lib/site-made";
+import { MadeBefore } from "./made-before";
 
 export const dynamicParams = false;
+// "Made here before" counts real shipments, so the page is rebuilt at most hourly.
+export const revalidate = 3600;
 export function generateStaticParams() {
   return SITE_PRODUCTS.map((p) => ({ slug: p.slug }));
 }
@@ -19,6 +23,7 @@ export default async function MakePage({ params }: PageProps<"/make/[slug]">) {
   const p = siteProduct((await params).slug);
   if (!p) notFound();
   const others = SITE_PRODUCTS.filter((o) => o.slug !== p.slug);
+  const made = await madeBefore(p.slug);
   const faq = {
     "@context": "https://schema.org",
     "@type": "FAQPage",
@@ -45,6 +50,7 @@ export default async function MakePage({ params }: PageProps<"/make/[slug]">) {
           <article className="site-card"><h3>What to send us</h3><ul className="site-list site-list-tight">{p.send.map((m) => <li key={m}><Check />{m}</li>)}</ul></article>
         </div>
       </section>
+      <MadeBefore made={made} name={p.name} />
       <section className="site-section site-section-alt">
         <div className="site-wrap">
           <div className="site-head-block">

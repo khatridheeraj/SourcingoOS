@@ -6,13 +6,13 @@ import { toast } from "@/components/toast";
 import { caught } from "@/lib/errors";
 import { sendBuyerMessage } from "./actions";
 
-export type BuyerMessage = { id: string; order_id: string; body: string; from_buyer: boolean; when: string };
+export type BuyerMessage = { id: string; order_id: string; body: string; from_buyer: boolean; when: string; who?: string | null };
 
 const MAX = 2000;
 
 // The buyer and Sourcingo talking about one PO: the messages oldest first, and a box to write one. Folded away until
 // there is something to read, so a PO card stays short.
-export function BuyerTalk({ orderId, po, messages, canWrite }: { orderId: string; po: string; messages: BuyerMessage[]; canWrite: boolean }) {
+export function BuyerTalk({ orderId, po, messages, canWrite, me }: { orderId: string; po: string; messages: BuyerMessage[]; canWrite: boolean; me?: string | null }) {
   const router = useRouter();
   const [body, setBody] = useState("");
   const [error, setError] = useState("");
@@ -50,7 +50,7 @@ export function BuyerTalk({ orderId, po, messages, canWrite }: { orderId: string
         <ul className="talk-list">
           {messages.map((m) => (
             <li key={m.id} className="btalk-row">
-              <div className="talk-meta"><b>{m.from_buyer ? "You" : "Sourcingo"}</b><span>{m.when}</span></div>
+              <div className="talk-meta"><b>{m.from_buyer ? (m.who && m.who !== me ? m.who : "You") : "Sourcingo"}</b><span>{m.when}</span></div>
               <p className="talk-body">{m.body}</p>
             </li>
           ))}

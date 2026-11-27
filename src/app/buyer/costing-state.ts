@@ -5,7 +5,7 @@ export type BuyerCostingAsk = {
   id: string; no: string; product: string; details: string | null; qty: number | null; target: number | null;
   photoUrls: string[]; asked_at: string; status: "new" | "quoted" | "converted" | "lost"; sample_in_on: string | null;
   answer: "accepted" | "changes" | null; answer_note: string | null; answer_at: string | null;
-  quote: { price: number; qty: number | null; valid_till: string | null; note: string | null; sent_at: string; round: number } | null;
+  quote: { price: number; qty: number | null; valid_till: string | null; note: string | null; sent_at: string; round: number; landed?: unknown } | null;
   order_po: string | null;
 };
 

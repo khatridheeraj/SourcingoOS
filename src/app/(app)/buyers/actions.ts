@@ -99,3 +99,44 @@ export async function markUpdateSent(buyerId: string, via: "whatsapp" | "email" 
   revalidatePath("/today");
   return {};
 }
+
+// Buyer team access: one person at a buyer, with their own link.
+export type PersonInput = { buyerId: string; name: string; job: string; phone: string; email: string };
+
+async function linkUrl(secret: string) {
+  const h = await headers();
+  const host = h.get("x-forwarded-host") ?? h.get("host") ?? "sourcingo-os.vercel.app";
+  const proto = h.get("x-forwarded-proto") ?? (host.startsWith("localhost") ? "http" : "https");
+  return `${proto}://${host}/s/${secret}`;
+}
+
+export async function addPerson(p: PersonInput): Promise<{ error?: string; id?: string; url?: string }> {
+  const me = await getMe();
+  if (!canEditOrders(me?.role)) return { error: "Only the orders team can give a buyer's people access." };
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("add_buyer_person", { p_buyer: p.buyerId, p_name: p.name, p_job: p.job, p_phone: p.phone, p_email: p.email });
+  if (error || typeof data !== "string") return { error: error ? friendly(error) : "Couldn't add the person. Try again." };
+  const { data: secret, error: e2 } = await supabase.rpc("buyer_person_link", { p_person: data, p_renew: false });
+  revalidatePath(`/buyers/${p.buyerId}/people`);
+  if (e2 || typeof secret !== "string") return { id: data };
+  return { id: data, url: await linkUrl(secret) };
+}
+
+export async function personLink(personId: string, renew = false): Promise<{ error?: string; url?: string }> {
+  const me = await getMe();
+  if (!canEditOrders(me?.role)) return { error: "Only the orders team can give a buyer's people access." };
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("buyer_person_link", { p_person: personId, p_renew: renew });
+  if (error || typeof data !== "string") return { error: error ? friendly(error) : "Couldn't make the link. Try again." };
+  return { url: await linkUrl(data) };
+}
+
+export async function stopPerson(personId: string, buyerId: string): Promise<{ error?: string }> {
+  const me = await getMe();
+  if (!canEditOrders(me?.role)) return { error: "Only the orders team can give a buyer's people access." };
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("stop_buyer_person", { p_person: personId });
+  if (error) return { error: friendly(error) };
+  revalidatePath(`/buyers/${buyerId}/people`);
+  return {};
+}

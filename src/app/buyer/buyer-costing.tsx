@@ -9,6 +9,8 @@ import { dayNear as day, money, qty } from "@/lib/format";
 import { uploadPhotos } from "@/lib/photos";
 import { answerCosting, askCosting } from "./actions";
 import { costingState, type BuyerCostingAsk } from "./costing-state";
+import { curMoney, landedFrom } from "@/lib/landed";
+import { LandedTable } from "@/components/landed-table";
 
 const blank = { product: "", details: "", qty: "", target: "" };
 
@@ -98,6 +100,7 @@ export function BuyerCosting({ companyId, asks, canWrite, today }: { companyId: 
                 a.quote.valid_till ? `${ended ? "held" : "holds"} till ${day(a.quote.valid_till)}` : ""].filter(Boolean).join(" · ")}
             </span>
             {a.quote.note && <q className="bsmp-note">{a.quote.note}</q>}
+            <Delivered v={a.quote.landed} />
           </div>
         )}
         <p className="bsmp-ship">{s.text}</p>
@@ -196,5 +199,22 @@ export function BuyerCosting({ companyId, asks, canWrite, today }: { companyId: 
         )}
       </dialog>
     </section>
+  );
+}
+
+// The price delivered to the buyer's door in its own currency, when Sourcingo worked it out: the total first, the lines
+// behind it on a tap.
+function Delivered({ v }: { v: unknown }) {
+  const l = landedFrom(v);
+  if (!l) return null;
+  return (
+    <details className="bland">
+      <summary>
+        <span className="eyebrow">Delivered to {l.countryName}, by {l.mode}</span>
+        <b className="num">about {curMoney(l.total, l.currency)}<small> a {l.unit === "m" ? "metre" : "piece"}</small></b>
+      </summary>
+      <LandedTable l={l} />
+      <p className="muted text-[12px] num">An estimate with freight, insurance and import duty, at {l.currency} 1 = ₹{l.fx} on {l.fxDate}. Your customs sets the final duty; local taxes like VAT are not included.</p>
+    </details>
   );
 }
