@@ -8,7 +8,9 @@ export const metadata: Metadata = {
   alternates: { canonical: "/costing" },
 };
 
-export default function Costing() {
+export default async function Costing({ searchParams }: PageProps<"/costing">) {
+  const ask = (await searchParams).product;
+  const product = typeof ask === "string" ? ask.slice(0, 200) : "";
   return (
     <>
       <section className="site-page-head">
@@ -20,7 +22,7 @@ export default function Costing() {
       </section>
       <section className="site-section" style={{ paddingTop: 48 }}>
         <div className="site-wrap site-form-layout">
-          <CostingForm />
+          <CostingForm product={product} />
           <aside className="site-aside">
             <div className="site-card">
               <h3>What happens next</h3>

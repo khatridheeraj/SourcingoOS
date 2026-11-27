@@ -1,7 +1,10 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { canEditOrders, getMe } from "@/lib/auth";
-import { buyerName, loadBuyers, loadTeam, personName } from "@/lib/data";
+import { buyerName, loadBuyers, loadFactories, loadTeam, personName } from "@/lib/data";
+import { fetchAll } from "@/lib/fetch-all";
+import { factoryRecord, recordLine, type RecordFacts } from "@/lib/factory-record";
+import { matchFactories, type PastLine } from "@/lib/match";
 import { day, dayAt, dayNear, daysBetween, money, qty, todayIST, dayTimeAt } from "@/lib/format";
 import { INQUIRY_COLUMNS, INQUIRY_STATUS, isOpenInquiry, sourceLabel, stageOf, stagesFor, type Inquiry } from "@/lib/inquiries";
 import { suggestBuyerCode } from "@/lib/names";
@@ -30,6 +33,22 @@ export default async function InquiryPage({ params }: PageProps<"/inquiries/[id]
     i.order_id ? supabase.from("orders").select("id, order_no, status").eq("id", i.order_id).maybeSingle() : Promise.resolve({ data: null }),
     i.incoming_po_id ? supabase.from("incoming_pos").select("id, email_subject, received_at").eq("id", i.incoming_po_id).maybeSingle() : Promise.resolve({ data: null }),
   ]);
+  // Who could make it: factories that made the closest styles for us before, best record first among equals.
+  const open_ = isOpenInquiry(i.status);
+  const [pastLines, factories, { data: recs }] = open_
+    ? await Promise.all([
+        fetchAll<PastLine>((a, z) => supabase.from("order_lines").select("factory_id, style, description, fabric, product").eq("company_id", me.companyId!)
+          .not("factory_id", "is", null).is("removed_at", null).order("id").range(a, z)).then((r) => r.data ?? []),
+        loadFactories(),
+        supabase.rpc("factory_records"),
+      ])
+    : [[] as PastLine[], [], { data: [] }];
+  const recOf = new Map(((recs ?? []) as RecordFacts[]).filter((f) => f.factory_id).map((f) => [f.factory_id!, f]));
+  const matches = open_ ? matchFactories([i.product, i.notes ?? ""].join(" "), pastLines, factories.map((f) => {
+    const facts = recOf.get(f.id);
+    const r = facts ? factoryRecord(facts, todayIST()) : null;
+    return { id: f.id, name: f.name, active: f.active, level: r?.level, line: facts && r ? recordLine(facts, r) : undefined };
+  })) : [];
   const { data: signed } = i.photos.length ? await supabase.storage.from(PHOTO_BUCKET).createSignedUrls(i.photos, 3600) : { data: [] };
   const photos = (signed ?? []).flatMap((s) => (s.signedUrl && s.path ? [{ path: s.path, url: s.signedUrl }] : []));
   const people = new Map(team.map((m) => [m.user_id, personName(m)]));
@@ -99,6 +118,26 @@ export default async function InquiryPage({ params }: PageProps<"/inquiries/[id]
             <ChaseButton i={step} className="btn sm" />
           </div>
           <div className="mt-3"><InquiryNext i={step} today={today} /></div>
+        </div>
+      )}
+
+      {matches.length > 0 && (
+        <div className="panel">
+          <h2>Who could make it</h2>
+          <ul className="match-list">
+            {matches.map((m) => (
+              <li key={m.factory.id}>
+                <div className="grow">
+                  <Link href={`/factories/${m.factory.id}`} className="link font-semibold">{m.factory.name}</Link>
+                  <p className="text-[13px]">Made <span className="code">{m.styles.join(", ")}</span> for us · {m.shared.slice(0, 4).join(", ")}</p>
+                  {m.factory.line && <p className="muted text-[13px]">{m.factory.line}</p>}
+                </div>
+              </li>
+            ))}
+          </ul>
+          <details className="howto mt-3"><summary>How these are picked</summary>
+            <p className="muted text-[13px]">From every style a factory has made for us: the same kind of garment first, then fabric, print and trims, then its record with us. Factories on a watch record are left out.</p>
+          </details>
         </div>
       )}
 

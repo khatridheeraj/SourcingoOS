@@ -2840,3 +2840,8 @@ main:focus { outline: none; }
   .asked-actions { width: 100%; }
   .asked-actions .btn { flex: 1; min-height: 44px; }
 }
+
+/* Who could make it (an inquiry): factories that made the closest styles before. */
+.match-list { list-style: none; margin: 0; padding: 0; }
+.match-list li { display: flex; gap: 12px; padding: 12px 0; border-top: 1px solid var(--line); }
+.match-list li:first-child { border-top: 0; padding-top: 0; }

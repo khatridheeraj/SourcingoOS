@@ -48,7 +48,8 @@ Use these instead of drawing a new version on a screen. A new pattern that more 
 
 ## Public website (`src/app/(site)`)
 - Visitors who aren't signed in get the website at `/` (the proxy shows `/welcome`); the team still gets Orders there.
-  Pages: home, How it works, Quality, For factories, Request a costing, Privacy. Their paths are listed in `src/lib/site.ts`.
+  Pages: home, How it works, Quality, For factories, Request a costing, Privacy, and one page per product (`/make/<slug>`,
+  content in `src/lib/site-products.ts`). Their paths are listed in `src/lib/site.ts`.
 - Same tokens and Inter as the app, on a reading scale: display 58/48/40px (38/34/29 on a phone), lede 19px, body 16px.
   Styles live in `src/app/(site)/site.css` and are prefixed `site-`. The block-print motif (`PrintPattern`) is the only decoration.
 - Every claim is true today. No made-up numbers, customers or testimonials. Buyers never see factory names.

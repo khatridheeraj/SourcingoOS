@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { SITE_CATEGORIES, SITE_URL } from "@/lib/site";
+import { SITE_URL } from "@/lib/site";
+import { SITE_PRODUCTS } from "@/lib/site-products";
 import { Check, CtaBand, Eyebrow, OrderTracker, PrintPattern, Stages } from "../parts";
 
 export const metadata: Metadata = {
@@ -167,7 +168,7 @@ export default function Welcome() {
             </p>
           </div>
           <ul className="site-tags">
-            {SITE_CATEGORIES.map((c) => <li key={c}>{c}</li>)}
+            {SITE_PRODUCTS.map((c) => <li key={c.slug}><Link href={`/make/${c.slug}`}>{c.name}</Link></li>)}
           </ul>
         </div>
       </section>

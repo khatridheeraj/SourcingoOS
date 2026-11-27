@@ -208,7 +208,7 @@
 
 /* Footer */
 .site-foot { border-top: 1px solid var(--line); padding: 64px 0 calc(32px + env(safe-area-inset-bottom)); background: var(--background); }
-.site-foot-grid { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr; gap: 40px; }
+.site-foot-grid { display: grid; grid-template-columns: 1.6fr 1fr 1.3fr 1fr 1fr; gap: 40px; }
 .site-foot h2 { font-size: 13px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--faint); margin-bottom: 14px; }
 .site-foot-grid > div { display: flex; flex-direction: column; gap: 10px; font-size: 14.5px; }
 .site-foot-grid a:not(.site-brand) { color: var(--muted); }
@@ -268,3 +268,6 @@
 .site-aside ol { list-style: decimal; }
 .site-aside ol li::marker { color: var(--faint); font-weight: 600; }
 .site-steps-long ul { list-style: disc; }
+.site-list-tight { margin-top: 16px; gap: 10px; font-size: 15px; color: var(--muted); }
+.site-tags a { color: inherit; }
+.site-tags li:has(a):hover { border-color: var(--accent); color: var(--accent); }

@@ -33,7 +33,7 @@ const Done = ({ title, children }: { title: string; children: React.ReactNode })
   </div>
 );
 
-export function CostingForm() {
+export function CostingForm({ product = "" }: { product?: string }) {
   const [state, action, pending] = useActionState<SiteFormState, FormData>(askCosting, {});
   if (state.ok) {
     return (
@@ -66,7 +66,7 @@ export function CostingForm() {
       <fieldset>
         <legend>What you would like made</legend>
         <Field name="product" label="Product" hint="For example: cotton block-print kaftan, 3 colourways, sizes XS to XL.">
-          <input id="f-product" name="product" required minLength={3} maxLength={200} aria-describedby="f-product-hint" defaultValue={v.product} />
+          <input id="f-product" name="product" required minLength={3} maxLength={200} aria-describedby="f-product-hint" defaultValue={v.product ?? product} />
         </Field>
         <div className="site-row-2">
           <Field name="qty" label="Quantity" optional>
