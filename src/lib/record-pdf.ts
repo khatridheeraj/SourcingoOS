@@ -1,4 +1,5 @@
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from "pdf-lib";
+import { day, istDate } from "@/lib/format";
 import { kitStats, MIN, type RecordCounts } from "@/lib/record";
 import { SITE_STAGES, SITE_URL } from "@/lib/site";
 import { SITE_PRODUCTS } from "@/lib/site-products";
@@ -13,11 +14,7 @@ const ACCENT = rgb(0.31, 0.27, 0.9);
 const SOFT = rgb(0.965, 0.965, 0.98);
 
 const W = 595.28, H = 841.89, M = 44;
-const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-const dayOf = (ts: string) => {
-  const d = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(new Date(ts));
-  return `${Number(d.slice(8, 10))} ${MONTHS[Number(d.slice(5, 7)) - 1]} ${d.slice(0, 4)}`;
-};
+const dayOf = (ts: string) => day(istDate(ts));
 
 // Standard PDF fonts only speak Latin-1; anything else becomes a plain stand-in rather than breaking the file.
 const safe = (s: string) => s.replace(/[‘’]/g, "'").replace(/[“”]/g, '"').replace(/[–—]/g, "-").replace(/[^\x20-\x7E\xA0-\xFF]/g, "");

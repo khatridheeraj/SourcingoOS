@@ -15,7 +15,8 @@ alter table public.inquiries
   add column first_reply_via text check (first_reply_via in ('email', 'whatsapp', 'phone', 'visit', 'page'));
 grant update (first_reply_at, first_reply_via) on public.inquiries to authenticated;
 
--- A price sent, a sample sent or an order made is a reply too, so nobody has to mark it twice.
+-- A price sent, a sample sent or an order made is a reply too, so nobody has to mark it twice. (Only on a change: an
+-- inquiry logged already quoted was answered before anyone typed it in, so it says nothing about reply speed.)
 create function public.inquiry_first_reply() returns trigger
 language plpgsql set search_path = '' as $$
 begin
@@ -25,7 +26,7 @@ begin
   return new;
 end $$;
 revoke execute on function public.inquiry_first_reply() from public, anon, authenticated;
-create trigger inquiries_first_reply before insert or update on public.inquiries
+create trigger inquiries_first_reply before update on public.inquiries
   for each row execute function public.inquiry_first_reply();
 
 -- Inquiries that were already quoted, sampled or ordered had a reply by then at the latest. (The guard is paused so

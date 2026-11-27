@@ -33,8 +33,8 @@ export type Stat = {
 
 const n = new Intl.NumberFormat("en-US");
 const pct = (a: number, b: number) => `${Math.round((a / b) * 100)}%`;
-const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
-export const monthYear = (d: string | null) => (d ? `${MONTHS[Number(d.slice(5, 7)) - 1]} ${d.slice(0, 4)}` : "");
+const my = new Intl.DateTimeFormat("en-GB", { month: "long", year: "numeric", timeZone: "UTC" });
+export const monthYear = (d: string | null) => (d ? my.format(new Date(`${d.slice(0, 10)}T12:00:00Z`)) : "");
 const plural = (k: number, one: string, many: string) => `${n.format(k)} ${k === 1 ? one : many}`;
 
 // What goes in front of a lead: the true numbers we are proud of.

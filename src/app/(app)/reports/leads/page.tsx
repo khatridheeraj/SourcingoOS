@@ -67,7 +67,7 @@ export default async function LeadsPage({ searchParams }: PageProps<"/reports/le
                 <li key={l.id}>
                   <Link href={`/inquiries/${l.id}`} className="link code">{l.inquiry_no}</Link>
                   <span className="grow muted">{l.from_site ? `Website${l.country ? ` · ${l.country}` : ""}` : l.asked_on_page ? "Buyer page" : "Logged by the team"}</span>
-                  <span className={`chip ${h >= REPLY_HOURS ? "bad" : "warn"}`}>{h >= REPLY_HOURS ? `No reply in ${hoursText(h)}` : `${hoursText(h)} so far`}</span>
+                  <span className={`chip ${h >= REPLY_HOURS ? "bad" : "warn"}`}>{h >= REPLY_HOURS ? `No reply in ${hoursText(h)}` : h < 1 ? "Just in" : `${hoursText(h)} so far`}</span>
                 </li>
               );
             })}

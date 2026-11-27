@@ -102,9 +102,9 @@ export function InquiryNext({ i, today, onDone }: { i: StepInquiry; today: strin
         <div className={`inq-reply ${i.waiting >= REPLY_HOURS ? "late" : ""}`}>
           <p><b>No reply yet</b> · {waitText(i.waiting)}. Every lead hears back within a day, even if only to ask a question.</p>
           <div className="row !gap-1.5" role="group" aria-label="We replied">
-            <span className="text-[13px] text-muted">We replied</span>
+            <span className="text-[13px] text-muted">We replied:</span>
             {REPLY_VIA.map((v) => (
-              <button key={v.key} type="button" className="chip" disabled={pending} onClick={() => run(() => markReplied(i.id, v.key), "Reply noted. Follow up in 3 days.")}>{v.label.toLowerCase()}</button>
+              <button key={v.key} type="button" className="chip" disabled={pending} onClick={() => run(() => markReplied(i.id, v.key), "Reply noted. Follow up in 3 days.")}>{v.label}</button>
             ))}
           </div>
         </div>
