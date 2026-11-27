@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Eyebrow } from "../parts";
+import { Eyebrow, Photo } from "../parts";
 import { CostingForm } from "../forms";
 
 export const metadata: Metadata = {
@@ -33,6 +33,7 @@ export default async function Costing({ searchParams }: PageProps<"/costing">) {
                 <li>Say yes, and your order page goes live with every step dated.</li>
               </ol>
             </div>
+            <Photo name="sampling" caption="Going over a sample before it is costed." sizes="(max-width: 1020px) 100vw, 360px" />
             <p className="site-note">Already a Sourcingo buyer? Use <b>Get a costing</b> on your own order page, and your merchandiser sees it at once.</p>
           </aside>
         </div>

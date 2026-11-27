@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Link from "next/link";
 import { SITE_STAGES } from "@/lib/site";
 
@@ -115,5 +116,43 @@ export function Check() {
       <circle cx="9" cy="9" r="9" fill="currentColor" opacity="0.12" />
       <path d="M5.2 9.3l2.5 2.4 5-5.3" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
+  );
+}
+
+// Real photos from garment floors we work with (public/site). Never one that shows a factory's name.
+export const SITE_PHOTOS = {
+  checking: { src: "/site/checking.webp", w: 1200, h: 900, alt: "Printed garments being checked and thread-cut on long white tables" },
+  finishing: { src: "/site/finishing.webp", w: 1200, h: 903, alt: "A finishing line checking blue printed shirts piece by piece" },
+  cutting: { src: "/site/cutting.webp", w: 1011, h: 1344, alt: "A cutter following the marker with a straight-knife cutting machine" },
+  cuttingTables: { src: "/site/cutting-tables.webp", w: 1200, h: 900, alt: "Fabric laid in tall lays on long cutting tables" },
+  handFinishing: { src: "/site/hand-finishing.webp", w: 1200, h: 903, alt: "Women hand-finishing garments, with folded pieces stacked behind" },
+  stitching: { src: "/site/stitching.webp", w: 1200, h: 903, alt: "A stitching floor with rows of machines, each tailor on a printed garment" },
+  sampling: { src: "/site/sampling.webp", w: 720, h: 620, alt: "A merchandiser and a tailor going over a sample at a table, with samples on a rack behind" },
+  packingFloor: { src: "/site/packing-floor.webp", w: 1200, h: 675, alt: "Finished garments being folded and checked before packing" },
+} as const;
+
+export function Photo({ name, caption, sizes = "(max-width: 1020px) 100vw, 50vw", className, priority }: {
+  name: keyof typeof SITE_PHOTOS; caption?: string; sizes?: string; className?: string; priority?: boolean;
+}) {
+  const p = SITE_PHOTOS[name];
+  return (
+    <figure className={`site-photo ${className ?? ""}`}>
+      <div className="site-photo-frame">
+        <Image src={p.src} width={p.w} height={p.h} alt={p.alt} sizes={sizes} priority={priority} />
+      </div>
+      {caption && <figcaption>{caption}</figcaption>}
+    </figure>
+  );
+}
+
+// Four photos of an order being made, as one mosaic.
+export function FloorMosaic() {
+  return (
+    <div className="site-floor">
+      <Photo name="checking" className="site-floor-a" caption="Checking printed pieces, one by one" sizes="(max-width: 640px) 100vw, 40vw" />
+      <Photo name="cutting" className="site-floor-b" caption="Cutting to the marker" sizes="(max-width: 640px) 50vw, 30vw" />
+      <Photo name="stitching" className="site-floor-c" caption="On the stitching line" sizes="(max-width: 640px) 50vw, 30vw" />
+      <Photo name="handFinishing" className="site-floor-d" caption="Hand finishing" sizes="(max-width: 640px) 100vw, 30vw" />
+    </div>
   );
 }

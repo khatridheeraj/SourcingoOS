@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { siteFacts } from "@/lib/site-data";
-import { Check, CtaBand, Eyebrow, PrintPattern } from "../parts";
+import { Check, CtaBand, Eyebrow, Photo, PrintPattern } from "../parts";
 
 export const metadata: Metadata = {
   title: "Quality and checks",
@@ -65,6 +65,7 @@ export default async function Quality() {
             <p>The factory posts a photo when it finishes a step: fabric in, cutting, stitching, finishing, packing. Our team looks at each one
               against your approved sample before it appears on your order page.</p>
             <p>So the pictures you see are current, from your order, and already looked at by someone who answers to you.</p>
+            <Photo name="finishing" className="site-photo-wide" caption="Printed shirts checked piece by piece on the finishing line." />
           </div>
         </div>
       </section>
