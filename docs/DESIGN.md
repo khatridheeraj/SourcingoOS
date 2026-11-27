@@ -50,6 +50,8 @@ Use these instead of drawing a new version on a screen. A new pattern that more 
 3. `e2e/run.sh` must report no problems.
 
 ## Public website (`src/app/(site)`)
+- sourcingo.in (a separate site, not in this repo) is Sourcingo's public face; Dheeraj chose to keep it (28 Nov 2026).
+  These pages are for links from there and are never indexed: `robots.ts` disallows everything, the sitemap is empty.
 - Visitors who aren't signed in get the website at `/` (the proxy shows `/welcome`); the team still gets Orders there.
   Pages: home, How it works, Quality, For factories, Request a costing, Privacy, and one page per product (`/make/<slug>`,
   content in `src/lib/site-products.ts`). Their paths are listed in `src/lib/site.ts`.
