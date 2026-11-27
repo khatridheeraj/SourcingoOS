@@ -61,6 +61,7 @@ Use these instead of drawing a new version on a screen. A new pattern that more 
 - Photos: only real ones, from `public/site` through `Photo` in `parts.tsx` (WebP, about 1200px wide). Never a photo that shows a factory name, sign or logo, and never another brand's product shoot.
   Styles live in `src/app/(site)/site.css` and are prefixed `site-`. The block-print motif (`PrintPattern`) is the only decoration.
 - Every claim is true today. No made-up numbers, customers or testimonials. Buyers never see factory names.
-  The Guarantee shows only when the owner has switched it on (`site_facts()`).
+  The Guarantee shows only when the owner has switched it on (`site_facts()`). So does Our record (`/record`, PDF at
+  `/record/pdf`): only `kitStats()` from `src/lib/record.ts`, never a number typed in or a rate on too few cases.
 - The two forms call `site_ask_costing` and `site_join_factory`: a costing ask becomes an inquiry due today (Home, Inquiries,
   morning brief); a factory ask waits on Factories > Asked to join and on Home.

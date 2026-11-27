@@ -6,10 +6,10 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import { WaIcon } from "@/components/order-sheet";
 import { toast } from "@/components/toast";
 import { dayNear, money, qty } from "@/lib/format";
-import { LOST_REASONS, STAGES, stagesFor } from "@/lib/inquiries";
+import { LOST_REASONS, REPLY_HOURS, REPLY_VIA, STAGES, stagesFor, waitText } from "@/lib/inquiries";
 import { addDays } from "@/lib/payments";
 import { waLink } from "@/lib/whatsapp";
-import { addInquiryNote, setInquirySample, setInquiryStatus } from "./actions";
+import { addInquiryNote, markReplied, setInquirySample, setInquiryStatus } from "./actions";
 
 // What an inquiry needs to show its next step, on its own page or in the sheet from the list.
 export type StepInquiry = {
@@ -31,6 +31,8 @@ export type StepInquiry = {
   // Asked on the buyer's page: the price comes from the costing, after the buyer's sample is in.
   fromPage?: boolean;
   accepted?: boolean;
+  // Hours the lead has waited for a first reply; null once someone replied.
+  waiting?: number | null;
 };
 
 type Mode = "" | "quote" | "sample" | "lost";
@@ -96,6 +98,17 @@ export function InquiryNext({ i, today, onDone }: { i: StepInquiry; today: strin
 
   return (
     <div className="inq-next">
+      {i.waiting != null && (
+        <div className={`inq-reply ${i.waiting >= REPLY_HOURS ? "late" : ""}`}>
+          <p><b>No reply yet</b> · {waitText(i.waiting)}. Every lead hears back within a day, even if only to ask a question.</p>
+          <div className="row !gap-1.5" role="group" aria-label="We replied">
+            <span className="text-[13px] text-muted">We replied:</span>
+            {REPLY_VIA.map((v) => (
+              <button key={v.key} type="button" className="chip" disabled={pending} onClick={() => run(() => markReplied(i.id, v.key), "Reply noted. Follow up in 3 days.")}>{v.label}</button>
+            ))}
+          </div>
+        </div>
+      )}
       <div className="inq-acts">
         {/* A buyer-page ask gets its price from the costing card, and the sample is the buyer's own. */}
         {i.fromPage ? order : i.stage === 0 ? <>{quoteBtn}{sampleBtn}{order}</> : <>{order}{sampleBtn}{quoteBtn}</>}

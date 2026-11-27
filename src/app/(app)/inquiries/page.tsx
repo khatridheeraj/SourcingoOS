@@ -3,8 +3,8 @@ import { redirect } from "next/navigation";
 import { canEditOrders, getMe } from "@/lib/auth";
 import { buyerName, loadBuyers, loadTeam, personName } from "@/lib/data";
 import { fetchAll } from "@/lib/fetch-all";
-import { dayNear, daysBetween, money, qty, todayIST } from "@/lib/format";
-import { answerOpen, costingDue, INQUIRY_COLUMNS, isOpenInquiry, QUIET_DAYS, stageOf, stagesFor, type Inquiry } from "@/lib/inquiries";
+import { dayNear, daysBetween, money, nowMs, qty, todayIST } from "@/lib/format";
+import { answerOpen, costingDue, INQUIRY_COLUMNS, isOpenInquiry, QUIET_DAYS, stageOf, stagesFor, waitingHours, type Inquiry } from "@/lib/inquiries";
 import { addDays } from "@/lib/payments";
 import { createClient } from "@/lib/supabase/server";
 import { InquiryButton, InquirySheet, type StepInquiry } from "./inquiry-step";
@@ -62,7 +62,7 @@ export default async function InquiriesPage({ searchParams }: PageProps<"/inquir
     id: i.id, no: i.inquiry_no, title: who(i), product: i.product, status: i.status, stage: stageOf(i), hasBuyer: !!i.buyer_id,
     price: i.quoted_price != null ? String(i.quoted_price) : i.target_price != null ? String(i.target_price) : "", quoted: i.quoted_price,
     unit: i.unit, estQty: i.est_qty, sampleSentOn: i.sample_sent_on, contactName: i.contact_name ?? "", contact: i.contact ?? "", nextFollowUp: i.next_follow_up ?? "",
-    fromPage: i.asked_on_page, accepted: i.buyer_answer === "accepted",
+    fromPage: i.asked_on_page, accepted: i.buyer_answer === "accepted", waiting: waitingHours(i, nowMs()),
   });
 
   // The open list, by what to do: follow up today, send a price, wait on the buyer, and the ones gone quiet.
