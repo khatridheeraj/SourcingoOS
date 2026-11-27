@@ -40,7 +40,7 @@ test("reply speed counts only leads since replies were kept, and waits a day bef
 test("where a lead came from", () => {
   assert.equal(channelOf(lead({ from_site: true, source: "other" })), "website");
   assert.equal(channelOf(lead({ asked_on_page: true })), "page");
-  assert.equal(channelOf(lead({ referred_by: "x", from_site: true })), "referral");
+  assert.equal(channelOf(lead({ referred_by_buyer: "x", from_site: true })), "referral");
   assert.equal(channelOf(lead({ source: "whatsapp" })), "whatsapp");
   assert.equal(hoursText(0.25), "15 min");
   assert.equal(hoursText(30), "30 h");

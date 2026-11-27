@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useActionState } from "react";
 import { SITE_COUNTRIES } from "@/lib/site";
 import { askCosting, joinAsFactory, type SiteFormState } from "./actions";
+import { RefField } from "./ref-keeper";
 
 function Field({ name, label, optional, hint, children }: { name: string; label: string; optional?: boolean; hint?: string; children: React.ReactNode }) {
   return (
@@ -48,6 +49,7 @@ export function CostingForm({ product = "" }: { product?: string }) {
   return (
     <form action={action} className="site-form" noValidate={false}>
       <Trap />
+      <RefField />
       <fieldset>
         <legend>About you</legend>
         <div className="site-row-2">
@@ -107,6 +109,7 @@ export function JoinForm() {
   return (
     <form action={action} className="site-form">
       <Trap />
+      <RefField />
       <fieldset>
         <legend>Your factory</legend>
         <div className="site-row-2">

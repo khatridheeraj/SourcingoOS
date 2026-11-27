@@ -6,7 +6,8 @@ import { dayAtNear } from "@/lib/format";
 import { markApplication } from "./actions";
 
 export type Application = { id: string; name: string; city: string; contact_name: string; phone: string; email: string | null; makes: string;
-  pieces_month: number | null; people: number | null; message: string | null; status: string; created_at: string };
+  pieces_month: number | null; people: number | null; message: string | null; status: string; created_at: string;
+  ref_factory?: { name: string } | null; ref_buyer?: { code: string } | null };
 
 // Factories that asked to join on the website. New ones wait for a call; once called they wait to be added or turned down.
 export function AskedToJoin({ rows, today }: { rows: Application[]; today: string }) {
@@ -33,6 +34,7 @@ export function AskedToJoin({ rows, today }: { rows: Application[]; today: strin
                 {a.contact_name} · <a className="link" href={`tel:${a.phone.replace(/[^+\d]/g, "")}`}>{a.phone}</a>
                 {a.email ? <> · <a className="link" href={`mailto:${a.email}`}>{a.email}</a></> : null} · asked {dayAtNear(a.created_at, today)}
               </div>
+              {a.ref_factory || a.ref_buyer ? <p className="text-[13px]" style={{ marginTop: 4 }}>Sent by {a.ref_factory ? `${a.ref_factory.name}, one of our factories` : `${a.ref_buyer!.code}, a buyer`}</p> : null}
               {a.message ? <p className="muted text-[13px]" style={{ marginTop: 4 }}>“{a.message}”</p> : null}
             </div>
             <div className="row asked-actions">

@@ -15,12 +15,30 @@ import { LANG_COOKIE, langOf, words } from "./i18n";
 import { FactoryRecordCard } from "./factory-record";
 import { FactoryGuarantee, type FactoryGuaranteeData } from "./factory-guarantee";
 import type { RecordFacts } from "@/lib/factory-record";
+import { InviteCard } from "@/components/invite-card";
+import { factoryInvite, isRef } from "@/lib/referral";
+
+// Asking a factory to bring others: in the words used on the floor.
+const INVITE = {
+  en: {
+    title: "Know a good factory?",
+    text: "Send them your link to ask to join Sourcingo. We'll know you sent them.",
+    message: "I get orders from Sourcingo, with clear dates and payments on time. Ask to join here:",
+    words: { share: "Send on WhatsApp", copy: "Copy link", copied: "Link copied." },
+  },
+  hi: {
+    title: "कोई अच्छी फैक्ट्री जानते हैं?",
+    text: "उन्हें अपना लिंक भेजें ताकि वे Sourcingo से जुड़ने को कहें। हमें पता रहेगा कि उन्हें आपने भेजा।",
+    message: "मुझे Sourcingo से ऑर्डर मिलते हैं, साफ़ तारीखें और समय पर पेमेंट। यहाँ जुड़ने के लिए कहें:",
+    words: { share: "WhatsApp पर भेजें", copy: "लिंक कॉपी करें", copied: "लिंक कॉपी हुआ।" },
+  },
+} as const;
 
 // The factory's panel. `preview` is a factory's id when the orders team is looking at it from inside the app:
 // the same panel, read for that factory, with nothing to press.
 export async function FactoryView({ preview }: { preview?: string }) {
   const supabase = await createClient(preview ? { "x-preview-factory": preview } : undefined);
-  const [me, { data, error }, { data: ups }, { data: fileRows }, { data: detailRows }, { data: sampleRows }, { data: poRows }, { data: moneyRow }, { data: qcRows }, { data: countRows }, { data: askRows }, { data: readyRows }, { data: recordRow }, { data: guarRow }] = await Promise.all([
+  const [me, { data, error }, { data: ups }, { data: fileRows }, { data: detailRows }, { data: sampleRows }, { data: poRows }, { data: moneyRow }, { data: qcRows }, { data: countRows }, { data: askRows }, { data: readyRows }, { data: recordRow }, { data: guarRow }, { data: refCode }] = await Promise.all([
     getMe(), supabase.rpc("factory_tna"), supabase.rpc("factory_step_updates"),
     // Each style's tech pack, cutting program, fabric and sizes, as the orders team entered them.
     supabase.rpc("factory_line_files"), supabase.rpc("factory_line_details"),
@@ -42,6 +60,8 @@ export async function FactoryView({ preview }: { preview?: string }) {
     supabase.rpc("factory_record_mine"),
     // The Sourcingo Guarantee: when it is paid for each order (nothing until the Guarantee is on).
     supabase.rpc("factory_guarantee"),
+    // Its own invite link for factories it knows.
+    supabase.rpc("my_referral_code"),
   ]);
   const counts = (countRows ?? []) as FactoryCount[];
   const asks = (askRows ?? []) as DateAsk[];
@@ -105,6 +125,9 @@ export async function FactoryView({ preview }: { preview?: string }) {
       <FactoryRecordCard facts={(recordRow ?? null) as RecordFacts | null} lang={lang} />
       <FactoryGuarantee data={(guarRow ?? null) as FactoryGuaranteeData | null} lang={lang} preview={!!preview} />
       {moneyRow && <FactoryMoney data={moneyRow as FactoryMoneyData} lang={lang} />}
+      {isRef(refCode as string | null) && (
+        <InviteCard id="finvite-h" link={factoryInvite(refCode as string)} {...INVITE[lang]} />
+      )}
     </>
   );
 }
