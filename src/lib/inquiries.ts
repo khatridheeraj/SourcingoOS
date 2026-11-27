@@ -58,8 +58,11 @@ export type Inquiry = {
   // Asked on the public website (0096), with the buyer's country.
   from_site: boolean;
   country: string | null;
+  // The team's first reply to the lead (0104): when, and how.
+  first_reply_at: string | null;
+  first_reply_via: string | null;
 };
-export const INQUIRY_COLUMNS = "id, inquiry_no, buyer_id, prospect, contact_name, contact, source, product, est_qty, unit, target_price, quoted_price, merchandiser_id, next_follow_up, status, lost_reason, order_id, notes, photos, status_at, updated_at, created_by, created_at, sample_sent_on, sample_note, incoming_po_id, asked_on_page, sample_in_on, sample_in_note, costing_draft, buyer_answer, buyer_answer_note, buyer_answer_at, answer_seen_at, from_site, country";
+export const INQUIRY_COLUMNS = "id, inquiry_no, buyer_id, prospect, contact_name, contact, source, product, est_qty, unit, target_price, quoted_price, merchandiser_id, next_follow_up, status, lost_reason, order_id, notes, photos, status_at, updated_at, created_by, created_at, sample_sent_on, sample_note, incoming_po_id, asked_on_page, sample_in_on, sample_in_note, costing_draft, buyer_answer, buyer_answer_note, buyer_answer_at, answer_seen_at, from_site, country, first_reply_at, first_reply_via";
 
 export const isOpenInquiry = (status: string) => status === "new" || status === "quoted";
 
@@ -85,3 +88,19 @@ export const answerOpen = (i: Pick<Inquiry, "status" | "buyer_answer" | "answer_
 // A costing the team owes: the buyer's sample is in and no price has gone, or the buyer asked to revise it.
 export const costingDue = (i: Pick<Inquiry, "status" | "asked_on_page" | "sample_in_on" | "buyer_answer" | "answer_seen_at">) =>
   i.asked_on_page && ((i.status === "new" && !!i.sample_in_on) || (i.status === "quoted" && i.buyer_answer === "changes" && !i.answer_seen_at));
+
+// Every lead hears back within a day. An open inquiry with no first reply past this is late on Home and in Leads.
+export const REPLY_HOURS = 24;
+export const REPLY_VIA = [
+  { key: "email", label: "By email" },
+  { key: "whatsapp", label: "On WhatsApp" },
+  { key: "phone", label: "By phone" },
+];
+// First replies are kept from this day (0104). Older leads have no record of their reply, so they aren't counted.
+export const REPLY_SINCE = "2026-11-28T00:00:00+05:30";
+// Hours since the lead asked, while nobody has replied yet; null once replied or closed.
+export function waitingHours(i: Pick<Inquiry, "status" | "first_reply_at" | "created_at">, now: number): number | null {
+  if (!isOpenInquiry(i.status) || i.first_reply_at || Date.parse(i.created_at) < Date.parse(REPLY_SINCE)) return null;
+  return Math.max(0, Math.floor((now - Date.parse(i.created_at)) / 3_600_000));
+}
+export const waitText = (h: number) => (h < 1 ? "asked under an hour ago" : h < 48 ? `waiting ${h} ${h === 1 ? "hour" : "hours"}` : `waiting ${Math.floor(h / 24)} days`);

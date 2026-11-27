@@ -3008,3 +3008,35 @@ i.pcal-exp { background: var(--muted); opacity: 0.35; }
 .bship-track > summary { cursor: pointer; list-style: none; }
 .bship-track > summary::-webkit-details-marker { display: none; }
 .bship-track[open] > summary { margin-bottom: 10px; }
+/* Our record (Reports > Our record): the sales kit's numbers, big and plain. */
+.rec-grid { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); }
+.rec-grid li { display: flex; flex-direction: column; gap: 2px; padding: 16px 20px; border-top: 1px solid var(--line); border-left: 1px solid var(--line); margin: -1px 0 0 -1px; }
+.rec-grid b { font-size: 30px; font-weight: 600; line-height: 1.15; letter-spacing: -0.03em; color: var(--accent); }
+.rec-grid span { font-size: 14px; font-weight: 600; }
+.rec-grid small { margin-top: 4px; font-size: 12.5px; color: var(--muted); line-height: 1.45; }
+.rec-held { list-style: none; margin: 0; padding: 4px 20px 8px; }
+.rec-held li { display: flex; gap: 14px; align-items: baseline; padding: 10px 0; border-top: 1px solid var(--line); }
+.rec-held li:first-child { border-top: 0; }
+.rec-held li > b { flex: none; width: 56px; font-size: 18px; font-weight: 600; }
+.rec-held li span { display: flex; flex-direction: column; gap: 2px; font-size: 13.5px; min-width: 0; }
+.rec-held small { font-size: 12.5px; color: var(--muted); }
+@media (max-width: 640px) {
+  .rec-grid b { font-size: 26px; }
+  .rec-acts { width: 100%; }
+  .rec-acts .btn { flex: 1; min-height: 44px; }
+  .rec-acts .btn.primary { flex-basis: 100%; }
+}
+
+/* An inquiry nobody has answered yet: mark the first reply. Amber while waiting, red past a day. */
+.inq-reply { display: grid; gap: 8px; padding: 12px 14px; margin-bottom: 12px; border-radius: 10px; background: var(--warn-soft); border: 1px solid var(--warn-line); }
+.inq-reply.late { background: var(--bad-soft); border-color: var(--bad-line); }
+.inq-reply p { font-size: 13.5px; }
+.inq-reply.late b { color: var(--bad); }
+@media (max-width: 640px) { .inq-reply .chip { min-height: 36px; } }
+
+/* Reports > Leads. */
+.lead-wait, .lead-reasons { list-style: none; margin: 0; padding: 4px 20px 8px; }
+.lead-wait li, .lead-reasons li { display: flex; gap: 12px; align-items: center; padding: 10px 0; border-top: 1px solid var(--line); font-size: 13.5px; min-width: 0; }
+.lead-wait li:first-child, .lead-reasons li:first-child { border-top: 0; }
+.lead-reasons b { font-size: 14px; font-weight: 600; }
+@media (max-width: 640px) { .lead-wait li { flex-wrap: wrap; } }

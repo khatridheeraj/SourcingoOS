@@ -5,7 +5,7 @@ import { createClient as createPlainClient } from "@supabase/supabase-js";
 export const siteClient = () =>
   createPlainClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!, { auth: { persistSession: false, autoRefreshToken: false } });
 
-export type SiteFacts = { guarantee?: boolean; deposit_pct?: number; pay_days?: number };
+export type SiteFacts = { guarantee?: boolean; deposit_pct?: number; pay_days?: number; record?: boolean };
 export async function siteFacts(): Promise<SiteFacts> {
   try {
     const { data } = await siteClient().rpc("site_facts");
