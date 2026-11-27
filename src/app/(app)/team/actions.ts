@@ -6,6 +6,7 @@ import { roleLabel, STAFF_ROLES, type Role } from "@/lib/auth-roles";
 import { friendly } from "@/lib/errors";
 import { loadTeam } from "@/lib/data";
 import { createClient } from "@/lib/supabase/server";
+import { cleanWhatsapp } from "@/lib/roll-call";
 
 const validRole = (r: string) => STAFF_ROLES.some((x) => x.value === r) || r === "factory" || r === "buyer";
 
@@ -44,15 +45,30 @@ export async function addPerson(email: string, role: string, factoryId = "", buy
   };
 }
 
-export async function updateMember(userId: string, input: { role: string; active: boolean }): Promise<{ error?: string }> {
+export async function updateMember(userId: string, input: { role: string; active: boolean; whatsapp?: string }): Promise<{ error?: string; whatsapp?: string }> {
   const me = await getMe();
   if (me?.role !== "owner" || !me.companyId) return { error: "Only the owner can change the team." };
   if (!validRole(input.role)) return { error: "Pick a role." };
   const supabase = await createClient();
+  // The WhatsApp number the morning update ask tags them with. Saved first, so a bad number stops the whole save.
+  let whatsapp: string | undefined;
+  if (input.whatsapp !== undefined) {
+    const n = cleanWhatsapp(input.whatsapp);
+    if (n === null) return { error: "That isn't a WhatsApp number. Type the 10-digit mobile number, or + and the country code for other countries." };
+    const { data: had } = await supabase.from("team_whatsapp").select("number").eq("company_id", me.companyId).eq("user_id", userId).maybeSingle();
+    if ((had?.number ?? "") !== n) {
+      const change = { number: n || null, updated_by: me.id, updated_at: new Date().toISOString() };
+      const { error } = had
+        ? await supabase.from("team_whatsapp").update(change).eq("company_id", me.companyId).eq("user_id", userId)
+        : await supabase.from("team_whatsapp").insert({ company_id: me.companyId, user_id: userId, ...change });
+      if (error) return { error: friendly(error) };
+    }
+    whatsapp = n;
+  }
   const { error } = await supabase.from("members").update({ role: input.role, active: input.active }).eq("company_id", me.companyId).eq("user_id", userId);
-  if (error) return { error: error.message.startsWith("There must") ? error.message : friendly(error) };
+  if (error) return { error: error.message.startsWith("There must") ? error.message : friendly(error), whatsapp };
   revalidatePath("/", "layout");
-  return {};
+  return { whatsapp };
 }
 
 export async function cancelInvite(email: string): Promise<{ error?: string }> {

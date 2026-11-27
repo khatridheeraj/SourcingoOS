@@ -211,8 +211,9 @@ export function briefText(b: Brief, company: string): string {
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 const TONE = { bad: "#c8261f", warn: "#a35200", info: "#4f46e5", ok: "#157a46" };
 
-// A simple HTML email that reads well in Gmail on a phone. Links open the app.
-export function briefHtml(b: Brief, company: string, appUrl: string): string {
+// A simple HTML email that reads well in Gmail on a phone. Links open the app. The owner and managers also get the
+// morning update ask for the team group (Reports > Team), one tap from the email.
+export function briefHtml(b: Brief, company: string, appUrl: string, teamAsk = false): string {
   const sec = b.sections.map((s) => `
     <tr><td style="padding:18px 0 6px;font:600 13px/1.4 -apple-system,Segoe UI,Roboto,sans-serif;color:${TONE[s.tone]};text-transform:uppercase;letter-spacing:.04em">${esc(s.title)}</td></tr>
     ${s.items.map((i) => `<tr><td style="padding:8px 0;border-top:1px solid #ececec;font:14px/1.45 -apple-system,Segoe UI,Roboto,sans-serif;color:#1a1a1a">
@@ -227,5 +228,9 @@ export function briefHtml(b: Brief, company: string, appUrl: string): string {
     <a href="${esc(appUrl)}/brief" style="display:inline-block;background:#4f46e5;color:#fff;border-radius:8px;padding:10px 16px;font:600 14px -apple-system,Segoe UI,Roboto,sans-serif;text-decoration:none">Open Sourcingo</a>
     <a href="https://wa.me/?text=${encodeURIComponent(briefText(teamCopy(b), company))}" style="display:inline-block;margin-left:8px;background:#1da851;color:#fff;border-radius:8px;padding:10px 16px;font:600 14px -apple-system,Segoe UI,Roboto,sans-serif;text-decoration:none">Send to a WhatsApp group</a>
   </td></tr>
+  ${teamAsk ? `<tr><td style="padding-top:14px;border-top:1px solid #ececec;margin-top:14px;font:14px/1.45 -apple-system,Segoe UI,Roboto,sans-serif;color:#1a1a1a">
+    <b>Ask the team for today&#39;s update</b><div style="color:#6b6b6b;font-size:13px;padding:2px 0 8px">One WhatsApp message that tags everyone with their own work.</div>
+    <a href="${esc(appUrl)}/reports/team#ask" style="display:inline-block;background:#1da851;color:#fff;border-radius:8px;padding:10px 16px;font:600 14px -apple-system,Segoe UI,Roboto,sans-serif;text-decoration:none">Open the update ask</a>
+  </td></tr>` : ""}
 </table></body></html>`;
 }

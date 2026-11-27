@@ -27,7 +27,10 @@ export default async function BriefPage() {
           <p className="text-[12.5px] font-semibold uppercase tracking-wide text-muted">Morning brief · {b.title}</p>
           <h1>{first ? `${first}, ` : ""}{b.headline.charAt(0).toLowerCase() + b.headline.slice(1)}</h1>
         </div>
-        <div className="head-acts no-print"><BriefShare text={briefText(teamCopy(b), d.company)} /></div>
+        <div className="head-acts no-print">
+          <BriefShare text={briefText(teamCopy(b), d.company)} />
+          {(me?.role === "owner" || me?.role === "manager") && <Link href="/reports/team#ask" className="btn">Ask the team for updates</Link>}
+        </div>
       </div>
       {b.sections.length === 0 ? (
         <section className="card"><p className="card-empty">Nothing is late, at risk or waiting on you.</p></section>
