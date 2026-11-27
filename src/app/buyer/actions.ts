@@ -91,3 +91,17 @@ export async function raiseClaim(c: import("@/components/claim-form").ClaimInput
   revalidatePath("/buyer");
   return { no: data as string };
 }
+
+// The buyer asks to make one of its styles again. It becomes an inquiry due today for that style's merchandiser.
+export async function orderAgain(lineId: string, a: { qty: string; by: string; note: string }): Promise<{ error?: string; no?: string }> {
+  const me = await getMe();
+  if (me?.role !== "buyer") return { error: "This login is not set up for a buyer." };
+  const qty = qtyText(a.qty);
+  if (!/^\d+$/.test(qty) || Number(qty) < 1) return { error: "Enter how many you need, like 500." };
+  if (a.by && !/^\d{4}-\d{2}-\d{2}$/.test(a.by)) return { error: "Pick a date at least a week from today, or leave it empty." };
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("buyer_reorder", { p_line: lineId, p_qty: Number(qty), p_by: a.by || null, p_note: a.note.trim().slice(0, 1000) || null });
+  if (error) return { error: friendly(error) };
+  revalidatePath("/buyer");
+  return { no: data as string };
+}
