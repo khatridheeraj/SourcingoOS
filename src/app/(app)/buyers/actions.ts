@@ -87,3 +87,15 @@ export async function buyerLink(buyerId: string, renew = false): Promise<{ url?:
   const proto = h.get("x-forwarded-proto") ?? (host.startsWith("localhost") ? "http" : "https");
   return { url: `${proto}://${host}/s/${data}` };
 }
+
+// Remembers that this week's update went to a buyer, so Home stops asking for it.
+export async function markUpdateSent(buyerId: string, via: "whatsapp" | "email" | "copy"): Promise<{ error?: string }> {
+  const me = await getMe();
+  if (!canEditOrders(me?.role)) return { error: "Only the orders team can send buyer updates." };
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("mark_buyer_update_sent", { p_buyer: buyerId, p_via: via });
+  if (error) return { error: friendly(error) };
+  revalidatePath("/buyers/updates");
+  revalidatePath("/today");
+  return {};
+}

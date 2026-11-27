@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { SITE_STAGES } from "@/lib/site";
-import { CtaBand, Eyebrow, PrintPattern } from "../parts";
+import { CtaBand, Eyebrow, Photo, PrintPattern } from "../parts";
 
 export const metadata: Metadata = {
   title: "How it works",
@@ -57,6 +57,11 @@ export default function HowItWorks() {
               </li>
             ))}
           </ol>
+          <div className="site-photos-3" aria-label="Photos from the floor">
+            <Photo name="cuttingTables" caption="Fabric laid up for cutting" sizes="(max-width: 640px) 100vw, 33vw" />
+            <Photo name="stitching" caption="Stitching, line by line" sizes="(max-width: 640px) 100vw, 33vw" />
+            <Photo name="packingFloor" caption="Folding and checking before packing" sizes="(max-width: 640px) 100vw, 33vw" />
+          </div>
         </div>
       </section>
       <section className="site-section site-section-alt">
