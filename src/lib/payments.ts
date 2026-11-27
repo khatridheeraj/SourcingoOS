@@ -28,6 +28,8 @@ export const NOTICE_DAYS = 30;
 export type Invoice = {
   id: string; invoice_no: string; buyer_id: string; invoice_date: string; amount: number; due_date: string | null;
   order_id: string | null; notes: string | null; cancelled_at: string | null;
+  // The buyer's currency and the rate locked on the invoice (rupees for one unit), when invoiced abroad (0114).
+  currency?: string | null; fx_rate?: number | null;
 };
 export type CreditNote = { id: string; credit_note_no: string; invoice_id: string; note_date: string; amount: number; notes: string | null; cancelled_at: string | null };
 export type Allocation = { id: string; cheque_id: string; invoice_id: string; amount: number };

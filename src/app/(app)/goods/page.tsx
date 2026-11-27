@@ -3,8 +3,9 @@ import { redirect } from "next/navigation";
 import { canEditOrders, getMe } from "@/lib/auth";
 import { buyerName, loadBuyers, loadFactories } from "@/lib/data";
 import { fetchAll } from "@/lib/fetch-all";
-import { money, nowMs, qty, qtyTotal, todayIST, dayTimeAt } from "@/lib/format";
+import { money, nowMs, qty, qtyTotal, todayIST, dayTimeAt, istDate } from "@/lib/format";
 import { HOLD_HOURS, heldHours, heldText } from "@/lib/goods";
+import { trackState, type Mode, type Stage } from "@/lib/tracking";
 import { dm } from "@/lib/quick";
 import { createClient } from "@/lib/supabase/server";
 
@@ -16,7 +17,8 @@ const TABS = [
 type Row = {
   id: string; order_id: string; factory_id: string; purchase_bill_no: string; purchase_taxable: number; purchased_at: string; invoice_due_at: string;
   invoice_no: string | null; invoiced_at: string | null; eway_at: string | null; shipped_at: string | null; cartons: number | null; lr_no: string | null;
-  transporter: string | null; grn_due_on: string | null; challan_no: string | null;
+  transporter: string | null; grn_due_on: string | null; challan_no: string | null; lr_date: string | null;
+  track_mode: Mode | null; track_carrier: string | null; track_no: string | null; track_to: string | null; track_eta: string | null; track_delivered_on: string | null;
 };
 
 // Every lot of goods between the factory and the buyer: what is with us and for how long, and what is on its way.
@@ -28,7 +30,7 @@ export default async function GoodsPage({ searchParams }: PageProps<"/goods">) {
   const supabase = await createClient();
   const [{ data, error }, buyers, factories] = await Promise.all([
     fetchAll<Row>((a, z) => supabase.from("dispatches")
-      .select("id, order_id, factory_id, purchase_bill_no, purchase_taxable, purchased_at, invoice_due_at, invoice_no, invoiced_at, eway_at, shipped_at, cartons, lr_no, transporter, grn_due_on, challan_no")
+      .select("id, order_id, factory_id, purchase_bill_no, purchase_taxable, purchased_at, invoice_due_at, invoice_no, invoiced_at, eway_at, shipped_at, cartons, lr_no, transporter, grn_due_on, challan_no, lr_date, track_mode, track_carrier, track_no, track_to, track_eta, track_delivered_on")
       .eq("company_id", me.companyId!).is("cancelled_at", null).is("grn_at", null).order("purchased_at").order("id").range(a, z)),
     loadBuyers(),
     loadFactories(),
@@ -36,12 +38,22 @@ export default async function GoodsPage({ searchParams }: PageProps<"/goods">) {
   const all = data ?? [];
   const ids = all.map((d) => d.id);
   const orderIds = [...new Set(all.map((d) => d.order_id))];
-  const [{ data: lines }, { data: orders }] = ids.length
+  const shippedIds = all.filter((d) => d.shipped_at).map((d) => d.id);
+  const [{ data: lines }, { data: orders }, { data: events }] = ids.length
     ? await Promise.all([
         supabase.from("dispatch_lines").select("dispatch_id, line_id, qty").in("dispatch_id", ids),
         supabase.from("orders").select("id, order_no, buyer_id, buyer_po, order_lines(id, style, colour, product)").in("id", orderIds),
+        shippedIds.length
+          ? supabase.from("shipment_events").select("dispatch_id, stage, happened_on, place, note").in("dispatch_id", shippedIds).is("cancelled_at", null).order("happened_on").order("created_at")
+          : Promise.resolve({ data: [] as { dispatch_id: string; stage: Stage; happened_on: string; place: string | null; note: string | null }[] }),
       ])
-    : [{ data: [] }, { data: [] }];
+    : [{ data: [] }, { data: [] }, { data: [] }];
+  // Where a shipped lot is now, from its tracking updates (Goods > Track).
+  const trackOf = (d: Row) => trackState({
+    mode: d.track_mode, carrier: d.track_carrier, track_no: d.track_no, to: d.track_to, eta: d.track_eta, delivered_on: d.track_delivered_on,
+    shipped_on: d.lr_date ?? istDate(d.shipped_at!),
+    events: (events ?? []).filter((e) => e.dispatch_id === d.id).map((e) => ({ stage: e.stage as Stage, on: e.happened_on, place: e.place, note: e.note })),
+  }, today);
   const orderOf = new Map((orders ?? []).map((o) => [o.id, o]));
   const styleOf = new Map((orders ?? []).flatMap((o) => (o.order_lines ?? []).map((l: { id: string; style: string; colour: string | null; product: string | null }) => [l.id, l])));
   const buyerOf = new Map(buyers.map((b) => [b.id, buyerName(b)]));
@@ -139,12 +151,13 @@ export default async function GoodsPage({ searchParams }: PageProps<"/goods">) {
                       {[factoryOf.get(d.factory_id), `bill ${d.purchase_bill_no}`, qtyOf(d.id), styles.join(", "),
                         d.cartons ? `${d.cartons} cartons` : "", d.invoice_no ? `invoice ${d.invoice_no}` : ""].filter(Boolean).join(" · ")}
                     </div>
-                    {d.shipped_at && (
+                    {d.shipped_at && (() => { const t = trackOf(d); return (
                       <div className="todo-detail">
+                        {t.tone !== "warn" && d.track_mode ? `${t.text}${d.track_eta && t.text !== "Delivered" ? `, due ${dm(d.track_eta)}` : ""} · ` : ""}
                         Shipped {dayTimeAt(new Date(d.shipped_at))}{d.transporter ? ` by ${d.transporter}` : ""}{d.lr_no ? `, LR ${d.lr_no}` : ""}
                         {d.grn_due_on && !grnLateHere ? ` · GRN due ${dm(d.grn_due_on)}` : ""}
                       </div>
-                    )}
+                    ); })()}
                     {held && hours < HOLD_HOURS - 6 && <div className="todo-detail">{heldText(hours)}</div>}
                     <div className="todo-links">
                       {held ? (
@@ -153,7 +166,11 @@ export default async function GoodsPage({ searchParams }: PageProps<"/goods">) {
                           {step.cls !== "ok" && <span className={`chip ${step.cls}`}>{step.text}</span>}
                         </>
                       ) : (
-                        grnLateHere && <span className="chip bad">GRN was due {dm(d.grn_due_on!)}</span>
+                        <>
+                          {grnLateHere && <span className="chip bad">GRN was due {dm(d.grn_due_on!)}</span>}
+                          {(() => { const t = trackOf(d); return t.tone === "warn" ? <span className="chip warn">{t.text}</span> : null; })()}
+                          <Link href={`/goods/${d.id}/track`} prefetch={false} className="link text-[13px]">{d.track_mode ? "Tracking" : "Add tracking"}</Link>
+                        </>
                       )}
                       <Link href={`/goods/${d.id}/challan`} prefetch={false} className="link text-[13px]">{d.challan_no ? `Challan ${d.challan_no}` : "Delivery challan"}</Link>
                       <Link href={`/goods/${d.id}/packing`} prefetch={false} className="link text-[13px]">Packing list</Link>

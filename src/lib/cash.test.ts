@@ -39,3 +39,14 @@ test("nothing owed either way is left out", () => {
   assert.equal(c.weeks.every((w) => w.items.length === 0), true);
   assert.equal(c.lowest, null);
 });
+
+test("the running total starts from the bank balance, and extra dated money lands in its week", () => {
+  const c = cashAhead({
+    today: TODAY, weeks: 4, opening: 50000,
+    invoices: [], bills: [{ amount: 70000, due: "2026-11-02", label: "Kkora bill" }], orders: [],
+    extra: [{ amount: 30000, on: "2026-11-03", label: "SO-1 deposit", kind: "milestone" }],
+  });
+  assert.deepEqual(c.weeks.map((w) => w.balance), [50000, 10000, 10000, 10000]);
+  assert.equal(c.lowest, null);
+  assert.equal(cashAhead({ today: TODAY, invoices: [], bills: [], orders: [] }).weeks.length, 13);
+});

@@ -27,7 +27,7 @@ export default async function NewOrderPage({ searchParams }: PageProps<"/orders/
           <h1>New order</h1>
           <p>
             {from ? <>From inquiry <b>{from.inquiry_no}</b> ({from.product}{from.est_qty ? `, ${qty(from.est_qty)} ${from.unit}` : ""}). Enter the buyer&apos;s PO number and its styles.</>
-              : "Type in a buyer PO that came on WhatsApp, by phone or by hand, with all its styles. Attach the buyer's file if there is one; the order also makes its own PO PDF."}
+              : <>Type in a buyer PO that came on WhatsApp, by phone or by hand, with all its styles. Attach the buyer&apos;s file if there is one; the order also makes its own PO PDF. Many POs in a sheet? <Link href="/orders/sheet" className="link">Add them all at once</Link>.</>}
           </p>
         </div>
       </div>

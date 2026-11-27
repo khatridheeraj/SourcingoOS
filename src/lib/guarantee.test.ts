@@ -42,3 +42,35 @@ test("a claim's clock turns amber in its last two days and red once past", () =>
   assert.equal(decisionText({ decision: "remake", pieces: 40, amount: null }, m), "Agreed: we remake 40 pieces at our cost");
   assert.equal(decisionText({ decision: "refund", pieces: 40, amount: 6000 }, m), "Agreed: ₹6000 refunded to you");
 });
+
+import { milestones, planLine, planProblem, whenText, type PlanStep } from "./guarantee.ts";
+
+const three: PlanStep[] = [
+  { label: "Deposit", pct: 30, when: "po", days: 0 },
+  { label: "On QC pass", pct: 40, when: "passed", days: 0 },
+  { label: "After delivery", pct: 30, when: "delivered", days: 14 },
+];
+
+test("milestones: each its share, due on its event plus days; payments fill them in order", () => {
+  const m = milestones({ ...o, value: 100001, paid_deposit: 45000, passed_on: "2026-12-01", delivered_on: "2026-12-20" }, three, "2026-12-05");
+  assert.deepEqual(m.map((x) => x.amount), [30000.3, 40000.4, 30000.3]);
+  assert.deepEqual(m.map((x) => x.state), ["paid", "due", "due"]);
+  assert.deepEqual(m.map((x) => x.due), ["2026-11-01", "2026-12-01", "2027-01-03"]);
+  assert.equal(m[1].paid, 14999.7);
+  assert.equal(milestones({ ...o, passed_on: "2026-12-01" }, three, "2026-12-09")[1].state, "late");
+  assert.equal(milestones(o, three, "2026-11-05")[2].state, "waiting");
+});
+
+test("no plan given: the default 30/70", () => {
+  const m = milestones(o, undefined, "2026-11-05");
+  assert.deepEqual(m.map((x) => [x.amount, x.state]), [[30000, "due"], [70000, "waiting"]]);
+});
+
+test("plans must add to 100 and name each step", () => {
+  assert.equal(planProblem(three), null);
+  assert.match(planProblem(three.slice(0, 2))!, /add up to 70%/);
+  assert.match(planProblem([{ ...three[0], label: " ", pct: 100 }])!, /Name each/);
+  assert.match(planProblem([{ ...three[0], pct: 100, days: 181 }])!, /180/);
+  assert.equal(whenText(three[2]), "14 days after delivery");
+  assert.equal(planLine(three), "30% with the PO · 40% on the QC pass · 30% 14d after delivery");
+});

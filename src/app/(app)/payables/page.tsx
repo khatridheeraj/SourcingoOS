@@ -98,6 +98,7 @@ export default async function PayablesPage({ searchParams }: PageProps<"/payable
           <div className="flex flex-wrap items-center gap-3">
             <nav className="seg" aria-label="View">
               {VIEWS.map((v) => <Link key={v.key} href={link({ view: v.key })} aria-current={view === v.key ? "page" : undefined}>{v.label}</Link>)}
+              {!one && <Link href="/payables/calendar">Calendar</Link>}
             </nav>
             {!one && (
               <nav className="seg" aria-label="Suppliers">

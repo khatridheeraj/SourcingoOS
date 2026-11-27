@@ -2,7 +2,7 @@
 // pass our Final QC), and its claims with the day we decide by. Never a factory, a cost or a rate.
 import { ClaimForm, type ClaimStyle } from "@/components/claim-form";
 import { dayNear as day, money } from "@/lib/format";
-import { buyerPlan, CLAIM_REASON, decisionText, type BuyerClaim, type GOrder, type GuaranteeTerms } from "@/lib/guarantee";
+import { CLAIM_REASON, decisionText, milestones, whenPhrase, whenText, type BuyerClaim, type GOrder, type GuaranteeTerms, type Milestone } from "@/lib/guarantee";
 import { raiseClaim } from "./actions";
 
 export type BuyerGuaranteeData = { shown: boolean; terms?: GuaranteeTerms; orders?: GOrder[]; claims?: BuyerClaim[] };
@@ -13,10 +13,13 @@ export function BuyerGuarantee({ data, orderId, styles, companyId, canWrite, tod
   const o = data.orders?.find((x) => x.order_id === orderId);
   if (!data.shown || !data.terms || !o) return null;
   const t = data.terms;
-  const plan = buyerPlan(o, t, today);
+  const plan = milestones(o, o.plan ?? t.plan, today);
   const claims = (data.claims ?? []).filter((c) => c.order_id === orderId);
-  const state = (s: typeof plan.deposit, due: string) =>
-    s.state === "paid" ? <small className="text-ok">Received, thank you</small> : <small>{due}</small>;
+  // In the buyer's words: received, due on a day, or waiting on its event ("Only once your goods pass our Final QC").
+  const state = (m: Milestone) =>
+    m.state === "paid" ? <small className="text-ok">Received, thank you</small>
+      : m.due ? <small>Due {day(m.due, today)}{m.when !== "po" ? ` · ${whenPhrase(m)}` : ""}</small>
+      : <small>{m.when === "passed" && !m.days ? "Only once your goods pass our Final QC" : whenText(m)}</small>;
 
   return (
     <div className="bguar">
@@ -26,22 +29,15 @@ export function BuyerGuarantee({ data, orderId, styles, companyId, canWrite, tod
       </h3>
       {o.priced && Number(o.value) > 0 && (
         <ul className="fmoney-part">
-          {plan.deposit.amount > 0 && (
-            <li>
-              <span className="fmoney-id"><b>Deposit, {t.deposit_pct}% of the PO</b>{state(plan.deposit, "Due with the PO")}</span>
-              <span className="fmoney-amt num"><b>{money(plan.deposit.amount)}</b></span>
+          {plan.map((m, i) => m.amount > 0 && (
+            <li key={i}>
+              <span className="fmoney-id"><b>{m.label}, {m.pct}% of the PO</b>{state(m)}</span>
+              <span className="fmoney-amt num">
+                <b>{money(m.state === "paid" ? m.amount : m.left)}</b>
+                {m.paid > 0 && m.state !== "paid" && <small>{money(m.paid)} received</small>}
+              </span>
             </li>
-          )}
-          <li>
-            <span className="fmoney-id">
-              <b>Balance</b>
-              {state(plan.balance, plan.balance.due ? `Your goods passed our Final QC ${day(plan.balance.due, today)}` : "Only once your goods pass our Final QC")}
-            </span>
-            <span className="fmoney-amt num">
-              <b>{money(plan.balance.state === "paid" ? plan.balance.amount : plan.balance.left)}</b>
-              {plan.balance.paid > 0 && plan.balance.state !== "paid" && <small>{money(plan.balance.paid)} received</small>}
-            </span>
-          </li>
+          ))}
         </ul>
       )}
       {claims.length > 0 && (

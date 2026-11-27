@@ -11,6 +11,7 @@ import { suggestBuyerCode } from "@/lib/names";
 import { PHOTO_BUCKET } from "@/lib/storage";
 import { createClient } from "@/lib/supabase/server";
 import { InquiryActions } from "./inquiry-actions";
+import { GiveBuyerPage } from "./give-buyer-page";
 import { CostingCard, type SentCosting } from "./costing-card";
 import { todaysFx } from "@/lib/fx";
 import { countryFromName, landedInputFrom } from "@/lib/landed";
@@ -147,6 +148,7 @@ export default async function InquiryPage({ params }: PageProps<"/inquiries/[id]
       )}
 
       {!i.asked_on_page && cc}
+      {open && !i.buyer_id && i.prospect && <GiveBuyerPage id={i.id} no={i.inquiry_no} product={i.product} company={i.prospect} contactName={i.contact_name ?? ""} contact={i.contact ?? ""} />}
       <InquiryActions
         id={i.id}
         companyId={me.companyId}
