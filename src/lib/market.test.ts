@@ -36,3 +36,10 @@ test("a factory on a watch record is not suggested while another on-time quote e
   const only = rankQuotes([q("1", { record: watch }), q("3", { ready_on: "2026-12-20" })], "2026-12-05", 300);
   assert.deepEqual(only.map((r) => r.best), [true, false]);
 });
+
+test("a factory that said it is full by the ready week is not suggested", () => {
+  const full = { state: "full" as const, free: 100, week: "2026-11-30" };
+  const rows = rankQuotes([q("1", { rate: 150, fit: full }), q("2", { rate: 180 })], "2026-12-05", 300);
+  assert.equal(rows[0].id, "1", "still ranked by price");
+  assert.equal(rows.find((r) => r.best)?.id, "2");
+});
