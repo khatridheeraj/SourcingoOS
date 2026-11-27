@@ -15,6 +15,7 @@ import { FactoryUpdates, type PendingUpdate } from "./factory-updates";
 import { OrderDispatch, type Dispatch, type DispatchFactory, type TallyBills } from "./order-dispatch";
 import { OrderHistory } from "./order-history";
 import { OrderMargin } from "./order-margin";
+import { SiteShow } from "./site-show";
 import { OrderProduction } from "./order-production";
 import { type Severity } from "@/lib/defects";
 import { OrderQc, type QcCheck } from "./order-qc";
@@ -52,7 +53,7 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
   const supabase = await createClient();
   const { data: o } = await supabase
     .from("orders")
-    .select("id, company_id, order_no, edit_no, buyer_id, buyer_po, po_date, ship_date, status, merchandiser_id, notes, buyer_terms, stage, stage_at, revised_ship_date, delay_reason, closed_short_at, closed_short_by, short_reason, created_at, updated_at, order_lines(id, style, description, colour, qty, factory_id, position, photo_path, fabric, sizes, product)")
+    .select("id, company_id, order_no, edit_no, buyer_id, buyer_po, po_date, ship_date, status, merchandiser_id, notes, buyer_terms, stage, stage_at, revised_ship_date, delay_reason, closed_short_at, closed_short_by, short_reason, created_at, updated_at, order_lines(id, style, description, colour, qty, factory_id, position, photo_path, fabric, sizes, product, site_photo, site_caption)")
     .eq("id", id)
     .is("order_lines.removed_at", null)
     .maybeSingle();
@@ -516,6 +517,13 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
           })}
           closedShort={o.closed_short_at ? { at: o.closed_short_at, reason: str(o.short_reason), by: (o.closed_short_by && people.get(o.closed_short_by)) || "the orders team" } : null}
           dispatches={dispatches} tally={tallyBills} now={Date.parse(new Date().toISOString())} today={todayIST()} /></div>
+      )}
+      {me?.role === "owner" && (
+        <div data-sec="dispatch"><SiteShow styles={lines.flatMap((l) => {
+          const sent = shipRows.find((x) => x.line_id === l.id)?.shipped ?? 0;
+          const url = l.photo_path ? urlByPath.get(l.photo_path) : null;
+          return sent > 0 && l.photo_path && url ? [{ id: l.id, style: l.style, description: str(l.description), photoUrl: url, shown: !!l.site_photo, caption: str(l.site_caption) }] : [];
+        })} /></div>
       )}
       {canEdit && (
         <div data-sec="dispatch"><OrderMargin
