@@ -51,6 +51,7 @@ Use these instead of drawing a new version on a screen. A new pattern that more 
   Pages: home, How it works, Quality, For factories, Request a costing, Privacy, and one page per product (`/make/<slug>`,
   content in `src/lib/site-products.ts`). Their paths are listed in `src/lib/site.ts`.
 - Same tokens and Inter as the app, on a reading scale: display 58/48/40px (38/34/29 on a phone), lede 19px, body 16px.
+- Photos: only real ones, from `public/site` through `Photo` in `parts.tsx` (WebP, about 1200px wide). Never a photo that shows a factory name, sign or logo, and never another brand's product shoot.
   Styles live in `src/app/(site)/site.css` and are prefixed `site-`. The block-print motif (`PrintPattern`) is the only decoration.
 - Every claim is true today. No made-up numbers, customers or testimonials. Buyers never see factory names.
   The Guarantee shows only when the owner has switched it on (`site_facts()`).
