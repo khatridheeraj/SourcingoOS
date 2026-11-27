@@ -4,7 +4,7 @@
 export const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL ?? "https://sourcingo-os.vercel.app").replace(/\/$/, "");
 
 // Pages anyone may open without signing in ("/" itself shows /welcome to visitors).
-export const SITE_PATHS = ["/welcome", "/how-it-works", "/quality", "/for-factories", "/costing", "/privacy", "/sitemap.xml", "/robots.txt", "/opengraph-image"];
+export const SITE_PATHS = ["/welcome", "/how-it-works", "/quality", "/for-factories", "/costing", "/privacy", "/make", "/sitemap.xml", "/robots.txt", "/opengraph-image"];
 
 export const SITE_NAV = [
   { href: "/how-it-works", label: "How it works" },
@@ -19,6 +19,12 @@ export const SITE_PAGES: { path: string; priority: number }[] = [
   { path: "/quality", priority: 0.8 },
   { path: "/costing", priority: 0.9 },
   { path: "/for-factories", priority: 0.7 },
+  { path: "/make/kurtas", priority: 0.8 },
+  { path: "/make/co-ord-sets", priority: 0.8 },
+  { path: "/make/kaftans", priority: 0.8 },
+  { path: "/make/dresses-and-tops", priority: 0.8 },
+  { path: "/make/printed-fabric", priority: 0.8 },
+  { path: "/make/private-label", priority: 0.8 },
   { path: "/privacy", priority: 0.2 },
 ];
 
@@ -32,10 +38,6 @@ export const SITE_STAGES = [
   { key: "Ship", title: "Packed and shipped", text: "Packed to your carton and label spec, with packing list and invoice, handed to your forwarder or freight." },
 ];
 
-// What a visitor can ask us to make. Plain garment-trade words.
-export const SITE_CATEGORIES = [
-  "Kurtas and kurta sets", "Co-ord sets", "Kaftans and resort wear", "Dresses and tops", "Block-print and hand-printed fabric, by the metre", "Private label for boutiques and brands",
-];
 
 // Countries buyers most often write from, offered first; anything else can be typed.
 export const SITE_COUNTRIES = [

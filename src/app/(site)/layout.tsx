@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { SITE_NAV, SITE_URL } from "@/lib/site";
+import { SITE_PRODUCTS } from "@/lib/site-products";
 import { SiteMenu } from "./site-menu";
 import "./site.css";
 
@@ -48,6 +49,10 @@ export default function SiteLayout({ children }: { children: React.ReactNode }) 
             <Link href="/how-it-works">How it works</Link>
             <Link href="/quality">Quality and checks</Link>
             <Link href="/costing">Request a costing</Link>
+          </div>
+          <div>
+            <h2>What we make</h2>
+            {SITE_PRODUCTS.map((p) => <Link key={p.slug} href={`/make/${p.slug}`}>{p.name}</Link>)}
           </div>
           <div>
             <h2>Factories</h2>
