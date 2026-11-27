@@ -57,7 +57,7 @@ const SHOWN = 3;
 // the same page, read for that buyer, with nothing to press.
 export async function BuyerView({ preview }: { preview?: string }) {
   const supabase = await createClient(preview ? { "x-preview-buyer": preview } : undefined);
-  const [me, { data, error }, { data: sampleRows }, { data: shipRows }, { data: moneyRow }, { data: talkRows }, { data: sentRows }, { data: photoRows }, { data: makerRows }, { data: costRows }, { data: guarRow }, { data: ratingRows }] = await Promise.all([
+  const [me, { data, error }, { data: sampleRows }, { data: shipRows }, { data: moneyRow }, { data: talkRows }, { data: sentRows }, { data: photoRows }, { data: makerRows }, { data: costRows }, { data: guarRow }, { data: meRow }, { data: ratingRows }] = await Promise.all([
     getMe(), supabase.rpc("buyer_orders"), supabase.rpc("buyer_samples"), supabase.rpc("buyer_shipments"),
     // Its invoices and what is still to be paid.
     supabase.rpc("buyer_money"),
@@ -73,9 +73,12 @@ export async function BuyerView({ preview }: { preview?: string }) {
     supabase.rpc("buyer_costings_mine"),
     // The Sourcingo Guarantee: its payment plan per PO and its claims (nothing until the Guarantee is on).
     supabase.rpc("buyer_guarantee"),
+    // Which of the buyer's people is looking, when they opened their own link.
+    supabase.rpc("buyer_me"),
     // Its own ratings of delivered orders (src/components/rate-order.tsx).
     supabase.rpc("buyer_ratings_mine"),
   ]);
+  const person = (meRow as { name?: string } | null)?.name ?? null;
   const ratings = (ratingRows ?? []) as OrderRating[];
   const guarantee = (guarRow ?? { shown: false }) as BuyerGuaranteeData;
   const stepPhotos = (photoRows ?? []) as StepPhoto[];
@@ -124,6 +127,7 @@ export async function BuyerView({ preview }: { preview?: string }) {
     <>
       <div className="head">
         <div className="grow">
+          {person && <span className="eyebrow">Hello {person.split(" ")[0]}</span>}
           <h1>{buyer ? `${buyer}'s orders` : "Your orders"}</h1>
           {/* The whole picture in one line; each order below says where it is. */}
           {open.length > 0 && (
@@ -306,7 +310,7 @@ export async function BuyerView({ preview }: { preview?: string }) {
                     <ul className={list}>{lines.slice(cut).map(item)}</ul>
                   </details>
                 )}
-                <BuyerTalk orderId={o.id} po={o.buyer_po || o.order_no} messages={messages.filter((m) => m.order_id === o.id)} canWrite={canWrite && o.status === "open"} />
+                <BuyerTalk orderId={o.id} po={o.buyer_po || o.order_no} messages={messages.filter((m) => m.order_id === o.id)} canWrite={canWrite && o.status === "open"} me={person} />
               </section>
             );
           })}
