@@ -12,6 +12,8 @@ import { costingState, type BuyerCostingAsk } from "./costing-state";
 import { buyerLine, factoryRecord, type RecordFacts } from "@/lib/factory-record";
 import { BuyerGuarantee, type BuyerGuaranteeData } from "./buyer-guarantee";
 import { BuyerWeekCard } from "./buyer-week";
+import { BuyerStyles, type BuyerStyle } from "./buyer-styles";
+import { SAMPLE_STEPS } from "@/lib/calendar";
 import { addDays, buyerWeek, type WeekShipment } from "@/lib/buyer-week";
 
 type Step = { stage: string; label: string | null; planned_on: string | null; done_on: string | null };
@@ -22,6 +24,14 @@ type Shipment = { id: string; order_id: string; shipped_on: string; pieces: numb
 type StepPhoto = { order_id: string; line_id: string; stage: string; done_on: string; photos: string[] };
 // Who makes a PO, by city and record, never by name.
 type Maker = RecordFacts & { order_id: string; line_ids: string[] };
+// One style the buyer has ordered, from buyer_styles(): no prices, no factory.
+type RawStyle = {
+  line_id: string; style: string; colour: string | null; description: string | null; product: string | null; photo_path: string | null;
+  last_po: string; last_on: string; last_qty: number; open: boolean; times: number; total: number;
+  samples: { stage: string; round: number; on: string | null; photo: string | null }[];
+  final_qc: { result: string; on: string } | null;
+  asked: { no: string; on: string; status: string; qty: number; price: number | null } | null;
+};
 type Order = { id: string; order_no: string; buyer_po: string | null; po_date: string | null; status: string; ship_date: string | null; revised_ship_date: string | null; closed_short?: boolean; lines: Line[] };
 
 const stepName = (s: Step) => s.label ?? TNA_STEPS.find((t) => t.key === s.stage)?.label ?? s.stage;
@@ -55,7 +65,7 @@ const SHOWN = 3;
 // the same page, read for that buyer, with nothing to press.
 export async function BuyerView({ preview }: { preview?: string }) {
   const supabase = await createClient(preview ? { "x-preview-buyer": preview } : undefined);
-  const [me, { data, error }, { data: sampleRows }, { data: shipRows }, { data: moneyRow }, { data: talkRows }, { data: sentRows }, { data: photoRows }, { data: makerRows }, { data: costRows }, { data: guarRow }, { data: meRow }] = await Promise.all([
+  const [me, { data, error }, { data: sampleRows }, { data: shipRows }, { data: moneyRow }, { data: talkRows }, { data: sentRows }, { data: photoRows }, { data: makerRows }, { data: costRows }, { data: guarRow }, { data: meRow }, { data: styleRows }] = await Promise.all([
     getMe(), supabase.rpc("buyer_orders"), supabase.rpc("buyer_samples"), supabase.rpc("buyer_shipments"),
     // Its invoices and what is still to be paid.
     supabase.rpc("buyer_money"),
@@ -73,7 +83,10 @@ export async function BuyerView({ preview }: { preview?: string }) {
     supabase.rpc("buyer_guarantee"),
     // Which of the buyer's people is looking, when they opened their own link.
     supabase.rpc("buyer_me"),
+    // Every style it has ordered, to order again.
+    supabase.rpc("buyer_styles"),
   ]);
+  const rawStyles = (styleRows ?? []) as RawStyle[];
   const person = (meRow as { name?: string } | null)?.name ?? null;
   const guarantee = (guarRow ?? { shown: false }) as BuyerGuaranteeData;
   const stepPhotos = (photoRows ?? []) as StepPhoto[];
@@ -97,6 +110,7 @@ export async function BuyerView({ preview }: { preview?: string }) {
     ...rawAsks.flatMap((a) => a.photos.slice(0, 1)),
     ...stepPhotos.flatMap((p) => p.photos),
     ...(guarantee.claims ?? []).flatMap((c) => c.photos),
+    ...rawStyles.map((x) => x.photo_path ?? x.samples[0]?.photo),
   ].filter((p): p is string => !!p))];
   const { data: signed } = paths.length ? await supabase.storage.from(PHOTO_BUCKET).createSignedUrls(paths, 3600) : { data: [] };
   const url = new Map((signed ?? []).filter((s) => s.signedUrl).map((s) => [s.path, s.signedUrl]));
@@ -105,6 +119,16 @@ export async function BuyerView({ preview }: { preview?: string }) {
     ...s, styleUrl: (photo_path && url.get(photo_path)) || null,
     photos: s.photos.map((p) => url.get(p)).filter((u): u is string => !!u), answerPhotos: answer_photos.map((p) => url.get(p)).filter((u): u is string => !!u),
   }));
+  const pastStyles: BuyerStyle[] = rawStyles.map((x) => {
+    const ph = x.photo_path ?? x.samples[0]?.photo;
+    return {
+      lineId: x.line_id, style: x.style, colour: x.colour, description: x.description, fabric: x.product === "fabric",
+      photo: (ph && url.get(ph)) || null, lastPo: x.last_po, lastOn: x.last_on, lastQty: Number(x.last_qty), open: x.open,
+      times: x.times, total: Number(x.total), samples: [...new Set(x.samples.map((r) => SAMPLE_STEPS[r.stage] ?? r.stage))],
+      qc: x.final_qc ? { pass: x.final_qc.result === "pass", on: x.final_qc.on } : null,
+      asked: x.asked ? { no: x.asked.no, on: x.asked.on, status: x.asked.status, qty: Number(x.asked.qty), price: x.asked.price } : null,
+    };
+  });
   const asks: BuyerCostingAsk[] = rawAsks.map(({ photos, ...a }) => ({ ...a, photoUrls: photos.slice(0, 1).map((p) => url.get(p)).filter((u): u is string => !!u) }));
   // A price waiting for the buyer's answer, or a sample Sourcingo still needs, goes to the top with the samples.
   const costingFirst = asks.some((a) => costingState(a, today).waits);
@@ -308,6 +332,7 @@ export async function BuyerView({ preview }: { preview?: string }) {
           })}
         </>
       )}
+      <BuyerStyles styles={pastStyles} canWrite={canWrite} today={today} />
       {!costingFirst && costing}
       <BuyerSendPo companyId={me?.companyId ?? ""} sent={sent} canSend={canWrite} />
       {/* Money owed shows even when no order is open. */}
