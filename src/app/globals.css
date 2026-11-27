@@ -788,6 +788,41 @@ main:focus { outline: none; }
   .bsend-form .field small { font-weight: 400; }
   .bsend-form .btn.primary { align-self: flex-start; }
   @media (max-width: 640px) { .bsend-form .btn.primary, .bsend-pick { align-self: stretch; min-height: 44px; } }
+  /* Give a lead their own buyer page (inquiry). */
+  .gbp-send { display: flex; flex-direction: column; gap: 10px; margin-top: 10px; }
+  .gbp-acts { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+  @media (max-width: 640px) { .gbp-go, .gbp-acts .btn { width: 100%; min-height: 44px; } }
+  /* Add POs from a sheet. */
+  .psheet { display: flex; flex-direction: column; gap: 16px; }
+  .psheet-paste { width: 100%; margin-top: 10px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; line-height: 1.5; white-space: pre; overflow-x: auto; }
+  .psheet-acts { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; margin-top: 10px; }
+  .psheet-acts label.btn { cursor: pointer; }
+  .psheet .card-h p { margin-top: 2px; font-size: 13px; color: var(--muted); }
+  .psheet-pos { list-style: none; margin: 0; padding: 0; }
+  .psheet-pos > li { padding: 14px 20px; border-top: 1px solid var(--line); }
+  .psheet-pos > li.is-bad { box-shadow: inset 3px 0 0 var(--bad); }
+  .psheet-pos > li.is-done { box-shadow: inset 3px 0 0 var(--ok); }
+  .psheet-po { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+  .psheet-id { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .psheet-id b { font-size: 14px; overflow-wrap: anywhere; }
+  .psheet-id small { font-size: 12.5px; color: var(--muted); }
+  .psheet-lines { list-style: none; margin: 8px 0 0; padding: 0; }
+  .psheet-line { display: flex; justify-content: space-between; gap: 12px; padding: 6px 0; border-top: 1px dashed var(--line); font-size: 13px; }
+  .psheet-style, .psheet-nums { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+  .psheet-style small, .psheet-nums small { font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
+  .psheet-nums { text-align: right; flex: none; max-width: 50%; }
+  .psheet-lines .bmore summary { font-size: 12.5px; padding: 6px 0; }
+  .psheet-bad { list-style: none; margin: 8px 0 0; padding: 0; font-size: 12.5px; color: var(--bad); display: flex; flex-direction: column; gap: 2px; }
+  .psheet-foot { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; padding: 14px 20px; border-top: 1px solid var(--line); }
+  .psheet-foot .field { max-width: 280px; flex: 1; }
+  .psheet-help { padding: 12px 20px; border-top: 1px solid var(--line); font-size: 13px; }
+  .psheet-help p { margin-top: 8px; color: var(--muted); }
+  @media (max-width: 640px) {
+    .psheet-pos > li, .psheet-foot, .psheet-help { padding-left: 16px; padding-right: 16px; }
+    .psheet-foot { flex-direction: column; align-items: stretch; }
+    .psheet-foot .field { max-width: none; }
+    .psheet-foot .btn.primary { min-height: 44px; }
+  }
   /* Your styles: everything the buyer has made with us, each with Order again. */
   .bsty .card-h p { margin-top: 2px; font-size: 13px; color: var(--muted); }
   .bsty-list { list-style: none; margin: 0; padding: 0; }
@@ -2925,3 +2960,36 @@ main:focus { outline: none; }
 .match-list { list-style: none; margin: 0; padding: 0; }
 .match-list li { display: flex; gap: 12px; padding: 12px 0; border-top: 1px solid var(--line); }
 .match-list li:first-child { border-top: 0; padding-top: 0; }
+
+/* Our record (Reports > Our record): the sales kit's numbers, big and plain. */
+.rec-grid { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); }
+.rec-grid li { display: flex; flex-direction: column; gap: 2px; padding: 16px 20px; border-top: 1px solid var(--line); border-left: 1px solid var(--line); margin: -1px 0 0 -1px; }
+.rec-grid b { font-size: 30px; font-weight: 600; line-height: 1.15; letter-spacing: -0.03em; color: var(--accent); }
+.rec-grid span { font-size: 14px; font-weight: 600; }
+.rec-grid small { margin-top: 4px; font-size: 12.5px; color: var(--muted); line-height: 1.45; }
+.rec-held { list-style: none; margin: 0; padding: 4px 20px 8px; }
+.rec-held li { display: flex; gap: 14px; align-items: baseline; padding: 10px 0; border-top: 1px solid var(--line); }
+.rec-held li:first-child { border-top: 0; }
+.rec-held li > b { flex: none; width: 56px; font-size: 18px; font-weight: 600; }
+.rec-held li span { display: flex; flex-direction: column; gap: 2px; font-size: 13.5px; min-width: 0; }
+.rec-held small { font-size: 12.5px; color: var(--muted); }
+@media (max-width: 640px) {
+  .rec-grid b { font-size: 26px; }
+  .rec-acts { width: 100%; }
+  .rec-acts .btn { flex: 1; min-height: 44px; }
+  .rec-acts .btn.primary { flex-basis: 100%; }
+}
+
+/* An inquiry nobody has answered yet: mark the first reply. Amber while waiting, red past a day. */
+.inq-reply { display: grid; gap: 8px; padding: 12px 14px; margin-bottom: 12px; border-radius: 10px; background: var(--warn-soft); border: 1px solid var(--warn-line); }
+.inq-reply.late { background: var(--bad-soft); border-color: var(--bad-line); }
+.inq-reply p { font-size: 13.5px; }
+.inq-reply.late b { color: var(--bad); }
+@media (max-width: 640px) { .inq-reply .chip { min-height: 36px; } }
+
+/* Reports > Leads. */
+.lead-wait, .lead-reasons { list-style: none; margin: 0; padding: 4px 20px 8px; }
+.lead-wait li, .lead-reasons li { display: flex; gap: 12px; align-items: center; padding: 10px 0; border-top: 1px solid var(--line); font-size: 13.5px; min-width: 0; }
+.lead-wait li:first-child, .lead-reasons li:first-child { border-top: 0; }
+.lead-reasons b { font-size: 14px; font-weight: 600; }
+@media (max-width: 640px) { .lead-wait li { flex-wrap: wrap; } }

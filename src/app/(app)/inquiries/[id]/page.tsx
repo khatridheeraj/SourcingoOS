@@ -5,12 +5,13 @@ import { buyerName, loadBuyers, loadFactories, loadTeam, personName } from "@/li
 import { fetchAll } from "@/lib/fetch-all";
 import { factoryRecord, recordLine, type RecordFacts } from "@/lib/factory-record";
 import { matchFactories, type PastLine } from "@/lib/match";
-import { day, dayAt, dayNear, daysBetween, money, qty, todayIST, dayTimeAt } from "@/lib/format";
-import { INQUIRY_COLUMNS, INQUIRY_STATUS, isOpenInquiry, sourceLabel, stageOf, stagesFor, type Inquiry } from "@/lib/inquiries";
+import { day, dayAt, dayNear, daysBetween, money, qty, todayIST, dayTimeAt, nowMs } from "@/lib/format";
+import { INQUIRY_COLUMNS, INQUIRY_STATUS, isOpenInquiry, sourceLabel, stageOf, stagesFor, waitingHours, type Inquiry } from "@/lib/inquiries";
 import { suggestBuyerCode } from "@/lib/names";
 import { PHOTO_BUCKET } from "@/lib/storage";
 import { createClient } from "@/lib/supabase/server";
 import { InquiryActions } from "./inquiry-actions";
+import { GiveBuyerPage } from "./give-buyer-page";
 import { CostingCard, type SentCosting } from "./costing-card";
 import { todaysFx } from "@/lib/fx";
 import { countryFromName, landedInputFrom } from "@/lib/landed";
@@ -67,7 +68,7 @@ export default async function InquiryPage({ params }: PageProps<"/inquiries/[id]
     id: i.id, no: i.inquiry_no, title: who, product: i.product, status: i.status, stage, hasBuyer: !!i.buyer_id,
     price: i.quoted_price != null ? String(i.quoted_price) : i.target_price != null ? String(i.target_price) : "", quoted: i.quoted_price,
     unit: i.unit, estQty: i.est_qty, sampleSentOn: i.sample_sent_on, contactName: i.contact_name ?? "", contact: i.contact ?? "", nextFollowUp: i.next_follow_up ?? "",
-    fromPage: i.asked_on_page, accepted: i.buyer_answer === "accepted",
+    fromPage: i.asked_on_page, accepted: i.buyer_answer === "accepted", waiting: waitingHours(i, nowMs()),
   };
   const sent: SentCosting[] = (costings ?? []).map((c) => ({ ...c, cost: Number(c.cost), price: Number(c.price), by: (c.created_by && people.get(c.created_by)) || "Someone" }));
 
@@ -146,6 +147,7 @@ export default async function InquiryPage({ params }: PageProps<"/inquiries/[id]
       )}
 
       {!i.asked_on_page && cc}
+      {open && !i.buyer_id && i.prospect && <GiveBuyerPage id={i.id} no={i.inquiry_no} product={i.product} company={i.prospect} contactName={i.contact_name ?? ""} contact={i.contact ?? ""} />}
       <InquiryActions
         id={i.id}
         companyId={me.companyId}

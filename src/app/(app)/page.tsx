@@ -196,6 +196,7 @@ export default async function OrdersPage({ searchParams }: PageProps<"/">) {
           <h1>Orders</h1>
           <p className="hide-phone">Every buyer PO, earliest ship date first. A new ship date replaces the buyer&apos;s when an order slips.</p>
         </div>
+        {prices && <Link href="/orders/sheet" className="btn hide-phone">Add from a sheet</Link>}
         {prices && <Link href="/orders/new" className="btn primary hide-phone">New order</Link>}
       </div>
 

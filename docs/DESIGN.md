@@ -16,6 +16,10 @@ These rules keep every screen consistent. Every change follows them, including t
   until all are sent; the buyer's page opens with "What moved this week" (only POs where something moved).
 - **Your styles** (buyer page, after its POs): every style the buyer ordered, one row per style and colour, with approved samples
   and final QC. Order again becomes an inquiry (`buyer_reorder`, `inquiries.reorder_of`) due today for that order's merchandiser.
+- **Add POs from a sheet** (Orders > Add from a sheet): pasted rows or a CSV become one order per buyer and PO, read by
+  `readSheet()` in `src/lib/po-sheet.ts`; every problem names its row, and only clean POs are added, each through `saveOrder`.
+- **A lead's own page**: an open inquiry from someone not yet a buyer has "Make their page" (`make_buyer_from_inquiry`), which
+  adds the buyer, gives the asker a person link, and moves the ask onto their buyer page.
 - **Calendar** (a tab beside To do) answers "what is coming". One block per day that has something on it; late work stays on To do.
 - Red means the ship date will be missed. A step past its target while the ship date still holds is amber ("needs an update").
 - **Orders** answers "where is everything". On a computer it is a board with one column per stage; on a phone it is a list of cards.
@@ -61,6 +65,7 @@ Use these instead of drawing a new version on a screen. A new pattern that more 
 - Photos: only real ones, from `public/site` through `Photo` in `parts.tsx` (WebP, about 1200px wide). Never a photo that shows a factory name, sign or logo, and never another brand's product shoot.
   Styles live in `src/app/(site)/site.css` and are prefixed `site-`. The block-print motif (`PrintPattern`) is the only decoration.
 - Every claim is true today. No made-up numbers, customers or testimonials. Buyers never see factory names.
-  The Guarantee shows only when the owner has switched it on (`site_facts()`).
+  The Guarantee shows only when the owner has switched it on (`site_facts()`). So does Our record (`/record`, PDF at
+  `/record/pdf`): only `kitStats()` from `src/lib/record.ts`, never a number typed in or a rate on too few cases.
 - The two forms call `site_ask_costing` and `site_join_factory`: a costing ask becomes an inquiry due today (Home, Inquiries,
   morning brief); a factory ask waits on Factories > Asked to join and on Home.
