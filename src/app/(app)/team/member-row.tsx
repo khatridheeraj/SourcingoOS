@@ -6,17 +6,20 @@ import type { Member } from "@/lib/data";
 import { personName } from "@/lib/names";
 import { cancelInvite, updateMember } from "./actions";
 
-export function MemberRow({ member, isMe, factoryName, buyerName }: { member: Member; isMe: boolean; factoryName?: string; buyerName?: string }) {
+export function MemberRow({ member, isMe, whatsapp, factoryName, buyerName }: { member: Member; isMe: boolean; whatsapp: string; factoryName?: string; buyerName?: string }) {
   const [role, setRole] = useState(member.role);
   const [active, setActive] = useState(member.active);
+  const [phone, setPhone] = useState(whatsapp);
+  const staff = member.role !== "factory" && member.role !== "buyer";
   const [msg, setMsg] = useState<{ ok?: boolean; text: string } | null>(null);
   const [pending, start] = useTransition();
-  const dirty = role !== member.role || active !== member.active;
+  const dirty = role !== member.role || active !== member.active || phone.trim() !== whatsapp;
 
   function save() {
     setMsg(null);
     start(async () => {
-      const res = await updateMember(member.user_id, { role, active });
+      const res = await updateMember(member.user_id, { role, active, whatsapp: staff ? phone : undefined });
+      if (res.whatsapp !== undefined) setPhone(res.whatsapp);
       setMsg(res.error ? { text: res.error } : { ok: true, text: "Saved" });
     });
   }
@@ -31,6 +34,12 @@ export function MemberRow({ member, isMe, factoryName, buyerName }: { member: Me
             {STAFF_ROLES.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
           </select>
         )}
+      </td>
+      <td>
+        {staff ? (
+          <input className="inp min-w-[150px]" type="tel" inputMode="tel" autoComplete="off" value={phone} onChange={(e) => setPhone(e.target.value)}
+            placeholder="98765 43210" aria-label={`WhatsApp number for ${member.email}`} />
+        ) : <span className="muted">Not needed</span>}
       </td>
       <td>
         <label className="row text-[13px]"><input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} /> Can sign in</label>
@@ -51,6 +60,7 @@ export function InviteRow({ email, role, factoryName }: { email: string; role: s
       <td className="muted">Not signed in yet</td>
       <td>{email}</td>
       <td>{ROLES.find((r) => r.value === role)?.label}{factoryName && ` · ${factoryName}`}</td>
+      <td className="muted">After they sign in</td>
       <td><span className="chip warn">Waiting</span></td>
       <td>
         <button className="btn sm danger" disabled={pending} onClick={() => start(async () => setError((await cancelInvite(email)).error ?? ""))}>Remove</button>

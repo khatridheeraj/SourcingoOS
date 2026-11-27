@@ -10,6 +10,8 @@ import { buildBoard, canLead, countBy } from "@/lib/team-board";
 import { PageTabs } from "@/components/page-tabs";
 import { reportTabs } from "@/lib/page-groups";
 import { HandOver } from "./hand-over";
+import { BriefShare } from "../../brief/brief-share";
+import { rollCallText, type AskPerson } from "@/lib/roll-call";
 
 const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;
 
@@ -23,7 +25,7 @@ export default async function TeamBoardPage() {
   const now = nowMs();
   const weekAgo = new Date(now - 7 * 86_400_000).toISOString();
   const monthAgo = new Date(now - 30 * 86_400_000).toISOString();
-  const [team, buyers, { data: orders }, { data: tags }, { data: hist }, { data: floor }, { data: qc }] = await Promise.all([
+  const [team, buyers, { data: orders }, { data: tags }, { data: hist }, { data: floor }, { data: qc }, { data: phones }] = await Promise.all([
     loadTeam(),
     loadBuyers(),
     fetchAll((a, z) => supabase.from("orders").select("id, order_no, buyer_id, buyer_po, ship_date, revised_ship_date, merchandiser_id")
@@ -32,6 +34,7 @@ export default async function TeamBoardPage() {
     fetchAll((a, z) => supabase.from("history").select("actor, at").eq("company_id", me.companyId!).gte("at", monthAgo).not("actor", "is", null).order("id").range(a, z)),
     supabase.from("floor_updates").select("created_by").eq("company_id", me.companyId).gte("created_at", weekAgo),
     supabase.from("qc_checks").select("checked_by").eq("company_id", me.companyId).gte("created_at", weekAgo).is("cancelled_at", null),
+    supabase.from("team_whatsapp").select("user_id, number").eq("company_id", me.companyId),
   ]);
   const ids = (orders ?? []).map((o) => o.id);
   const { data: overdue } = ids.length
@@ -52,6 +55,14 @@ export default async function TeamBoardPage() {
   const buyerOf = new Map(buyers.map((b) => [b.id, buyerName(b)]));
   const unowned = (orders ?? []).filter((o) => !o.merchandiser_id || !people.some((p) => p.id === o.merchandiser_id));
   const takers = people.filter((p) => ["owner", "manager", "merchandiser"].includes(p.role));
+  // The morning update ask tags everyone but the person sending it.
+  const phoneOf = new Map((phones ?? []).filter((p) => p.number).map((p) => [p.user_id as string, p.number as string]));
+  const askPeople: AskPerson[] = rows.filter((r) => r.id !== me.id).map((r) => ({
+    id: r.id, name: r.name, role: r.role, whatsapp: phoneOf.get(r.id) ?? null, tags: r.tags, lastAt: r.lastAt,
+    orders: (orders ?? []).filter((o) => o.merchandiser_id === r.id).map((o) => ({ order_no: o.order_no, late: (dueDate(o) ?? "9") < today, overdueSteps: overdueBy.get(o.id) ?? 0 })),
+  }));
+  const askText = rollCallText({ company: me.companyName ?? "Sourcingo", today, people: askPeople });
+  const noNumber = askPeople.filter((p) => !p.whatsapp);
   const orderList = (pid: string) => (orders ?? []).filter((o) => o.merchandiser_id === pid)
     .map((o) => ({ id: o.id, label: `${o.order_no} · ${buyerOf.get(o.buyer_id) ?? ""}`, late: (dueDate(o) ?? "9") < today }));
 
@@ -64,6 +75,31 @@ export default async function TeamBoardPage() {
           <p>What each person is carrying right now. Red means an order of theirs is past its ship date.</p>
         </div>
       </div>
+
+      {askPeople.length > 0 && (
+        <section id="ask" className="card mb-4" aria-labelledby="ask-h">
+          <header className="card-h">
+            <div className="min-w-0">
+              <h2 id="ask-h">Morning update ask</h2>
+              <p className="muted text-[13px]">One message for the team WhatsApp group. It tags each person with what the app shows for them and asks for today&apos;s update.</p>
+            </div>
+          </header>
+          <div className="ask-body">
+          <pre className="ask-text">{askText}</pre>
+          {noNumber.length > 0 && (
+            <p className="text-[13px] text-warn mt-2">
+              No WhatsApp number yet for {noNumber.map((p) => p.name.split(" ")[0]).join(", ")}, so they are named, not tagged.{" "}
+              {me.role === "owner" && <Link href="/team" className="link">Add numbers on the Team page</Link>}
+            </p>
+          )}
+          <div className="ask-acts no-print"><BriefShare text={askText} /></div>
+          <details className="howto mt-3">
+            <summary>How the ask works</summary>
+            <p>Tap Send on WhatsApp, pick the team group and send. Sourcingo sends nothing by itself. The morning brief email links here every day. A tag works when the number is saved on the Team page and the person is in the group.</p>
+          </details>
+          </div>
+        </section>
+      )}
 
       {unowned.length > 0 && (
         <div className="warnbox mb-4">

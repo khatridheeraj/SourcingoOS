@@ -16,7 +16,7 @@ export async function POST(request: Request) {
   const app = new URL(request.url).origin;
   return Response.json({
     subject: `Sourcingo brief, ${b.title}: ${b.headline}`,
-    html: briefHtml(b, data.company, app),
+    html: briefHtml(b, data.company, app, data.role === "owner" || data.role === "manager"),
     text: briefText(b, data.company),
   });
 }
