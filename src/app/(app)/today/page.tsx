@@ -182,8 +182,12 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
         .eq("company_id", companyId).in("status", ["to_check", "failed", "held"]).order("received_at").order("id").range(a, z))
     : none;
   const inqsP = team
-    ? fetchAll((a, z) => supabase.from("inquiries").select("id, inquiry_no, buyer_id, prospect, product, next_follow_up, merchandiser_id, status, sample_sent_on")
+    ? fetchAll((a, z) => supabase.from("inquiries").select("id, inquiry_no, buyer_id, prospect, product, next_follow_up, merchandiser_id, status, sample_sent_on, from_site, country, contact_name")
         .eq("company_id", companyId).in("status", ["new", "quoted"]).lte("next_follow_up", today).order("next_follow_up").order("id").range(a, z))
+    : none;
+  // Factories that asked to join on the website and nobody has called yet.
+  const joinP = team
+    ? supabase.from("factory_applications").select("id, name, city, makes, created_at").eq("company_id", companyId).eq("status", "new").order("created_at").limit(50)
     : none;
   // Dispatches of every order, shipped ones too: an order marked shipped still waits for the buyer's GRN.
   const dispP = team
@@ -750,14 +754,35 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
 
   // Buyer inquiries whose follow-up is due: today's in Soon, late ones in Now.
   const { data: inqs } = keep(await inqsP);
-  for (const i of (inqs ?? []).filter((x) => who === "all" || x.merchandiser_id === me?.id)) {
+  // An ask from the website has no merchandiser yet, so it is everyone's until someone takes it.
+  for (const i of (inqs ?? []).filter((x) => who === "all" || x.merchandiser_id === me?.id || (x.from_site && !x.merchandiser_id))) {
     const late = i.next_follow_up! < today;
+    if (i.from_site && i.status === "new" && !i.sample_sent_on) {
+      (late ? now_ : soon).push({
+        key: `inq:${i.id}`, href: `/inquiries/${i.id}`, sev: late ? "bad" : "warn", code: i.inquiry_no,
+        title: `${i.prospect || ""} · ${i.product}`,
+        detail: `New buyer on the website${i.country ? ` · ${i.country}` : ""}${i.contact_name ? ` · ${i.contact_name}` : ""}`,
+        chip: late ? { text: `${plural(daysBetween(i.next_follow_up!, today), "day")} waiting`, cls: "bad" } : { text: "New", cls: "warn" },
+        action: "Reply", sort: i.next_follow_up!,
+      });
+      continue;
+    }
     (late ? now_ : soon).push({
       key: `inq:${i.id}`, href: `/inquiries/${i.id}`, sev: late ? "bad" : "warn", code: i.inquiry_no,
       title: `${(i.buyer_id && buyerOf.get(i.buyer_id)) || i.prospect || ""} · ${i.product}`,
       detail: `${i.sample_sent_on ? "Sample with the buyer; ask for comments" : i.status === "quoted" ? "Price sent; ask the buyer for a decision" : "Inquiry to answer"} · follow-up ${late ? `was due ${dm(i.next_follow_up!)}` : "due today"}`,
       chip: late ? { text: `${plural(daysBetween(i.next_follow_up!, today), "day")} late`, cls: "bad" } : { text: "Today", cls: "warn" },
       action: "Follow up", sort: i.next_follow_up!,
+    });
+  }
+
+  // Factories that asked to join on the website: call them, then mark it on Factories.
+  const { data: joins } = keep(await joinP);
+  for (const f of (joins ?? []) as { id: string; name: string; city: string; makes: string; created_at: string }[]) {
+    soon.push({
+      key: `join:${f.id}`, href: "/factories#asked", sev: "warn", title: `${f.name}, ${f.city}`,
+      detail: `Asked to join on the website · makes ${f.makes}`,
+      action: "Call", sort: f.created_at.slice(0, 10),
     });
   }
 

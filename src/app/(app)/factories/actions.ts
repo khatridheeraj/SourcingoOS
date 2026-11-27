@@ -50,3 +50,15 @@ export async function factoryLink(factoryId: string, renew = false): Promise<{ u
   if (renew) revalidatePath("/factories");
   return { url: `${proto}://${host}/f/${data}` };
 }
+
+// A factory that asked to join on the website: called, added as a factory, or not for us.
+export async function markApplication(id: string, status: "contacted" | "added" | "declined"): Promise<{ error?: string }> {
+  const me = await getMe();
+  if (!canEditOrders(me?.role)) return { error: "Only the orders team can do this." };
+  const supabase = await createClient();
+  const { error } = await supabase.from("factory_applications").update({ status, status_by: me!.id, status_at: new Date().toISOString() }).eq("id", id);
+  if (error) return { error: friendly(error) };
+  revalidatePath("/factories");
+  revalidatePath("/today");
+  return {};
+}
