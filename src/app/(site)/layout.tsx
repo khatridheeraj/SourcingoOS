@@ -15,7 +15,7 @@ export const metadata: Metadata = {
     "block print fabric supplier", "private label clothing India", "apparel sourcing agent India", "garment quality inspection"],
   openGraph: { type: "website", siteName: "Sourcingo", locale: "en_GB" },
   twitter: { card: "summary_large_image" },
-  robots: { index: true, follow: true },
+  robots: { index: false, follow: false },
 };
 
 export default function SiteLayout({ children }: { children: React.ReactNode }) {
