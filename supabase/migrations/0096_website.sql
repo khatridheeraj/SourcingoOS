@@ -127,7 +127,7 @@ begin
   if v_pieces is not null and (v_pieces < 1 or v_pieces > 10000000) then v_pieces := null; end if;
   if v_people is not null and (v_people < 1 or v_people > 100000) then v_people := null; end if;
   if exists (select 1 from public.factory_applications where company_id = v_company and phone = v_phone and created_at > now() - interval '1 minute') then
-    raise exception 'We already have your details. We will call you soon.';
+    raise exception 'We already have your details. Thank you.';
   end if;
   if (select count(*) from public.factory_applications where company_id = v_company and created_at > now() - interval '1 hour') >= 60 then
     raise exception 'We are getting a lot of requests right now. Please try again in an hour.';
