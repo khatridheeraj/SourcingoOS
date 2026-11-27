@@ -2849,3 +2849,47 @@ main:focus { outline: none; }
 .match-list { list-style: none; margin: 0; padding: 0; }
 .match-list li { display: flex; gap: 12px; padding: 12px 0; border-top: 1px solid var(--line); }
 .match-list li:first-child { border-top: 0; padding-top: 0; }
+
+/* Milestone payments (0113): the plan editor on the Guarantee page. */
+.gplan-h .grow { flex: 1 1 160px; min-width: 0; }
+.gplan-h .gplan-edit { flex-basis: 100%; }
+.gplan-edit { display: flex; flex-direction: column; gap: 10px; padding: 8px 0 4px; width: 100%; }
+.gplan-rows { display: flex; flex-direction: column; gap: 10px; }
+.gplan-row { display: grid; grid-template-columns: minmax(0, 1fr) 96px minmax(0, 1fr) 84px auto; align-items: end; gap: 8px; padding: 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface-2); }
+.gplan-row .inp { width: 100%; }
+.gplan-row .inp-unit .inp { width: 100%; }
+.gplan-read { grid-column: 1 / -1; font-size: 12px; }
+.gplan-list { display: flex; flex-direction: column; gap: 4px; margin: 6px 0; font-size: 14px; }
+@media (max-width: 640px) {
+  .gplan-row { grid-template-columns: minmax(0, 1fr) 90px; }
+  .gplan-when { grid-column: 1; }
+  .gplan-x { grid-column: 1 / -1; justify-self: start; }
+}
+
+/* Factory payment calendar (/payables/calendar): weekly bars, then one block per day. */
+.pcal-bars { display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 6px; align-items: end; padding: 8px 20px 4px; }
+.pcal-bars li { display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 0; }
+.pcal-bar { position: relative; display: flex; flex-direction: column-reverse; width: 100%; max-width: 36px; height: 120px; border-radius: 6px; background: var(--surface-2); overflow: hidden; }
+.pcal-bar i { display: block; width: 100%; }
+.pcal-bars b { min-height: 15px; font-size: 11px; font-weight: 600; white-space: nowrap; }
+.pcal-bars small { font-size: 11px; color: var(--muted); white-space: nowrap; }
+i.pcal-bill { background: var(--foreground); opacity: 0.75; }
+i.pcal-exp { background: var(--muted); opacity: 0.35; }
+.pcal-key { display: flex; gap: 16px; padding: 4px 20px 14px; font-size: 12px; color: var(--muted); }
+.pcal-key span { display: inline-flex; align-items: center; gap: 6px; }
+.pcal-key i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; }
+.pcal-day { margin-top: 12px; }
+.pcal-dh { display: flex; justify-content: space-between; gap: 12px; padding: 12px 20px; border-bottom: 1px solid var(--line); font-size: 14px; }
+.pcal-dh.bad b, .pcal-dh.bad span { color: var(--bad); }
+.pcal-row { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; padding: 10px 20px; font-size: 14px; }
+.pcal-row:hover { background: var(--surface-2); }
+.pcal-row small { display: block; font-size: 12px; color: var(--muted); }
+.pcal-day li + li { border-top: 1px solid var(--line); }
+@media (max-width: 640px) {
+  .pcal-bars { gap: 3px; padding: 8px 16px 4px; }
+  .pcal-bars b { display: none; }
+  .pcal-bars small { font-size: 9px; }
+  .pcal-bars li:nth-child(even) small { visibility: hidden; }
+  .pcal-dh, .pcal-row { padding-left: 16px; padding-right: 16px; }
+  .pcal-key { padding: 4px 16px 12px; }
+}

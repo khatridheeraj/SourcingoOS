@@ -1,17 +1,14 @@
 import Link from "next/link";
-import { cashAhead, carryDays, type CashItem, type OpenOrder } from "@/lib/cash";
-import { buyerName, loadFactories, loadPace, loadTerms, USUAL_DAYS } from "@/lib/data";
-import { fetchAll } from "@/lib/fetch-all";
-import { dayNear, dueDate, money, todayIST } from "@/lib/format";
-import type { LinePrice } from "@/lib/margin";
+import { cashAhead, carryDays, type CashItem } from "@/lib/cash";
+import { USUAL_DAYS } from "@/lib/data";
+import { dayNear, money, todayIST } from "@/lib/format";
 import { lakh, MSME_DAYS } from "@/lib/payables";
-import { forecast, paceLookup, type StepRow } from "@/lib/progress";
-import { loadShipProgress } from "@/lib/shipments";
 import { createClient } from "@/lib/supabase/server";
 import { PageTabs } from "@/components/page-tabs";
 import { MONEY_TABS } from "@/lib/page-groups";
 import { loadPayables } from "../../payables/load";
 import { loadBooks } from "../load";
+import { loadOpenOrderMoney } from "./load";
 
 // "28 Dec", and "4 Jan 2027" once the weeks run into next year. A week writes that year once: "4 Jan to 10 Jan 2027".
 const short = (d: string) => dayNear(d);
@@ -23,57 +20,7 @@ export default async function CashPage() {
   const { books, buyerLabel, error } = await loadBooks();
   const supabase = await createClient();
   const today = todayIST();
-  const [payables, factories, pace, { buyerDays, factoryDays }, orders] = await Promise.all([
-    loadPayables(supabase),
-    loadFactories(),
-    loadPace(),
-    loadTerms(),
-    fetchAll((a, z) => supabase.from("orders").select("id, order_no, buyer_id, ship_date, revised_ship_date, order_lines(id, style, qty, factory_id)")
-      .eq("status", "open").order("order_no").order("id").range(a, z)),
-  ]);
-  const ids = (orders.data ?? []).map((o) => o.id);
-  const none = { data: [], error: null };
-  const [rates, ship, steps] = await Promise.all([
-    ids.length ? fetchAll<LinePrice>((a, z) => supabase.rpc("line_prices", { p_orders: ids }).order("id").range(a, z)) : none,
-    loadShipProgress(supabase, ids),
-    ids.length
-      ? fetchAll((a, z) => supabase.from("line_stages").select("order_id, line_id, stage, planned_on, done_on, not_needed").in("order_id", ids).eq("not_needed", false).order("id").range(a, z))
-      : none,
-  ]);
-
-  const rateOf = new Map((rates.data as LinePrice[]).map((r) => [r.id, r]));
-  const billedOf = new Map((ship.data ?? []).map((r) => [r.line_id, r.billed]));
-  const factoryName = (id: string) => factories.find((f) => f.id === id)?.name ?? "This factory";
-
-  // An open order still to be billed: what is left of it, from its rates, landing its credit days after it likely ships.
-  // What has been billed already is in the invoices and Tally bills above, so it isn't counted twice.
-  let unpriced = 0, undated = 0;
-  const open: OpenOrder[] = [];
-  for (const o of orders.data ?? []) {
-    const lines = (o.order_lines ?? []) as { id: string; style: string; qty: number; factory_id: string | null }[];
-    let sale = 0, cost = 0, missing = false;
-    const days: number[] = [];
-    for (const l of lines) {
-      const left = Math.max(0, l.qty - (billedOf.get(l.id) ?? 0));
-      if (!left) continue;
-      const r = rateOf.get(l.id);
-      if (r?.buyer_rate == null || r?.factory_rate == null) { missing = true; continue; }
-      sale += left * Number(r.buyer_rate);
-      cost += left * Number(r.factory_rate);
-      days.push(factoryDays(l.factory_id));
-    }
-    if (missing) unpriced++;
-    if (!sale && !cost) continue;
-    const due = dueDate(o);
-    if (!due) { undated++; continue; }
-    const f = forecast(lines, (steps.data ?? []) as StepRow[], due, today, paceLookup(pace, lines, factoryName));
-    const ships = [today, due, f?.finish ?? due].sort().at(-1)!;
-    const b = books.buyerById.get(o.buyer_id);
-    open.push({
-      id: o.id, orderNo: o.order_no, buyer: b ? buyerName(b) : "Buyer", sale, cost, ships,
-      buyerDays: buyerDays(o.buyer_id), factoryDays: Math.min(...days),
-    });
-  }
+  const [payables, { open, unpriced, undated }] = await Promise.all([loadPayables(supabase), loadOpenOrderMoney(books)]);
 
   const c = cashAhead({
     today,

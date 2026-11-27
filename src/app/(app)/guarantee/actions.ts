@@ -5,6 +5,7 @@ import { canEditOrders, getMe } from "@/lib/auth";
 import { friendly } from "@/lib/errors";
 import { createClient } from "@/lib/supabase/server";
 import type { ClaimInput } from "@/components/claim-form";
+import { planProblem, type PlanStep } from "@/lib/guarantee";
 
 const done = () => { revalidatePath("/guarantee"); revalidatePath("/buyer"); revalidatePath("/factory"); };
 
@@ -72,4 +73,22 @@ export async function decideClaim(d: DecideInput): Promise<{ error?: string; fac
   done();
   revalidatePath("/payables");
   return { factoryClaim: (data as string | null) ?? null };
+}
+
+// A payment plan: the owner's default (orderId null), or one order's own plan (null plan: back to the default).
+export async function setPayPlan(orderId: string | null, plan: PlanStep[] | null): Promise<{ error?: string }> {
+  const me = await getMe();
+  if (orderId === null ? me?.role !== "owner" : me?.role !== "owner" && me?.role !== "accounts") {
+    return { error: orderId === null ? "Only the owner can change the default plan." : "Only Accounts and the owner can change an order's plan." };
+  }
+  if (plan) {
+    const problem = planProblem(plan);
+    if (problem) return { error: problem };
+  }
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("set_pay_plan", { p_order: orderId, p_plan: plan });
+  if (error) return { error: friendly(error) };
+  done();
+  revalidatePath("/payments/cash");
+  return {};
 }
