@@ -742,6 +742,14 @@ main:focus { outline: none; }
   .bu-send { display: flex; flex-direction: column; gap: 10px; padding: 16px 20px; }
   .bu-send .bu-acts { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
   @media (max-width: 640px) { .bu-send > .btn.primary { width: 100%; min-height: 44px; } }
+  /* A buyer's people: one row each, with their link opening underneath. */
+  .bp-main { display: flex; align-items: center; gap: 12px; padding: 12px 16px 12px 20px; }
+  .bp-id { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
+  .bp-id b { font-size: 14px; font-weight: 600; overflow-wrap: anywhere; }
+  .bp-id span { font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }
+  .bp-send { display: flex; flex-direction: column; gap: 10px; padding: 0 20px 16px; }
+  .bp-send-acts { display: flex; flex-wrap: wrap; gap: 8px; }
+  @media (max-width: 640px) { .bp-send-acts > .btn.primary, .bp-add { width: 100%; min-height: 44px; } }
   /* "See what they see": the team looks at a buyer's or factory's own page; its buttons do nothing here. */
   .preview-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px; padding: 14px 16px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-2); }
   .preview-bar > div:first-child { flex: 1; min-width: 240px; }
