@@ -11,8 +11,8 @@ export const metadata: Metadata = {
   alternates: { canonical: "/record" },
 };
 
-// Counted fresh every few minutes; shown only once the owner has switched it on in the app.
-export const revalidate = 300;
+// Counted on each visit (never at build time); shown only once the owner has switched it on in the app.
+export const dynamic = "force-dynamic";
 
 export default async function RecordPage() {
   const record = await loadRecord(siteClient());
