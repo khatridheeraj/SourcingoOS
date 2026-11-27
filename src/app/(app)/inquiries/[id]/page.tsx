@@ -12,6 +12,8 @@ import { PHOTO_BUCKET } from "@/lib/storage";
 import { createClient } from "@/lib/supabase/server";
 import { InquiryActions } from "./inquiry-actions";
 import { CostingCard, type SentCosting } from "./costing-card";
+import { todaysFx } from "@/lib/fx";
+import { countryFromName, landedInputFrom } from "@/lib/landed";
 import { ChaseButton, InquiryNext, StageBar, type StepInquiry } from "../inquiry-step";
 
 export default async function InquiryPage({ params }: PageProps<"/inquiries/[id]">) {
@@ -24,10 +26,11 @@ export default async function InquiryPage({ params }: PageProps<"/inquiries/[id]
     supabase.from("inquiries").select(INQUIRY_COLUMNS).eq("id", id).maybeSingle<Inquiry>(),
     supabase.from("inquiry_notes").select("id, body, created_by, created_at").eq("inquiry_id", id).order("created_at", { ascending: false }),
     // Every price sent, newest first, with the costing behind it.
-    supabase.from("inquiry_costings").select("id, sheet, cost, price, qty, valid_till, note, created_at, created_by").eq("inquiry_id", id).order("created_at", { ascending: false }),
+    supabase.from("inquiry_costings").select("id, sheet, cost, price, qty, valid_till, note, created_at, created_by, landed").eq("inquiry_id", id).order("created_at", { ascending: false }),
     loadBuyers(),
     loadTeam(),
   ]);
+  const [fx, { data: co }] = await Promise.all([todaysFx(), supabase.from("companies").select("freight_rates").eq("id", me.companyId).maybeSingle()]);
   if (!i) notFound();
   const [{ data: order }, { data: email }] = await Promise.all([
     i.order_id ? supabase.from("orders").select("id, order_no, status").eq("id", i.order_id).maybeSingle() : Promise.resolve({ data: null }),
@@ -84,7 +87,8 @@ export default async function InquiryPage({ params }: PageProps<"/inquiries/[id]
   const cc = (
     <CostingCard id={i.id} no={i.inquiry_no} buyer={who} open={open} fromPage={i.asked_on_page} sampleIn={i.sample_in_on} sampleInNote={i.sample_in_note}
       draft={i.costing_draft} sent={sent} answer={i.buyer_answer} answerNote={i.buyer_answer_note} answerAt={i.buyer_answer_at}
-      answerSeenAt={i.answer_seen_at} estQty={i.est_qty} today={today} />
+      answerSeenAt={i.answer_seen_at} estQty={i.est_qty} today={today}
+      fx={fx} rates={co?.freight_rates ?? null} fabric={i.unit === "m"} startLanded={landedInputFrom(sent[0]?.landed)} startCountry={countryFromName(i.country)?.code ?? null} />
   );
 
   return (

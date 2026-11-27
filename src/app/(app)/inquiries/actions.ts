@@ -11,6 +11,8 @@ import { addDays } from "@/lib/payments";
 import { buyerByDomain, parseInquiry } from "@/lib/inquiry-parse";
 import { inquiryProblem, priceText, qtyText, type InquiryField } from "@/lib/inquiry-input";
 import { cleanSheet, priceNum, sheetProblem, totals, type Sheet } from "@/lib/costing";
+import { landed, landedProblem, type LandedInput } from "@/lib/landed";
+import { todaysFx } from "@/lib/fx";
 
 export type InquiryInput = {
   buyer_id: string;
@@ -265,16 +267,25 @@ export async function saveCostingDraft(id: string, sheet: Sheet): Promise<{ erro
 
 // Sends the quote: the costing as worked out, and the price a piece. On a buyer-page ask the buyer sees the price,
 // how long it holds and the note; the costs and the margin stay inside.
-export async function sendCosting(id: string, sheet: Sheet, price: string, validTill: string, note: string): Promise<{ error?: string }> {
+export async function sendCosting(id: string, sheet: Sheet, price: string, validTill: string, note: string, land: LandedInput | null = null): Promise<{ error?: string }> {
   const t = await team();
   if ("error" in t) return { error: t.error };
   const bad = sheetProblem(sheet, price);
   if (bad) return { error: bad };
   if (!isDate(validTill)) return { error: "Enter how long the price holds as a date." };
   if (validTill && validTill < todayIST()) return { error: "The price can't end in the past. Pick a later day." };
+  // The delivered price is worked out again here, with today's rates, so what the buyer sees adds up.
+  let delivered = null;
+  if (land) {
+    const fx = await todaysFx();
+    const p = landedProblem(land, fx);
+    if (p) return { error: p };
+    const { data: inq } = await t.supabase.from("inquiries").select("unit").eq("id", id).maybeSingle();
+    delivered = landed(priceNum(price), land, fx, inq?.unit === "m");
+  }
   const { error } = await t.supabase.rpc("send_costing", {
     p_inquiry: id, p_sheet: cleanSheet(sheet), p_cost: totals(sheet).cost, p_price: priceNum(price),
-    p_valid_till: validTill || null, p_note: note.trim().slice(0, 1000),
+    p_valid_till: validTill || null, p_note: note.trim().slice(0, 1000), ...(delivered ? { p_landed: delivered } : {}),
   });
   if (error) return { error: friendly(error) };
   touched(id);
@@ -313,5 +324,19 @@ export async function markReplied(id: string, via: string): Promise<{ error?: st
   revalidatePath("/inquiries");
   revalidatePath("/today");
   revalidatePath("/reports/leads");
+  return {};
+}
+
+// The team's freight rate for one region and mode (₹ a kg, door to door), used to start every delivered price.
+export async function saveFreightRate(region: string, mode: "sea" | "air", value: number): Promise<{ error?: string }> {
+  const t = await team();
+  if ("error" in t) return { error: t.error };
+  if (!/^[a-z]{2,12}$/.test(region) || (mode !== "sea" && mode !== "air")) return { error: "Pick the region and sea or air." };
+  if (!(value >= 0 && value <= 5000)) return { error: "A freight rate is rupees a kg, between 0 and 5,000." };
+  const { data: co } = await t.supabase.from("companies").select("id, freight_rates").eq("id", t.me.companyId).maybeSingle();
+  const rates = { ...((co?.freight_rates ?? {}) as Record<string, Record<string, number>>) };
+  rates[region] = { ...(rates[region] ?? {}), [mode]: Math.round(value * 100) / 100 };
+  const { error } = await t.supabase.rpc("save_freight_rates", { p: rates });
+  if (error) return { error: friendly(error) };
   return {};
 }
