@@ -68,8 +68,11 @@ export function BuyerLink({ buyerId, name, size = "sm", seePage = true }: { buye
               href={`https://wa.me/?text=${encodeURIComponent(text)}`} target="_blank" rel="noreferrer">WhatsApp</a>
             <button type="button" className="btn" disabled={!url} onClick={copy}>Copy</button>
           </div>
+          <p className="mt-3 text-[13px]">
+            <Link className="link" href={`/buyers/${buyerId}/people`}>Several people at {name}? Give each their own link</Link>
+          </p>
           {seePage && (
-            <p className="mt-3 text-[13px]">
+            <p className="mt-2 text-[13px]">
               <Link className="link" href={`/preview/buyer/${buyerId}`}>See exactly what {name} will see</Link>
             </p>
           )}

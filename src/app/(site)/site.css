@@ -216,6 +216,21 @@
 .site-foot-note { color: var(--muted); font-size: 14.5px; max-width: 320px; margin-top: 6px !important; }
 .site-foot-base { margin-top: 48px; padding-top: 24px; border-top: 1px solid var(--line); font-size: 13.5px; color: var(--faint); }
 
+/* Real photos */
+.site-photo { margin: 0; display: grid; gap: 10px; align-content: start; }
+.site-photo-frame { border-radius: 16px; overflow: hidden; border: 1px solid var(--line); background: var(--surface-2); height: 100%; }
+.site-photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.site-photo figcaption { font-size: 13.5px; color: var(--muted); }
+.site-floor { display: grid; grid-template-columns: 1.35fr 0.9fr 1fr; grid-template-rows: 250px 250px; gap: 20px 16px; }
+.site-floor .site-photo { grid-template-rows: 1fr auto; min-height: 0; }
+.site-floor-a { grid-row: 1 / 3; }
+.site-floor-b { grid-row: 1 / 3; }
+.site-photo-wide .site-photo-frame { aspect-ratio: 16 / 10; }
+.site-photo-tall .site-photo-frame { aspect-ratio: 4 / 5; }
+.site-prose .site-photo { margin-top: 28px; }
+.site-photos-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 8px; }
+.site-photos-3 .site-photo-frame { aspect-ratio: 4 / 3; }
+
 /* Tablet */
 @media (max-width: 1020px) {
   .site-nav { display: none; }
@@ -225,6 +240,9 @@
   .site-stages { grid-template-columns: 1fr 1fr; }
   .site-aside { position: static; }
   .site-foot-grid { grid-template-columns: 1fr 1fr; }
+  .site-floor { grid-template-columns: 1fr 1fr; grid-template-rows: 300px 220px 220px; }
+  .site-floor-a { grid-column: 1 / -1; grid-row: auto; }
+  .site-floor-b { grid-row: 2 / 4; }
 }
 
 /* Phone */
@@ -262,6 +280,8 @@
   .site-form-foot .site-btn { width: 100%; }
   .site-foot-grid { grid-template-columns: 1fr 1fr; gap: 32px 20px; }
   .site-foot-grid > div:first-child { grid-column: 1 / -1; }
+  .site-floor { grid-template-rows: 220px 170px 170px; gap: 16px 12px; }
+  .site-photos-3 { grid-template-columns: 1fr; }
 }
 
 @media (prefers-reduced-motion: reduce) { .site * { transition: none !important; } }

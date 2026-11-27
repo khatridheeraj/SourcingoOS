@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { SITE_URL } from "@/lib/site";
 import { SITE_PRODUCTS } from "@/lib/site-products";
-import { Check, CtaBand, Eyebrow, OrderTracker, PrintPattern, Stages } from "../parts";
+import { Check, CtaBand, Eyebrow, FloorMosaic, OrderTracker, PrintPattern, Stages } from "../parts";
 
 export const metadata: Metadata = {
   title: { absolute: "Sourcingo · Garment sourcing from India, watched every step" },
@@ -86,6 +86,17 @@ export default function Welcome() {
       <section className="site-section site-section-alt">
         <div className="site-wrap">
           <div className="site-head-block">
+            <Eyebrow>On the floor</Eyebrow>
+            <h2>This is what making your order looks like.</h2>
+            <p>Real photos from garment floors we work with. On your own order page you see the same kind of photo, from your order, at every step.</p>
+          </div>
+          <FloorMosaic />
+        </div>
+      </section>
+
+      <section className="site-section">
+        <div className="site-wrap">
+          <div className="site-head-block">
             <Eyebrow>How an order moves</Eyebrow>
             <h2>Six stages, one ship date, nothing hidden.</h2>
             <p>The same stages our team works to every day. You see each one move on your own order page.</p>
@@ -95,7 +106,7 @@ export default function Welcome() {
         </div>
       </section>
 
-      <section className="site-section">
+      <section className="site-section site-section-alt">
         <div className="site-wrap site-split">
           <div>
             <Eyebrow>Your order page</Eyebrow>
@@ -130,7 +141,7 @@ export default function Welcome() {
         </div>
       </section>
 
-      <section className="site-section site-section-alt">
+      <section className="site-section">
         <div className="site-wrap">
           <div className="site-head-block">
             <Eyebrow>Quality you can check</Eyebrow>
@@ -157,7 +168,7 @@ export default function Welcome() {
         </div>
       </section>
 
-      <section className="site-section">
+      <section className="site-section site-section-alt">
         <div className="site-wrap site-split site-split-top">
           <div>
             <Eyebrow>What we make</Eyebrow>
@@ -173,7 +184,7 @@ export default function Welcome() {
         </div>
       </section>
 
-      <section className="site-section site-section-alt">
+      <section className="site-section">
         <div className="site-wrap site-factory-band">
           <div>
             <Eyebrow>For factories</Eyebrow>
