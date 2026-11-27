@@ -50,8 +50,9 @@
 .q-hbar i { display: block; height: 100%; background: var(--accent); opacity: 0.75; border-radius: inherit; }
 .q-hbar i.bad { background: var(--bad); opacity: 0.8; }
 .q-kinds { margin: 0; padding: 10px 20px 16px; border-top: 1px solid var(--line); font-size: 12.5px; color: var(--muted); }
-.stars { color: var(--warn); letter-spacing: 1px; font-size: 14px; }
-.stars s { text-decoration: none; color: var(--line); }
+.stars { color: var(--foreground); letter-spacing: 1px; font-size: 14px; }
+.stars s { text-decoration: none; color: var(--line-strong); }
+.stars.low { color: var(--warn); }
 .fixlist { margin: 0; padding: 0; list-style: none; }
 .fixlist li { display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; border-top: 1px solid var(--line); font-size: 14px; }
 .fixlist li:first-child { border-top: 0; }
@@ -69,7 +70,7 @@
 .rate-form { flex-direction: column; align-items: stretch; }
 .rate-stars { display: flex; align-items: center; gap: 2px; }
 .rate-stars button { width: 40px; height: 40px; border: 0; background: none; font-size: 26px; line-height: 1; color: var(--line); cursor: pointer; border-radius: 8px; }
-.rate-stars button.on { color: var(--warn); }
+.rate-stars button.on { color: var(--accent); }
 .rate-stars button:focus-visible { outline: 2px solid var(--accent); }
 .rate-stars span { margin-left: 8px; }
 @media (max-width: 640px) {
