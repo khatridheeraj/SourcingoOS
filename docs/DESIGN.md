@@ -45,3 +45,13 @@ Use these instead of drawing a new version on a screen. A new pattern that more 
 1. `node e2e/shot.mjs <role> <path> /tmp/x --screens 2`, again with `--desk`, and once with `--dark`. Look at every image.
 2. Ask: is the next step obvious? Is there anything here nobody needs right now? Would it look at home in Linear or Stripe?
 3. `e2e/run.sh` must report no problems.
+
+## Public website (`src/app/(site)`)
+- Visitors who aren't signed in get the website at `/` (the proxy shows `/welcome`); the team still gets Orders there.
+  Pages: home, How it works, Quality, For factories, Request a costing, Privacy. Their paths are listed in `src/lib/site.ts`.
+- Same tokens and Inter as the app, on a reading scale: display 58/48/40px (38/34/29 on a phone), lede 19px, body 16px.
+  Styles live in `src/app/(site)/site.css` and are prefixed `site-`. The block-print motif (`PrintPattern`) is the only decoration.
+- Every claim is true today. No made-up numbers, customers or testimonials. Buyers never see factory names.
+  The Guarantee shows only when the owner has switched it on (`site_facts()`).
+- The two forms call `site_ask_costing` and `site_join_factory`: a costing ask becomes an inquiry due today (Home, Inquiries,
+  morning brief); a factory ask waits on Factories > Asked to join and on Home.

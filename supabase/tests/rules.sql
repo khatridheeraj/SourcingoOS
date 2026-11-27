@@ -138,7 +138,7 @@ end $$;
 insert into public.factories (id, name) values ('20000000-0000-0000-0000-000000000002', 'Laxmi Garments');
 
 select public.save_order(
-  '{"buyer_id":"10000000-0000-0000-0000-000000000001","buyer_po":"OZIA PO 001","ship_date":"2026-11-30"}',
+  '{"buyer_id":"10000000-0000-0000-0000-000000000001","buyer_po":"OZIA PO 001","ship_date":"2027-11-30"}',
   '[{"style":"OZ-101","colour":"Navy","qty":500,"buyer_rate":"320","factory_id":"20000000-0000-0000-0000-000000000001","factory_rate":"240"},
     {"style":"OZ-102","qty":300,"factory_id":"20000000-0000-0000-0000-000000000002"}]') \gset
 
@@ -408,7 +408,7 @@ do $$ begin
   raise exception 'a person set the stage by hand';
 exception when insufficient_privilege then null;
 end $$;
-update public.orders set revised_ship_date = '2026-12-01', delay_reason = 'Fabric late';
+update public.orders set revised_ship_date = '2027-12-01', delay_reason = 'Fabric late';
 reset role;
 do $$ begin
   update public.orders set stage = 'stitching';
@@ -425,7 +425,7 @@ select public.save_order(
   jsonb_build_array(jsonb_build_object('id', (select id from public.order_lines where style = 'OZ-103' and removed_at is null), 'style', 'OZ-103', 'qty', 50),
     jsonb_build_object('id', (select id from public.order_lines where style = 'OZ-101'), 'style', 'OZ-101', 'colour', 'Navy', 'qty', 520)));
 do $$ begin
-  if (select (stage, revised_ship_date, delay_reason) from public.orders) is distinct from ('stitching'::text, '2026-12-01'::date, 'Fabric late'::text) then
+  if (select (stage, revised_ship_date, delay_reason) from public.orders) is distinct from ('stitching'::text, '2027-12-01'::date, 'Fabric late'::text) then
     raise exception 'saving the order form wiped production details';
   end if;
 end $$;
@@ -521,12 +521,15 @@ do $$ begin
   if jsonb_array_length(public.factory_tna() -> 'orders') <> 0 then raise exception 'the factory saw a PO before it was asked for a plan'; end if;
 end $$;
 select pg_temp.as_user('00000000-0000-0000-0000-00000000000b');
+-- (A ship date a month away, so a 90-day buffer lands in the past whatever day the tests run.)
+update public.orders set revised_ship_date = current_date + 30;
 do $$ begin
   perform public.request_factory_plan((select id from public.orders), '20000000-0000-0000-0000-000000000001', 90);
   raise exception 'a plan was requested with a target date in the past';
 exception when raise_exception then
   if sqlerrm not like 'With that buffer the target date is already past%' then raise; end if;
 end $$;
+update public.orders set revised_ship_date = '2027-12-01';
 -- An extra step for one style: the factory can't be asked until it has a target too.
 select public.save_line_stages(:'save_order', jsonb_build_array(jsonb_build_object(
   'line_id', (select id from public.order_lines where style = 'OZ-103' and removed_at is null), 'stage', 'extra_0000aaaa', 'label', ' Embroidery ')));
@@ -550,15 +553,15 @@ end $$;
 select public.request_factory_plan(:'save_order', '20000000-0000-0000-0000-000000000001', 7);
 select pg_temp.as_user('00000000-0000-0000-0000-0000000000fa');
 do $$ begin
-  if (public.factory_tna() -> 'orders' -> 0 ->> 'target') <> '2026-11-24' or (public.factory_tna() -> 'orders' -> 0 ->> 'plan_due_at') is null then
+  if (public.factory_tna() -> 'orders' -> 0 ->> 'target') <> '2027-11-24' or (public.factory_tna() -> 'orders' -> 0 ->> 'plan_due_at') is null then
     raise exception 'factory panel shows no target date or deadline: %', public.factory_tna() -> 'orders' -> 0;
   end if;
   begin
     perform public.save_factory_tna((select (public.factory_tna() -> 'orders' -> 0 ->> 'order_id')::uuid),
-      jsonb_build_array(jsonb_build_object('line_id', (public.factory_tna() -> 'orders' -> 0 -> 'lines' -> 0 ->> 'id'), 'stage', 'ex_factory', 'factory_on', '2026-12-28')));
+      jsonb_build_array(jsonb_build_object('line_id', (public.factory_tna() -> 'orders' -> 0 -> 'lines' -> 0 ->> 'id'), 'stage', 'ex_factory', 'factory_on', '2027-12-28')));
     raise exception 'a factory date after the target was accepted';
   exception when raise_exception then
-    if sqlerrm not like 'Every date must be on or before the target date 24 Nov 2026%' then raise; end if;
+    if sqlerrm not like 'Every date must be on or before the target date 24 Nov 2027%' then raise; end if;
   end;
 end $$;
 do $$ begin
@@ -617,7 +620,7 @@ do $$ begin
     raise exception 'the factory does not see the agreed plan after release';
   end if;
   perform public.save_factory_tna((select (public.factory_tna() -> 'orders' -> 0 ->> 'order_id')::uuid),
-    jsonb_build_array(jsonb_build_object('line_id', (select (public.factory_tna() -> 'orders' -> 0 -> 'lines' -> 0 ->> 'id')), 'stage', 'fabric', 'factory_on', '2026-11-20')));
+    jsonb_build_array(jsonb_build_object('line_id', (select (public.factory_tna() -> 'orders' -> 0 -> 'lines' -> 0 ->> 'id')), 'stage', 'fabric', 'factory_on', '2027-11-20')));
   raise exception 'the factory changed its dates after release';
 exception when raise_exception then
   if sqlerrm not like 'The PO is released%' then raise; end if;

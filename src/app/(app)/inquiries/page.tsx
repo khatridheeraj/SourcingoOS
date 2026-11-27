@@ -98,7 +98,7 @@ export default async function InquiriesPage({ searchParams }: PageProps<"/inquir
     const isDue = due(i);
     const late = isDue && i.next_follow_up ? daysBetween(i.next_follow_up, today) : 0;
     const price = i.quoted_price != null ? `${money(i.quoted_price)} quoted` : i.target_price != null ? `${money(i.target_price)} target` : "";
-    const bits = [i.asked_on_page ? "Buyer page" : "", i.est_qty ? `${qty(i.est_qty)} ${i.unit}` : "", price, i.merchandiser_id && i.merchandiser_id !== me?.id ? people.get(i.merchandiser_id) : ""].filter(Boolean);
+    const bits = [i.asked_on_page ? "Buyer page" : i.from_site ? `Website${i.country ? ` · ${i.country}` : ""}` : "", i.est_qty ? `${qty(i.est_qty)} ${i.unit}` : "", price, i.merchandiser_id && i.merchandiser_id !== me?.id ? people.get(i.merchandiser_id) : ""].filter(Boolean);
     const when = i.status === "converted" ? null
       : i.status === "lost" ? <span key="w" className="!whitespace-normal">Lost: {i.lost_reason}</span>
       : isDue ? <span key="w" className="text-bad">{late ? `${plural(late, "day")} late` : "Due today"}</span>

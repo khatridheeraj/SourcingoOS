@@ -2830,3 +2830,13 @@ main:focus { outline: none; }
 @media (max-width: 640px) {
   .bguar { margin: 0 16px 12px; }
 }
+
+/* Factories that asked to join on the website (Factories page). */
+.asked-row { display: flex; gap: 16px; align-items: flex-start; padding: 14px 0; border-top: 1px solid var(--line); }
+.asked-row:first-child { border-top: 0; padding-top: 4px; }
+.asked-actions { flex: none; }
+@media (max-width: 640px) {
+  .asked-row { flex-direction: column; gap: 10px; }
+  .asked-actions { width: 100%; }
+  .asked-actions .btn { flex: 1; min-height: 44px; }
+}
