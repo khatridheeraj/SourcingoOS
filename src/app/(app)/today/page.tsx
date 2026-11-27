@@ -194,6 +194,12 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
   const joinP = team
     ? supabase.from("factory_applications").select("id, name, city, makes, created_at").eq("company_id", companyId).eq("status", "new").order("created_at").limit(50)
     : none;
+  // Factory certificates: ones a factory sent to check, and checked ones running out in the next 30 days (or lately run out).
+  const vouch = ["owner", "manager", "merchandiser", "quality"].includes(me?.role ?? "");
+  const certP = vouch
+    ? supabase.from("factory_certificates").select("id, factory_id, name, valid_until, status, created_at, factories(name, active)").eq("company_id", companyId)
+        .is("removed_at", null).or(`status.eq.pending,and(status.eq.checked,valid_until.lte.${addDays(today, 30)},valid_until.gte.${addDays(today, -30)})`).limit(100)
+    : none;
   // Dispatches of every order, shipped ones too: an order marked shipped still waits for the buyer's GRN.
   const dispP = team
     ? fetchAll((a, z) => supabase.from("dispatches").select("id, order_id, purchase_bill_no, purchase_taxable, invoice_no, invoice_taxable, purchased_at, invoice_due_at, invoiced_at, eway_at, shipped_at, grn_due_on, grn_at")
@@ -802,6 +808,21 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
         detail: `${plural(waitingBuyers.length, "buyer")} still to hear from us this week: what moved, photos, QC and next dates`,
         action: "Send", sort: weekOf(today),
       });
+    }
+  }
+
+  // A certificate to check, or one running out: the factory's record (and what buyers read) depends on it.
+  const { data: certs } = keep(await certP);
+  for (const c of (certs ?? []) as unknown as { id: string; factory_id: string; name: string; valid_until: string | null; status: string; created_at: string; factories: { name: string; active: boolean } | null }[]) {
+    if (c.factories && !c.factories.active) continue;
+    const who = c.factories?.name ?? "A factory";
+    const href = `/factories/${c.factory_id}#certs-h`;
+    if (c.status === "pending") {
+      soon.push({ key: `cert:${c.id}`, href, sev: "warn", title: `${who} · ${c.name}`, detail: "Certificate sent by the factory: check it's real", action: "Check", sort: c.created_at.slice(0, 10) });
+    } else if (c.valid_until) {
+      const gone = c.valid_until < today;
+      soon.push({ key: `cert:${c.id}`, href, sev: "warn", title: `${who} · ${c.name}`,
+        detail: `${gone ? "Ran out" : "Runs out"} ${dm(c.valid_until)}: ask the factory for the renewed certificate`, action: "Ask", sort: c.valid_until });
     }
   }
 

@@ -4,6 +4,12 @@ import { canEnterDone, getMe } from "@/lib/auth";
 import { BUYER_SHOWS, buyerLine, factoryRecord, LEVEL_WORDS, MIN_CHECKS, MIN_SHIPMENTS, MIN_STEPS, type RecordFacts } from "@/lib/factory-record";
 import { day, money, qty, todayIST } from "@/lib/format";
 import { createClient } from "@/lib/supabase/server";
+import { CapacityWeeks } from "@/components/capacity-weeks";
+import { type CertRow, FactoryCerts } from "@/components/factory-certs";
+import type { FactoryCap } from "@/lib/capacity";
+import { leadFor, leadLine, type LeadRow, MIN_LEAD_ORDERS } from "@/lib/lead-time";
+import { PHOTO_BUCKET } from "@/lib/storage";
+import { checkCert, removeCert, saveCapacity, saveCert } from "./actions";
 import { VisitForm } from "./visit-form";
 
 // One factory's record: what it has earned on its orders with us, and what our own visit confirmed.
@@ -14,12 +20,30 @@ export default async function FactoryRecordPage({ params }: PageProps<"/factorie
   const me = await getMe();
   if (!canEnterDone(me?.role)) redirect("/");
   const supabase = await createClient();
-  const { data } = await supabase.rpc("factory_records", { p_factory: id });
+  const [{ data }, { data: certRows }, { data: capRows }, { data: leadRows }, { data: kinds }] = await Promise.all([
+    supabase.rpc("factory_records", { p_factory: id }),
+    supabase.from("factory_certificates").select("id, name, cert_no, valid_until, path, file_name, status, status_note, from_factory")
+      .eq("factory_id", id).is("removed_at", null).order("name").order("created_at"),
+    supabase.rpc("factory_capacity", { p_factory: id, p_weeks: 8 }),
+    supabase.rpc("lead_times"),
+    // What it mostly makes, so the lead time quoted is for the right kind of goods.
+    supabase.from("order_lines").select("product").eq("factory_id", id).is("removed_at", null).limit(500),
+  ]);
   const f = ((data ?? []) as RecordFacts[])[0];
   if (!f) notFound();
+  const rawCerts = (certRows ?? []) as (Omit<CertRow, "url"> & { path: string | null })[];
+  const paths = rawCerts.map((c) => c.path).filter((x): x is string => !!x);
+  const { data: signed } = paths.length ? await supabase.storage.from(PHOTO_BUCKET).createSignedUrls(paths, 3600) : { data: [] };
+  const urlOf = new Map((signed ?? []).filter((x) => x.signedUrl).map((x) => [x.path, x.signedUrl]));
+  const certs: CertRow[] = rawCerts.map(({ path, ...c }) => ({ ...c, url: path ? urlOf.get(path) ?? null : null }));
+  const cap = ((capRows ?? []) as FactoryCap[])[0];
+  const fabricCount = ((kinds ?? []) as { product: string }[]).filter((k) => k.product === "fabric").length;
+  const product = fabricCount * 2 > (kinds ?? []).length ? "fabric" : "garment";
+  const lead = leadFor((leadRows ?? []) as LeadRow[], id, product);
   const today = todayIST();
   const r = factoryRecord(f, today);
   const canVerify = ["owner", "manager", "merchandiser", "quality"].includes(me?.role ?? "");
+  const folder = `${me?.companyId}/factory-files/${id}/certs`;
   const levelCls = r.level === "watch" ? "warn" : r.level === "strong" ? "ok" : "";
   const counted = f.steps_finished + f.steps_overdue;
   const forBuyer = buyerLine(f, r);
@@ -57,6 +81,22 @@ export default async function FactoryRecordPage({ params }: PageProps<"/factorie
           detail={r.defectRate != null ? `${qty(f.defects ?? 0)} in ${qty(f.pieces_checked ?? 0)} pcs checked` : "Shows after 100 pieces checked"} />
       </section>
 
+      <section className="panel stack" aria-labelledby="lead-h">
+        <div>
+          <h2 id="lead-h" className="font-bold">Lead time</h2>
+          <p className="text-[14px] num">{leadLine(lead, product)}</p>
+          {lead?.scope === "company" && (
+            <small className="muted">Our record across every factory: this one has {f.lead_orders ? `only ${f.lead_orders} shipped` : "none shipped"} yet.</small>
+          )}
+          {!lead && <small className="muted">It shows once {MIN_LEAD_ORDERS} orders have shipped, counted from the PO date to the first shipment.</small>}
+        </div>
+      </section>
+
+      {cap && <CapacityWeeks weeks={cap.weeks} mode="team" canEdit={!!me?.role} save={saveCapacity.bind(null, id)} />}
+
+      <FactoryCerts rows={certs} today={today} folder={folder} mode="team" canEdit={canVerify}
+        actions={{ save: saveCert.bind(null, id), remove: removeCert.bind(null, id), check: checkCert.bind(null, id) }} />
+
       <section className="panel stack" aria-labelledby="ver-h">
         <div>
           <h2 id="ver-h" className="font-bold">Verified by Sourcingo</h2>
@@ -69,20 +109,7 @@ export default async function FactoryRecordPage({ params }: PageProps<"/factorie
           <dl className="facts">
             <div><dt>GSTIN</dt><dd>{r.visit.gst ? "Checked, active" : "Not checked"}</dd></div>
             <div><dt>Udyam</dt><dd className="code">{r.visit.udyam ?? "Not seen"}</dd></div>
-            <div>
-              <dt>Certificates</dt>
-              <dd>
-                {r.certs.length ? (
-                  <span className="row gap-1.5">
-                    {r.certs.map((c) => (
-                      <span key={c.name} className={`chip ${c.state === "expired" ? "bad" : c.state === "soon" ? "warn" : ""}`}>
-                        {c.name}{c.until ? ` · ${c.state === "expired" ? "ran out" : "to"} ${day(c.until)}` : ""}
-                      </span>
-                    ))}
-                  </span>
-                ) : "None seen"}
-              </dd>
-            </div>
+            <div><dt>Certificates seen</dt><dd>{f.verified?.certs.length ? f.verified.certs.map((c) => c.name).join(", ") : "None noted"}</dd></div>
           </dl>
         )}
         {canVerify && <VisitForm factoryId={f.factory_id ?? id} today={today} hasVisit={!!r.visit?.current} lastId={f.verified?.id ?? null} />}
@@ -116,6 +143,7 @@ export default async function FactoryRecordPage({ params }: PageProps<"/factorie
         <p>Steps on time: steps finished on or before their target, out of every finished step with a target plus every step still open past its target on an open order. Steps the factory never had a target for, and steps marked not needed, don&apos;t count.</p>
         <p>Final QC first time: for each style, whether its first Final check passed. A check saved for a whole order counts for every factory on it. Cancelled checks don&apos;t count.</p>
         <p>Shipped by the ship date: shipments that left on or before the buyer&apos;s ship date. Defects: all defects found at Final QC, per 100 pieces checked.</p>
+        <p>Lead time: days from the PO date to the first shipment from this factory, on its own orders once it has {MIN_LEAD_ORDERS}, else across all our factories. The first number is the middle order; the later one is what 4 orders in 5 made, the date to promise a buyer.</p>
         <p>Strong record: at least 85% on time and 85% first-time QC, with no claims. Watch: under 70% on time, under 75% first-time QC, under 80% shipped by the date, or two claims or more.</p>
       </details>
     </>
