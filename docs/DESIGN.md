@@ -11,6 +11,9 @@ These rules keep every screen consistent. Every change follows them, including t
   emails from unknown senders. Each line says what it is, who asked and how long it has waited, with Approve and Send back
   right there. These never also show in To do. The Home menu item counts them.
 - A note that tags me (order Notes tab) is a To do line in its order's block, amber, with Reply, until I reply on that order or tap Done.
+- **Weekly buyer updates** (Buyers > Weekly updates): every buyer with an open order hears from us once a week. Built by
+  `buyerWeek()` in `src/lib/buyer-week.ts` from what the buyer's own page shows, never more. Home keeps one line in This week
+  until all are sent; the buyer's page opens with "What moved this week" (only POs where something moved).
 - **Calendar** (a tab beside To do) answers "what is coming". One block per day that has something on it; late work stays on To do.
 - Red means the ship date will be missed. A step past its target while the ship date still holds is amber ("needs an update").
 - **Orders** answers "where is everything". On a computer it is a board with one column per stage; on a phone it is a list of cards.
