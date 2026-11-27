@@ -5,6 +5,7 @@ import { day, money } from "@/lib/format";
 import { INVOICE_LABEL } from "@/lib/payments";
 import { PHOTO_BUCKET } from "@/lib/storage";
 import { createClient } from "@/lib/supabase/server";
+import { todaysFx } from "@/lib/fx";
 import { InvoiceRate } from "../../currency-forms";
 import { AddCreditNote, CancelCreditNote, CancelInvoice, ChequeChip, InvoiceForm } from "../../forms";
 import { PaymentHistory } from "../../history";
@@ -14,6 +15,9 @@ import { buyerOptions } from "../../options";
 export default async function InvoicePage({ params }: PageProps<"/payments/invoices/[id]">) {
   const { books: b, buyerLabel } = await loadBooks();
   const { id } = await params;
+  // Today's market rate prefills an unlocked invoice; rough fallback rates are never offered.
+  const fxNow = await todaysFx();
+  const todayRate = (c: string) => (fxNow.live && fxNow.inr[c] ? Math.round(fxNow.inr[c] * 10000) / 10000 : null);
   const i = b.invoiceRowById.get(id);
   if (!i) notFound();
   const credits = b.creditNotes.filter((c) => c.invoice_id === i.id);
@@ -57,7 +61,7 @@ export default async function InvoicePage({ params }: PageProps<"/payments/invoi
         {cur !== "INR" && !cancelled && (
           <div className="row mt-3 text-[13px]">
             <span>{rated ? <>In {cur}: <b className="num">{fmtCurrency(inCurrency(i.net, rated)!, cur)}</b>{i.outstanding > 0 && i.outstanding !== i.net ? <>, <b className="num">{fmtCurrency(inCurrency(i.outstanding, rated)!, cur)}</b> left</> : null}</> : <span className="text-warn">The buyer is invoiced in {cur}. Lock this invoice&apos;s rate so the buyer sees {cur}.</span>}</span>
-            <InvoiceRate invoiceId={i.id} currency={cur} rate={rated} today={null} />
+            <InvoiceRate invoiceId={i.id} currency={cur} rate={rated} today={todayRate(cur)} />
           </div>
         )}
         {i.notes && <p className="mt-3 whitespace-pre-line text-[13px]"><b>Notes:</b> {i.notes}</p>}
