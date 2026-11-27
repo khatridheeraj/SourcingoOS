@@ -8,15 +8,19 @@ import { caught } from "@/lib/errors";
 import { dayNear, money } from "@/lib/format";
 import { addDays } from "@/lib/payments";
 import { answerSeen, saveCostingDraft, sendCosting, setSampleIn } from "../actions";
+import { curMoney, landedFrom, landedProblem, type Fx, type LandedInput } from "@/lib/landed";
+import { LandedBox } from "./landed-box";
+import { LandedTable } from "@/components/landed-table";
 
-export type SentCosting = { id: string; sheet: unknown; cost: number; price: number; qty: number | null; valid_till: string | null; note: string | null; created_at: string; by: string };
+export type SentCosting = { id: string; sheet: unknown; cost: number; price: number; qty: number | null; valid_till: string | null; note: string | null; created_at: string; by: string; landed?: unknown };
 
 // The costing of one inquiry: for a buyer-page ask, first the buyer's sample arriving at the office; then the costing
 // itself (fabric in metres, trims, stitching, other costs, margin) and the quote sent; then the buyer's answer.
-export function CostingCard({ id, no, buyer, open, fromPage, sampleIn, sampleInNote, draft, sent, answer, answerNote, answerAt, answerSeenAt, estQty, today }: {
+export function CostingCard({ id, no, buyer, open, fromPage, sampleIn, sampleInNote, draft, sent, answer, answerNote, answerAt, answerSeenAt, estQty, today, fx, rates, fabric, startLanded, startCountry }: {
   id: string; no: string; buyer: string; open: boolean; fromPage: boolean; sampleIn: string | null; sampleInNote: string | null;
   draft: unknown; sent: SentCosting[]; answer: "accepted" | "changes" | null; answerNote: string | null; answerAt: string | null;
   answerSeenAt: string | null; estQty: number | null; today: string;
+  fx: Fx; rates: unknown; fabric: boolean; startLanded: LandedInput | null; startCountry: string | null;
 }) {
   const router = useRouter();
   const last = sent[0] ?? null;
@@ -27,6 +31,7 @@ export function CostingCard({ id, no, buyer, open, fromPage, sampleIn, sampleInN
   const price = own || (t.price ? String(t.price) : "");
   const [valid, setValid] = useState(addDays(today, 15));
   const [note, setNote] = useState("");
+  const [land, setLand] = useState<LandedInput | null>(startLanded);
   const [arrived, setArrived] = useState({ on: today, note: "" });
   const [mode, setMode] = useState<"" | "sample" | "build">("");
   const [error, setError] = useState("");
@@ -53,7 +58,8 @@ export function CostingCard({ id, no, buyer, open, fromPage, sampleIn, sampleInN
   }
 
   const edit = (f: (s: Sheet) => Sheet) => setSheet((s) => f(structuredClone(s)));
-  const problem = sheetProblem(sheet, price);
+  const problem = sheetProblem(sheet, price) ?? (land ? landedProblem(land, fx) : null);
+  const lastLanded = landedFrom(last?.landed);
 
   return (
     <section className="panel cost" aria-labelledby="cost-h">
@@ -114,6 +120,7 @@ export function CostingCard({ id, no, buyer, open, fromPage, sampleIn, sampleInN
                 last.valid_till ? `holds till ${dayNear(last.valid_till, today)}` : "", `${dayNear(last.created_at.slice(0, 10), today)} by ${last.by}`].filter(Boolean).join(" · ")}
             </span>
           </div>
+          {lastLanded && <p className="text-[13px] num">Delivered to {lastLanded.countryName} by {lastLanded.mode}: <b>{curMoney(lastLanded.total, lastLanded.currency)}</b> a {lastLanded.unit === "m" ? "metre" : "piece"}, an estimate {fromPage ? `${buyer} sees` : "for the buyer"}</p>}
           {last.note && <q className="bsmp-note">{last.note}</q>}
           {sent.length > 1 && (
             <p className="text-[12.5px] text-muted">Earlier: {sent.slice(1).map((c) => `${money(c.price)} on ${dayNear(c.created_at.slice(0, 10), today)}`).join(" · ")}</p>
@@ -174,6 +181,7 @@ export function CostingCard({ id, no, buyer, open, fromPage, sampleIn, sampleInN
             </label>
           </div>
           {estQty && priceNumOk(price) ? <p className="text-[13px] text-muted num">{money(Math.round(Number(price) * estQty))} for {estQty.toLocaleString("en-IN")} pcs</p> : null}
+          <LandedBox value={land} onChange={setLand} price={priceNumOk(price) ? Number(price) : 0} fx={fx} rates={rates} fabric={fabric} startCountry={startCountry} />
           <label className="field"><span>Note {fromPage ? `for ${buyer}` : ""} <small className="muted">optional</small></span>
             <textarea className="inp" rows={2} maxLength={1000} value={note} onChange={(e) => setNote(e.target.value)}
               placeholder="Price for sizes S to XL, ex-factory Jaipur, 45 days after PO." />
@@ -181,7 +189,7 @@ export function CostingCard({ id, no, buyer, open, fromPage, sampleIn, sampleInN
           {error && <p className="text-[13px] font-semibold text-bad" role="alert">{error}</p>}
           <div className="row">
             <button type="button" className="btn primary" disabled={pending}
-              onClick={() => problem ? setError(problem) : run("send", () => sendCosting(id, sheet, price, valid, note),
+              onClick={() => problem ? setError(problem) : run("send", () => sendCosting(id, sheet, price, valid, note, land),
                 fromPage ? `Sent. ${buyer} sees ${money(Number(price))} a piece on their page.` : "Price saved. The inquiry is Quoted.", () => { setMode(""); setOwn(""); setNote(""); })}>
               {busy === "send" ? "Sending…" : fromPage ? `Send price to ${buyer}` : "Save as the quoted price"}
             </button>
@@ -198,6 +206,7 @@ export function CostingCard({ id, no, buyer, open, fromPage, sampleIn, sampleInN
         <details className="cost-detail">
           <summary>See the costing</summary>
           <Breakdown sheet={last.sheet} cost={last.cost} />
+          {lastLanded && <LandedTable l={lastLanded} inr={last.price} />}
         </details>
       )}
     </section>
