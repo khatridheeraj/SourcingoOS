@@ -1,4 +1,5 @@
 import { NO_COMPANY } from "@/lib/names";
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { canEditOrders, getMe } from "@/lib/auth";
 import { loadBuyers } from "@/lib/data";
@@ -26,6 +27,7 @@ export default async function BuyersPage() {
           <h1>Buyers</h1>
           <p>The team sees buyers by name. Factory logins never see buyers.</p>
         </div>
+        <Link className="btn" href="/buyers/updates">Weekly updates</Link>
       </div>
       <BuyerList buyers={buyers} owner={owner} openOrders={openOrders} senders={(senders ?? {}) as Record<string, string[]>} />
     </>
