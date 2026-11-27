@@ -14,6 +14,8 @@ These rules keep every screen consistent. Every change follows them, including t
 - **Weekly buyer updates** (Buyers > Weekly updates): every buyer with an open order hears from us once a week. Built by
   `buyerWeek()` in `src/lib/buyer-week.ts` from what the buyer's own page shows, never more. Home keeps one line in This week
   until all are sent; the buyer's page opens with "What moved this week" (only POs where something moved).
+- **Your styles** (buyer page, after its POs): every style the buyer ordered, one row per style and colour, with approved samples
+  and final QC. Order again becomes an inquiry (`buyer_reorder`, `inquiries.reorder_of`) due today for that order's merchandiser.
 - **Calendar** (a tab beside To do) answers "what is coming". One block per day that has something on it; late work stays on To do.
 - Red means the ship date will be missed. A step past its target while the ship date still holds is amber ("needs an update").
 - **Orders** answers "where is everything". On a computer it is a board with one column per stage; on a phone it is a list of cards.
@@ -50,6 +52,8 @@ Use these instead of drawing a new version on a screen. A new pattern that more 
 3. `e2e/run.sh` must report no problems.
 
 ## Public website (`src/app/(site)`)
+- sourcingo.in (a separate site, not in this repo) is Sourcingo's public face; Dheeraj chose to keep it (28 Nov 2026).
+  These pages are for links from there and are never indexed: `robots.ts` disallows everything, the sitemap is empty.
 - Visitors who aren't signed in get the website at `/` (the proxy shows `/welcome`); the team still gets Orders there.
   Pages: home, How it works, Quality, For factories, Request a costing, Privacy, and one page per product (`/make/<slug>`,
   content in `src/lib/site-products.ts`). Their paths are listed in `src/lib/site.ts`.
