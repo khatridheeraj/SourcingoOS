@@ -1,0 +1,59 @@
+/* Selling overseas: the delivered price on a costing and the export papers. Same tokens and scale as globals.css;
+   kept in its own file so it is easy to find. */
+@layer components {
+  .land { display: flex; flex-direction: column; gap: 10px; margin-top: 6px; padding: 14px; border-radius: 12px; border: 1px solid var(--line); background: var(--surface-2); }
+  .land h3 { margin: 0; font-size: 13.5px; font-weight: 600; }
+  .land h3 small { font-weight: 400; color: var(--muted); }
+  .land-grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); }
+  .land-grid .field:has(.seg) { grid-column: 1 / -1; }
+  .land-sum dd, .bland .cost-sum dd { white-space: nowrap; }
+  .land-head { display: flex; align-items: flex-start; gap: 12px; }
+  .land-head h3 { flex: 1; min-width: 0; }
+  .land-head h3 small { display: block; margin-top: 2px; }
+  .land-grid .seg { width: 100%; }
+  .land-grid .seg > button { flex: 1; }
+  .land-note { margin: 0; padding: 8px 10px; border-radius: 8px; background: var(--surface); box-shadow: inset 0 0 0 1px var(--line); font-size: 12.5px; color: var(--muted); line-height: 1.45; }
+  .land-sum { background: var(--surface); padding: 0 10px; border-radius: 8px; }
+  .bland { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--line); }
+  .bland > summary { display: flex; flex-direction: column; gap: 2px; cursor: pointer; list-style: none; }
+  .bland > summary::-webkit-details-marker { display: none; }
+  .bland > summary > b { font-size: 17px; font-weight: 650; }
+  .bland > summary > b small { font-size: 13px; font-weight: 500; color: var(--muted); }
+  .bland > summary::after { content: "See how it adds up"; font-size: 12.5px; color: var(--accent); font-weight: 500; }
+  .bland[open] > summary::after { content: "Hide"; }
+  .bland .cost-sum { background: var(--surface); padding: 0 10px; border-radius: 8px; margin-top: 8px; }
+
+  .exp-docs { display: grid; gap: 24px; }
+  .exp-form { display: grid; gap: 16px; }
+  .exp-form h3 { margin: 4px 0 0; font-size: 13.5px; font-weight: 600; }
+  .exp-lines { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+  .exp-line { display: grid; gap: 8px; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1fr); align-items: end; }
+  .exp-line > b { font-size: 13px; align-self: center; overflow-wrap: anywhere; }
+  .exp-line > b small { display: block; font-weight: 400; color: var(--muted); }
+  .exp-missing { margin: 0; padding: 10px 12px; border-radius: 10px; background: var(--warn-soft); box-shadow: inset 0 0 0 1px var(--warn-line); font-size: 13px; }
+  .exp-missing ul { margin: 4px 0 0; padding-left: 18px; }
+  .challan-amt { font-size: 12.5px; }
+  .challan-two { display: grid; gap: 18px; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+  .challan-decl { font-size: 11.5px; line-height: 1.5; }
+  .challan .tr { text-align: right; }
+  @media (max-width: 640px) { .exp-line { grid-template-columns: 1fr 1fr; } .exp-line > b { grid-column: 1 / -1; } }
+
+  .site-photo { position: relative; overflow: hidden; }
+  .made-list { display: grid; gap: 10px; margin: 12px 0 0; padding: 0; list-style: none; }
+  .made-row { display: flex; align-items: center; gap: 12px; }
+  .made-row > img, .made-row > .smp-thumb { width: 48px; height: 48px; border-radius: 8px; object-fit: cover; flex: none; background: var(--surface-2); }
+  .made-row > div { min-width: 0; flex: 1; }
+}
+
+@media print {
+  .exp-doc { break-before: page; }
+  .exp-doc:first-of-type { break-before: auto; }
+  .exp-docs { gap: 0; }
+}
+
+@layer components {
+  .site-made-grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); margin: 24px 0 0; padding: 0; list-style: none; }
+  .site-made-grid li { display: flex; flex-direction: column; gap: 8px; }
+  .site-made-grid img { width: 100%; aspect-ratio: 4 / 5; object-fit: cover; border-radius: 14px; border: 1px solid var(--line); background: var(--surface-2); }
+  .site-made-grid span { font-size: 14px; color: var(--muted); }
+}

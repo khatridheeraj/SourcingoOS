@@ -157,6 +157,7 @@ export default async function GoodsPage({ searchParams }: PageProps<"/goods">) {
                       )}
                       <Link href={`/goods/${d.id}/challan`} prefetch={false} className="link text-[13px]">{d.challan_no ? `Challan ${d.challan_no}` : "Delivery challan"}</Link>
                       <Link href={`/goods/${d.id}/packing`} prefetch={false} className="link text-[13px]">Packing list</Link>
+                      <Link href={`/goods/${d.id}/export`} prefetch={false} className="link text-[13px]">Export papers</Link>
                     </div>
                   </div>
                   <div className="todo-chip" />
