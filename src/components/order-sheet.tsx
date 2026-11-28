@@ -9,6 +9,7 @@ import { ErrorFix } from "@/components/fix-link";
 import { addDays, andList, byNextStep, catchUpRows, dm, EMAIL_OK, emptySteps, live, pastTarget, sharedSteps, startBuffer, startTargets, when, type QOrder, type QStyle } from "@/lib/quick";
 import { toast } from "@/components/toast";
 import { uploadPhotos } from "@/lib/photos";
+import { needsProof, proofFolder } from "@/lib/step-proof";
 import { setStylePhoto } from "@/app/(app)/orders/actions";
 
 type Mode = "update" | "start";
@@ -126,11 +127,19 @@ function UpdateView({ order, onDone, onStart }: { order: QOrder; onDone: () => v
   const chosenStyles = styles.filter((s) => chosen.has(s.id));
   const catchRows = upTo ? catchUpRows(chosenStyles, upTo, today, onTarget) : [];
   const rows = tab === "next" ? nextRows : catchRows;
+  // A photo of the work for each style marked done: one shot covers that style's steps in this save.
+  const [shots, setShots] = useState<Record<string, File[]>>({});
+  const proofStyles = [...new Set(rows.filter((r) => needsProof(r)).map((r) => r.line_id))].map((id) => styles.find((s) => s.id === id)!).filter(Boolean);
+  const unshot = proofStyles.filter((s) => !shots[s.id]?.length);
 
   function save() {
     setError("");
     start(async () => {
-      const res = await markStepsDone(order.id, rows);
+      let photos: Record<string, string[]> = {};
+      try {
+        photos = Object.fromEntries(await Promise.all(proofStyles.map(async (st) => [st.id, await uploadPhotos(proofFolder(order.companyId, order.id, st.id), shots[st.id] ?? [])] as const)));
+      } catch (e) { setError(caught(e, "The photos didn't upload. Try again.")); return; }
+      const res = await markStepsDone(order.id, rows.map((r) => (needsProof(r) ? { ...r, photos: photos[r.line_id] ?? [] } : r)));
       if (res.error) { setError(res.error); return; }
       const nStyles = new Set(rows.map((r) => r.line_id)).size;
       const steps = new Set(rows.map((r) => r.stage));
@@ -246,9 +255,22 @@ function UpdateView({ order, onDone, onStart }: { order: QOrder; onDone: () => v
         {tab === "catch" && upTo && catchRows.length > 0 && (
           <p className="qs-sum">{plural(catchRows.length, "step")} on {plural(new Set(catchRows.map((r) => r.line_id)).size, "style")}, dated {onTarget ? `on their targets (latest ${dm(catchRows.reduce((m, r) => (r.done_on > m ? r.done_on : m), ""))})` : "today"}</p>
         )}
+        {proofStyles.length > 0 && (
+          <div className="qs-proof" role="group" aria-label="Photos of the work">
+            <small>A photo of the work for each style</small>
+            {proofStyles.map((st) => (
+              <label key={st.id} className={`step-proof ${shots[st.id]?.length ? "has" : ""}`}>
+                {shots[st.id]?.length ? `✓ ${st.style}: ${plural(shots[st.id].length, "photo")}` : `+ Photo of ${st.style}`}
+                <input type="file" accept="image/*" capture="environment" multiple hidden aria-label={`Photo of ${st.style}`}
+                  onChange={(e) => { const fs = Array.from(e.target.files ?? []).slice(0, 10); if (fs.length) setShots((x) => ({ ...x, [st.id]: fs })); e.target.value = ""; }} />
+              </label>
+            ))}
+          </div>
+        )}
         {error && <p className="qs-err" role="alert">{error}</p>}
-        <button type="button" className="btn primary qs-go" disabled={pending || !rows.length} onClick={save}>
-          {pending ? "Saving…" : !rows.length ? (tab === "next" ? "Pick the styles that are done" : "Tap the last step finished") : tab === "next" ? `Mark ${rows.length === 1 ? "it" : rows.length} done` : `Mark ${plural(rows.length, "step")} done`}
+        <button type="button" className="btn primary qs-go" disabled={pending || !rows.length || unshot.length > 0} onClick={save}>
+          {pending ? "Saving…" : !rows.length ? (tab === "next" ? "Pick the styles that are done" : "Tap the last step finished")
+            : unshot.length ? `Add ${unshot.length === 1 ? "the photo" : `${unshot.length} photos`} to mark done` : tab === "next" ? `Mark ${rows.length === 1 ? "it" : rows.length} done` : `Mark ${plural(rows.length, "step")} done`}
         </button>
       </footer>
     </>
@@ -285,7 +307,7 @@ function StartView({ order, factoryId, onDone, onChanged }: { order: QOrder; fac
   const first = g.styles[0];
   const waitingLock = !!g.lockRequestedAt;
   // Waiting for approval, the plan shown is the one saved, exactly what the approval would lock.
-  const plan = !waitingLock && target && target >= today ? startTargets(g.styles, target, today, moveLate) : {};
+  const plan = !waitingLock && target && target >= today ? startTargets(g.styles, target, today, moveLate, due) : {};
   const after = target && (waitingLock || !moveLate) ? pastTarget(g.styles, target) : null;
   const lateKeys = new Set(after?.rows.filter((r) => r.style.id === first?.id).map((r) => r.step.key));
   // Before it starts: the merchandiser's dates after the finish date, and the buffer that would fit them instead.

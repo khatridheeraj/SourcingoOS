@@ -8,6 +8,8 @@ export { emptySteps, startBuffer, startTargets } from "@/lib/tna-plan";
 export type QStep = { key: string; label: string; planned_on: string; done_on: string; not_needed: boolean; extra: boolean; factory_on?: string };
 // fabric: a fabric style, planned with the fabric standard days.
 export type QStyle = { id: string; style: string; colour: string; qty: number; hasRate: boolean; hasPhoto?: boolean; factoryId: string | null; fabric?: boolean; steps: QStep[];
+  // Its own ship date, when it ships apart from the PO.
+  shipDate?: string;
   // The latest final QC or re-check (by check date), the one shipping goes by.
   finalQc?: { result: string; on: string } };
 export type QGroup = {

@@ -11,7 +11,11 @@ import { ProgressCell } from "@/components/progress";
 import { createClient } from "@/lib/supabase/server";
 import { journey, type Journey, shipClock, STAGES, type StageKey } from "@/lib/journey";
 import { ShipClock, StageMeter } from "@/components/order-ui";
+import { orderFromStyles, styleStates } from "@/lib/style-track";
 import { type DeletedPo, DeletedPos } from "./orders/deleted-pos";
+import { PageTabs } from "@/components/page-tabs";
+import { ORDER_TABS } from "@/lib/page-groups";
+import { isPartner, type Role } from "@/lib/auth-roles";
 
 const TABS = [
   { key: "open", label: "Open" },
@@ -21,7 +25,7 @@ const TABS = [
   { key: "all", label: "All" },
 ];
 
-type Line = { id: string; style: string; qty: number; product: string; buyer_rate: number | null; factory_id: string | null; factory_rate: number | null };
+type Line = { id: string; style: string; qty: number; product: string; buyer_rate: number | null; factory_id: string | null; factory_rate: number | null; ship_date?: string | null };
 
 export default async function OrdersPage({ searchParams }: PageProps<"/">) {
   const sp = await searchParams;
@@ -38,7 +42,7 @@ export default async function OrdersPage({ searchParams }: PageProps<"/">) {
   const page = (a: number, z: number) => {
     let query = supabase
       .from("orders")
-      .select("id, order_no, buyer_id, buyer_po, ship_date, revised_ship_date, delay_reason, stage, status, closed_short_at, order_lines(id, style, qty, factory_id, product)")
+      .select("id, order_no, buyer_id, buyer_po, ship_date, revised_ship_date, delay_reason, stage, status, closed_short_at, order_lines(id, style, qty, factory_id, product, ship_date)")
       .eq("company_id", companyId)
       .is("order_lines.removed_at", null)
       .order("ship_date", { ascending: true, nullsFirst: false })
@@ -81,8 +85,8 @@ export default async function OrdersPage({ searchParams }: PageProps<"/">) {
     openIds.length ? fetchAll((a, z) => supabase.from("factory_pos").select("order_id, factory_id, released_at, lock_requested_at").in("order_id", openIds).order("id").range(a, z)) : none,
     openIds.length && canEditOrders(me?.role)
       ? fetchAll((a, z) => supabase.from("dispatches").select("order_id, invoiced_at, shipped_at").in("order_id", openIds).is("cancelled_at", null).order("id").range(a, z)) : none,
-    openIds.length ? fetchAll((a, z) => supabase.from("sample_rounds").select("order_id").in("order_id", openIds).eq("status", "with_team").order("id").range(a, z)) : none,
-    openIds.length ? fetchAll((a, z) => supabase.from("step_updates").select("order_id").in("order_id", openIds).eq("status", "pending").order("id").range(a, z)) : none,
+    openIds.length ? fetchAll((a, z) => supabase.from("sample_rounds").select("order_id, line_id").in("order_id", openIds).eq("status", "with_team").order("id").range(a, z)) : none,
+    openIds.length ? fetchAll((a, z) => supabase.from("step_updates").select("order_id, line_id").in("order_id", openIds).eq("status", "pending").order("id").range(a, z)) : none,
   ]);
   // Each style's latest final QC result (rows come newest first).
   const finalQc = new Map<string, string>();
@@ -119,7 +123,15 @@ export default async function OrdersPage({ searchParams }: PageProps<"/">) {
     const fs = [...new Set(lines.map((l) => l.factory_id))];
     const ds = (disp as { order_id: string; invoiced_at: string | null; shipped_at: string | null }[]).filter((d) => d.order_id === o.id);
     const st = (steps ?? []).filter((r) => r.order_id === o.id && ids.has(r.line_id));
-    return journey({
+    const pos = (fpos as { order_id: string; factory_id: string; released_at: string | null; lock_requested_at: string | null }[]).filter((p) => p.order_id === o.id);
+    const count = (xs: { order_id: string; line_id: string }[]) => xs.filter((x) => x.order_id === o.id).reduce((m, x) => m.set(x.line_id, (m.get(x.line_id) ?? 0) + 1), new Map<string, number>());
+    // Each style on its own, so a late style at one factory isn't hidden behind another still waiting for its factory.
+    const states = styleStates(lines.map((l) => ({ id: l.id, style: l.style, factoryId: l.factory_id, hasRate: l.factory_rate != null, shipDate: l.ship_date ?? null })),
+      { status: o.status, due: dueDate(o), hasBuyerPo: prices && withPo != null ? hasPo.has(o.id) : null, packedAll: stageReached(o.stage, "packed"), closedShort: !!o.closed_short_at,
+        pos: pos.map((p) => ({ factoryId: p.factory_id, released: !!p.released_at, lockRequested: !!p.lock_requested_at })) },
+      { role: me?.role, today, steps: st, finalQc, ship: shipRows.filter((r) => ids.has(r.line_id)), dispatch: prices,
+        samples: count(smp as { order_id: string; line_id: string }[]), updates: count(ups as { order_id: string; line_id: string }[]) });
+    return orderFromStyles(journey({
       status: o.status, role: me?.role,
       lines: lines.map((l) => ({ factoryId: l.factory_id, hasRate: l.factory_rate != null })),
       groups: fs.map((f) => {
@@ -141,7 +153,7 @@ export default async function OrdersPage({ searchParams }: PageProps<"/">) {
       riskDays: styleProgress(lines.map((l) => l.id), steps ?? [], dueDate(o), today, paceLookup(pace, lines, factoryName),
         (id) => (fpos as { order_id: string; factory_id: string; released_at: string | null }[]).some((p) => p.order_id === o.id && p.factory_id === lines.find((l) => l.id === id)?.factory_id && !!p.released_at)).riskDays,
       today,
-    });
+    }), states);
   };
   const built = (data ?? []).map((o) => {
     const lines = withRates(o);
@@ -200,6 +212,7 @@ export default async function OrdersPage({ searchParams }: PageProps<"/">) {
         {prices && <Link href="/orders/new" className="btn primary hide-phone">New order</Link>}
       </div>
 
+      {me?.role && !isPartner(me.role as Role) && <PageTabs tabs={ORDER_TABS} label="Orders" />}
       {status === "open" && openCount > 0 && (
         <div className="kpis hide-phone" style={{ gridTemplateColumns: `repeat(${openMargin && openMargin.sale > 0 ? 5 : 4}, minmax(0, 1fr))` }}>
           <div className="kpi"><span className="kpi-label"><i aria-hidden />Open orders</span><b>{openCount}</b><small>{qty(open.reduce((s, r) => s + r.styles.length, 0))} styles</small></div>

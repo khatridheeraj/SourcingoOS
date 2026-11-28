@@ -13,3 +13,6 @@ export const REPORT_TABS_LEAD: PageTab[] = [{ href: "/reports", label: "Numbers"
 const SALES = ["/reports/leads", "/reports/record"];
 export const reportTabs = (role: string | null | undefined, buyerDetails = true) =>
   (role === "owner" || role === "manager" ? REPORT_TABS_LEAD : REPORT_TABS).filter((t) => buyerDetails || !SALES.includes(t.href));
+
+// Orders read three ways: by buyer PO, every style on its own, and every style a factory holds.
+export const ORDER_TABS: PageTab[] = [{ href: "/", label: "By order" }, { href: "/orders/styles", label: "By style" }, { href: "/orders/factories", label: "By factory" }];

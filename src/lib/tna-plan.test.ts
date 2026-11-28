@@ -114,3 +114,13 @@ test("only the empty steps are filled, inside the days left and around her own d
   assert.deepEqual(Object.keys(plan).sort(), ["cutting", "fabric", "greige"]);
   for (const k of Object.keys(plan)) assert.ok(plan[k] >= TODAY && plan[k] <= "2026-11-01", `${k} ${plan[k]}`);
 });
+
+test("a style shipping before the PO finishes earlier by the same days", () => {
+  const steps = ["greige", "fabric", "cutting", "stitching", "packed"].map((key) => ({ key, planned_on: "", done_on: "", not_needed: false, extra: false }));
+  const plan = startTargets([{ id: "early", steps, shipDate: "2026-12-20" }, { id: "po", steps }, { id: "late", steps, shipDate: "2027-01-20" }], "2026-12-26", "2026-11-28", false, "2027-01-02");
+  const last = (id: string) => Object.values(plan[id]).sort().at(-1);
+  const gap = (a: string, b: string) => (Date.parse(a) - Date.parse(b)) / 86_400_000;
+  assert.ok(gap(last("po")!, last("early")!) >= 10);
+  assert.ok(last("early")! <= "2026-12-13");
+  assert.equal(last("late"), last("po"));
+});
