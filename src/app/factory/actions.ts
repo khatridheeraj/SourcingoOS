@@ -96,3 +96,38 @@ export async function sendGoodsReady(orderId: string, readyOn: string, lines: { 
   revalidatePath("/factory");
   return {};
 }
+
+// The factory sends one of its certificates, with the scan already uploaded. Sourcingo checks it before it counts.
+export async function saveMyCert(c: { name: string; no: string; until: string; path: string | null; fileName: string | null }): Promise<{ error?: string }> {
+  const me = await getMe();
+  if (me?.role !== "factory") return { error: "This login is not set up for a factory." };
+  if (c.until && !/^\d{4}-\d{2}-\d{2}$/.test(c.until)) return { error: "Pick the date it runs out." };
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("save_factory_certificate", {
+    p_factory: null, p_name: c.name.trim(), p_no: c.no.trim() || null, p_until: c.until || null, p_path: c.path, p_file_name: c.fileName,
+  });
+  if (error) return { error: friendly(error) };
+  revalidatePath("/factory");
+  return {};
+}
+
+export async function removeMyCert(id: string): Promise<{ error?: string }> {
+  const me = await getMe();
+  if (me?.role !== "factory") return { error: "This login is not set up for a factory." };
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("remove_factory_certificate", { p_id: id });
+  if (error) return { error: friendly(error) };
+  revalidatePath("/factory");
+  return {};
+}
+
+// The factory's free pieces, week by week.
+export async function saveMyCapacity(rows: { week: string; free: number | null }[]): Promise<{ error?: string }> {
+  const me = await getMe();
+  if (me?.role !== "factory") return { error: "This login is not set up for a factory." };
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("set_factory_capacity", { p_factory: null, p_weeks: rows });
+  if (error) return { error: friendly(error) };
+  revalidatePath("/factory");
+  return {};
+}

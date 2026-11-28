@@ -67,3 +67,39 @@ export async function saveExporter(dispatchId: string, x: Exporter): Promise<{ e
   revalidatePath(`/goods/${dispatchId}/export`);
   return {};
 }
+
+const trackDone = (id: string) => { revalidatePath(`/goods/${id}/track`); revalidatePath("/goods"); revalidatePath("/buyer"); revalidatePath("/guarantee"); };
+
+export type TrackInput = { mode: string; carrier: string; no: string; to: string; eta: string };
+// How a shipped part travels: mode, carrier and its number, where to, and when it should arrive.
+export async function saveTracking(dispatchId: string, t: TrackInput): Promise<{ error?: string }> {
+  if (!canEditOrders((await getMe())?.role)) return { error: "Only the orders team keeps tracking." };
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("save_tracking", {
+    p_dispatch: dispatchId, p_mode: t.mode, p_carrier: t.carrier.trim() || null, p_no: t.no.trim() || null, p_to: t.to.trim() || null,
+    p_eta: /^\d{4}-\d{2}-\d{2}$/.test(t.eta) ? t.eta : null,
+  });
+  if (error) return { error: friendly(error) };
+  trackDone(dispatchId);
+  return {};
+}
+
+// A dated update at a stage of the journey.
+export async function addTrackEvent(dispatchId: string, stage: string, on: string, place: string, note: string): Promise<{ error?: string }> {
+  if (!canEditOrders((await getMe())?.role)) return { error: "Only the orders team keeps tracking." };
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(on)) return { error: "Pick the day." };
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("add_shipment_event", { p_dispatch: dispatchId, p_stage: stage, p_on: on, p_place: place.trim().slice(0, 80) || null, p_note: note.trim().slice(0, 300) || null });
+  if (error) return { error: friendly(error) };
+  trackDone(dispatchId);
+  return {};
+}
+
+export async function takeBackTrackEvent(dispatchId: string, eventId: string): Promise<{ error?: string }> {
+  if (!canEditOrders((await getMe())?.role)) return { error: "Only the orders team keeps tracking." };
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("cancel_shipment_event", { p_id: eventId });
+  if (error) return { error: friendly(error) };
+  trackDone(dispatchId);
+  return {};
+}

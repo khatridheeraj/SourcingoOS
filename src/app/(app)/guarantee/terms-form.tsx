@@ -6,7 +6,8 @@ import { toast } from "@/components/toast";
 import { setGuarantee } from "./actions";
 
 // The owner's terms: the deposit share, how soon factories are paid, and the switch that shows it all to buyers and factories.
-export function TermsForm({ live, depositPct, payDays }: { live: boolean; depositPct: number; payDays: number }) {
+// plan false: the deposit is set in the milestones above, so only the factory days show here.
+export function TermsForm({ live, depositPct, payDays, plan = true }: { live: boolean; depositPct: number; payDays: number; plan?: boolean }) {
   const router = useRouter();
   const [pct, setPct] = useState(String(depositPct));
   const [days, setDays] = useState(String(payDays));
@@ -32,9 +33,9 @@ export function TermsForm({ live, depositPct, payDays }: { live: boolean; deposi
   return (
     <div className="stack">
       <div className="fgrid">
-        <label className="field"><span>Buyer deposit with the PO</span>
+        {plan && <label className="field"><span>Buyer deposit with the PO</span>
           <span className="inp-unit"><input className="inp num" inputMode="numeric" value={pct} maxLength={2} onChange={(e) => setPct(e.target.value)} /><i>%</i></span>
-        </label>
+        </label>}
         <label className="field"><span>Pay factories within</span>
           <span className="inp-unit"><input className="inp num" inputMode="numeric" value={days} maxLength={2} onChange={(e) => setDays(e.target.value)} /><i>days of their pass</i></span>
         </label>

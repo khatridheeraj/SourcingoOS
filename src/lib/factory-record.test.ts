@@ -57,3 +57,13 @@ test("the buyer reads the city and the proof, never more", () => {
   const weak = { ...base, steps_on_time: 10, final_first_pass: 5, shipments_on_time: 6 };
   assert.equal(buyerLine(weak, factoryRecord(weak, today)), null);
 });
+
+test("certificates: the checked paper and the visit count once, lapsed ones are not shown to buyers", () => {
+  const f: RecordFacts = { ...base, verified: { visited_on: "2026-11-01", gst_ok: true, certs: [{ name: "Oeko-Tex Standard 100", until: "2026-12-01" }] },
+    certificates: [{ name: "OEKO-TEX", until: "2027-06-01" }, { name: "BSCI", until: "2026-10-01" }, { name: "GOTS", until: "2026-12-20" }] };
+  const r = factoryRecord(f, today);
+  assert.deepEqual(r.certs.map((c) => [c.name, c.state]), [["OEKO-TEX", "ok"], ["BSCI", "expired"], ["GOTS", "soon"]]);
+  assert.equal(buyerLine(f, r), "Made by a factory verified by Sourcingo in Jaipur, certified OEKO-TEX, GOTS · 90% of steps on time · 90% passed final QC first time · 100% shipped by the date across 18 orders");
+  const fresh = factoryRecord({ ...base, orders: 0, steps_finished: 0, steps_on_time: 0, final_firsts: 0, shipments_dated: 0, certificates: [{ name: "GOTS", until: null }] }, today);
+  assert.equal(buyerLine({ ...base, orders: 0 }, fresh), "Made by a factory in Jaipur, certified GOTS", "a certificate alone is worth saying");
+});

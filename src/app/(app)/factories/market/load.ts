@@ -4,6 +4,8 @@ import { buyerName, loadBuyers } from "@/lib/data";
 import { factoryRecord, recordLine, type RecordFacts } from "@/lib/factory-record";
 import { todayIST } from "@/lib/format";
 import type { MarketQuote } from "@/lib/market";
+import { capacityFit, type FactoryCap } from "@/lib/capacity";
+import { leadFor, type LeadRow } from "@/lib/lead-time";
 import { PHOTO_BUCKET } from "@/lib/storage";
 import { createClient } from "@/lib/supabase/server";
 
@@ -29,13 +31,18 @@ export async function loadListings(id?: string): Promise<{ listings: Listing[]; 
   const orderIds = [...new Set(rows.map((r) => r.order_id as string))];
   const factoryIds = [...new Set(rows.flatMap((r) => ((r.market_quotes ?? []) as { factory_id: string }[]).map((x) => x.factory_id)))];
   const photoPaths = rows.map((r) => one(r.order_lines as unknown as { photo_path: string | null } | null)?.photo_path).filter((p): p is string => !!p);
-  const [{ data: prices }, { data: made }, { data: signed }, { data: records }] = await Promise.all([
+  const [{ data: prices }, { data: made }, { data: signed }, { data: records }, { data: caps }, { data: leads }] = await Promise.all([
     orderIds.length ? supabase.rpc("line_prices", { p_orders: orderIds }) : Promise.resolve({ data: [] }),
     factoryIds.length ? supabase.from("order_lines").select("factory_id").in("factory_id", factoryIds).is("removed_at", null).limit(5000) : Promise.resolve({ data: [] }),
     photoPaths.length ? supabase.storage.from(PHOTO_BUCKET).createSignedUrls(photoPaths, 3600) : Promise.resolve({ data: [] }),
     // Each quoting factory's record with us, read the same way as on the Factories page.
     factoryIds.length ? supabase.rpc("factory_records") : Promise.resolve({ data: [] }),
+    // Free capacity each gave (26 weeks covers any ready-by date), and the lead times we have really delivered.
+    factoryIds.length ? supabase.rpc("factory_capacity", { p_weeks: 26 }) : Promise.resolve({ data: [] }),
+    factoryIds.length ? supabase.rpc("lead_times") : Promise.resolve({ data: [] }),
   ]);
+  const capOf = new Map(((caps ?? []) as FactoryCap[]).map((c) => [c.factory_id, c]));
+  const leadRows = (leads ?? []) as LeadRow[];
   const today = todayIST();
   const recordOf = new Map<string, { line: string; watch: boolean }>();
   for (const f of (records ?? []) as RecordFacts[]) {
@@ -60,7 +67,8 @@ export async function loadListings(id?: string): Promise<{ listings: Listing[]; 
       photo: l.photo_path ? urlOf.get(l.photo_path) ?? null : null, factory_id: l.factory_id,
       order_no: o.order_no, buyer: buyerOf.get(o.buyer_id) ?? "", buyer_po: o.buyer_po, buyer_rate: priceOf.get(r.line_id) ?? null,
       quotes: ((r.market_quotes ?? []) as unknown as (Omit<MarketQuote, "factory" | "city" | "styles_with_us" | "record"> & { factories: { name: string; city: string | null } | { name: string; city: string | null }[] | null })[])
-        .map(({ factories, ...x }) => ({ ...x, factory: one(factories)?.name ?? "Factory", city: one(factories)?.city ?? null, styles_with_us: madeBy.get(x.factory_id) ?? 0, record: recordOf.get(x.factory_id) ?? null })),
+        .map(({ factories, ...x }) => ({ ...x, factory: one(factories)?.name ?? "Factory", city: one(factories)?.city ?? null, styles_with_us: madeBy.get(x.factory_id) ?? 0, record: recordOf.get(x.factory_id) ?? null,
+          fit: capacityFit(capOf.get(x.factory_id), x.ready_on, l.qty, today), lead: leadFor(leadRows, x.factory_id, l.product ?? "garment") })),
     });
   }
   return { listings, error: error?.message };

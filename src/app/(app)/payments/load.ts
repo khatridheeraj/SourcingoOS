@@ -18,7 +18,7 @@ export async function loadBooks() {
   const companyId = me?.companyId ?? NO_COMPANY;
   const supabase = await createClient();
   const [inv, cn, chq, alloc, terms, buyers, ledgers, rcpt] = await Promise.all([
-    fetchAll((a, z) => supabase.from("invoices").select("id, invoice_no, buyer_id, invoice_date, amount, due_date, order_id, notes, cancelled_at").eq("company_id", companyId).order("invoice_date").order("created_at").order("id").range(a, z)),
+    fetchAll((a, z) => supabase.from("invoices").select("id, invoice_no, buyer_id, invoice_date, amount, due_date, order_id, notes, cancelled_at, currency, fx_rate").eq("company_id", companyId).order("invoice_date").order("created_at").order("id").range(a, z)),
     fetchAll((a, z) => supabase.from("credit_notes").select("id, credit_note_no, invoice_id, note_date, amount, notes, cancelled_at").eq("company_id", companyId).order("id").range(a, z)),
     fetchAll((a, z) => supabase.from("cheques").select("id, buyer_id, cheque_no, bank, cheque_date, amount, status, received_on, deposited_on, cleared_on, bounced_on, notes, paid_other_on, notice_sent_on").eq("company_id", companyId).order("cheque_date").order("created_at").order("id").range(a, z)),
     fetchAll((a, z) => supabase.from("cheque_allocations").select("id, cheque_id, invoice_id, amount").eq("company_id", companyId).is("removed_at", null).order("id").range(a, z)),

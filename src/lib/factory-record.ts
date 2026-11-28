@@ -13,7 +13,12 @@ export type RecordFacts = {
   shipments: number; shipments_dated: number; shipments_on_time: number; pieces_shipped: number;
   claims?: number; claim_amount?: number; date_asks?: number; accept_hours?: number | null;
   verified: Verified | null;
+  // Certificates the team has checked (0108), and the days from PO to first shipment on its orders with us.
+  certificates?: Cert[]; lead_orders?: number; lead_days?: number | null;
 };
+
+// The certificates garment buyers ask for most, offered one tap each; anything else is typed.
+export const CERT_NAMES = ["GOTS", "OEKO-TEX", "Sedex / SMETA", "BSCI", "WRAP", "GRS", "ISO 9001", "SA8000"];
 
 // Below these, a percentage says more about luck than about the factory, so it is not shown.
 export const MIN_STEPS = 8;
@@ -66,9 +71,21 @@ export function factoryRecord(f: RecordFacts, today: string): FactoryRecord {
   const v = f.verified;
   const dueOn = v ? addDays(v.visited_on, VISIT_DAYS) : "";
   const visit = v ? { on: v.visited_on, current: dueOn > today, dueOn, gst: v.gst_ok, udyam: v.udyam_no ?? null } : null;
-  const soon = addDays(today, CERT_SOON_DAYS);
-  const certs: CertState[] = (v?.certs ?? []).map((c) => ({ ...c, state: !c.until ? "ok" : c.until < today ? "expired" : c.until <= soon ? "soon" : "ok" }));
+  // A certificate seen on a visit and the same one checked on paper count once, by the later expiry.
+  const byName = new Map<string, Cert>();
+  for (const c of [...(v?.certs ?? []), ...(f.certificates ?? [])]) {
+    const key = certKey(c.name);
+    const had = byName.get(key);
+    if (!had || (had.until && (!c.until || c.until > had.until))) byName.set(key, c);
+  }
+  const certs: CertState[] = [...byName.values()].map((c) => ({ ...c, state: certState(c.until, today) }));
   return { onTime, firstPass, shipOnTime, defectRate, askRate, level, watch, visit, certs };
+}
+
+// "Oeko-Tex Standard 100" and "OEKO-TEX" are the same certificate to a buyer.
+export const certKey = (name: string) => name.toUpperCase().replace(/[^A-Z0-9]/g, "").replace(/STANDARD100$/, "");
+export function certState(until: string | null, today: string): CertState["state"] {
+  return !until ? "ok" : until < today ? "expired" : until <= addDays(today, CERT_SOON_DAYS) ? "soon" : "ok";
 }
 
 export const LEVEL_WORDS: Record<Level, string> = { new: "New with us", strong: "Strong record", steady: "Steady record", watch: "Watch" };
@@ -96,7 +113,9 @@ export function buyerLine(f: RecordFacts, r: FactoryRecord): string | null {
     good(r.firstPass) ? `${r.firstPass}% passed final QC first time` : "",
     good(r.shipOnTime) ? `${r.shipOnTime}% shipped by the date` : "",
   ].filter(Boolean);
-  if (!r.visit?.current && !proof.length) return null;
+  // Certificates in date, by name only: the buyer's first compliance question, answered without naming the factory.
+  const certified = r.certs.filter((c) => c.state !== "expired").map((c) => c.name);
+  if (!r.visit?.current && !proof.length && !certified.length) return null;
   const across = proof.length && f.orders > 1 ? ` across ${f.orders} orders` : "";
-  return `Made by ${who}${proof.length ? ` · ${proof.join(" · ")}${across}` : ""}`;
+  return `Made by ${who}${certified.length ? `, certified ${certified.join(", ")}` : ""}${proof.length ? ` · ${proof.join(" · ")}${across}` : ""}`;
 }

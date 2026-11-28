@@ -16,6 +16,10 @@ These rules keep every screen consistent. Every change follows them, including t
   until all are sent; the buyer's page opens with "What moved this week" (only POs where something moved).
 - **Your styles** (buyer page, after its POs): every style the buyer ordered, one row per style and colour, with approved samples
   and final QC. Order again becomes an inquiry (`buyer_reorder`, `inquiries.reorder_of`) due today for that order's merchandiser.
+- **Add POs from a sheet** (Orders > Add from a sheet): pasted rows or a CSV become one order per buyer and PO, read by
+  `readSheet()` in `src/lib/po-sheet.ts`; every problem names its row, and only clean POs are added, each through `saveOrder`.
+- **A lead's own page**: an open inquiry from someone not yet a buyer has "Make their page" (`make_buyer_from_inquiry`), which
+  adds the buyer, gives the asker a person link, and moves the ask onto their buyer page.
 - **Calendar** (a tab beside To do) answers "what is coming". One block per day that has something on it; late work stays on To do.
 - Red means the ship date will be missed. A step past its target while the ship date still holds is amber ("needs an update").
 - **Orders** answers "where is everything". On a computer it is a board with one column per stage; on a phone it is a list of cards.

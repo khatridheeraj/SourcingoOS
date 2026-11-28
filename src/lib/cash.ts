@@ -7,7 +7,7 @@ const DAY = 86_400_000;
 const addDays = (d: string, n: number) => new Date(Date.parse(d) + n * DAY).toISOString().slice(0, 10);
 const diff = (a: string, b: string) => Math.round((Date.parse(b) - Date.parse(a)) / DAY);
 
-export type CashItem = { amount: number; on: string; label: string; href?: string; kind: "invoice" | "bill" | "order" };
+export type CashItem = { amount: number; on: string; label: string; href?: string; kind: "invoice" | "bill" | "order" | "milestone" };
 export type OpenOrder = { id: string; orderNo: string; buyer: string; sale: number; cost: number; ships: string; buyerDays: number; factoryDays: number };
 export type Week = { start: string; end: string; in: number; out: number; net: number; balance: number; items: CashItem[] };
 export type CashAhead = { overdueIn: number; overdueOut: number; weeks: Week[]; expectedIn: number; expectedOut: number; lowest: Week | null; later: { in: number; out: number } };
@@ -30,17 +30,22 @@ export function orderCash(o: OpenOrder): CashItem[] {
 // Days the business carries an order: from paying the factory to the buyer paying. Negative when the buyer pays first.
 export const carryDays = (o: Pick<OpenOrder, "buyerDays" | "factoryDays">) => o.buyerDays - o.factoryDays;
 
-export function cashAhead({ invoices, bills, orders, today, weeks = 12 }: {
+export function cashAhead({ invoices, bills, orders, today, weeks = 13, opening = 0, extra = [] }: {
   invoices: { amount: number; due: string; label: string; href?: string }[];
   bills: { amount: number; due: string; label: string; href?: string }[];
   orders: OpenOrder[];
   today: string;
   weeks?: number;
+  // The bank balance today, so the running total is real money; 0 when not given.
+  opening?: number;
+  // Other dated money, such as Guarantee milestones in place of an order's usual credit days.
+  extra?: CashItem[];
 }): CashAhead {
   const items: CashItem[] = [
     ...invoices.filter((i) => i.amount > 0).map((i) => ({ amount: i.amount, on: i.due, label: i.label, href: i.href, kind: "invoice" as const })),
     ...bills.filter((b) => b.amount > 0).map((b) => ({ amount: -b.amount, on: b.due, label: b.label, href: b.href, kind: "bill" as const })),
     ...orders.flatMap(orderCash).filter((x) => x.amount !== 0),
+    ...extra.filter((x) => x.amount !== 0),
   ];
   const first = monday(today);
   const out: Week[] = Array.from({ length: weeks }, (_, i) => ({ start: addDays(first, i * 7), end: addDays(first, i * 7 + 6), in: 0, out: 0, net: 0, balance: 0, items: [] }));
@@ -53,7 +58,7 @@ export function cashAhead({ invoices, bills, orders, today, weeks = 12 }: {
     if (x.amount > 0) w.in += x.amount; else w.out -= x.amount;
     w.items.push(x);
   }
-  let run = 0;
+  let run = opening;
   for (const w of out) {
     w.net = w.in - w.out;
     run += w.net;

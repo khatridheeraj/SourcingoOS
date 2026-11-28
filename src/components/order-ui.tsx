@@ -77,3 +77,24 @@ export function Outlook({ f, due, styles = 1 }: { f: Forecast; due: string | nul
     </p>
   );
 }
+
+// Door to door: each stage a shipped part passes, done ones filled, the current one ringed, with its day and place.
+// Used on the team's tracking page and on the buyer's page, so both read the journey the same way.
+export function TrackLine({ steps, eta, today }: { steps: import("@/lib/tracking").TrackStep[]; eta?: string | null; today: string }) {
+  const delivered = steps.at(-1)?.done;
+  return (
+    <ol className="trk" aria-label="Shipment journey">
+      {steps.map((s) => (
+        <li key={s.stage} className={`trk-step ${s.done ? "done" : ""} ${s.current ? "now" : ""}`} aria-current={s.current ? "step" : undefined}>
+          <i aria-hidden />
+          <span className="trk-body">
+            <b>{s.label}</b>
+            <small>
+              {[s.on ? dayNear(s.on, today) : s.stage === "delivered" && eta && !delivered ? `Expected ${dayNear(eta, today)}` : "", s.place, s.note].filter(Boolean).join(" · ")}
+            </small>
+          </span>
+        </li>
+      ))}
+    </ol>
+  );
+}

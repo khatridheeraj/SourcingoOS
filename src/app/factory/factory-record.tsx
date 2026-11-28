@@ -1,6 +1,7 @@
 import { factoryRecord, MIN_CHECKS, MIN_SHIPMENTS, MIN_STEPS, type RecordFacts } from "@/lib/factory-record";
 import { day, todayIST } from "@/lib/format";
 import type { Lang } from "./i18n";
+import "@/components/factory-bits.css";
 
 const WORDS = {
   en: {
@@ -16,6 +17,9 @@ const WORDS = {
     old: (d: string) => `Last visit ${d}, over a year ago. Ask Sourcingo for a new visit.`,
     soon: (n: string, d: string) => `${n} runs out on ${d}: send the renewed certificate to Sourcingo.`,
     gone: (n: string, d: string) => `${n} ran out on ${d}: send the renewed certificate to Sourcingo.`,
+    fix: "What to fix: defects Sourcingo found most on your styles (last 90 days)",
+    pcs: (n: number, c: number) => `${n.toLocaleString("en-IN")} pcs · ${c} ${c === 1 ? "check" : "checks"}`,
+    rated: (a: number, n: number) => `Buyers rate your orders ${a} of 5 (${n} orders)`,
   },
   hi: {
     title: "Sourcingo पर आपका रिकॉर्ड",
@@ -30,11 +34,16 @@ const WORDS = {
     old: (d: string) => `आखिरी विज़िट ${d}, एक साल से पुरानी। Sourcingo से नई विज़िट के लिए कहें।`,
     soon: (n: string, d: string) => `${n} ${d} को ख़त्म हो रहा है: नया सर्टिफिकेट Sourcingo को भेजें।`,
     gone: (n: string, d: string) => `${n} ${d} को ख़त्म हो गया: नया सर्टिफिकेट Sourcingo को भेजें।`,
+    fix: "क्या सुधारें: आपके स्टाइल में Sourcingo को सबसे ज़्यादा मिले डिफेक्ट (पिछले 90 दिन)",
+    pcs: (n: number, c: number) => `${n.toLocaleString("en-IN")} पीस · ${c} चेक`,
+    rated: (a: number, n: number) => `खरीदारों ने आपके ऑर्डर को 5 में से ${a} दिया (${n} ऑर्डर)`,
   },
 } as const;
 
 // The factory's own record in its panel: the same numbers buyers and our team judge it by, so it knows what wins work.
-export function FactoryRecordCard({ facts, lang }: { facts: RecordFacts | null; lang: Lang }) {
+export function FactoryRecordCard({ facts, lang, fix = [], rating = null }: {
+  facts: RecordFacts | null; lang: Lang; fix?: { defect: string; pieces: number; checks: number }[]; rating?: { ratings: number; average: number } | null;
+}) {
   if (!facts) return null;
   const w = WORDS[lang];
   const r = factoryRecord(facts, todayIST());
@@ -62,6 +71,13 @@ export function FactoryRecordCard({ facts, lang }: { facts: RecordFacts | null; 
         {r.visit?.current ? <span className="chip">{w.verified(day(r.visit.on))}</span>
           : <span className="muted">{r.visit ? w.old(day(r.visit.on)) : w.notVisited}</span>}
       </p>
+      {rating && <p className="text-[13px] font-semibold">{w.rated(rating.average, rating.ratings)}</p>}
+      {fix.length > 0 && (
+        <div>
+          <span className="eyebrow">{w.fix}</span>
+          <ul className="fixlist">{fix.map((d) => <li key={d.defect}><span>{d.defect}</span><span className="num muted">{w.pcs(d.pieces, d.checks)}</span></li>)}</ul>
+        </div>
+      )}
       {certs.map((c) => (
         <p key={c.name} className={`text-[13px] font-semibold ${c.state === "expired" ? "text-bad" : "text-warn"}`}>
           {c.state === "expired" ? w.gone(c.name, day(c.until)) : w.soon(c.name, day(c.until))}

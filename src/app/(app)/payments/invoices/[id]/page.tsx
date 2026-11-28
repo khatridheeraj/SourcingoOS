@@ -1,9 +1,12 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { fmtCurrency, inCurrency, isCurrency, type Currency } from "@/lib/currency";
 import { day, money } from "@/lib/format";
 import { INVOICE_LABEL } from "@/lib/payments";
 import { PHOTO_BUCKET } from "@/lib/storage";
 import { createClient } from "@/lib/supabase/server";
+import { todaysFx } from "@/lib/fx";
+import { InvoiceRate } from "../../currency-forms";
 import { AddCreditNote, CancelCreditNote, CancelInvoice, ChequeChip, InvoiceForm } from "../../forms";
 import { PaymentHistory } from "../../history";
 import { loadBooks } from "../../load";
@@ -12,6 +15,9 @@ import { buyerOptions } from "../../options";
 export default async function InvoicePage({ params }: PageProps<"/payments/invoices/[id]">) {
   const { books: b, buyerLabel } = await loadBooks();
   const { id } = await params;
+  // Today's market rate prefills an unlocked invoice; rough fallback rates are never offered.
+  const fxNow = await todaysFx();
+  const todayRate = (c: string) => (fxNow.live && fxNow.inr[c] ? Math.round(fxNow.inr[c] * 10000) / 10000 : null);
   const i = b.invoiceRowById.get(id);
   if (!i) notFound();
   const credits = b.creditNotes.filter((c) => c.invoice_id === i.id);
@@ -25,6 +31,10 @@ export default async function InvoicePage({ params }: PageProps<"/payments/invoi
   // One invoice can cover several parts of an order; any part's copy will do.
   const { data: parts } = await supabase.from("dispatches").select("order_id, invoice_path").eq("invoice_id", i.id).is("cancelled_at", null).order("invoice_path", { nullsFirst: false });
   const disp = parts?.[0];
+  // A buyer invoiced abroad: the invoice in its currency at the locked rate.
+  const { data: buyerRow } = await supabase.from("buyers").select("currency").eq("id", i.buyer_id).maybeSingle();
+  const cur: Currency = isCurrency(buyerRow?.currency) ? buyerRow.currency : "INR";
+  const rated = cur !== "INR" && i.currency === cur && i.fx_rate ? Number(i.fx_rate) : null;
   const copy = disp?.invoice_path ? (await supabase.storage.from(PHOTO_BUCKET).createSignedUrl(disp.invoice_path, 3600)).data?.signedUrl : null;
   const input = { id: i.id, invoice_no: i.invoice_no, buyer_id: i.buyer_id, invoice_date: i.invoice_date, amount: String(i.amount), due_date: i.due_date ?? "", notes: i.notes ?? "" };
 
@@ -48,6 +58,12 @@ export default async function InvoicePage({ params }: PageProps<"/payments/invoi
           <div className={`tile ${i.overdue ? "alarm" : ""}`}><span>Left to collect</span><b>{money(i.outstanding)}</b></div>
           <div className="tile"><span>Due</span><b className="!text-lg">{i.due ? day(i.due) : "Not set"}</b><small className="muted text-xs">{i.due_date ? "Own due date" : days != null ? `${days} credit days` : "Set credit days in Payments › Buyers"}</small></div>
         </div>
+        {cur !== "INR" && !cancelled && (
+          <div className="row mt-3 text-[13px]">
+            <span>{rated ? <>In {cur}: <b className="num">{fmtCurrency(inCurrency(i.net, rated)!, cur)}</b>{i.outstanding > 0 && i.outstanding !== i.net ? <>, <b className="num">{fmtCurrency(inCurrency(i.outstanding, rated)!, cur)}</b> left</> : null}</> : <span className="text-warn">The buyer is invoiced in {cur}. Lock this invoice&apos;s rate so the buyer sees {cur}.</span>}</span>
+            <InvoiceRate invoiceId={i.id} currency={cur} rate={rated} today={todayRate(cur)} />
+          </div>
+        )}
         {i.notes && <p className="mt-3 whitespace-pre-line text-[13px]"><b>Notes:</b> {i.notes}</p>}
         {disp && (
           <p className="mt-3 text-[13px]">

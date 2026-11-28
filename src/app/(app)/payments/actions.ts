@@ -5,6 +5,7 @@ import { getMe } from "@/lib/auth";
 import { friendly } from "@/lib/errors";
 import type { ChequeStatus } from "@/lib/payments";
 import { createClient } from "@/lib/supabase/server";
+import { isCurrency } from "@/lib/currency";
 import { isFinance } from "./load";
 
 type Result = { ok?: string; error?: string; id?: string };
@@ -71,4 +72,34 @@ export async function setCreditDays(buyerId: string, days: string): Promise<Resu
   if (v !== null && (!Number.isInteger(v) || v < 0 || v > 365)) return { error: "Credit days must be a whole number from 0 to 365." };
   const r = await call("set_buyer_credit_days", { p_buyer: buyerId, p_days: v });
   return r.error ? { error: r.error } : { ok: v === null ? "Credit days cleared" : `Credit days set to ${v}` };
+}
+
+// The currency a buyer is invoiced in.
+export async function setBuyerCurrency(buyerId: string, currency: string): Promise<Result> {
+  if (!isCurrency(currency)) return { error: "Pick a currency from the list." };
+  const r = await call("set_buyer_currency", { p_buyer: buyerId, p_currency: currency });
+  if (r.error) return { error: r.error };
+  revalidatePath("/buyer");
+  return { ok: `Invoiced in ${currency}` };
+}
+
+// Lock an invoice's rate in the buyer's currency (rupees for one unit); an empty rate clears it.
+export async function setInvoiceRate(invoiceId: string, currency: string, rate: string): Promise<Result> {
+  const clean = rate.replace(/[₹, ]/g, "");
+  const n = clean ? Number(clean) : null;
+  if (n !== null && !(n > 0)) return { error: "Write the rate as rupees for one unit." };
+  const r = await call("set_invoice_fx", { p_invoice: invoiceId, p_currency: n === null ? null : currency, p_rate: n === null ? null : Math.round(n * 10000) / 10000 });
+  if (r.error) return { error: r.error };
+  revalidatePath("/buyer");
+  return { ok: n === null ? "Rate cleared" : `Rate locked at ₹${n} for 1 ${currency}` };
+}
+
+// Today's bank balance, so the 90-day cash view starts from real money; empty clears it.
+export async function setCashInHand(amount: string): Promise<Result> {
+  const clean = amount.replace(/[₹, ]/g, "");
+  const n = clean ? Number(clean) : null;
+  if (n !== null && !Number.isFinite(n)) return { error: "Write the bank balance in rupees." };
+  const r = await call("set_cash_in_hand", { p_amount: n === null ? null : Math.round(n * 100) / 100 });
+  if (r.error) return { error: r.error };
+  return { ok: n === null ? "Cleared" : "Bank balance saved" };
 }
