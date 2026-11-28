@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { getMe } from "@/lib/auth";
-import { roleLabel, STAFF_ROLES, type Role } from "@/lib/auth-roles";
+import { PERMS, type Perms, roleLabel, STAFF_ROLES, type Role } from "@/lib/auth-roles";
 import { friendly } from "@/lib/errors";
 import { loadTeam } from "@/lib/data";
 import { createClient } from "@/lib/supabase/server";
@@ -45,7 +45,7 @@ export async function addPerson(email: string, role: string, factoryId = "", buy
   };
 }
 
-export async function updateMember(userId: string, input: { role: string; active: boolean; whatsapp?: string }): Promise<{ error?: string; whatsapp?: string }> {
+export async function updateMember(userId: string, input: { role: string; active: boolean; whatsapp?: string; perms?: Perms }): Promise<{ error?: string; whatsapp?: string }> {
   const me = await getMe();
   if (me?.role !== "owner" || !me.companyId) return { error: "Only the owner can change the team." };
   if (!validRole(input.role)) return { error: "Pick a role." };
@@ -67,6 +67,12 @@ export async function updateMember(userId: string, input: { role: string; active
   }
   const { error } = await supabase.from("members").update({ role: input.role, active: input.active }).eq("company_id", me.companyId).eq("user_id", userId);
   if (error) return { error: error.message.startsWith("There must") ? error.message : friendly(error), whatsapp };
+  if (input.perms && input.role !== "owner") {
+    // undefined means "follow the role", sent as null so the database clears the switch.
+    const perms = Object.fromEntries(PERMS.map((p) => [p.key, input.perms![p.key] ?? null]));
+    const { error: e } = await supabase.rpc("set_member_perms", { p_user: userId, p_perms: perms });
+    if (e) return { error: friendly(e), whatsapp };
+  }
   revalidatePath("/", "layout");
   return { whatsapp };
 }

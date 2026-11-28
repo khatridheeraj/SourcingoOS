@@ -14,7 +14,7 @@ import { CancelClaim } from "./cancel-claim";
 export default async function ClaimPage({ params }: PageProps<"/payables/claims/[no]">) {
   const { no } = await params;
   const me = await getMe();
-  if (!isFinance(me?.role) || !me?.companyId) redirect("/");
+  if (!isFinance(me) || !me?.companyId) redirect("/");
   const supabase = await createClient();
   const { claims } = await loadClaims(supabase);
   const c = claims.find((x) => x.claim_no === decodeURIComponent(no));

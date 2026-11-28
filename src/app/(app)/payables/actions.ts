@@ -9,7 +9,7 @@ import { isFinance } from "../payments/load";
 type Result = { ok?: string; error?: string };
 
 async function call(fn: string, args: Record<string, unknown>): Promise<{ error?: string }> {
-  if (!isFinance((await getMe())?.role)) return { error: "Only Accounts and the owner can change bills to pay." };
+  if (!isFinance(await getMe())) return { error: "Only Accounts and the owner can change bills to pay." };
   const supabase = await createClient();
   const { error } = await supabase.rpc(fn, args);
   if (error) return { error: friendly(error) };
@@ -51,7 +51,7 @@ export async function raiseClaim(c: ClaimInput): Promise<Result> {
   const amount = Number(c.amount.replace(/[^\d.]/g, ""));
   if (!c.amount.trim() || !Number.isFinite(amount) || amount <= 0) return { error: "Write the amount to claim." };
   if (!/^\d{4}-\d{2}-\d{2}$/.test(c.date)) return { error: "Pick the claim date." };
-  if (!isFinance((await getMe())?.role)) return { error: "Only Accounts and the owner can raise factory claims." };
+  if (!isFinance(await getMe())) return { error: "Only Accounts and the owner can raise factory claims." };
   const supabase = await createClient();
   const { data, error } = await supabase.rpc("raise_factory_claim", {
     p_ledger: c.ledger, p_bill: c.bill, p_order: c.orderId, p_date: c.date, p_reason: c.reason,

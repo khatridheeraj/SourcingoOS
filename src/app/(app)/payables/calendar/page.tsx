@@ -20,7 +20,7 @@ const KIND: Record<PayItem["kind"], string> = { bill: "Bill in Tally", guarantee
 // owner can plan the bank before a heavy week. Read only: bills from Tally, the Guarantee's factory pay, open orders.
 export default async function PayCalendarPage() {
   const me = await getMe();
-  if (!isFinance(me?.role)) redirect("/");
+  if (!isFinance(me)) redirect("/");
   const today = todayIST();
   const supabase = await createClient();
   const { books } = await loadBooks();

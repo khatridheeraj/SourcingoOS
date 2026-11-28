@@ -1,0 +1,61 @@
+/* One bell for changes (Notifications), the evening email switch, per-person switches on Team, and Team > Data.
+   Kept in its own file so pages that other work touches don't collide. Tokens only, from globals.css. */
+.bell-day { display: flex; flex-direction: column; gap: 8px; }
+.bell-day-h { font-size: 12px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: var(--muted); }
+.bell-list { list-style: none; margin: 0; padding: 0; }
+.bell-list li + li { border-top: 1px solid var(--line); }
+.bell-row { display: flex; align-items: flex-start; gap: 12px; padding: 12px 16px; min-height: 44px; }
+.bell-row:hover { background: var(--surface-2); }
+.bell-dot { flex: none; width: 8px; height: 8px; margin-top: 6px; border-radius: 50%; background: var(--line-strong); }
+.bell-dot.bad { background: var(--bad); }
+.bell-dot.warn { background: var(--warn); }
+.bell-dot.good { background: var(--ok); }
+.bell-title { display: block; font-size: 14px; font-weight: 500; color: var(--foreground); overflow-wrap: anywhere; }
+.bell-row[data-fresh] .bell-title { font-weight: 600; }
+.bell-detail { display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; margin-top: 2px; font-size: 13px; color: var(--muted); overflow-wrap: anywhere; }
+.bell-time { flex: none; font-size: 12px; color: var(--faint); margin-top: 2px; }
+.bell-row[data-fresh] .bell-time { color: var(--accent); font-weight: 600; }
+.bell-row[data-fresh] .bell-time::after { content: ""; display: inline-block; width: 6px; height: 6px; margin-left: 6px; border-radius: 50%; background: var(--accent); vertical-align: 1px; }
+.bell-settings { padding: 16px 20px; }
+.bell-switch { display: flex; align-items: center; gap: 16px; cursor: pointer; }
+.bell-switch b { display: block; font-size: 14px; font-weight: 600; }
+.bell-switch small { display: block; margin-top: 2px; font-size: 13px; color: var(--muted); line-height: 1.45; }
+.bell-switch input[role="switch"] { appearance: none; flex: none; position: relative; width: 40px; height: 24px; border-radius: 99px; background: var(--surface-3);
+  box-shadow: inset 0 0 0 1px var(--line-strong); cursor: pointer; transition: background 0.15s; }
+.bell-switch input[role="switch"]::after { content: ""; position: absolute; top: 3px; left: 3px; width: 18px; height: 18px; border-radius: 50%; background: var(--surface);
+  box-shadow: var(--shadow-md); transition: transform 0.15s; }
+.bell-switch input[role="switch"]:checked { background: var(--accent); box-shadow: none; }
+.bell-switch input[role="switch"]:checked::after { transform: translateX(16px); }
+.bell-switch input[role="switch"]:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) { .bell-switch input[role="switch"], .bell-switch input[role="switch"]::after { transition: none; } }
+
+.perm-list { display: flex; flex-direction: column; gap: 4px; }
+
+.data-list { list-style: none; margin: 0; padding: 0; }
+.data-list li { display: flex; align-items: center; gap: 12px; padding: 12px 16px; min-height: 44px; }
+.data-list li + li { border-top: 1px solid var(--line); }
+.data-list b { display: block; font-size: 14px; font-weight: 500; }
+.data-list small { display: block; margin-top: 2px; font-size: 13px; color: var(--muted); }
+.data-list .btn { flex: none; }
+.data-head { display: flex; align-items: center; gap: 16px; padding: 16px; border-bottom: 1px solid var(--line); }
+.data-head h2 { font-size: 16px; font-weight: 600; }
+.data-head p { margin-top: 2px; font-size: 13px; color: var(--muted); }
+.data-checks { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; font-size: 14px; }
+.data-checks li { display: flex; gap: 10px; align-items: flex-start; }
+.data-checks li::before { content: ""; flex: none; width: 8px; height: 8px; margin-top: 6px; border-radius: 50%; background: var(--ok); }
+.data-checks li.off::before { background: var(--line-strong); }
+@media (max-width: 640px) {
+  .bell-row { padding: 12px 14px; }
+  .data-head { flex-direction: column; align-items: stretch; }
+  .data-head .btn.primary { width: 100%; min-height: 44px; justify-content: center; }
+}
+
+/* The bell in the side menu (computer); on a phone it sits in the top bar beside Search. */
+.side-bell { display: flex; align-items: center; gap: 10px; height: 32px; margin: -4px 0 8px; padding: 0 10px; border-radius: 7px;
+  font-size: 13.5px; font-weight: 500; color: var(--muted); transition: background 0.12s, color 0.12s; }
+.side-bell svg { flex: none; color: var(--faint); }
+.side-bell:hover { background: var(--surface-3); color: var(--foreground); }
+.side-bell[aria-current="page"] { background: var(--surface); color: var(--foreground); box-shadow: var(--shadow), 0 0 0 1px var(--line); }
+.side-bell[aria-current="page"] svg { color: var(--accent); }
+.topbar .help-btn[aria-current="page"] { color: var(--accent); }
+.bell-page { display: flex; flex-direction: column; gap: 20px; width: 100%; max-width: 760px; }
