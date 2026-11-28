@@ -201,6 +201,11 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
     ? supabase.from("factory_certificates").select("id, factory_id, name, valid_until, status, created_at, factories(name, active)").eq("company_id", companyId)
         .is("removed_at", null).or(`status.eq.pending,and(status.eq.checked,valid_until.lte.${addDays(today, 30)},valid_until.gte.${addDays(today, -30)})`).limit(100)
     : none;
+  // New factories that asked us to visit, and visits booked for the coming week (0110).
+  const visitP = vouch
+    ? supabase.from("factory_profiles").select("factory_id, visit_from, visit_note, visit_asked_at, visit_on, factories(name, city, active)").eq("company_id", companyId)
+        .not("visit_asked_at", "is", null).or(`visit_on.is.null,and(visit_on.gte.${today},visit_on.lte.${addDays(today, 7)})`).limit(50)
+    : none;
   // A buyer rated a delivered order 3 stars or less and nobody has read it yet.
   const lowP = team
     ? supabase.from("order_ratings").select("id, order_id, score, comment, created_at, orders(order_no)").eq("company_id", companyId)
@@ -841,6 +846,20 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
       const gone = c.valid_until < today;
       soon.push({ key: `cert:${c.id}`, href, sev: "warn", title: `${who} · ${c.name}`,
         detail: `${gone ? "Ran out" : "Runs out"} ${dm(c.valid_until)}: ask the factory for the renewed certificate`, action: "Ask", sort: c.valid_until });
+    }
+  }
+
+  // A factory asked for a visit: book the day. A booked visit shows in the week it happens.
+  const { data: visits } = keep(await visitP);
+  for (const v of (visits ?? []) as unknown as { factory_id: string; visit_from: string | null; visit_note: string | null; visit_asked_at: string; visit_on: string | null; factories: { name: string; city: string | null; active: boolean } | null }[]) {
+    if (v.factories && !v.factories.active) continue;
+    const who = [v.factories?.name ?? "A factory", v.factories?.city].filter(Boolean).join(", ");
+    const href = `/factories/${v.factory_id}#profile`;
+    if (!v.visit_on) {
+      soon.push({ key: `visit:${v.factory_id}`, href, sev: "warn", title: who, action: "Book",
+        detail: `New factory asked for a visit${v.visit_from ? ` from ${dm(v.visit_from)}` : ""}${v.visit_note ? ` · ${v.visit_note}` : ""}`, sort: v.visit_asked_at.slice(0, 10) });
+    } else {
+      soon.push({ key: `visit:${v.factory_id}`, href, sev: "", title: who, action: "Open", detail: `Factory visit ${dm(v.visit_on)}: check GST, Udyam and certificates, then save the visit`, sort: v.visit_on });
     }
   }
 

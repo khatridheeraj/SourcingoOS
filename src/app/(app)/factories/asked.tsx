@@ -1,9 +1,10 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useTransition } from "react";
 import { toast } from "@/components/toast";
 import { dayAtNear } from "@/lib/format";
-import { markApplication } from "./actions";
+import { addFromApplication, markApplication } from "./actions";
 
 export type Application = { id: string; name: string; city: string; contact_name: string; phone: string; email: string | null; makes: string;
   pieces_month: number | null; people: number | null; message: string | null; status: string; created_at: string };
@@ -11,6 +12,15 @@ export type Application = { id: string; name: string; city: string; contact_name
 // Factories that asked to join on the website. New ones wait for a call; once called they wait to be added or turned down.
 export function AskedToJoin({ rows, today }: { rows: Application[]; today: string }) {
   const [pending, start] = useTransition();
+  const router = useRouter();
+  // Makes it a factory and opens its record, where the panel link goes to the factory on WhatsApp.
+  const add = (a: Application) =>
+    start(async () => {
+      const r = await addFromApplication(a.id);
+      if (r.error) return toast(r.error, "bad");
+      toast(`${a.name} added. Send it its panel link to fill its profile.`, "ok");
+      router.push(`/factories/${r.factoryId}`);
+    });
   const mark = (a: Application, s: "contacted" | "added" | "declined", said: string) =>
     start(async () => {
       const r = await markApplication(a.id, s);
@@ -21,7 +31,7 @@ export function AskedToJoin({ rows, today }: { rows: Application[]; today: strin
     <section id="asked" className="panel stack scroll-mt-20" aria-labelledby="asked-h">
       <div>
         <h2 id="asked-h" className="font-bold">Asked to join <span className="muted font-normal num">{rows.length}</span></h2>
-        <p className="muted text-[13px]">From the website. Call them, then add the good ones under Factory list.</p>
+        <p className="muted text-[13px]">From the website. Call them. Add the good ones: each fills its own profile from its panel, then asks for a visit.</p>
       </div>
       <ul className="stack" style={{ gap: 0 }}>
         {rows.map((a) => (
@@ -38,7 +48,7 @@ export function AskedToJoin({ rows, today }: { rows: Application[]; today: strin
             <div className="row asked-actions">
               {a.status === "new"
                 ? <button className="btn primary" disabled={pending} onClick={() => mark(a, "contacted", "marked called")}>Called</button>
-                : <button className="btn primary" disabled={pending} onClick={() => mark(a, "added", "added")}>Added</button>}
+                : <button className="btn primary" disabled={pending} onClick={() => add(a)}>Add as factory</button>}
               <button className="btn" disabled={pending} onClick={() => mark(a, "declined", "not for now")}>Not for us</button>
             </div>
           </li>
