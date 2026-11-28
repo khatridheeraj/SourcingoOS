@@ -26,7 +26,7 @@ export default async function IncomingPoPage({ params, searchParams }: PageProps
   if (!canEditOrders(me?.role)) redirect("/");
   const supabase = await createClient();
   const { data: po } = await supabase.from("incoming_pos")
-    .select("id, source, email_from, email_subject, email_body, received_at, files, status, read, read_error, read_at, updated_at, buyer_id, buyer_po, order_id, orders!incoming_pos_order_fkey(order_no)")
+    .select("id, source, email_from, email_subject, email_body, received_at, closed_at, files, status, read, read_error, read_at, updated_at, buyer_id, buyer_po, order_id, orders!incoming_pos_order_fkey(order_no)")
     .eq("id", id).maybeSingle();
   if (!po) notFound();
 
@@ -116,7 +116,7 @@ export default async function IncomingPoPage({ params, searchParams }: PageProps
       {po.status === "added" && order && (
         <div className="okbox"><b>Done: this PO is order <Link href={`/orders/${po.order_id}`} className="link code">{order.order_no}</Link>.</b></div>
       )}
-      {po.status === "not_po" && <div className="empty"><b>Set aside</b>No new buyer PO was found here, or someone set it aside. Put it back below if it is one.</div>}
+      {po.status === "not_po" && <div className="empty"><b>Set aside</b>No new buyer PO was found here, or someone set it aside. Put it back below if it is one.{po.closed_at && nowMs() - Date.parse(po.closed_at) > 7 * 86400e3 && " Its files are cleared a week after it was set aside; the email and its files are still in Gmail."}</div>}
 
       {/* The PO file beside the form, so each line can be checked against it without switching screens. */}
       <div className={`po-review ${checking ? "" : "solo"}`}>
