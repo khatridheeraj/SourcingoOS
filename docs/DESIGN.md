@@ -18,6 +18,9 @@ These rules keep every screen consistent. Every change follows them, including t
   and final QC. Order again becomes an inquiry (`buyer_reorder`, `inquiries.reorder_of`) due today for that order's merchandiser.
 - **Add POs from a sheet** (Orders > Add from a sheet): pasted rows or a CSV become one order per buyer and PO, read by
   `readSheet()` in `src/lib/po-sheet.ts`; every problem names its row, and only clean POs are added, each through `saveOrder`.
+- **A buyer's details and papers** (Buyers > a buyer): legal name, addresses, tax numbers, people, terms, export parties and
+  papers, taken when the buyer is added. What counts as complete comes only from `profileItems()` in `src/lib/buyer-profile.ts`;
+  invoices, export papers and shipments show the gaps (`BuyerGaps`) and never block. The buyer fills in its own from its page.
 - **A lead's own page**: an open inquiry from someone not yet a buyer has "Make their page" (`make_buyer_from_inquiry`), which
   adds the buyer, gives the asker a person link, and moves the ask onto their buyer page.
 - **Calendar** (a tab beside To do) answers "what is coming". One block per day that has something on it; late work stays on To do.

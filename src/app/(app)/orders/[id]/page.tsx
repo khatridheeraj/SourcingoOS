@@ -17,6 +17,9 @@ import { FactoryUpdates, type PendingUpdate } from "./factory-updates";
 import { ewayRules, type EwayZone } from "@/lib/eway";
 import { OrderDispatch, type Dispatch, type DispatchFactory, type TallyBills } from "./order-dispatch";
 import { OrderHistory } from "./order-history";
+import { BuyerGaps } from "@/components/buyer-gaps";
+import { gapsFor } from "@/lib/buyer-profile";
+import { loadBuyerFiles } from "@/lib/buyer-profile-load";
 import { OrderMargin } from "./order-margin";
 import { SiteShow } from "./site-show";
 import { OrderProduction } from "./order-production";
@@ -142,6 +145,9 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
   const hasBuyerPo = seeBuyers ? poDocs.length > 0
     : canEdit ? (((await supabase.rpc("orders_with_po_file", { p_orders: [id] })).data ?? []) as string[]).includes(id) : false;
   const foundPos = seeBuyers && !poDocs.length && o.buyer_id ? await loadFoundPos(supabase, o.buyer_id, lines.map((l) => l.style)) : [];
+  // What the buyer's record still lacks before our invoice and the shipment can go out (src/lib/buyer-profile.ts).
+  const buyerFile = seeBuyers && o.buyer_id && o.status === "open" ? (await loadBuyerFiles(supabase, [o.buyer_id])).get(o.buyer_id) : undefined;
+  const buyerGaps = buyerFile ? [...new Set([...gapsFor("invoice", buyerFile.profile, buyerFile.basics, buyerFile.docs), ...gapsFor("ship", buyerFile.profile, buyerFile.basics, buyerFile.docs)])] : [];
   const people = new Map(team.map((m) => [m.user_id, personName(m)]));
   // Photos come from private storage through links that work for an hour.
   const qcIds = (qc ?? []).map((c) => c.id);
@@ -564,7 +570,7 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
         styles={lines.map((l) => ({ id: l.id, style: l.style, colour: str(l.colour), qty: l.qty, product: l.product }))} />
       </div>
       {seeBuyers && (
-        <div data-sec="dispatch"><OrderDispatch eway={ewayLimits} orderId={o.id} orderNo={o.order_no} companyId={o.company_id} open={o.status === "open"} owner={me?.role === "owner"} factories={dispatchFactories}
+        <div data-sec="dispatch" className="stack">{buyerGaps.length > 0 && <BuyerGaps buyerId={o.buyer_id} buyer={buyerLabel || "The buyer"} gaps={buyerGaps} what="the invoice and shipment" />}<OrderDispatch eway={ewayLimits} orderId={o.id} orderNo={o.order_no} companyId={o.company_id} open={o.status === "open"} owner={me?.role === "owner"} factories={dispatchFactories}
           ship={lines.map((l) => {
             const r = shipRows.find((x) => x.line_id === l.id);
             return { id: l.id, style: l.style, colour: str(l.colour), ordered: l.qty, bought: r?.bought ?? 0, billed: r?.billed ?? 0, shipped: r?.shipped ?? 0, unit: unitOf(l.product) };

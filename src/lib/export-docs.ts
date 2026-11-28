@@ -31,7 +31,9 @@ const r2 = (x: number) => Math.round(x * 100) / 100;
 
 // What a lot's export details start with: dollars at today's rate, FOB, sea, our usual port, the Tally invoice, and
 // each style's rate turned from rupees into the invoice currency.
-export function startExport(saved: unknown, base: { invoiceNo: string | null; invoiceDate: string | null; port: string | null; usdInr: number | null; country: string | null },
+// base.buyer: the buyer's record, which gives the Incoterm, port of arrival and notify party until the lot says otherwise.
+export function startExport(saved: unknown, base: { invoiceNo: string | null; invoiceDate: string | null; port: string | null; usdInr: number | null; country: string | null;
+  buyer?: { incoterm: string | null; port: string | null; notify_party: string | null } | null },
   lines: DocLine[]): ExportDetails {
   const s = (saved && typeof saved === "object" ? saved : {}) as Partial<ExportDetails>;
   const fx = s.fx ?? (base.usdInr ? String(r2(base.usdInr)) : "");
@@ -43,10 +45,10 @@ export function startExport(saved: unknown, base: { invoiceNo: string | null; in
     out[l.id] = { hs: x.hs ?? "", rate: x.rate ?? (l.buyerRate && fxn > 0 ? String(r2(l.buyerRate / fxn)) : "") };
   }
   return {
-    currency: s.currency ?? "USD", fx, incoterm: s.incoterm ?? "FOB", mode: s.mode === "air" ? "air" : "sea",
+    currency: s.currency ?? "USD", fx, incoterm: s.incoterm ?? base.buyer?.incoterm ?? "FOB", mode: s.mode === "air" ? "air" : "sea",
     invoice_no: s.invoice_no ?? base.invoiceNo ?? "", invoice_date: s.invoice_date ?? base.invoiceDate ?? "",
-    port_loading: s.port_loading ?? base.port ?? "", port_discharge: s.port_discharge ?? "", country: s.country ?? base.country ?? "",
-    final_dest: s.final_dest ?? "", vessel: s.vessel ?? "", notify: s.notify ?? "", terms: s.terms ?? "", marks: s.marks ?? "",
+    port_loading: s.port_loading ?? base.port ?? "", port_discharge: s.port_discharge ?? base.buyer?.port ?? "", country: s.country ?? base.country ?? "",
+    final_dest: s.final_dest ?? "", vessel: s.vessel ?? "", notify: s.notify ?? base.buyer?.notify_party ?? "", terms: s.terms ?? "", marks: s.marks ?? "",
     cbm: s.cbm ?? "", container: s.container ?? "", etd: s.etd ?? "", forwarder: s.forwarder ?? "",
     freight: s.freight ?? "", insurance: s.insurance ?? "", lines: out,
   };

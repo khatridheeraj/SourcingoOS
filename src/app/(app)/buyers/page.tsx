@@ -1,7 +1,9 @@
 import { NO_COMPANY } from "@/lib/names";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { canEditOrders, getMe } from "@/lib/auth";
+import { can, canEditOrders, getMe } from "@/lib/auth";
+import { profileScore } from "@/lib/buyer-profile";
+import { loadBuyerFiles } from "@/lib/buyer-profile-load";
 import { loadBuyers } from "@/lib/data";
 import { fetchAll } from "@/lib/fetch-all";
 import { createClient } from "@/lib/supabase/server";
@@ -13,11 +15,19 @@ export default async function BuyersPage() {
   const supabase = await createClient();
   // Open orders are read page by page, so counts past 1,000 orders stay right.
   const owner = me?.role === "owner";
-  const [buyers, { data: open }, { data: senders }] = await Promise.all([
+  const seeBuyers = can(me, "buyers");
+  const [buyers, { data: open }, { data: senders }, files] = await Promise.all([
     loadBuyers(),
     fetchAll((a, z) => supabase.from("orders").select("buyer_id").eq("company_id", me?.companyId ?? NO_COMPANY).eq("status", "open").order("id").range(a, z)),
     owner ? supabase.rpc("buyer_po_senders") : Promise.resolve({ data: null }),
+    seeBuyers ? loadBuyerFiles(supabase) : Promise.resolve(null),
   ]);
+  // How complete each buyer's details are, for people with Buyer details.
+  const scores: Record<string, { pct: number; ready: boolean; missing: number }> = {};
+  for (const [id, f] of files ?? []) {
+    const s = profileScore(f.profile, f.basics, f.docs);
+    scores[id] = { pct: s.pct, ready: s.ready, missing: s.missing.length };
+  }
   const openOrders: Record<string, number> = {};
   for (const o of open) openOrders[o.buyer_id] = (openOrders[o.buyer_id] ?? 0) + 1;
   return (
@@ -29,7 +39,7 @@ export default async function BuyersPage() {
         </div>
         <Link className="btn" href="/buyers/updates">Weekly updates</Link>
       </div>
-      <BuyerList buyers={buyers} owner={owner} openOrders={openOrders} senders={(senders ?? {}) as Record<string, string[]>} />
+      <BuyerList buyers={buyers} owner={owner} scores={seeBuyers ? scores : null} openOrders={openOrders} senders={(senders ?? {}) as Record<string, string[]>} />
     </>
   );
 }
