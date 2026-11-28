@@ -13,7 +13,7 @@ These rules keep every screen consistent. Every change follows them, including t
 - A note that tags me (order Notes tab) is a To do line in its order's block, amber, with Reply, until I reply on that order or tap Done.
 - **Weekly buyer updates** (Buyers > Weekly updates): every buyer with an open order hears from us once a week. Built by
   `buyerWeek()` in `src/lib/buyer-week.ts` from what the buyer's own page shows, never more. Home keeps one line in This week
-  until all are sent; the buyer's page opens with "What moved this week" (only POs where something moved).
+  until all are sent; a PO past its ship date says "N days past the ship date" in red on the buyer's page and in the update, until a new date is set; the buyer's page opens with "What moved this week" (only POs where something moved).
 - **Your styles** (buyer page, after its POs): every style the buyer ordered, one row per style and colour, with approved samples
   and final QC. Order again becomes an inquiry (`buyer_reorder`, `inquiries.reorder_of`) due today for that order's merchandiser.
 - **Add POs from a sheet** (Orders > Add from a sheet): pasted rows or a CSV become one order per buyer and PO, read by

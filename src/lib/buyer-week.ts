@@ -1,7 +1,8 @@
 // The weekly buyer update: what moved on a buyer's orders since the last update, in the buyer's words.
 // Built from exactly what the buyer's own page already shows (its orders, approved step photos, final QC,
 // shipments and invoices), so the update can never tell a buyer something its page doesn't.
-// Inside targets are not deadlines for the buyer: a passed target is never called late here.
+// Inside targets are not deadlines for the buyer: a passed target is never called late here. The ship date is the
+// buyer's own deadline, so once it passes the update says so plainly, until the team sets a new date (28 Nov, Dheeraj).
 
 import { dayNear } from "./format.ts";
 
@@ -131,8 +132,12 @@ export function headline(c: BuyerWeek["counts"], since: string, today: string): 
   return `Since ${dm(since, today)}: ${list}.`;
 }
 
+// "6 days past the ship date": what the buyer page and the update say once a PO's ship date has gone by.
+export const pastShip = (daysLeft: number) => `${plural(-daysLeft, "day")} past the ship date`;
+
 const shipText = (o: OrderWeek, today: string) => o.shipped ? "shipped"
-  : o.ship ? (o.daysLeft != null && o.daysLeft >= 0 ? `ships ${dm(o.ship, today)}, ${o.daysLeft === 0 ? "today" : `in ${plural(o.daysLeft, "day")}`}` : `ship date ${dm(o.ship, today)}`)
+  : o.ship ? (o.daysLeft != null && o.daysLeft >= 0 ? `ships ${dm(o.ship, today)}, ${o.daysLeft === 0 ? "today" : `in ${plural(o.daysLeft, "day")}`}`
+    : `ship date ${dm(o.ship, today)}, ${pastShip(o.daysLeft ?? 0)}; we will confirm the new date`)
   : "ship date to be confirmed";
 
 // A short list of styles: "AV-141, AV-142 and 3 more".
@@ -153,7 +158,7 @@ export function weekText(w: BuyerWeek, buyer: string, link?: string): string {
     for (const q of o.qc) lines.push(q.pass ? `- Final QC passed: ${q.style}${q.pieces ? `, ${inr.format(q.pieces)} ${o.unit} checked` : ""}` : `- Final QC: ${q.style} is being reworked and will be checked again`);
     for (const s of o.sent) lines.push(`- Sent ${dm(s.on, w.today)}: ${inr.format(s.pieces)} ${o.unit}${s.cartons ? `, ${plural(s.cartons, "carton")}` : ""}`);
     if (o.next.length) lines.push(`- Next: ${o.next.slice(0, 3).map((n) => `${n.step} by ${dm(n.by, w.today)} (${n.style})`).join("; ")}`);
-    if (lines.length === 1 && !o.shipped) lines.push("- Production carries on; nothing new to show this week");
+    if (lines.length === 1 && !o.shipped && !(o.daysLeft != null && o.daysLeft < 0)) lines.push("- Production carries on; nothing new to show this week");
     out.push(lines.join("\n"));
   }
   if (w.money.pastDue > 0) out.push(`Payment: ${rupees(w.money.pastDue)} is past its due date.`);

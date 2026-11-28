@@ -18,7 +18,7 @@ import { type OrderRating, RateOrder } from "@/components/rate-order";
 import { rateOrder } from "./rate-actions";
 import { BuyerStyles, type BuyerStyle } from "./buyer-styles";
 import { SAMPLE_STEPS } from "@/lib/calendar";
-import { addDays, buyerWeek, type WeekShipment } from "@/lib/buyer-week";
+import { addDays, buyerWeek, pastShip, type WeekShipment } from "@/lib/buyer-week";
 import { MODE_LABEL, trackLink, trackState, trackSteps, type Mode, type TrackEvent } from "@/lib/tracking";
 import { TrackLine } from "@/components/order-ui";
 
@@ -303,6 +303,7 @@ export async function BuyerView({ preview }: { preview?: string }) {
                         <span className="eyebrow">{o.revised_ship_date ? "Revised ship date" : "Ship date"}</span>
                         <b>{day(ship)}</b>
                         {left != null && left >= 0 && <span className="muted">{inDays(left)}</span>}
+                        {left != null && left < 0 && <span className="text-bad font-semibold">{pastShip(left)}</span>}
                       </>
                     ) : <span className="muted">Ship date to be confirmed</span>}
                   </div>

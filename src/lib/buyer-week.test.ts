@@ -79,3 +79,14 @@ test("a quiet week says so honestly, and no orders means nothing to send", () =>
   assert.match(weekText(bare, "B"), /nothing new to show this week/);
   assert.equal(buyerWeek({ orders: [order({ status: "cancelled" })], shipments: [], photos: [], invoices: [], names, today, since: today }).empty, true);
 });
+
+test("a PO past its ship date says so plainly, never \"production carries on\"", () => {
+  const w = buyerWeek({ orders: [order({ ship_date: "2026-11-22" })], shipments: [], photos: [], invoices: [], names, today: "2026-11-28", since: "2026-11-21" });
+  assert.equal(w.orders[0].daysLeft, -6);
+  const t = weekText(w, "Areeba");
+  assert.match(t, /ship date 22 Nov, 6 days past the ship date; we will confirm the new date/);
+  assert.doesNotMatch(t, /Production carries on/);
+  // A new ship date set by the team ends it.
+  const w2 = buyerWeek({ orders: [order({ ship_date: "2026-11-22", revised_ship_date: "2026-12-05" })], shipments: [], photos: [], invoices: [], names, today: "2026-11-28", since: "2026-11-21" });
+  assert.match(weekText(w2, "Areeba"), /ships 5 Dec, in 7 days/);
+});
