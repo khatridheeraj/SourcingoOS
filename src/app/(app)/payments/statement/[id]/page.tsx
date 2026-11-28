@@ -8,6 +8,7 @@ import { todaysFx } from "@/lib/fx";
 import { PrintButton } from "../../../goods/[id]/packing/print-button";
 import { BuyerCurrency, InvoiceRate } from "../../currency-forms";
 import { loadBooks } from "../../load";
+import { buyerWithDetails } from "@/lib/data";
 
 const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;
 
@@ -27,7 +28,7 @@ export default async function StatementPage({ params }: PageProps<"/payments/sta
   const supabase = await createClient();
   const [{ data: co }, { data: b }] = await Promise.all([
     supabase.from("companies").select("name, legal_name, address, gstin, phone, email").eq("id", me.companyId!).maybeSingle(),
-    supabase.from("buyers").select("city, delivery_address, currency").eq("id", id).maybeSingle(),
+    buyerWithDetails<{ currency: string | null }>(supabase, id, "currency"),
   ]);
   // A buyer invoiced abroad reads each invoice in its own currency, at the rate locked on that invoice.
   const cur: Currency = isCurrency(b?.currency) ? b.currency : "INR";

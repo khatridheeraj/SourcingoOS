@@ -11,6 +11,7 @@ import { sizeEntries } from "@/lib/sizes";
 import { createClient } from "@/lib/supabase/server";
 import { PrintButton } from "../packing/print-button";
 import { ExportForm, ExporterFix } from "./export-form";
+import { buyerWithDetails } from "@/lib/data";
 
 const dateIST = (ts: string | null) => (ts ? new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(new Date(ts)) : null);
 
@@ -35,7 +36,7 @@ export default async function ExportPage({ params }: PageProps<"/goods/[id]/expo
   ]);
   if (!o) notFound();
   const [{ data: b }, { data: bn }, { data: prices }] = await Promise.all([
-    supabase.from("buyers").select("id, code, city, delivery_address").eq("id", o.buyer_id).maybeSingle(),
+    buyerWithDetails<{ id: string; code: string }>(supabase, o.buyer_id, "id, code"),
     supabase.from("buyer_names").select("real_name").eq("buyer_id", o.buyer_id).maybeSingle(),
     // Rates are read through line_prices(), which only the orders team and Accounts get.
     supabase.rpc("line_prices", { p_orders: [o.id] }),

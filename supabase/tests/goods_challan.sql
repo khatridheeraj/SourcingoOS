@@ -61,7 +61,7 @@ select pg_temp.expect_error(format($$select public.issue_challan('%s')$$, :'d1')
 -- ================================================================ addresses
 select pg_temp.as_user('00000000-0000-0000-0000-00000000000b');
 select public.set_buyer_delivery(:'ah', '  Areeba Studio, 14 MI Road, Jaipur 302001  ');
-select pg_temp.expect((select delivery_address = 'Areeba Studio, 14 MI Road, Jaipur 302001' from public.buyers where id = :'ah'), 'delivery address not saved');
+select pg_temp.expect((select delivery_address = 'Areeba Studio, 14 MI Road, Jaipur 302001' from public.buyer_details(array[:'ah'::uuid])), 'delivery address not saved');
 select pg_temp.expect_error($$select public.set_company_details('x', null)$$, 'Only the owner can change%');
 select pg_temp.as_user('00000000-0000-0000-0000-0000000000a9');
 select pg_temp.expect_error(format($$select public.set_buyer_delivery('%s', 'x')$$, :'ah'), 'Only the orders team%');

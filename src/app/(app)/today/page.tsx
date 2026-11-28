@@ -1,6 +1,6 @@
 import type { LinePrice } from "@/lib/margin";
 import Link from "next/link";
-import { canEditOrders, canRecordQc, getMe } from "@/lib/auth";
+import { can, canEditOrders, canRecordQc, getMe } from "@/lib/auth";
 import { isPartner } from "@/lib/auth-roles";
 import { readBuyerSentPos } from "@/lib/po-inbox";
 import { fetchAll } from "@/lib/fetch-all";
@@ -85,6 +85,8 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
   const today = todayIST();
   const week = addDays(today, 7);
   const team = canEditOrders(me?.role);
+  // Buyer details (Team switch): buyer messages, inquiries, weekly buyer updates, the buyer's PO and Dispatch.
+  const sales = team && can(me, "buyers");
   const owner = me?.role === "owner";
   // Bills to pay, for the owner and Accounts: read alongside everything else.
   // A PO a buyer sent from its page is read as soon as someone on the orders team opens Home.
@@ -183,12 +185,12 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
     ? fetchAll((a, z) => supabase.from("incoming_pos").select("id, buyer_id, buyer_po, email_subject, email_from, status, received_at")
         .eq("company_id", companyId).in("status", ["to_check", "failed", "held"]).order("received_at").order("id").range(a, z))
     : none;
-  const inqsP = team
+  const inqsP = sales
     ? fetchAll((a, z) => supabase.from("inquiries").select("id, inquiry_no, buyer_id, prospect, product, next_follow_up, merchandiser_id, status, sample_sent_on, from_site, country, contact_name, created_at, first_reply_at")
         .eq("company_id", companyId).in("status", ["new", "quoted"]).lte("next_follow_up", today).order("next_follow_up").order("id").range(a, z))
     : none;
   // Buyers already sent this week's update (the week starts Monday, India time).
-  const updatesP = team
+  const updatesP = sales
     ? supabase.from("buyer_updates").select("buyer_id").eq("company_id", companyId).eq("week_of", weekOf(today))
     : none;
   // Factories that asked to join on the website and nobody has called yet.
@@ -472,7 +474,7 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
       }
       // Factory and rates are in but no buyer PO on file yet: that comes next, as on the order page, before a plan is set or sent.
       if (!hasPo.has(o.id) && lines.every((l) => l.factory_id && priceOf.get(l.id)?.factory_rate != null) && !po?.lock_requested_at && !po?.plan_requested_at && !po?.plan_requested_on) {
-        if (!noPoAsked.has(o.id)) {
+        if (sales && !noPoAsked.has(o.id)) {
           noPoAsked.add(o.id);
           now_.push({ key: `nopo:${o.id}`, href: `/orders/${o.id}#details-po`, ...base(o), sev: "warn",
             detail: "Add the buyer's PO first: a factory PO goes out only against it. Then start production.",
@@ -814,7 +816,7 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
 
   // The weekly buyer update: one line until every buyer with an open order (in my view) has heard from us this week.
   const { data: updated } = keep(await updatesP);
-  if (team) {
+  if (sales) {
     const told = new Set(((updated ?? []) as { buyer_id: string }[]).map((u) => u.buyer_id));
     const waitingBuyers = [...new Set(open.map((o) => o.buyer_id))].filter((b) => !told.has(b));
     if (waitingBuyers.length) {
@@ -881,7 +883,7 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
         chip: { text: "Final QC missing", cls: "warn" }, action: "Record QC", qc: { orderId: o.id, kind: "final" }, sort: due ?? "" });
       continue;
     }
-    if (!team) continue;
+    if (!sales) continue;
     if (sh.part) {
       const late = !!due && due < today;
       (late ? now_ : soon).push({ key: `part:${o.id}`, href, sev: late ? "bad" : "warn", ...base(o),

@@ -5,6 +5,7 @@ import { day, dayAt, qty, qtyTotal, unitOf } from "@/lib/format";
 import { sizeEntries } from "@/lib/sizes";
 import { createClient } from "@/lib/supabase/server";
 import { AddressFix, ChallanBar } from "./challan-tools";
+import { buyerWithDetails } from "@/lib/data";
 
 type Line = { id: string; style: string; description: string | null; colour: string | null; qty: number; sizes: Record<string, number> | null; product: string | null };
 
@@ -26,7 +27,7 @@ export default async function ChallanPage({ params }: PageProps<"/goods/[id]/cha
   ]);
   if (!o) notFound();
   const [{ data: b }, { data: bn }] = await Promise.all([
-    supabase.from("buyers").select("id, code, city, delivery_address").eq("id", o.buyer_id).maybeSingle(),
+    buyerWithDetails<{ id: string; code: string }>(supabase, o.buyer_id, "id, code"),
     supabase.from("buyer_names").select("real_name").eq("buyer_id", o.buyer_id).maybeSingle(),
   ]);
   const buyer = bn?.real_name ?? b?.code ?? "Buyer";

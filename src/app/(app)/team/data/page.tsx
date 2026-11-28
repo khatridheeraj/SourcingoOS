@@ -13,7 +13,7 @@ export default async function DataPage() {
   const me = await getMe();
   if (!me?.companyId || !can(me, "export")) redirect("/");
   const owner = me.role === "owner";
-  const list = EXPORTS.filter((e) => !e.money || can(me, "money"));
+  const list = EXPORTS.filter((e) => (!e.money || can(me, "money")) && (!e.buyers || can(me, "buyers")));
   const backups = owner ? await loadBackups() : [];
   const lastGood = backups.find((b) => b.file && !b.error);
   const fresh = !!lastGood && nowMs() - Date.parse(lastGood.started_at) < 30 * 3600e3;

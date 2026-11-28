@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { canEditOrders, getMe } from "@/lib/auth";
+import { can, canEditOrders, getMe } from "@/lib/auth";
 import { qty } from "@/lib/format";
 import { INQUIRY_COLUMNS, isOpenInquiry, type Inquiry } from "@/lib/inquiries";
 import { createClient } from "@/lib/supabase/server";
@@ -39,7 +39,7 @@ export default async function NewOrderPage({ searchParams }: PageProps<"/orders/
       {o.buyers.length === 0 ? (
         <div className="empty"><b>No buyers yet</b>Add buyers first in <Link href="/buyers" className="link">Buyers</Link>.</div>
       ) : (
-        <OrderForm
+        <OrderForm buyerRates={can(me, "buyers")}
           initial={{ buyer_id: from?.buyer_id ?? "", buyer_po: "", po_date: "", ship_date: "", status: "open", merchandiser_id: from?.merchandiser_id ?? o.meId,
             notes: from ? [`From ${from.inquiry_no}: ${from.product}`, from.notes].filter(Boolean).join("\n") : "", buyer_terms: "" }}
           initialLines={from ? [{ style: "", description: from.product.slice(0, 200), colour: "", qty: from.est_qty && from.unit === "pcs" ? String(from.est_qty) : "",

@@ -14,7 +14,8 @@ insert into auth.users (id, email, raw_user_meta_data) values
   ('00000000-0000-0000-0000-0000000000a4', 'qc@test.local', '{"full_name":"Quality Test"}'),
   ('00000000-0000-0000-0000-0000000000a5', 'accounts@test.local', '{"full_name":"Accounts Test"}'),
   ('00000000-0000-0000-0000-0000000000a6', 'factory@test.local', '{"full_name":"Factory Test"}'),
-  ('00000000-0000-0000-0000-0000000000a7', 'buyer@test.local', '{"full_name":"Buyer Test"}');
+  ('00000000-0000-0000-0000-0000000000a7', 'buyer@test.local', '{"full_name":"Buyer Test"}'),
+  ('00000000-0000-0000-0000-0000000000a8', 'asst@test.local', '{"full_name":"Assistant Test"}');
 update public.profiles p set full_name = u.raw_user_meta_data ->> 'full_name' from auth.users u where u.id = p.id;
 
 insert into public.factories (id, company_id, name, city, contact_name, phone) select v.id::uuid, c.id, v.name, v.city, v.contact, v.phone from public.companies c,
@@ -27,6 +28,9 @@ insert into public.members (company_id, user_id, role, factory_id) select c.id, 
           ('00000000-0000-0000-0000-0000000000a3', 'merchandiser', null), ('00000000-0000-0000-0000-0000000000a4', 'quality', null),
           ('00000000-0000-0000-0000-0000000000a5', 'accounts', null),
           ('00000000-0000-0000-0000-0000000000a6', 'factory', '20000000-0000-0000-0000-000000000001')) u (id, role, factory);
+-- The assistant merchandiser: a merchandiser with Buyer details switched off (0126).
+insert into public.members (company_id, user_id, role, perms)
+select c.id, '00000000-0000-0000-0000-0000000000a8', 'merchandiser', '{"buyers": false}' from public.companies c;
 update public.profiles set current_company_id = (select id from public.companies);
 
 set role authenticated;

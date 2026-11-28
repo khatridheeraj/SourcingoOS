@@ -9,7 +9,7 @@ export async function GET(request: NextRequest) {
   const me = await getMe();
   if (!me?.companyId || !can(me, "export")) return new NextResponse("Ask the owner to switch on Download data for you on the Team page.", { status: 403 });
   const what = request.nextUrl.searchParams.get("what");
-  const allowed = EXPORTS.filter((e) => !e.money || can(me, "money"));
+  const allowed = EXPORTS.filter((e) => (!e.money || can(me, "money")) && (!e.buyers || can(me, "buyers")));
   const keys = (what ? allowed.filter((e) => e.key === what) : allowed).map((e) => e.key as ExportKey);
   if (!keys.length) return new NextResponse("There is no such download.", { status: 404 });
   const { sheets, error } = await exportSheets(me, keys);

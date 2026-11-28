@@ -71,8 +71,12 @@ select public.buyer_messages_mine() as mine \gset
 select pg_temp.expect(jsonb_array_length(:'mine'::jsonb) = 2 and not (:'mine'::jsonb -> 1 ->> 'from_buyer')::boolean, 'buyer does not see the answer');
 select pg_temp.expect(not (:'mine'::jsonb::text like '%created_by%' or :'mine'::jsonb::text like '%answered%'), 'buyer sees who answered');
 
--- Done without answering: Quality can clear it too; nothing else changes.
+-- Done without answering. Quality has no Buyer details by default (0126); once the owner switches them on, it can clear it too.
 select public.post_buyer_message(:'o1', 'Thanks. And the carton marks?') as m2 \gset
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000b');
+select pg_temp.expect_error(format($$select public.buyer_messages_done(%L)$$, :'o1'), 'Only the team can do that%');
+select pg_temp.as_user('00000000-0000-0000-0000-00000000000a');
+select public.set_member_perms('00000000-0000-0000-0000-00000000000b', '{"buyers":true}');
 select pg_temp.as_user('00000000-0000-0000-0000-00000000000b');
 select pg_temp.expect(public.buyer_messages_done(:'o1') = 1, 'done did not clear one');
 select pg_temp.expect(public.buyer_messages_done(:'o1') = 0, 'done cleared twice');

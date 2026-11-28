@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { getMe } from "@/lib/auth";
+import { can, getMe } from "@/lib/auth";
 import { buyerName, loadBuyers, loadTeam, personName } from "@/lib/data";
 import { fetchAll } from "@/lib/fetch-all";
 import { dayNear, dueDate, todayIST } from "@/lib/format";
@@ -72,7 +72,7 @@ export default async function WeekPage({ searchParams }: PageProps<"/reports/wee
 
   return (
     <>
-      <PageTabs tabs={reportTabs(me.role)} label="Reports" />
+      <PageTabs tabs={reportTabs(me.role, can(me, "buyers"))} label="Reports" />
       <div className="head">
         <div className="grow">
           <h1>Week in review</h1>

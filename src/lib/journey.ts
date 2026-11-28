@@ -32,6 +32,8 @@ export type Next = { title: string; detail: string; action: Action; label: strin
 export type JourneyInput = {
   status: string;
   role: string | null | undefined;
+  // The person has Buyer details (Team switch). Without it Dispatch (our invoice to the buyer) isn't theirs.
+  buyerDetails?: boolean;
   // One entry per style.
   lines: { factoryId: string | null; hasRate: boolean }[];
   // One entry per factory on the order.
@@ -200,6 +202,7 @@ function route(j: JourneyInput): Journey {
 
   // 6. Dispatch: factory bill, our invoice, transport, then shipped.
   if (!team) return { ...base, stage: "ship", next: wait("Ready to ship", "Final QC passed. The orders team handles the bills and transport.") };
+  if (j.buyerDetails === false) return { ...base, stage: "ship", next: wait("Ready to ship", "Final QC passed. The bills, our invoice and transport are done in Dispatch by someone with buyer details.") };
   const d = j.dispatch;
   if (!d || d.count === 0) {
     return { ...base, stage: "ship", next: { title: "Record the factory's bill", detail: "Final QC passed. Add the factory's purchase bill in Dispatch: it is matched with Tally.", action: { kind: "dispatch" }, label: "Open dispatch", tone: "warn" } };
@@ -234,9 +237,10 @@ export function shipClock(due: string | null, today: string, status: string, sen
 }
 
 // The part of an order page each stage's work lives in.
-export function areaOf(stage: StageKey, canEdit: boolean): string {
+// dispatch: the person sees Dispatch (the orders team with Buyer details).
+export function areaOf(stage: StageKey, canEdit: boolean, dispatch = canEdit): string {
   if (stage === "factory") return canEdit ? "details" : "tna";
   if (stage === "qc") return "qc";
-  if (stage === "ship" || stage === "done") return canEdit ? "dispatch" : "qc";
+  if (stage === "ship" || stage === "done") return dispatch ? "dispatch" : "qc";
   return "tna";
 }

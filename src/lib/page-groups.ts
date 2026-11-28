@@ -9,4 +9,7 @@ export const INBOX_TABS: PageTab[] = [{ href: "/pos", label: "Buyer POs" }, { hr
 export const REPORT_TABS: PageTab[] = [{ href: "/reports", label: "Numbers" }, { href: "/reports/leads", label: "Leads" }, { href: "/reports/record", label: "Our record" }, { href: "/brief", label: "Morning brief" }];
 // The owner and managers also see the team board and the week in review.
 export const REPORT_TABS_LEAD: PageTab[] = [{ href: "/reports", label: "Numbers" }, { href: "/reports/leads", label: "Leads" }, { href: "/reports/record", label: "Our record" }, { href: "/reports/week", label: "Week" }, { href: "/reports/team", label: "Team" }, { href: "/brief", label: "Morning brief" }];
-export const reportTabs = (role: string | null | undefined) => (role === "owner" || role === "manager" ? REPORT_TABS_LEAD : REPORT_TABS);
+// Leads and Our record are about buyers: hidden without Buyer details.
+const SALES = ["/reports/leads", "/reports/record"];
+export const reportTabs = (role: string | null | undefined, buyerDetails = true) =>
+  (role === "owner" || role === "manager" ? REPORT_TABS_LEAD : REPORT_TABS).filter((t) => buyerDetails || !SALES.includes(t.href));
