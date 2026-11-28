@@ -27,7 +27,7 @@ export function MadeBefore({ made, name }: { made: Made | null; name: string }) 
             {made.photos.map((p) => (
               <li key={p.url}>
                 {/* eslint-disable-next-line @next/next/no-img-element -- public photo the owner picked */}
-                <img src={p.url} alt={p.caption ?? `A ${name.toLowerCase()} style we made`} loading="lazy" />
+                <img src={p.url} alt={p.caption ?? `A ${name.toLowerCase()} style we made`} loading="lazy" data-zoom />
                 {p.caption && <span>{p.caption}</span>}
               </li>
             ))}

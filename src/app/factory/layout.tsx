@@ -21,7 +21,7 @@ export default async function FactoryLayout({ children }: LayoutProps<"/factory"
   const unseen = Number((counts as { unseen?: number } | null)?.unseen ?? 0);
 
   return (
-    <div className="flex min-h-full flex-col">
+    <div className="flex min-h-full flex-col" lang={lang}>
       <header className="fbar">
         <div className="brand"><span className="brand-mark" aria-hidden>S</span><span className="fbar-name">Sourcingo</span><small>{w.panel}</small></div>
         <span className="hide-phone ml-auto text-[13px] text-muted">{me.fullName || me.email}</span>

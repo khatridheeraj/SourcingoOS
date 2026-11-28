@@ -352,7 +352,8 @@ export function OrderQc({ orderId, orderNo, companyId, open, canRecord, today, c
                   <div className="mt-3 flex flex-wrap items-center gap-2">
                     {c.photos.map((ph, i) => (
                       <span key={ph.id} className="relative">
-                        <a href={ph.url} target="_blank" rel="noreferrer" aria-label={`Photo ${i + 1} of this check`}>
+                        <a href={ph.url} target="_blank" rel="noreferrer" aria-label={`Photo ${i + 1} of this check`}
+                          data-caption={`${st.style} · ${qcKindLabel(c.kind)} · ${day(c.checked_on)}`}>
                           {/* eslint-disable-next-line @next/next/no-img-element -- short-lived signed links, not for the image optimiser */}
                           <img src={ph.url} alt="" className="h-16 w-16 rounded-lg border border-line object-cover" />
                         </a>

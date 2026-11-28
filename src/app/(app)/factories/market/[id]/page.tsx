@@ -29,7 +29,7 @@ export default async function ListingPage({ params }: PageProps<"/factories/mark
       <div className="mkt-detail">
         <div className={`mkt-hero ${l.photo ? "" : "none"}`}>
           {/* eslint-disable-next-line @next/next/no-img-element -- signed storage URL */}
-          {l.photo ? <img src={l.photo} alt={l.style} /> : <span aria-hidden>{l.style.slice(0, 2)}</span>}
+          {l.photo ? <img src={l.photo} alt={l.style} data-zoom /> : <span aria-hidden>{l.style.slice(0, 2)}</span>}
         </div>
         <div className="mkt-info">
           <h1 className="code">{l.style}</h1>
