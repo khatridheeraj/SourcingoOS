@@ -22,7 +22,7 @@ export default async function BuyerUpdatesPage() {
     <>
       <div className="head">
         <div className="grow">
-          <Link className="link text-[13px]" href="/buyers">Buyers</Link>
+          <nav className="crumbs" aria-label="Breadcrumb"><Link href="/buyers">Buyers</Link></nav>
           <h1>Weekly updates</h1>
           <p className="num">
             Week of {dm(week)} · {rows.length === 0 ? "no buyer has an open order" : left === 0 ? `all ${rows.length} sent` : `${left} of ${rows.length} still to send`}

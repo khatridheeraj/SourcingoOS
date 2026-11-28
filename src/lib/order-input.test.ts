@@ -1,7 +1,7 @@
 // node --experimental-strip-types --test src/lib/order-input.test.ts
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { orderProblem } from "./order-input.ts";
+import { num, orderProblem } from "./order-input.ts";
 
 const head = { buyer_id: "b1", buyer_po: "PO-1", po_date: "2026-11-01", ship_date: "2026-12-01" };
 const line = (style: string, qty: string, buyer_rate = "", factory_rate = "") => ({ style, qty, buyer_rate, factory_rate });
@@ -25,4 +25,11 @@ test("a line's number is the row on screen, blank rows above it included", () =>
   assert.deepEqual(orderProblem(head, [line("A", "5"), line("", "20")]), { field: "line-1-style", msg: "Line 2: enter the style number." });
   assert.equal(orderProblem(head, [line("A", "5", "abc")])?.field, "line-0-buyer_rate");
   assert.equal(orderProblem(head, [line("A", "5", "", "-3")])?.field, "line-0-factory_rate");
+});
+
+test("rates read the way people paste them from a buyer's sheet", () => {
+  for (const s of ["450", "₹450", "₹ 450", "Rs 450", "Rs. 450", "INR 450", "450/-", "450/pc", "450 per pc", "4,50"]) assert.equal(Number(num(s)), 450, s);
+  assert.equal(num("$12.50"), "12.50");
+  assert.equal(num("-5"), "-5");
+  assert.ok(Number.isNaN(Number(num("abc"))));
 });
