@@ -37,7 +37,7 @@ export function SiteShow({ styles }: { styles: Style[] }) {
         {styles.map((s) => (
           <li key={s.id} className="made-row">
             {/* eslint-disable-next-line @next/next/no-img-element -- short-lived signed link */}
-            <img src={s.photoUrl} alt="" />
+            <img src={s.photoUrl} alt="" data-zoom data-caption={s.style} />
             <div>
               <b className="text-[13.5px]">{s.style}</b>
               <input className="inp mt-1" aria-label={`Caption for ${s.style}`} value={captions[s.id] ?? ""} maxLength={80} disabled={s.shown}
