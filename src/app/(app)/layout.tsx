@@ -8,7 +8,7 @@ import { SearchPalette } from "@/components/search";
 import { QcSheet } from "@/components/qc-sheet";
 import { VisitSheet } from "@/components/visit-sheet";
 import { SegScroll } from "@/components/seg-scroll";
-import { canEditOrders, canEnterDone, canRecordQc, getMe, roleLabel } from "@/lib/auth";
+import { can, canEditOrders, canEnterDone, canRecordQc, getMe, roleLabel } from "@/lib/auth";
 import { todayIST } from "@/lib/format";
 import { heldSince } from "@/lib/goods";
 import { createClient } from "@/lib/supabase/server";
@@ -24,7 +24,7 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
   // Buyer POs waiting for the orders team, and Help's counts, shown on the menu.
   const supabase = await createClient();
   const today = todayIST();
-  const [pos, counts, due, held, samples, asks, unknown, tags, claims] = await Promise.all([
+  const [pos, counts, due, held, samples, asks, unknown, tags, claims, bell] = await Promise.all([
     canEditOrders(me.role) && me.companyId
       ? supabase.from("incoming_pos").select("id", { count: "exact", head: true }).eq("company_id", me.companyId).in("status", ["to_check", "failed"])
       : Promise.resolve({ count: 0 }),
@@ -58,12 +58,14 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
     canEditOrders(me.role) && me.companyId
       ? supabase.from("buyer_claims").select("id", { count: "exact", head: true }).eq("company_id", me.companyId).is("decision", null)
       : Promise.resolve({ count: 0 }),
+    // What changed on the orders since I last opened Notifications (the bell).
+    me.companyId && me.role && !isPartner(me.role) ? supabase.rpc("bell_count") : Promise.resolve({ data: 0 }),
   ]);
   const toCheck = pos.count ?? 0;
   const help = (counts.data ?? {}) as { unseen?: number; new?: number | null; owner?: string | null };
 
   const edit = canEditOrders(me.role);
-  const money = me.role === "owner" || me.role === "accounts";
+  const money = can(me, "money");
   // Ten places, in the order the work flows. Pages that belong together share one menu item and a tab row on top
   // (Home and its chase list, Buyer emails, Money, Reports), so nobody hunts through near-duplicate pages.
   const home = { href: "/today", label: "Home", icon: "home" as const, also: ["/updates", "/calendar"], count: (asks.count ?? 0) + (unknown.count ?? 0) + (tags.count ?? 0) };
@@ -86,10 +88,12 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
       edit ? { href: "/reports", label: "Reports", icon: "chart" as const, also: ["/brief"] } : { href: "/brief", label: "Morning brief", icon: "sun" as const },
     ] },
     ...(me.role === "owner" ? [{ label: "Admin", items: [{ href: "/team", label: "Team", icon: "team" as const }, { href: "/activity", label: "Activity log", icon: "activity" as const },
-      { href: "/feedback", label: "Team notes", icon: "notes" as const, count: help.new ?? 0 }] }] : []),
+      { href: "/feedback", label: "Team notes", icon: "notes" as const, count: help.new ?? 0 }] }]
+      : can(me, "export") ? [{ items: [{ href: "/team/data", label: "Download data", icon: "download" as const }] }] : []),
   ];
   // Search still finds every page by its own name.
   const pages: NavGroup = { items: [
+    { href: "/notifications", label: "Notifications", icon: "bell" as const },
     ...(edit ? [{ href: "/updates", label: "Chase and updates", icon: "share" as const }, { href: "/inquiries", label: "Inquiries", icon: "inquiry" as const },
       { href: "/pos", label: "Buyer POs", icon: "inbox" as const }, { href: "/brief", label: "Morning brief", icon: "sun" as const }] : []),
     ...(money ? [{ href: "/payables", label: "Bills to pay", icon: "bills" as const }, { href: "/tally", label: "Tally", icon: "tally" as const }, { href: "/payments", label: "Payments", icon: "payments" as const }] : []),
@@ -112,7 +116,7 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
   return (
     <div className={me.role ? "shell" : undefined}>
       {me.role && <a href="#main" className="skip-link">Skip to content</a>}
-      {me.role && <Sidebar groups={groups} tabs={tabs} create={create} user={me.fullName || me.email} role={roleLabel(me.role)} company={me.companyName ?? ""} helpUnseen={help.unseen ?? 0} />}
+      {me.role && <Sidebar groups={groups} tabs={tabs} create={create} user={me.fullName || me.email} role={roleLabel(me.role)} company={me.companyName ?? ""} helpUnseen={help.unseen ?? 0} bell={Number(bell.data ?? 0)} />}
       <main id="main" tabIndex={-1} className="page">
         {me.role ? children : (
           <div className="empty mx-auto mt-10 w-full max-w-[560px]">

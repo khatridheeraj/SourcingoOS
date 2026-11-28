@@ -346,7 +346,7 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
     : null;
   // When the order's money moves: the factory is paid its days after the goods come, the buyer its credit days after they ship.
   // Owner and Accounts only: factory terms are theirs.
-  const terms = isFinance(me?.role) && o.status === "open" && due ? await loadTerms() : null;
+  const terms = isFinance(me) && o.status === "open" && due ? await loadTerms() : null;
   const shipsOn = terms ? [today, due!, fc?.finish ?? due!].sort().at(-1)! : null;
   const cash = terms && shipsOn ? {
     ships: shipsOn, buyerDays: terms.buyerDays(o.buyer_id),

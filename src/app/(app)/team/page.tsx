@@ -1,9 +1,12 @@
 import { redirect } from "next/navigation";
 import { getMe, ROLES } from "@/lib/auth";
+import { PERMS } from "@/lib/auth-roles";
 import { buyerName, loadBuyers, loadFactories, loadInvites, loadTeam } from "@/lib/data";
 import { AddPerson } from "./add-person";
 import { InviteRow, MemberRow } from "./member-row";
 import { createClient } from "@/lib/supabase/server";
+import { TeamTabs } from "./team-tabs";
+import "@/components/ops.css";
 
 export default async function TeamPage() {
   const me = await getMe();
@@ -22,6 +25,7 @@ export default async function TeamPage() {
           <p>Add people by their email. They sign in at this site with that email and get a link, no password needed.</p>
         </div>
       </div>
+      <TeamTabs at="people" />
       <AddPerson factories={factories.filter((f) => f.active).map((f) => ({ id: f.id, name: f.name }))}
         buyers={buyers.filter((b) => b.active).map((b) => ({ id: b.id, name: buyerName(b) }))} />
       <div className="table-wrap">
@@ -34,9 +38,13 @@ export default async function TeamPage() {
           </tbody>
         </table>
       </div>
-      <ul className="muted text-[13px]">
-        {ROLES.map((r) => <li key={r.value}><b>{r.label}:</b> {r.hint}</li>)}
-      </ul>
+      <details className="howto">
+        <summary>What each role and switch means</summary>
+        <ul className="muted text-[13px]">
+          {ROLES.map((r) => <li key={r.value}><b>{r.label}:</b> {r.hint}</li>)}
+          {PERMS.map((p) => <li key={p.key}><b>{p.label}:</b> {p.hint}. Owner and Accounts have it unless you switch it off; tick it to give it to anyone else.</li>)}
+        </ul>
+      </details>
     </>
   );
 }

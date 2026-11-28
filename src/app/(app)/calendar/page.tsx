@@ -29,7 +29,7 @@ export default async function CalendarPage({ searchParams }: PageProps<"/calenda
   const days = RANGES.find((r) => String(r.days) === sp.days)?.days ?? 14;
   const last = new Date(Date.parse(today) + (days - 1) * 86_400_000).toISOString().slice(0, 10);
   const team = canEditOrders(me.role);
-  const finance = isFinance(me.role);
+  const finance = isFinance(me);
 
   const [{ data: all, error }, buyers, factories, pay, { data: cheques, error: chqErr }] = await Promise.all([
     fetchAll((a, z) => supabase.from("orders").select("id, order_no, buyer_id, buyer_po, ship_date, revised_ship_date, merchandiser_id, order_lines(id, qty, product, factory_id)")

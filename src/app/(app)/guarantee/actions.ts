@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { canEditOrders, getMe } from "@/lib/auth";
+import { can, canEditOrders, getMe } from "@/lib/auth";
 import { friendly } from "@/lib/errors";
 import { createClient } from "@/lib/supabase/server";
 import type { ClaimInput } from "@/components/claim-form";
@@ -24,7 +24,7 @@ export type PaymentInput = { orderId: string; kind: "deposit" | "balance" | "fac
 
 export async function recordPayment(p: PaymentInput): Promise<{ error?: string }> {
   const me = await getMe();
-  if (me?.role !== "owner" && me?.role !== "accounts") return { error: "Only Accounts and the owner record Guarantee payments." };
+  if (!can(me, "money")) return { error: "Only Accounts and the owner record Guarantee payments." };
   if (!(p.amount > 0)) return { error: "Write the amount paid." };
   if (!/^\d{4}-\d{2}-\d{2}$/.test(p.paidOn)) return { error: "Pick the day it was paid." };
   const supabase = await createClient();
@@ -38,7 +38,7 @@ export async function recordPayment(p: PaymentInput): Promise<{ error?: string }
 
 export async function takeBackPayment(id: string): Promise<{ error?: string }> {
   const me = await getMe();
-  if (me?.role !== "owner" && me?.role !== "accounts") return { error: "Only Accounts and the owner can do that." };
+  if (!can(me, "money")) return { error: "Only Accounts and the owner can do that." };
   const supabase = await createClient();
   const { error } = await supabase.rpc("cancel_guarantee_payment", { p_id: id });
   if (error) return { error: friendly(error) };

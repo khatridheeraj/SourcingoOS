@@ -43,7 +43,7 @@ export default async function ActivityPage({ searchParams }: PageProps<"/activit
           <h1>Activity log</h1>
           <p>Every change anyone makes, in the app, by PO pickup, the Tally reader or an import, kept forever. Nobody can edit or delete these entries, including you.</p>
         </div>
-        <a className="btn" href={`/activity/export${qs ? `?${qs}` : ""}`}>Download CSV</a>
+        <a className="btn" href={`/activity/export${qs ? `?${qs}` : ""}`}>Download Excel</a>
       </div>
       <div className="tiles">
         <div className="tile"><span>Changes today</span><b>{t.count ?? 0}</b></div>

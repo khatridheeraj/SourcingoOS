@@ -89,10 +89,10 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
   // Bills to pay, for the owner and Accounts: read alongside everything else.
   // A PO a buyer sent from its page is read as soon as someone on the orders team opens Home.
   if (canEditOrders(me?.role)) await readBuyerSentPos(supabase);
-  const payP = isFinance(me?.role) ? loadPayables(supabase) : null;
-  const claimsP = isFinance(me?.role) ? loadClaims(supabase) : null;
+  const payP = isFinance(me) ? loadPayables(supabase) : null;
+  const claimsP = isFinance(me) ? loadClaims(supabase) : null;
   // Money to collect from buyers (cheques to deposit, Tally settlements, overdue invoices), for the same people.
-  const booksP = isFinance(me?.role) ? loadBooks() : null;
+  const booksP = isFinance(me) ? loadBooks() : null;
 
   // Team notes that tag me and that I haven't dealt with yet (replied on the order or tapped Done).
   const notesP = me?.id && me.companyId ? Promise.all([
