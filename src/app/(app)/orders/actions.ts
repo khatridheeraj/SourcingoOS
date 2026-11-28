@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { canEditOrders, canEnterDone, canRecordQc, getMe } from "@/lib/auth";
 import { friendly } from "@/lib/errors";
+import { needsProof } from "@/lib/step-proof";
 import { dayNear, QC_KINDS, qcKindLabel, TNA_STEPS, todayIST } from "@/lib/format";
 import { isFilled, num, orderProblem } from "@/lib/order-input";
 import { wholeText } from "@/lib/digits";
@@ -183,7 +184,9 @@ export async function closeShort(id: string, reason: string): Promise<{ error?: 
 type StageCell = { planned_on: string; done_on: string; not_needed: boolean };
 // was: the step as the screen loaded it, so only what this person changed is saved and someone else's newer dates are kept.
 // target_note: the owner's reason for moving targets that release locked.
-export type LineStageInput = StageCell & { line_id: string; stage: string; label?: string; target_note?: string; was?: StageCell };
+// photos: storage paths of the work, needed whenever this save marks a step done (see needsProof).
+export type LineStageInput = StageCell & { line_id: string; stage: string; label?: string; target_note?: string; was?: StageCell; photos?: string[] };
+
 
 // Saves the planned (TNA) and actual dates of an open order's styles; Quality saves done dates only.
 // The order's stage follows on its own.
@@ -198,8 +201,34 @@ export async function saveLineStages(orderId: string, rows: LineStageInput[]): P
   const clean = rows.map((r) => ({ ...(r.not_needed ? { ...r, planned_on: "", done_on: "" } : r), target_note: (r.target_note ?? "").trim().slice(0, 300) }));
   const today = todayIST();
   if (rows.some((r) => r.done_on > today)) return { error: "A done date can't be in the future. Use the plan date for what's expected." };
+  // Steps marked done here go in with their photos; the rest of each row (targets) saves as before.
+  const proofs = clean.filter(needsProof);
+  if (proofs.some((r) => !r.photos?.length)) return { error: "Add a photo of the work for every step you mark done." };
+  if (proofs.some((r) => r.photos!.length > 10 || r.photos!.some((p) => typeof p !== "string" || !p.includes(`/${orderId}/styles/${r.line_id}/`)))) {
+    return { error: "Those photos are not from this style. Take them again." };
+  }
+  const plain = clean.map((r) => { const row = { ...r, photos: undefined }; return needsProof(r) ? { ...row, done_on: r.was?.done_on ?? "" } : row; });
   const supabase = await createClient();
-  const { error } = await supabase.rpc("save_line_stages", { p_order: orderId, p_rows: clean });
+  const { error } = await supabase.rpc("save_line_stages", { p_order: orderId, p_rows: plain });
+  if (error) return { error: friendly(error) };
+  if (proofs.length) {
+    const { error: e2 } = await supabase.rpc("mark_steps_done", {
+      p_order: orderId, p_rows: proofs.map((r) => ({ line_id: r.line_id, stage: r.stage, done_on: r.done_on, photos: r.photos })),
+    });
+    if (e2) return { error: friendly(e2) };
+  }
+  revalidatePath("/");
+  revalidatePath(`/orders/${orderId}`);
+  return {};
+}
+
+// Sets a style's own ship date, or "" to follow the PO's. Its plan and late warnings then go by that date.
+export async function setStyleShipDate(orderId: string, lineId: string, date: string): Promise<{ error?: string }> {
+  const me = await getMe();
+  if (!canEditOrders(me?.role)) return { error: "Only the orders team sets a style's ship date." };
+  if (date && !/^\d{4}-\d{2}-\d{2}$/.test(date)) return { error: "Pick the date from the calendar." };
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("set_line_ship_date", { p_line: lineId, p_date: date || null });
   if (error) return { error: friendly(error) };
   revalidatePath("/");
   revalidatePath(`/orders/${orderId}`);

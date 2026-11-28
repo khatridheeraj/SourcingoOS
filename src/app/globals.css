@@ -3087,3 +3087,61 @@ i.pcal-exp { background: var(--muted); opacity: 0.35; }
 .invite-link { flex: 1; min-width: 0; overflow-wrap: anywhere; font-size: 13px; color: var(--muted); background: var(--surface-2); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
 .invite-acts { display: flex; gap: 8px; }
 @media (max-width: 640px) { .invite-acts { width: 100%; } .invite-acts .btn { flex: 1; min-height: 44px; justify-content: center; } }
+
+/* Styles, one per line (src/components/style-rows.tsx): the order page, Orders > By style and a factory's styles. */
+@layer components {
+  .srows { list-style: none; margin: 0; padding: 0; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; box-shadow: var(--shadow); overflow: hidden; }
+  .srows > li + li { border-top: 1px solid var(--line); }
+  .srow { display: flex; align-items: center; gap: 12px; padding: 11px 14px; min-width: 0; transition: background 0.12s; }
+  .srow:hover { background: var(--surface-2); }
+  .srow-ph { flex: none; width: 40px; height: 40px; border-radius: 8px; overflow: hidden; display: grid; place-items: center; background: var(--surface-2);
+    font-size: 11px; font-weight: 600; color: var(--muted); }
+  .srow-ph img { width: 100%; height: 100%; object-fit: cover; }
+  .srow-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+  .srow-main > b { font-size: 14px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .srow-main > small { font-size: 12.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .srow-next { display: flex; align-items: center; gap: 8px; margin-top: 3px; font-size: 12.5px; line-height: 1.35; min-width: 0; }
+  .srow-next > .meter { flex: none; }
+  .srow-next > span:last-child { min-width: 0; color: var(--foreground); }
+  .srow.tone-bad .srow-next > span:last-child { color: var(--bad); }
+  .srow.tone-warn .srow-next > span:last-child { color: var(--warn); }
+  .srow-end { flex: none; display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
+  .srow-end .btn { pointer-events: none; color: var(--accent); }
+  .sgroup + .sgroup { margin-top: 16px; }
+  .sgroup-h { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin: 0 2px 8px; }
+  .sgroup-h h3 { font-size: 14px; font-weight: 600; }
+  .sgroup-h small { font-size: 12.5px; color: var(--muted); text-align: right; }
+  .scounts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin: 0 0 16px; }
+  .scounts > div { padding: 10px 12px; border-radius: 10px; background: var(--surface); border: 1px solid var(--line); min-width: 0; }
+  .scounts dt { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .scounts dd { margin: 2px 0 0; font-size: 20px; font-weight: 600; letter-spacing: -0.02em; color: var(--faint); }
+  .scounts .tone-bad dd { color: var(--bad); }
+  .scounts .tone-warn dd { color: var(--warn); }
+  .scounts .tone-ok dd { color: var(--ok); }
+  @media (max-width: 760px) {
+    .srow { padding: 11px 12px; gap: 10px; }
+    .srow-next { flex-wrap: wrap; row-gap: 2px; }
+    .scounts { gap: 6px; }
+    .scounts > div { padding: 8px; text-align: center; }
+    .scounts dt { font-size: 11px; }
+    .scounts dd { font-size: 18px; }
+  }
+}
+/* A step typed in as done takes a photo of the work before it saves. */
+@layer components {
+  .step-proof { display: inline-flex; align-items: center; gap: 6px; margin-top: 6px; min-height: 32px; padding: 0 10px; border-radius: 8px; cursor: pointer;
+    font-size: 12.5px; font-weight: 600; color: var(--warn); background: var(--warn-soft); border: 1px solid var(--warn-line); width: fit-content; }
+  .step-proof.has { color: var(--ok); background: var(--ok-soft); border-color: var(--ok-line); }
+  .done-btn { cursor: pointer; gap: 6px; }
+  @media (max-width: 760px) { .step-proof { min-height: 40px; } }
+}
+@layer components {
+  .qs-proof { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 10px; }
+  .qs-proof > small { flex-basis: 100%; font-size: 12px; color: var(--muted); }
+  .qs-proof .step-proof { margin-top: 0; }
+}
+@layer components {
+  .sship { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px 12px; padding-bottom: 12px; margin-bottom: 12px; border-bottom: 1px solid var(--line); }
+  .sship .field { min-width: 160px; }
+  .sship > small { flex: 1 1 200px; font-size: 12.5px; padding-bottom: 8px; }
+}

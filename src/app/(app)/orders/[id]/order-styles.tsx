@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { dayAtNear, dayNear, daysBetween, defaultBuffer, planDueAt, PLAN_HOURS, qtyU, TNA_STEPS, dayTimeAt } from "@/lib/format";
 import { uploadPhotos } from "@/lib/photos";
+import { needsProof, proofFolder } from "@/lib/step-proof";
 import { toast } from "@/components/toast";
 import { project, shipRisk, fillEmptyTargets, startBuffer, stepDays } from "@/lib/tna-plan";
 import { FactoryLink } from "../../factories/factory-link";
@@ -127,6 +128,8 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
     Object.fromEntries(groups.filter((g) => g.factoryId).map((g) => [g.factoryId!, String(startBuffer(
       g.lines.map((l) => ({ id: l.id, steps: TNA_STEPS.map((t) => ({ key: t.key, ...(initial[key(l.id, t.key)] ?? blank), extra: false })) })),
       dueDate, today, defaultBuffer(g.lines.length > 0 && g.lines.every((l) => l.fabricOrder)), g.bufferDays))])));
+  // Photos of the work for each step typed in as done, keyed "line:step": they go up when the dates are saved.
+  const [proof, setProof] = useState<Record<string, File[]>>({});
   const [pending, start] = useTransition();
   // Styles whose fabric, sizes and files are open.
   const [detailShown, setDetailShown] = useState<Set<string>>(new Set());
@@ -156,6 +159,8 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
     line_id: l.id, stage: s.key, ...get(l.id, s.key), ...(s.extra ? { label: s.label } : {}), was: initial[key(l.id, s.key)] ?? blank,
   }))).filter((r) => !same(r.was, r) || (r.label !== undefined && isNew(r.line_id, r.stage)));
 
+  // Steps marked done here still without a photo of the work.
+  const noProof = changed.filter((r) => needsProof(r) && !proof[key(r.line_id, r.stage)]?.length).length;
   // Released styles whose set targets this save moves: the owner must give a reason.
   const releasedLine = (lineId: string) => groups.some((g) => !!g.releasedAt && g.lines.some((l) => l.id === lineId));
   const moved = changed.filter((r) => releasedLine(r.line_id) && !!initial[key(r.line_id, r.stage)]?.planned_on
@@ -265,13 +270,24 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
     });
   }
 
-  // One tap: the style's next step is done today.
-  function doneToday(l: StyleRow, s: Step) {
+  // One tap: take a photo of the work, and the style's next step is done today with it.
+  function doneToday(l: StyleRow, s: Step, files: File[]) {
+    if (!files.length) return;
     const c = get(l.id, s.key);
     setError("");
     setBusy(`done:${l.id}`);
     start(async () => {
-      const res = await saveLineStages(orderId, [{ line_id: l.id, stage: s.key, planned_on: c.planned_on, done_on: today, not_needed: false, ...(s.extra ? { label: s.label } : {}) }]);
+      let photos: string[];
+      try {
+        photos = await uploadPhotos(proofFolder(companyId, orderId, l.id), files.slice(0, 10));
+      } catch (e) {
+        setBusy("");
+        const m = caught(e, "The photo didn't upload. Try again.");
+        setError(m);
+        toast(m, "bad");
+        return;
+      }
+      const res = await saveLineStages(orderId, [{ line_id: l.id, stage: s.key, planned_on: c.planned_on, done_on: today, not_needed: false, ...(s.extra ? { label: s.label } : {}), photos }]);
       setBusy("");
       if (res.error) {
         setError(res.error);
@@ -375,11 +391,19 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
               )}
             </label>
             {released ? (
-              <label className="step-f"><span>Done</span>
+              <div className="step-f"><span>Done</span>
                 <input className="inp" type="date" value={c.done_on} max={today} disabled={!doneEditable}
                   aria-label={`${l.style} ${s.label} done`} title="The day it was finished: today or earlier"
                   onChange={(e) => set(l.id, s.key, { done_on: e.target.value })} />
-              </label>
+                {doneEditable && needsProof({ stage: s.key, done_on: c.done_on, not_needed: c.not_needed, was: initial[key(l.id, s.key)] ?? blank }) && (
+                  <label className={`step-proof ${proof[key(l.id, s.key)]?.length ? "has" : ""}`}>
+                    <CameraIcon />
+                    {proof[key(l.id, s.key)]?.length ? `${proof[key(l.id, s.key)].length} ${proof[key(l.id, s.key)].length === 1 ? "photo" : "photos"}` : "Add photo (needed)"}
+                    <input type="file" accept="image/*" capture="environment" multiple hidden aria-label={`Photo of ${l.style} ${s.label} done`}
+                      onChange={(e) => { const fs = Array.from(e.target.files ?? []).slice(0, 10); if (fs.length) setProof((p) => ({ ...p, [key(l.id, s.key)]: fs })); e.target.value = ""; }} />
+                  </label>
+                )}
+              </div>
             ) : (
               // A greyed-out date gave no reason on a phone, so the slot says when it opens.
               <div className="step-f"><span>Done</span><b className="muted font-normal">After PO release</b></div>
@@ -408,7 +432,7 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
     const next = cells.find((x) => !x.c.done_on);
     const last = [...cells].reverse().find((x) => x.c.done_on);
     const p = project(cells.map((x) => ({ ...x.c, stage: x.s.key })), today);
-    const risk = shipRisk(p, dueDate);
+    const risk = shipRisk(p, l.detail.shipDate || dueDate);
     // Past a target while the style still makes the ship date: most likely done and not marked, so amber, as the
     // order's next step says. Red only when it really puts the ship date at risk.
     const status = over.length
@@ -669,9 +693,12 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
                         {dirty && <span className="chip warn">Unsaved</span>}
                         {/* Hidden while any style has unsaved changes: the save reloads the dates and would drop them. */}
                         {doneEditable && released && sm.next && !changed.length && (
-                          <button type="button" className="btn sm done-btn" disabled={pending} onClick={() => doneToday(l, sm.next!)}>
-                            {busy === `done:${l.id}` ? "Saving…" : <><span aria-hidden className="done-tick">✓</span>{sm.next.label} done today</>}
-                          </button>
+                          // The camera opens on a phone: a step is marked done only with a photo of the work.
+                          <label className={`btn sm done-btn ${pending ? "pointer-events-none opacity-50" : ""}`} title="Take a photo of the work to mark it done">
+                            {busy === `done:${l.id}` ? "Saving…" : <><CameraIcon />{sm.next.label} done today</>}
+                            <input type="file" accept="image/*" capture="environment" multiple hidden aria-label={`Photo of ${l.style} ${sm.next.label} done`}
+                              onChange={(e) => { doneToday(l, sm.next!, Array.from(e.target.files ?? [])); e.target.value = ""; }} />
+                          </label>
                         )}
                         {/* Final QC only matters once it has happened; before that it is just noise on every style. */}
                         {fin && (
@@ -734,11 +761,19 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
               placeholder={`Why ${moved.length === 1 ? "this target moves" : `these ${moved.length} targets move`} (required)`}
               onChange={(e) => setReason(e.target.value)} />
           )}
-          <button type="button" className="btn primary" disabled={pending || !changed.length || (moved.length > 0 && !reason.trim())}
-            title={moved.length > 0 && !reason.trim() ? "Say why the released targets move" : undefined}
-            onClick={() => run("save", () => saveLineStages(orderId, moved.length ? changed.map((r) => ({ ...r, target_note: reason.trim() })) : changed), "Saved")}>
+          <button type="button" className="btn primary" disabled={pending || !changed.length || (moved.length > 0 && !reason.trim()) || noProof > 0}
+            title={moved.length > 0 && !reason.trim() ? "Say why the released targets move" : noProof ? "Add a photo for each step marked done" : undefined}
+            onClick={() => run("save", async () => {
+              // The photos of each step marked done go up first, into the style's own folder.
+              const rows = await Promise.all(changed.map(async (r) => needsProof(r)
+                ? { ...r, photos: await uploadPhotos(proofFolder(companyId, orderId, r.line_id), proof[key(r.line_id, r.stage)] ?? []) } : r));
+              const res = await saveLineStages(orderId, moved.length ? rows.map((r) => ({ ...r, target_note: reason.trim() })) : rows);
+              if (!res.error) setProof({});
+              return res;
+            }, "Saved")}>
             {busy === "save" ? "Saving…" : "Save TNA dates"}
           </button>
+          {noProof > 0 && <span className="text-[13px] font-semibold text-warn">Add a photo for {noProof === 1 ? "the step" : `each of the ${noProof} steps`} marked done</span>}
           {changed.length > 0 && <span className="text-[13px] font-semibold text-warn">Unsaved changes on {unsavedStyles} {unsavedStyles === 1 ? "style" : "styles"}</span>}
           {error && <ErrorFix error={error} orderId={orderId} factoryId={errAt.split(":")[1] || undefined} />}
           {notice && !error && <span className="text-[13px] font-semibold text-ok">{notice}</span>}
@@ -760,6 +795,14 @@ export function OrderStyles({ orderId, orderNo, companyId, open, canEdit, canDon
         </p>
       </details>
     </section>
+  );
+}
+
+function CameraIcon() {
+  return (
+    <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" aria-hidden>
+      <path d="M2 5.5h2.5L6 3.5h4l1.5 2H14v7.5H2z" /><circle cx="8" cy="9" r="2.3" />
+    </svg>
   );
 }
 

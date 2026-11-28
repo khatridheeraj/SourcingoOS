@@ -92,16 +92,20 @@ export function fillEmptyTargets(steps: { stage: string; on: string | null }[], 
 
 // A style's steps as the start-production sheet has them: standard steps in order, then its extra steps.
 export type StartStep = { key: string; planned_on: string; done_on: string; not_needed: boolean; extra: boolean };
-export type StartStyle = { id: string; fabric?: boolean; steps: StartStep[] };
+// shipDate: the style's own ship date, when it ships before the PO's; its finish date moves back by the same days.
+export type StartStyle = { id: string; fabric?: boolean; steps: StartStep[]; shipDate?: string };
 
 // The plan production starts with. Every date the merchandiser saved is kept as it is, passed or not: only the
 // empty steps get a date, from the standard days, between today and the target date (the day the factory has
 // to finish by). A saved date after the target date is moved to it only when `moveLate` says so (the sheet asks).
 // With no day left before the target date (it is today or past) nothing is filled: one day for every step is no
 // plan, so the sheet asks for a smaller buffer instead. Returns the changes only, per style.
-export function startTargets(styles: StartStyle[], target: string, today: string, moveLate = false): Record<string, Record<string, string>> {
+export function startTargets(styles: StartStyle[], orderTarget: string, today: string, moveLate = false, due = ""): Record<string, Record<string, string>> {
   const out: Record<string, Record<string, string>> = {};
   for (const s of styles) {
+    // A style shipping before the PO finishes earlier by as many days; one shipping after keeps the PO's finish date.
+    const early = due && s.shipDate && s.shipDate < due ? Math.round((Date.parse(due) - Date.parse(s.shipDate)) / 86_400_000) : 0;
+    const target = early ? new Date(Date.parse(orderTarget) - early * 86_400_000).toISOString().slice(0, 10) : orderTarget;
     const changes: Record<string, string> = {};
     const late = (x: StartStep) => moveLate && !x.done_on && !!x.planned_on && x.planned_on > target;
     for (const x of s.steps) if (!x.not_needed && late(x)) changes[x.key] = target;

@@ -8,6 +8,8 @@ import { day, dayAt, dayAtNear, dayTimeNear, dayNear, money, moneyShort, qty, qt
 import { areaOf, journey, shipClock } from "@/lib/journey";
 import { fileNamesStyle, styleKey } from "@/lib/po-match";
 import { Outlook, PhotoStack, ShipClock } from "@/components/order-ui";
+import { StyleCounts, StyleRows } from "@/components/style-rows";
+import { orderFromStyles, styleCounts, styleStates } from "@/lib/style-track";
 import { OrderJourney } from "./order-journey";
 import { createClient } from "@/lib/supabase/server";
 import { OrderForm } from "../order-form";
@@ -53,7 +55,7 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
   const supabase = await createClient();
   const { data: o } = await supabase
     .from("orders")
-    .select("id, company_id, order_no, edit_no, buyer_id, buyer_po, po_date, ship_date, status, merchandiser_id, notes, buyer_terms, stage, stage_at, revised_ship_date, delay_reason, closed_short_at, closed_short_by, short_reason, created_at, updated_at, order_lines(id, style, description, colour, qty, factory_id, position, photo_path, fabric, sizes, product, site_photo, site_caption)")
+    .select("id, company_id, order_no, edit_no, buyer_id, buyer_po, po_date, ship_date, status, merchandiser_id, notes, buyer_terms, stage, stage_at, revised_ship_date, delay_reason, closed_short_at, closed_short_by, short_reason, created_at, updated_at, order_lines(id, style, description, colour, qty, factory_id, position, photo_path, fabric, sizes, product, site_photo, site_caption, ship_date)")
     .eq("id", id)
     .is("order_lines.removed_at", null)
     .maybeSingle();
@@ -198,7 +200,7 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
     g.lines.push({ id: l.id, style: l.style, colour: str(l.colour), qty: l.qty, photoUrl: (l.photo_path && urlByPath.get(l.photo_path)) || null, hasRate: l.factory_rate != null,
       fabricOrder: l.product === "fabric",
       detail: {
-        fabric: str(l.fabric), sizes: (l.sizes ?? {}) as Record<string, number>,
+        fabric: str(l.fabric), sizes: (l.sizes ?? {}) as Record<string, number>, shipDate: str(l.ship_date), orderDue: str(due),
         files: (lineFiles ?? []).filter((f) => f.line_id === l.id).map((f) => ({ id: f.id, kind: f.kind as LineFileKind, name: f.file_name || "File", url: urlByPath.get(f.path) ?? null })),
       } });
   }
@@ -382,6 +384,23 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
     riskDays: outlook?.level === "risk" ? outlook.daysLate : 0,
     today,
   });
+  // Each style on its own: its stage and next step, so a style at one factory isn't held back by another (style-track.ts).
+  const states = styleStates(
+    lines.map((l) => ({ id: l.id, style: l.style, factoryId: l.factory_id ?? null, hasRate: l.factory_rate != null, shipDate: l.ship_date ?? null })),
+    {
+      status: o.status, due: due ?? null, hasBuyerPo: canEdit ? hasBuyerPo : null,
+      pos: (factoryPos ?? []).map((p) => ({ factoryId: p.factory_id, released: !!p.released_at, lockRequested: !!p.lock_requested_at })),
+      packedAll: stageReached(o.stage, "packed"), closedShort: !!o.closed_short_at,
+    },
+    {
+      role: me?.role, today, steps: stageRows, dispatch: seeBuyers, ship: shipRows,
+      finalQc: new Map(lines.map((l) => [l.id, checks.find((c) => c.line_id === l.id && SHIP_QC.includes(c.kind) && !c.cancelled_at)?.result ?? ""])),
+      samples: samples.threads.filter((t) => t.state === "with_team").reduce((m, t) => m.set(t.lineId, (m.get(t.lineId) ?? 0) + 1), new Map<string, number>()),
+      updates: (stepUps ?? []).reduce((m, u) => m.set(u.line_id, (m.get(u.line_id) ?? 0) + 1), new Map<string, number>()),
+    },
+  );
+  const jo = orderFromStyles(j, states);
+  const stateOf = new Map(states.map((s) => [s.id, s]));
   // Team notes: who wrote them, who they tag, and which still wait on me.
   const staff = team.filter((m) => m.active && !isPartner(m.role as Role)).map((m) => ({ id: m.user_id, name: personName(m) }));
   const notes: Note[] = (noteRows ?? []).map((n) => ({
@@ -449,9 +468,9 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
         </div>
         <ShipClock c={shipClock(due ?? null, today, o.status, ship.shipped > 0 && ship.toShip === 0)} date={due ? `${o.revised_ship_date && o.revised_ship_date !== o.ship_date ? "New date " : ""}${dayNear(due, today).replaceAll(" ", "\u00a0")}` : undefined} />
       </header>
-      <OrderJourney orderId={o.id} orderNo={o.order_no} j={j} canEdit={canEdit} canRecordQc={canRecordQc(me?.role)} shipBlocker={shipBlocker as string | null}>
+      <OrderJourney orderId={o.id} orderNo={o.order_no} j={jo} canEdit={canEdit} canRecordQc={canRecordQc(me?.role)} shipBlocker={shipBlocker as string | null}>
         {/* The journey card carries the main next step; these stay for any time. */}
-        {o.status === "open" && canEnterDone(me?.role) && groups.some((g) => g.releasedAt) && j.next.action.kind !== "update" && (
+        {o.status === "open" && canEnterDone(me?.role) && groups.some((g) => g.releasedAt) && jo.next.action.kind !== "update" && (
           <SheetButton orderId={o.id} mode="update" className="btn">Update progress</SheetButton>
         )}
         {/* Keyed like the styles below, so the message is worded afresh after every save. */}
@@ -459,8 +478,30 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
         {share.length > 0 && <ShareUpdate key={`${(lineStages ?? []).length}:${(lineStages ?? []).reduce((a, r) => (r.updated_at > a ? r.updated_at : a), "")}`} options={share} />}
       </OrderJourney>
       {saved && <div className="okbox">Order saved as {o.order_no}.</div>}
-      <OrderSections tabs={tabs} start={areaOf(j.stage, canEdit, seeBuyers)}>
+      <OrderSections tabs={tabs} start={areaOf(jo.stage, canEdit, seeBuyers)}>
       <div data-sec="tna">
+      {lines.length > 1 && o.status === "open" && (
+        <section className="mb-5" aria-label="Every style, where it is">
+          <StyleCounts c={{ ...styleCounts(states), total: states.length }} />
+          {groups.map((g) => (
+            <div key={g.factoryId ?? "none"} className="sgroup">
+              <div className="sgroup-h">
+                <h3>{g.factoryId ? g.factoryShort || g.factoryName : "No factory yet"}</h3>
+                <small>{g.lines.length} {g.lines.length === 1 ? "style" : "styles"}{g.factoryId ? ` · ${g.releasedAt ? (g.poMail === "accepted" ? "PO accepted" : "PO sent") : g.lockRequestedAt ? "PO with the owner" : "PO not sent"}` : ""}</small>
+              </div>
+              <StyleRows rows={g.lines.map((l) => {
+                const st = stateOf.get(l.id)!;
+                const own = lines.find((x) => x.id === l.id)?.ship_date;
+                return {
+                  key: l.id, href: `#style-${l.id}`, style: l.style + (l.colour ? ` · ${l.colour}` : ""), photoUrl: l.photoUrl,
+                  sub: `${qtyU(l.qty, l.fabricOrder ? "fabric" : "garment")}${own ? ` · ships ${dayNear(own, today)}` : ""}`,
+                  stage: st.j.stage, tone: st.j.next.tone, next: st.j.next.title, label: st.j.next.action.kind === "none" ? "" : "Open",
+                };
+              })} />
+            </div>
+          ))}
+        </section>
+      )}
       <FactoryUpdates orderId={o.id} updates={pendingUpdates} canReview={canEnterDone(me?.role) && o.status === "open"} />
       <OrderFloor orderId={o.id} updates={floor} canPost={canEnterDone(me?.role) && o.status === "open"} />
       <OrderStyles

@@ -6,12 +6,14 @@ import { qty } from "@/lib/format";
 import { sizeEntries } from "@/lib/sizes";
 import { uploadAttachments } from "@/lib/photos";
 import { toast } from "@/components/toast";
-import { addLineFiles, removeLineFile, saveStyleDetails, type LineFileKind } from "../actions";
+import { addLineFiles, removeLineFile, saveStyleDetails, setStyleShipDate, type LineFileKind } from "../actions";
+import { dayNear } from "@/lib/format";
 import { caught } from "@/lib/errors";
 import { wholeText } from "@/lib/digits";
 
 export type LineFile = { id: string; kind: LineFileKind; name: string; url: string | null };
-export type StyleDetail = { fabric: string; sizes: Record<string, number>; files: LineFile[] };
+// shipDate: the style's own ship date ("" follows the PO's, orderDue).
+export type StyleDetail = { fabric: string; sizes: Record<string, number>; files: LineFile[]; shipDate?: string; orderDue?: string };
 
 // Common size runs, so a new style's sizes are one tap.
 const RUNS: { label: string; sizes: string[] }[] = [
@@ -49,6 +51,8 @@ export function StyleDetails({ orderId, companyId, lineId, style, styleQty, deta
   // The size row a save message is about ("name" or "qty" box), marked and focused before anything is sent.
   const [badRow, setBadRow] = useState<{ i: number; k: "size" | "qty" } | null>(null);
   const rowsBox = useRef<HTMLDivElement>(null);
+  // The style's own ship date, when it ships apart from the rest of the PO.
+  const [ships, setShips] = useState(detail.shipDate ?? "");
   const saveError = !!error && errorFrom === "save";
   const filled = rows.filter((r) => r.size.trim() || r.qty.trim());
   const sum = filled.reduce((a, r) => a + (Number(r.qty) || 0), 0);
@@ -114,6 +118,21 @@ export function StyleDetails({ orderId, companyId, lineId, style, styleQty, deta
 
   return (
     <div className="sdetail">
+      <div className="sship">
+        <label className="field">
+          <span>Ships</span>
+          {editable ? (
+            <input className="inp" type="date" value={ships || detail.orderDue || ""} aria-label={`${style} ship date`}
+              onChange={(e) => setShips(e.target.value === detail.orderDue ? "" : e.target.value)} />
+          ) : <b className="text-[14px] font-medium">{ships ? dayNear(ships) : detail.orderDue ? dayNear(detail.orderDue) : "No date"}</b>}
+        </label>
+        <small className="muted">{ships ? <>Its own date. The PO ships {detail.orderDue ? dayNear(detail.orderDue) : "with no date"}.{editable && <> <button type="button" className="link" onClick={() => setShips("")}>Use the PO&apos;s date</button></>}</> : "Same as the PO. Set a date if this style ships on its own."}</small>
+        {editable && ships !== (detail.shipDate ?? "") && (
+          <button type="button" className="btn sm primary" disabled={pending} onClick={() => run("ship", () => setStyleShipDate(orderId, lineId, ships), ships ? `${style} ships ${dayNear(ships)}` : `${style} ships with the PO`)}>
+            {busy === "ship" ? "Saving…" : "Save date"}
+          </button>
+        )}
+      </div>
       <div className="fgrid">
         <label className="field">
           <span>Fabric</span>

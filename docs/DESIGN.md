@@ -29,6 +29,14 @@ These rules keep every screen consistent. Every change follows them, including t
 - The stage (Factory, Plan, PO, Make, Final QC, Ship) and the single next step come from `journey()` in `src/lib/journey.ts`.
   Never work out "what's next" again on a screen: add the rule to `journey()` and to `journey.test.ts`.
 - Days to ship come from `shipClock()`, and the order-page area a stage opens comes from `areaOf()`, both in the same file.
+- **Style by style** (`src/lib/style-track.ts`): each style gets its own stage and next step from `journey()` run on that style
+  alone, so a style waiting for a factory never holds back styles already being made. `orderFromStyles()` gives the order its one
+  next step: the order's own when red, else a style that is behind. A style may ship on its own date (`order_lines.ship_date`,
+  empty = the PO's); its plan works back from it. Orders has three tabs: By order, By style (`/orders/styles`), By factory
+  (`/orders/factories`), all drawn with `StyleRows` (`src/components/style-rows.tsx`).
+- **A step marked done carries photos of the work.** The factory's updates and Quality's visits always did; the team's done dates
+  now go through `mark_steps_done` with photos in the style's folder (`step_proofs`), which the buyer sees beside the factory's.
+  Final QC is exempt: its check has its own photos.
 
 ## Who sees what
 - `docs/ACCESS.md` is the access table, and the database holds every line of it (row-level security and guarded functions).
