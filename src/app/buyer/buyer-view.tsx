@@ -11,6 +11,8 @@ import { BuyerCosting } from "./buyer-costing";
 import { costingState, type BuyerCostingAsk } from "./costing-state";
 import { buyerLine, factoryRecord, type RecordFacts } from "@/lib/factory-record";
 import { BuyerGuarantee, type BuyerGuaranteeData } from "./buyer-guarantee";
+import { InviteCard } from "@/components/invite-card";
+import { buyerInvite, isRef } from "@/lib/referral";
 import { BuyerWeekCard } from "./buyer-week";
 import { type OrderRating, RateOrder } from "@/components/rate-order";
 import { rateOrder } from "./rate-actions";
@@ -70,7 +72,7 @@ const SHOWN = 3;
 // the same page, read for that buyer, with nothing to press.
 export async function BuyerView({ preview }: { preview?: string }) {
   const supabase = await createClient(preview ? { "x-preview-buyer": preview } : undefined);
-  const [me, { data, error }, { data: sampleRows }, { data: shipRows }, { data: moneyRow }, { data: talkRows }, { data: sentRows }, { data: photoRows }, { data: makerRows }, { data: costRows }, { data: guarRow }, { data: meRow }, { data: styleRows }, { data: ratingRows }] = await Promise.all([
+  const [me, { data, error }, { data: sampleRows }, { data: shipRows }, { data: moneyRow }, { data: talkRows }, { data: sentRows }, { data: photoRows }, { data: makerRows }, { data: costRows }, { data: guarRow }, { data: meRow }, { data: styleRows }, { data: ratingRows }, { data: refCode }] = await Promise.all([
     getMe(), supabase.rpc("buyer_orders"), supabase.rpc("buyer_samples"), supabase.rpc("buyer_shipments"),
     // Its invoices and what is still to be paid.
     supabase.rpc("buyer_money"),
@@ -92,6 +94,8 @@ export async function BuyerView({ preview }: { preview?: string }) {
     supabase.rpc("buyer_styles"),
     // Its own ratings of delivered orders (src/components/rate-order.tsx).
     supabase.rpc("buyer_ratings_mine"),
+    // Its own invite link for brands it knows.
+    supabase.rpc("my_referral_code"),
   ]);
   const rawStyles = (styleRows ?? []) as RawStyle[];
   const person = (meRow as { name?: string } | null)?.name ?? null;
@@ -348,6 +352,12 @@ export async function BuyerView({ preview }: { preview?: string }) {
       <BuyerSendPo companyId={me?.companyId ?? ""} sent={sent} canSend={canWrite} />
       {/* Money owed shows even when no order is open. */}
       <BuyerMoney invoices={invoices} currency={(moneyRow as { currency?: string } | null)?.currency} />
+      {isRef(refCode as string | null) && (
+        <InviteCard id="binvite-h" title="Know a brand that makes clothes?" link={buyerInvite(refCode as string)}
+          text="Send them your link. If they ask us for a costing through it, we'll know you sent them, and we look after them the way we look after you."
+          message="We make our clothes in India with Sourcingo. They check every step and send photos. Worth asking them for a costing:"
+          words={{ share: "Send on WhatsApp", copy: "Copy link", copied: "Link copied." }} />
+      )}
       {(orders.length > 0 || invoices.length > 0) && <p className="muted text-center text-[12.5px]">Questions about an order? Write under its PO above, or message your Sourcingo merchandiser.</p>}
     </>
   );

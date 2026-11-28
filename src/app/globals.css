@@ -3075,3 +3075,9 @@ i.pcal-exp { background: var(--muted); opacity: 0.35; }
 .lead-wait li:first-child, .lead-reasons li:first-child { border-top: 0; }
 .lead-reasons b { font-size: 14px; font-weight: 600; }
 @media (max-width: 640px) { .lead-wait li { flex-wrap: wrap; } }
+
+/* Invite someone you know (buyer page, factory panel). */
+.invite-body { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 14px 20px 16px; }
+.invite-link { flex: 1; min-width: 0; overflow-wrap: anywhere; font-size: 13px; color: var(--muted); background: var(--surface-2); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
+.invite-acts { display: flex; gap: 8px; }
+@media (max-width: 640px) { .invite-acts { width: 100%; } .invite-acts .btn { flex: 1; min-height: 44px; justify-content: center; } }

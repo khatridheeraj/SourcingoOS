@@ -28,7 +28,7 @@ export default async function LeadsPage({ searchParams }: PageProps<"/reports/le
   const from = addDays(today, -range.days);
   const supabase = await createClient();
   const { data, error } = await fetchAll<LeadRow>((a, z) => supabase.from("inquiries")
-    .select("id, inquiry_no, status, source, from_site, asked_on_page, country, created_at, first_reply_at, quoted_price, sample_sent_on, sample_in_on, lost_reason, next_follow_up")
+    .select("id, inquiry_no, status, source, from_site, asked_on_page, country, created_at, first_reply_at, quoted_price, sample_sent_on, sample_in_on, lost_reason, next_follow_up, referred_by_buyer, referred_by_factory")
     .eq("company_id", me.companyId!).gte("created_at", `${from}T00:00:00+05:30`).order("created_at").order("id").range(a, z));
   const rows = data ?? [];
   const f = buildFunnel(rows, nowMs(), today);

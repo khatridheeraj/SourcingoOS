@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { SITE_NAV, SITE_URL } from "@/lib/site";
 import { SITE_PRODUCTS } from "@/lib/site-products";
+import { RefKeeper } from "./ref-keeper";
 import { SiteMenu } from "./site-menu";
 import "./site.css";
 
@@ -21,6 +22,7 @@ export const metadata: Metadata = {
 export default function SiteLayout({ children }: { children: React.ReactNode }) {
   return (
     <div className="site">
+      <RefKeeper />
       <a href="#main" className="site-skip">Skip to content</a>
       <header className="site-head">
         <div className="site-wrap site-head-row">

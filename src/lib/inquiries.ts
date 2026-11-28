@@ -61,8 +61,11 @@ export type Inquiry = {
   // The team's first reply to the lead (0104): when, and how.
   first_reply_at: string | null;
   first_reply_via: string | null;
+  // Sent by a buyer's or a factory's invite link (0105).
+  referred_by_buyer: string | null;
+  referred_by_factory: string | null;
 };
-export const INQUIRY_COLUMNS = "id, inquiry_no, buyer_id, prospect, contact_name, contact, source, product, est_qty, unit, target_price, quoted_price, merchandiser_id, next_follow_up, status, lost_reason, order_id, notes, photos, status_at, updated_at, created_by, created_at, sample_sent_on, sample_note, incoming_po_id, asked_on_page, sample_in_on, sample_in_note, costing_draft, buyer_answer, buyer_answer_note, buyer_answer_at, answer_seen_at, from_site, country, first_reply_at, first_reply_via";
+export const INQUIRY_COLUMNS = "id, inquiry_no, buyer_id, prospect, contact_name, contact, source, product, est_qty, unit, target_price, quoted_price, merchandiser_id, next_follow_up, status, lost_reason, order_id, notes, photos, status_at, updated_at, created_by, created_at, sample_sent_on, sample_note, incoming_po_id, asked_on_page, sample_in_on, sample_in_note, costing_draft, buyer_answer, buyer_answer_note, buyer_answer_at, answer_seen_at, from_site, country, first_reply_at, first_reply_via, referred_by_buyer, referred_by_factory";
 
 export const isOpenInquiry = (status: string) => status === "new" || status === "quoted";
 

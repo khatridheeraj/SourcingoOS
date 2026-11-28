@@ -5,13 +5,13 @@ import { isOpenInquiry, REPLY_HOURS, REPLY_SINCE } from "./inquiries.ts";
 export type LeadRow = {
   id: string; inquiry_no: string; status: string; source: string; from_site: boolean; asked_on_page: boolean; country: string | null;
   created_at: string; first_reply_at: string | null; quoted_price: number | null; sample_sent_on: string | null; sample_in_on: string | null;
-  lost_reason: string | null; next_follow_up: string | null; referred_by?: string | null;
+  lost_reason: string | null; next_follow_up: string | null; referred_by_buyer?: string | null; referred_by_factory?: string | null;
 };
 
 export const CHANNELS: Record<string, string> = {
   website: "Website", page: "Buyer page", referral: "Referral", email: "Email", whatsapp: "WhatsApp", phone: "Phone call", visit: "Visit or meeting", other: "Other",
 };
-export const channelOf = (l: LeadRow) => (l.referred_by ? "referral" : l.from_site ? "website" : l.asked_on_page ? "page" : CHANNELS[l.source] ? l.source : "other");
+export const channelOf = (l: LeadRow) => (l.referred_by_buyer || l.referred_by_factory ? "referral" : l.from_site ? "website" : l.asked_on_page ? "page" : CHANNELS[l.source] ? l.source : "other");
 
 const priced = (l: LeadRow) => l.status === "converted" || l.status === "quoted" || l.quoted_price != null;
 const sampled = (l: LeadRow) => !!l.sample_sent_on || !!l.sample_in_on || l.status === "converted";

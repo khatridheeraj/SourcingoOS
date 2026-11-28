@@ -24,7 +24,7 @@ export default async function FactoriesPage({ searchParams }: PageProps<"/factor
     // Each factory's record, in one line per row.
     view === "work" ? { data: [] } : supabase.rpc("factory_records"),
     // Factories that asked to join on the website and are still to be called or decided.
-    supabase.from("factory_applications").select("id, name, city, contact_name, phone, email, makes, pieces_month, people, message, status, created_at")
+    supabase.from("factory_applications").select("id, name, city, contact_name, phone, email, makes, pieces_month, people, message, status, created_at, ref_factory:factories!referred_by_factory(name), ref_buyer:buyers!referred_by_buyer(code)")
       .eq("company_id", me?.companyId ?? NO_COMPANY).in("status", ["new", "contacted"]).order("created_at", { ascending: false }).limit(50),
   ]);
   const today = todayIST();
@@ -45,7 +45,7 @@ export default async function FactoriesPage({ searchParams }: PageProps<"/factor
           </p>
         </div>
       </div>
-      <AskedToJoin rows={(asked ?? []) as Application[]} today={today} />
+      <AskedToJoin rows={(asked ?? []) as unknown as Application[]} today={today} />
       <FactoriesTabs at={view} count={factories.length} />
       {view === "work" ? <FactoryBoard factories={factories} /> : <FactoryList factories={factories} openStyles={openStyles} records={records} />}
     </>

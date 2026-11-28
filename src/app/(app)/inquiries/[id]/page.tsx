@@ -33,9 +33,10 @@ export default async function InquiryPage({ params }: PageProps<"/inquiries/[id]
   ]);
   const [fx, { data: co }] = await Promise.all([todaysFx(), supabase.from("companies").select("freight_rates").eq("id", me.companyId).maybeSingle()]);
   if (!i) notFound();
-  const [{ data: order }, { data: email }] = await Promise.all([
+  const [{ data: order }, { data: email }, { data: refFactory }] = await Promise.all([
     i.order_id ? supabase.from("orders").select("id, order_no, status").eq("id", i.order_id).maybeSingle() : Promise.resolve({ data: null }),
     i.incoming_po_id ? supabase.from("incoming_pos").select("id, email_subject, received_at").eq("id", i.incoming_po_id).maybeSingle() : Promise.resolve({ data: null }),
+    i.referred_by_factory ? supabase.from("factories").select("id, name").eq("id", i.referred_by_factory).maybeSingle() : Promise.resolve({ data: null }),
   ]);
   // Who could make it: factories that made the closest styles for us before, best record first among equals.
   const open_ = isOpenInquiry(i.status);
@@ -172,6 +173,9 @@ export default async function InquiryPage({ params }: PageProps<"/inquiries/[id]
           <div><dt>Merchandiser</dt><dd>{(i.merchandiser_id && people.get(i.merchandiser_id)) || "Not assigned"}</dd></div>
           <div><dt>Next follow-up</dt><dd className={due ? "text-bad" : ""}>{open ? day(i.next_follow_up) || "Not set" : "—"}</dd></div>
           {i.sample_sent_on && <div><dt>Sample sent</dt><dd>{day(i.sample_sent_on)}{i.sample_note ? ` · ${i.sample_note}` : ""}</dd></div>}
+          {(i.referred_by_buyer || refFactory) && (
+            <div><dt>Referred by</dt><dd>{i.referred_by_buyer ? `${(() => { const b = buyers.find((x) => x.id === i.referred_by_buyer); return b ? buyerName(b) : "A buyer"; })()}, a buyer` : `${refFactory!.name}, a factory`}</dd></div>
+          )}
           <div><dt>Came by</dt><dd>{i.asked_on_page ? "Their buyer page" : i.from_site ? `The website${i.country ? ` · ${i.country}` : ""}` : sourceLabel(i.source)} · {dayAt(i.created_at)}</dd></div>
           {email && <div><dt>From the email</dt><dd><Link href={`/pos/${email.id}`} className="link">{email.email_subject || "Open the email"}</Link></dd></div>}
         </dl>
