@@ -1,5 +1,5 @@
 // Checks that the parts running outside the app are still alive, and exits 1 (so GitHub emails
-// the owner) when one has stopped: the Tally reader, the Gmail PO pickup, PO reading, the database
+// the owner) when one has stopped: the Tally reader, the Gmail PO pickup, PO reading, the nightly backup, the database
 // and file storage sizes on the free plan, and the newest production deploy.
 //   node scripts/health.mjs
 const url = process.env.SUPABASE_URL ?? "https://zwqoogevoxpafzbdnptz.supabase.co";
@@ -33,6 +33,10 @@ if (h.failed_reads_24h > 0) problems.push(`${h.failed_reads_24h} PO file(s) coul
 // The free plan stops at 500 MB.
 // File storage (QC reports, photos, PO files) is 1 GB on the free plan; uploads fail once it is full.
 if (h.storage_mb > 800) problems.push(`File storage is ${h.storage_mb} MB of the free 1 GB. Uploads stop when it is full.`);
+// The nightly backup runs at 2:20 am India time; allow a few hours of slack before calling it missed.
+if (h.backup_hours !== undefined && (h.backup_hours == null || h.backup_hours > 30)) {
+  problems.push(`No database backup has been saved for ${h.backup_hours ?? "ever"} hours.${h.backup_error ? ` Last try: ${h.backup_error}` : ""}`);
+}
 if (h.db_mb > 350) problems.push(`The database is ${h.db_mb} MB of the free 500 MB.`);
 
 for (const p of problems) console.log(`PROBLEM: ${p}`);
