@@ -9,22 +9,41 @@ import { factoryLink } from "./actions";
 
 type Lang = "hi" | "en";
 
-function message(lang: Lang, name: string, url: string): string {
+function message(lang: Lang, name: string, url: string, missing?: string[]): string {
   const link = `${url}?lang=${lang}`;
+  if (missing?.length) return askMessage(lang, name, link, missing);
   return lang === "hi"
     ? `नमस्ते ${name},\nयह आपके Sourcingo फैक्ट्री पैनल का लिंक है। इसे फोन पर खोलें: अपने ऑर्डर देखें, TNA तारीखें भरें और हर स्टेप पूरा होने पर फोटो के साथ भेजें। पासवर्ड की ज़रूरत नहीं।\n\n${link}\n\nयह लिंक सिर्फ आपकी फैक्ट्री के लिए है, किसी और को न भेजें।`
     : `Hello ${name},\nThis is your Sourcingo factory panel link. Open it on your phone to see your orders, fill your TNA dates and send each finished step with photos. No password needed.\n\n${link}\n\nThis link is only for your factory. Please don't forward it.`;
 }
 
+// Asking a factory for the details and papers still missing, so its first PO isn't held up by them.
+function askMessage(lang: Lang, name: string, link: string, missing: string[]): string {
+  const list = missing.filter((m) => m !== "Payment terms").map((m) => `• ${lang === "hi" ? (HI[m] ?? m) : m}`).join("\n");
+  return lang === "hi"
+    ? `नमस्ते ${name},\nSourcingo से PO भेजने से पहले हमें आपकी फैक्ट्री की ये जानकारी और कागज़ चाहिए:\n${list}\n\nयह लिंक फोन पर खोलें, "आपकी जानकारी" में भरें और कागज़ों की फोटो या PDF लगाएँ। पासवर्ड की ज़रूरत नहीं।\n\n${link}\n\nयह लिंक सिर्फ आपकी फैक्ट्री के लिए है, किसी और को न भेजें।`
+    : `Hello ${name},\nBefore Sourcingo can send you a PO, we need these details and papers from your factory:\n${list}\n\nOpen this link on your phone, fill them under "Your details" and add a photo or PDF of each paper. No password needed.\n\n${link}\n\nThis link is only for your factory. Please don't forward it.`;
+}
+const HI: Record<string, string> = {
+  "Legal name": "कानूनी नाम (GST वाला)", GSTIN: "GSTIN", PAN: "PAN", Address: "पता", State: "राज्य", "PIN code": "पिन कोड",
+  "Contact person": "संपर्क व्यक्ति", Mobile: "मोबाइल", Email: "ईमेल", "Bank account and IFSC": "बैंक खाता और IFSC",
+  "Payment terms": "पेमेंट की शर्तें", "GST certificate": "GST सर्टिफिकेट", "PAN card": "PAN कार्ड", "Cancelled cheque": "कैंसल चेक",
+  "Signed vendor agreement": "साइन किया हुआ वेंडर एग्रीमेंट",
+};
+
 // Sends a factory the link to its own panel on WhatsApp, in Hindi or English. The factory needs no email or password.
-export function FactoryLink({ factoryId, name, phone, size = "sm", seePage = true }: { factoryId: string; name: string; phone: string | null; size?: "sm" | "md"; seePage?: boolean }) {
+// With `missing`, the same link goes as an ask for the details and papers still missing.
+export function FactoryLink({ factoryId, name, phone, size = "sm", seePage = true, missing, primary = false, email }: {
+  factoryId: string; name: string; phone: string | null; size?: "sm" | "md"; seePage?: boolean; missing?: string[]; primary?: boolean; email?: string | null;
+}) {
   const box = useRef<HTMLDialogElement>(null);
   const [url, setUrl] = useState("");
   const [lang, setLang] = useState<Lang>("hi");
   const [error, setError] = useState("");
   const [confirmNew, setConfirmNew] = useState(false);
   const [pending, start] = useTransition();
-  const text = url ? message(lang, name, url) : "";
+  const text = url ? message(lang, name, url, missing) : "";
+  const asking = !!missing?.length;
   const to = waNumber(phone);
 
   function load(renew: boolean) {
@@ -54,18 +73,19 @@ export function FactoryLink({ factoryId, name, phone, size = "sm", seePage = tru
 
   return (
     <>
-      <button type="button" className={`btn ${size === "sm" ? "sm" : ""}`} onClick={open}>
-        <Icon name="link" size={size === "sm" ? 14 : 16} />Factory link
+      <button type="button" className={`btn ${size === "sm" ? "sm" : ""} ${primary ? "primary" : ""}`} onClick={open}>
+        <Icon name="link" size={size === "sm" ? 14 : 16} />{asking ? "Ask the factory" : "Factory link"}
       </button>
-      <dialog ref={box} className="sheet" aria-labelledby={`fl-${factoryId}`} onClick={(e) => { if (e.target === box.current) box.current?.close(); }}>
+      <dialog ref={box} className="sheet" aria-labelledby={`fl-${factoryId}${asking ? "-ask" : ""}`} onClick={(e) => { if (e.target === box.current) box.current?.close(); }}>
         <div className="sheet-body">
           <span className="grabber" aria-hidden />
           <div className="row justify-between">
-            <h2 id={`fl-${factoryId}`} className="text-[17px] font-semibold">Send {name} its link</h2>
+            <h2 id={`fl-${factoryId}${asking ? "-ask" : ""}`} className="text-[17px] font-semibold">{asking ? `Ask ${name} for its details` : `Send ${name} its link`}</h2>
             <button type="button" className="btn ghost sm" onClick={() => box.current?.close()}>Close</button>
           </div>
           <p className="mt-1 text-[12.5px] text-muted">
-            The link opens the panel for {name} on their phone, with no email or password. They see only their own orders, fill their TNA and mark steps done with photos.
+            {asking ? `The message lists what is missing. The link opens ${name}'s own page, where they fill the details and upload the papers; you check each paper here once it arrives.`
+              : `The link opens the panel for ${name} on their phone, with no email or password. They see only their own orders, fill their TNA and mark steps done with photos.`}
           </p>
           <div className="seg mt-3" role="group" aria-label="Language">
             <button type="button" aria-pressed={lang === "hi"} onClick={() => setLang("hi")}>हिंदी</button>
@@ -81,6 +101,10 @@ export function FactoryLink({ factoryId, name, phone, size = "sm", seePage = tru
               href={`https://wa.me/${to}?text=${encodeURIComponent(text)}`} target="_blank" rel="noreferrer">
               {to ? "WhatsApp" : "WhatsApp (choose chat)"}
             </a>
+            {asking && email && (
+              <a className={`btn ${!url ? "pointer-events-none opacity-50" : ""}`} aria-disabled={!url}
+                href={`mailto:${email}?subject=${encodeURIComponent("Your details for Sourcingo POs")}&body=${encodeURIComponent(text)}`}>Email</a>
+            )}
             <button type="button" className="btn" disabled={!url} onClick={copy}>Copy</button>
           </div>
           {!to && url && <p className="mt-2 text-[12.5px] text-muted">No phone number saved for {name}, so WhatsApp asks which chat to send it to.</p>}

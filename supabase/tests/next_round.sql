@@ -67,6 +67,7 @@ select pg_temp.expect((select baseline_on is null and planned_on = current_date 
   'a target before release was locked or given a baseline');
 select public.request_factory_plan(:'ord', '20000000-0000-0000-0000-000000000001', 7);
 select public.accept_targets_for_factory(:'ord', '20000000-0000-0000-0000-000000000001');
+\ir _factory_ready.sql
 select pg_temp.owner_release(:'ord', '20000000-0000-0000-0000-000000000001');
 select pg_temp.expect((select count(*) = 15 from public.line_stages where line_id = :'k1' and baseline_on = planned_on), 'release did not keep the baseline');
 select pg_temp.expect((select count(*) = 0 from public.line_stages where line_id = :'a1' and baseline_on is not null), 'another factory''s plan got a baseline');

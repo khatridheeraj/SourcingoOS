@@ -113,6 +113,19 @@ select pg_temp.expect_error(format($$select public.request_po_lock('%s', '200000
 reset role;
 update public.factories set email = 'Orders@Kkora.in' where id = '20000000-0000-0000-0000-000000000001';
 set role authenticated;
+-- And the factory's full details and papers (0135).
+select pg_temp.expect_error(format($$select public.request_po_lock('%s', '20000000-0000-0000-0000-000000000001')$$, :'ord'), 'The factory''s details are not complete yet. Missing: Legal name, GSTIN%');
+select public.save_factory_details('20000000-0000-0000-0000-000000000001', '{"legal_name": "Kkora Fashions LLP", "gstin": "08ABDFK7531J1Z4",
+  "address": "GH-6, Sector 6, Vidyadhar Nagar", "pin": "302039", "contact_name": "Mona", "phone": "9414061982", "bank_account": "123456789012",
+  "bank_ifsc": "SBIN0001234", "pay_days": "60"}');
+select pg_temp.expect((select state = 'Rajasthan' and pan = 'ABDFK7531J' from public.factories where id = '20000000-0000-0000-0000-000000000001'), 'state and PAN not taken from the GSTIN');
+select pg_temp.expect_error($$select public.save_factory_details('20000000-0000-0000-0000-000000000001', '{"gstin": "08ABDFK7531J1Z4", "state": "Gujarat"}')$$, 'This GSTIN is from Rajasthan, but the state says Gujarat%');
+select pg_temp.expect_error($$select public.save_factory_details('20000000-0000-0000-0000-000000000001', '{"pan": "ABCDE1234F"}')$$, 'The PAN doesn''t match the GSTIN%');
+select pg_temp.expect_error(format($$select public.request_po_lock('%s', '20000000-0000-0000-0000-000000000001')$$, :'ord'), '%Missing: GST certificate, PAN card, Cancelled cheque, Signed vendor agreement.%');
+select public.save_factory_document('20000000-0000-0000-0000-000000000001', k, null, null,
+  public.current_company() || '/factory-files/20000000-0000-0000-0000-000000000001/certs/' || k || '.pdf', k || '.pdf')
+from unnest(array['gst', 'pan', 'cheque', 'agreement']) k;
+select pg_temp.expect((select missing = '{}' from public.factory_gaps('20000000-0000-0000-0000-000000000001')), 'factory not ready after its papers');
 select public.request_po_lock(:'ord', '20000000-0000-0000-0000-000000000001');
 select pg_temp.expect((select lock_requested_at is not null and lock_requested_by = auth.uid() from public.factory_pos where order_id = :'ord'), 'lock request not saved');
 select pg_temp.expect_error(format($$select public.send_back_po_lock('%s', '20000000-0000-0000-0000-000000000001', 'no')$$, :'ord'), 'Only the owner can send a plan back.');

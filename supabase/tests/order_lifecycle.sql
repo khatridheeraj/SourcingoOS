@@ -137,6 +137,7 @@ select public.request_factory_plan(:'ord', '20000000-0000-0000-0000-000000000002
 select pg_temp.expect_error(format($$select pg_temp.owner_release('%s', '20000000-0000-0000-0000-000000000002')$$, :'ord'),
   'The factory hasn''t sent its plan for your latest request yet.%');
 select public.accept_targets_for_factory(:'ord', '20000000-0000-0000-0000-000000000002');
+\ir _factory_ready.sql
 select pg_temp.owner_release(:'ord', '20000000-0000-0000-0000-000000000002');
 select pg_temp.owner_release(:'ord', '20000000-0000-0000-0000-000000000001');
 -- Once Kkora's PO is released, only the owner can move K-1 away from it.

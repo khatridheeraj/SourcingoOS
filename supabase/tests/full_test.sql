@@ -73,6 +73,7 @@ select public.accept_targets_for_factory(:'ord', '20000000-0000-0000-0000-000000
 select pg_temp.expect((select count(*) = 15 from public.line_stages where factory_on = planned_on), 'factory dates not entered from the targets');
 select pg_temp.expect((select plan_entered_by = auth.uid() and factory_sent_at is not null from public.factory_pos where order_id = :'ord'),
   'plan not marked as entered by the orders team');
+\ir _factory_ready.sql
 select pg_temp.owner_release(:'ord', '20000000-0000-0000-0000-000000000001');
 select pg_temp.expect_error(format($$select public.accept_targets_for_factory('%s', '20000000-0000-0000-0000-000000000001')$$, :'ord'),
   'The PO is already released.');

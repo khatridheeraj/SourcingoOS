@@ -5,6 +5,8 @@ import { getMe } from "@/lib/auth";
 import { friendly } from "@/lib/errors";
 import { TNA_STEPS } from "@/lib/format";
 import { createClient } from "@/lib/supabase/server";
+import type { PaperInput } from "@/components/factory-papers";
+import type { Kyc } from "@/lib/factory-kyc";
 
 export type FactoryDateInput = { line_id: string; stage: string; factory_on: string };
 
@@ -152,6 +154,33 @@ export async function askVisit(from: string, note: string): Promise<{ error?: st
   if (!/^\d{4}-\d{2}-\d{2}$/.test(from)) return { error: "Pick a day." };
   const supabase = await createClient();
   const { error } = await supabase.rpc("ask_factory_visit", { p_from: from, p_note: note });
+  if (error) return { error: friendly(error) };
+  revalidatePath("/factory");
+  return {};
+}
+
+// The factory's own details (0135), from its panel. Payment terms and its name stay with Sourcingo.
+export async function saveMyDetails(k: Partial<Kyc>): Promise<{ error?: string; field?: string }> {
+  const me = await getMe();
+  if (me?.role !== "factory") return { error: "This login is not set up for a factory." };
+  const { pay_days: _drop, ...rest } = k;
+  void _drop;
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("save_factory_details", { p_factory: null, p: rest });
+  if (error) return { error: friendly(error) };
+  revalidatePath("/factory");
+  return {};
+}
+
+// One of its papers, sent for Sourcingo to check.
+export async function saveMyPaper(p: PaperInput): Promise<{ error?: string }> {
+  const me = await getMe();
+  if (me?.role !== "factory") return { error: "This login is not set up for a factory." };
+  if (p.until && !/^\d{4}-\d{2}-\d{2}$/.test(p.until)) return { error: "Pick the date it runs out." };
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("save_factory_document", {
+    p_factory: null, p_kind: p.kind, p_no: p.no || null, p_until: p.until || null, p_path: p.path, p_file_name: p.fileName,
+  });
   if (error) return { error: friendly(error) };
   revalidatePath("/factory");
   return {};

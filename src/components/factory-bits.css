@@ -89,3 +89,31 @@
 .floor-photos img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .floor-photos .btn { position: absolute; top: 4px; right: 4px; min-height: 0; height: 26px; width: 26px; padding: 0; background: var(--surface); border-radius: 50%; }
 .visit-book { max-width: 420px; }
+
+/* A factory's details and papers (src/components/factory-kyc-card.tsx, factory-papers.tsx, factory-details-form.tsx). */
+.kyc-head { display: flex; gap: 16px; align-items: center; }
+.kyc-head .pring-c { font-size: 13px; font-weight: 600; }
+.kyc-missing { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.kyc-missing li { font-size: 12.5px; padding: 3px 9px; border-radius: 999px; background: var(--warn-soft); color: var(--warn); box-shadow: inset 0 0 0 1px var(--warn-line); }
+.kyc-set { border: 0; margin: 0; padding: 0; min-width: 0; }
+.kyc-set legend { padding: 0; margin-bottom: 8px; font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.kyc-facts { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px 20px; margin: 0; }
+.kyc-facts dt { font-size: 12px; color: var(--muted); }
+.kyc-facts dd { margin: 0; font-size: 14px; overflow-wrap: anywhere; }
+.kyc-facts dd.none { color: var(--muted); }
+.paper-list { list-style: none; margin: 0; padding: 0; }
+.paper-row { display: flex; gap: 12px; align-items: flex-start; padding: 12px 0; border-top: 1px solid var(--line); }
+.paper-row:first-child { border-top: 0; }
+.paper-row b { font-size: 14px; }
+.paper-row small { font-size: 12.5px; }
+.paper-dot { flex: none; width: 8px; height: 8px; margin-top: 6px; border-radius: 50%; background: var(--line-strong); }
+.paper-dot.ok { background: var(--ok); }
+.paper-dot.warn { background: var(--warn); }
+.paper-act { flex: none; }
+@media (max-width: 640px) {
+  .kyc-facts { grid-template-columns: 1fr 1fr; }
+}
+.kyc-more > summary { cursor: pointer; font-size: 13px; color: var(--accent); font-weight: 500; }
+@media (max-width: 640px) {
+  .kyc-acts > .btn, .kyc-acts > button { flex: 1; min-height: 44px; justify-content: center; }
+}

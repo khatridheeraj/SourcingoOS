@@ -10,13 +10,14 @@ import { FactoryBoard } from "./factory-board";
 import { FactoryList } from "./factory-list";
 import { FactoriesTabs } from "./factories-tabs";
 import { AskedToJoin, type Application } from "./asked";
+import type { Gaps } from "@/lib/factory-kyc";
 
 export default async function FactoriesPage({ searchParams }: PageProps<"/factories">) {
   const sp = await searchParams;
   const view = sp.view === "list" ? "list" : "work";
   const [me, supabase] = await Promise.all([getMe(), createClient()]);
   if (!canEditOrders(me?.role)) redirect("/");
-  const [factories, { data: lines }, { data: recs }, { data: asked }] = await Promise.all([
+  const [factories, { data: lines }, { data: recs }, { data: asked }, { data: gapRows }] = await Promise.all([
     loadFactories(),
     // Read page by page: a busy company has more than 1,000 open styles. Only the list shows the counts.
     view === "work" ? { data: [] } : fetchAll((a, z) => supabase.from("order_lines").select("factory_id, orders!inner(status)").eq("company_id", me?.companyId ?? NO_COMPANY)
@@ -26,7 +27,10 @@ export default async function FactoriesPage({ searchParams }: PageProps<"/factor
     // Factories that asked to join on the website and are still to be called or decided.
     supabase.from("factory_applications").select("id, name, city, contact_name, phone, email, makes, pieces_month, people, message, status, created_at, ref_factory:factories!referred_by_factory(name), ref_buyer:buyers!referred_by_buyer(code)")
       .eq("company_id", me?.companyId ?? NO_COMPANY).in("status", ["new", "contacted"]).order("created_at", { ascending: false }).limit(50),
+    // What each factory still lacks before it can have a PO (0135).
+    view === "work" ? { data: [] } : supabase.rpc("factory_gaps"),
   ]);
+  const gaps = Object.fromEntries(((gapRows ?? []) as Gaps[]).map((g) => [g.factory_id, g]));
   const today = todayIST();
   const records: Record<string, { line: string; tone: string; verified: boolean }> = {};
   for (const f of (recs ?? []) as RecordFacts[]) {
@@ -47,7 +51,7 @@ export default async function FactoriesPage({ searchParams }: PageProps<"/factor
       </div>
       <AskedToJoin rows={(asked ?? []) as unknown as Application[]} today={today} />
       <FactoriesTabs at={view} count={factories.length} />
-      {view === "work" ? <FactoryBoard factories={factories} /> : <FactoryList factories={factories} openStyles={openStyles} records={records} />}
+      {view === "work" ? <FactoryBoard factories={factories} /> : <FactoryList factories={factories} openStyles={openStyles} records={records} gaps={gaps} />}
     </>
   );
 }

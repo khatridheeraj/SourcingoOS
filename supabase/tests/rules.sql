@@ -614,6 +614,7 @@ create function pg_temp.plan(p_style text, p_stage text) returns text language s
 $$;
 -- The merchandiser accepts the factory's dates as the targets, then releases.
 update public.line_stages set planned_on = factory_on where planned_on < factory_on;
+\ir _factory_ready.sql
 select pg_temp.owner_release(:'save_order', '20000000-0000-0000-0000-000000000001');
 select pg_temp.as_user('00000000-0000-0000-0000-0000000000fa');
 do $$ begin

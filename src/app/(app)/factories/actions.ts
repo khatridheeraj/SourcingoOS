@@ -6,6 +6,7 @@ import { canEditOrders, getMe } from "@/lib/auth";
 import { friendly } from "@/lib/errors";
 import { createClient } from "@/lib/supabase/server";
 import { checkFactory } from "./check";
+import type { Kyc } from "@/lib/factory-kyc";
 
 export type FactoryInput = { id?: string; name: string; city: string; contact_name: string; phone: string; notes: string; active: boolean; address: string; gstin: string; email: string };
 
@@ -34,6 +35,25 @@ export async function saveFactory(f: FactoryInput): Promise<{ error?: string; fi
   if (error) return { error: friendly(error), field: error.message?.includes("factories_name_key") ? "name" : undefined };
   revalidatePath("/", "layout");
   return {};
+}
+
+// A new factory with its full details (0135). Its papers are uploaded on its page next.
+export async function addFactory(name: string, k: Partial<Kyc>, notes = ""): Promise<{ error?: string; field?: string; id?: string }> {
+  const me = await getMe();
+  if (!me?.role) return { error: "Your account is not switched on yet." };
+  if (!canEditOrders(me.role)) return { error: "Only the orders team can add factories." };
+  const clean = name.trim().replace(/\s+/g, " ");
+  if (!clean) return { error: "Enter the factory's name.", field: "name" };
+  const supabase = await createClient();
+  const { data, error } = await supabase.from("factories").insert({ name: clean, notes: notes.trim() || null }).select("id").single();
+  if (error) return { error: error.message?.includes("factories_name_key") ? `${clean} is already in your factories.` : friendly(error), field: error.message?.includes("factories_name_key") ? "name" : undefined };
+  if (Object.keys(k).length) {
+    const { error: e2 } = await supabase.rpc("save_factory_details", { p_factory: data.id, p: k });
+    // The factory is in; what couldn't be saved is fixed on its page, which opens next.
+    if (e2) return { id: data.id, error: friendly(e2) };
+  }
+  revalidatePath("/", "layout");
+  return { id: data.id };
 }
 
 // The factory's WhatsApp link: opening it signs the phone in to that factory's panel. The same link is given each
