@@ -56,9 +56,10 @@ export function FactoryUpdates({ orderId, updates, canReview }: { orderId: strin
               </small>
               {u.note && <p className="fupd-note">&ldquo;{u.note}&rdquo;</p>}
             </div>
-            <div className="fupd-photos">
+            <div className="fupd-photos" data-photos>
               {u.photos.map((url, i) => (
-                <a key={url} href={url} target="_blank" rel="noreferrer" aria-label={`Photo ${i + 1} of ${u.style} ${u.step}`}>
+                <a key={url} href={url} target="_blank" rel="noreferrer" aria-label={`Photo ${i + 1} of ${u.style} ${u.step}`}
+                  data-caption={`${u.style} · ${u.step} done ${day(u.doneOn)} · sent by ${u.factory} ${dayAt(u.sentAt)}`}>
                   {/* eslint-disable-next-line @next/next/no-img-element -- short-lived signed links, not for the image optimiser */}
                   <img src={url} alt="" loading="lazy" />
                 </a>

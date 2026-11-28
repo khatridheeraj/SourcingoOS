@@ -49,6 +49,9 @@ These rules keep every screen consistent. Every change follows them, including t
 - `StageMeter`: six short bars, one per stage, coloured by the next step's tone.
 - `PhotoStack`: style photos, shown only when at least one exists.
 - `Ring`: progress that fills as work gets done.
+- `PhotoViewer` (`src/components/photo-viewer.tsx`, mounted once in the root layout): every photo opens in a pop-up on the
+  same page, never a new tab. A link to a picture or an `<img data-zoom>` opens it by itself; wrap a set in `data-photos`
+  to swipe through them and give each a `data-caption` (style, step, date, who). `data-no-zoom` opts out.
 Use these instead of drawing a new version on a screen. A new pattern that more than one screen needs goes here first.
 
 ## Look

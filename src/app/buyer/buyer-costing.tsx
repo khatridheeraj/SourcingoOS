@@ -83,7 +83,7 @@ export function BuyerCosting({ companyId, asks, canWrite, today }: { companyId: 
         <div className="bsmp-h">
           <span className="smp-thumb">
             {/* eslint-disable-next-line @next/next/no-img-element -- short-lived signed links */}
-            {a.photoUrls[0] ? <img src={a.photoUrls[0]} alt="" /> : <span aria-hidden>{a.product.slice(0, 2)}</span>}
+            {a.photoUrls[0] ? <img src={a.photoUrls[0]} alt="" data-zoom data-caption={a.product} /> : <span aria-hidden>{a.product.slice(0, 2)}</span>}
           </span>
           <div className="min-w-0 grow">
             <div className="smp-title"><b>{a.product}</b></div>

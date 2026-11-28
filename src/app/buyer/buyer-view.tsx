@@ -248,7 +248,8 @@ export async function BuyerView({ preview }: { preview?: string }) {
                               {shots.length > 0 && (
                                 <span className="bstep-photos">
                                   {shots.map((u, i) => (
-                                    <a key={u} href={u} target="_blank" rel="noreferrer" aria-label={`${stepName(s)} photo ${i + 1} of ${l.style}`}>
+                                    <a key={u} href={u} target="_blank" rel="noreferrer" aria-label={`${stepName(s)} photo ${i + 1} of ${l.style}`}
+                                      data-caption={`${l.style} · ${stepName(s)} · done ${day(s.done_on!)} · checked by Sourcingo`}>
                                       {/* eslint-disable-next-line @next/next/no-img-element -- short-lived signed links, not for the image optimiser */}
                                       <img src={u} alt="" loading="lazy" />
                                     </a>
@@ -272,7 +273,8 @@ export async function BuyerView({ preview }: { preview?: string }) {
                           {qcPhotos.length > 0 && (
                             <div className="bqc-photos">
                               {qcPhotos.map((u, i) => (
-                                <a key={u} href={u} target="_blank" rel="noreferrer" aria-label={`QC photo ${i + 1} of ${l.style}`}>
+                                <a key={u} href={u} target="_blank" rel="noreferrer" aria-label={`QC photo ${i + 1} of ${l.style}`}
+                                  data-caption={`${l.style} · Final quality check · ${day(l.final_qc!.checked_on)}`}>
                                   {/* eslint-disable-next-line @next/next/no-img-element -- short-lived signed links, not for the image optimiser */}
                                   <img src={u} alt="" loading="lazy" />
                                 </a>

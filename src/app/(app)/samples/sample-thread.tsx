@@ -191,7 +191,7 @@ export function SampleThreadCard({ t, today, showOrder = true, readOnly = false 
       <header className="smp-h">
         <span className="smp-thumb">
           {/* eslint-disable-next-line @next/next/no-img-element -- short-lived signed links, not for the image optimiser */}
-          {t.styleUrl ? <img src={t.styleUrl} alt="" /> : <span aria-hidden>{t.style.slice(0, 2)}</span>}
+          {t.styleUrl ? <img src={t.styleUrl} alt="" data-zoom data-caption={t.style} /> : <span aria-hidden>{t.style.slice(0, 2)}</span>}
         </span>
         <div className="min-w-0 grow">
           <div className="smp-title"><b className="code">{t.style}</b>{t.colour && <span>{t.colour}</span>}</div>

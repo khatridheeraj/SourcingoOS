@@ -92,7 +92,7 @@ export function BuyerSamples({ companyId, samples }: { companyId: string; sample
                   <div className="bsmp-h">
                     <span className="smp-thumb">
                       {/* eslint-disable-next-line @next/next/no-img-element -- short-lived signed links */}
-                      {s.styleUrl ? <img src={s.styleUrl} alt="" /> : <span aria-hidden>{s.style.slice(0, 2)}</span>}
+                      {s.styleUrl ? <img src={s.styleUrl} alt="" data-zoom data-caption={s.style} /> : <span aria-hidden>{s.style.slice(0, 2)}</span>}
                     </span>
                     <div className="min-w-0 grow">
                       <div className="smp-title"><b className="code">{s.style}</b><span className="smp-stage">{sampleLabel(s.stage)}{s.round > 1 ? ` · round ${s.round}` : ""}</span></div>

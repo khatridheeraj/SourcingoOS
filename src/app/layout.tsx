@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { SheetBack } from "@/components/sheet-back";
+import { PhotoViewer } from "@/components/photo-viewer";
 import { SITE_URL } from "@/lib/site";
 
 const body = Inter({ variable: "--font-body", subsets: ["latin"] });
@@ -29,7 +30,7 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html lang="en" className={`${body.variable} ${mono.variable} h-full antialiased`}>
-      <body className="flex min-h-full flex-col font-sans">{children}<SheetBack /></body>
+      <body className="flex min-h-full flex-col font-sans">{children}<SheetBack /><PhotoViewer /></body>
     </html>
   );
 }
