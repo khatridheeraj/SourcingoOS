@@ -96,6 +96,7 @@ begin
     if v_stage = 'final_qc' then
       raise exception 'Final QC is done when its check is recorded. Use Record QC.';
     end if;
+    v_found := null; v_done := null;
     select true, s.done_on into v_found, v_done from public.style_steps(v_line.id) s where s.stage = v_stage;
     if not coalesce(v_found, false) then
       raise exception 'That step is not on %.', v_line.style;
