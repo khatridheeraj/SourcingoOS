@@ -4,10 +4,9 @@ import { revalidatePath } from "next/cache";
 import { canEditOrders, getMe } from "@/lib/auth";
 import { friendly } from "@/lib/errors";
 import { createClient } from "@/lib/supabase/server";
-import { num } from "@/lib/order-input";
+import { num } from "@/lib/order-input"; // "Rs 450", "₹1,250": read the same way as the order form
 
 type Result = { error?: string };
-// Rates and amounts read the way people type them ("Rs 450", "₹1,250"), the same as the order form.
 const isDate = (s: string) => /^\d{4}-\d{2}-\d{2}$/.test(s);
 
 async function team() {
