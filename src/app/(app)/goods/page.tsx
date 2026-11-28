@@ -8,6 +8,8 @@ import { HOLD_HOURS, heldHours, heldText } from "@/lib/goods";
 import { trackState, type Mode, type Stage } from "@/lib/tracking";
 import { dm } from "@/lib/quick";
 import { createClient } from "@/lib/supabase/server";
+import { ewayRules } from "@/lib/eway";
+import { EwayLimits } from "./eway-limits";
 
 const TABS = [
   { key: "with-us", label: "With us", hint: `Bought from the factory, not shipped yet. Goods should leave within ${HOLD_HOURS} hours.` },
@@ -28,12 +30,13 @@ export default async function GoodsPage({ searchParams }: PageProps<"/goods">) {
   const sp = await searchParams;
   const tab = sp.show === "on-way" ? "on-way" : "with-us";
   const supabase = await createClient();
-  const [{ data, error }, buyers, factories] = await Promise.all([
+  const [{ data, error }, buyers, factories, { data: co }] = await Promise.all([
     fetchAll<Row>((a, z) => supabase.from("dispatches")
       .select("id, order_id, factory_id, purchase_bill_no, purchase_taxable, purchased_at, invoice_due_at, invoice_no, invoiced_at, eway_at, shipped_at, cartons, lr_no, transporter, grn_due_on, challan_no, lr_date, track_mode, track_carrier, track_no, track_to, track_eta, track_delivered_on")
       .eq("company_id", me.companyId!).is("cancelled_at", null).is("grn_at", null).order("purchased_at").order("id").range(a, z)),
     loadBuyers(),
     loadFactories(),
+    supabase.from("companies").select("eway_rules").eq("id", me.companyId!).maybeSingle(),
   ]);
   const all = data ?? [];
   const ids = all.map((d) => d.id);
@@ -192,6 +195,7 @@ export default async function GoodsPage({ searchParams }: PageProps<"/goods">) {
           <p>{t.hint}</p>
         </details>
       </section>
+      <EwayLimits rules={ewayRules(co?.eway_rules)} owner={me.role === "owner"} />
     </>
   );
 }

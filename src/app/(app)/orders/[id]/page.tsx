@@ -14,6 +14,7 @@ import { OrderJourney } from "./order-journey";
 import { createClient } from "@/lib/supabase/server";
 import { OrderForm } from "../order-form";
 import { FactoryUpdates, type PendingUpdate } from "./factory-updates";
+import { ewayRules, type EwayZone } from "@/lib/eway";
 import { OrderDispatch, type Dispatch, type DispatchFactory, type TallyBills } from "./order-dispatch";
 import { OrderHistory } from "./order-history";
 import { OrderMargin } from "./order-margin";
@@ -115,7 +116,7 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
   // The buyer's own PO: the files its email (or Buyer POs) brought, and any the team added by hand.
   const poDocsP = seeBuyers ? loadPoDocs(supabase, id, new Map(team.map((m) => [m.user_id, personName(m)]))) : Promise.resolve([]);
   // Dispatches (purchase to GRN) are for the orders team only.
-  const [{ data: dRows }, { data: dLines }, { data: tallyRaw }, { data: shipBlocker }] = seeBuyers
+  const [{ data: dRows }, { data: dLines }, { data: tallyRaw }, { data: shipBlocker }, { data: ewayRow }, { data: buyerEway }] = seeBuyers
     ? await Promise.all([
         supabase.from("dispatches").select("*").eq("order_id", id).is("cancelled_at", null).order("purchased_at"),
         supabase.from("dispatch_lines").select("dispatch_id, line_id, qty, purchase_rate, sale_rate").in("line_id", (o.order_lines ?? []).map((l) => l.id)),
@@ -123,8 +124,13 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
         supabase.rpc("dispatch_tally_bills", { p_order: id }),
         // Why the order can't be marked shipped yet: its goods must be bought and billed in Dispatch first.
         supabase.rpc("ship_blocker", { p_order: id }),
+        // The e-way bill limits (owner sets them on Goods) and where this buyer's goods usually go.
+        supabase.from("companies").select("eway_rules").eq("id", o.company_id).maybeSingle(),
+        supabase.from("buyers").select("eway_zone").eq("id", o.buyer_id).maybeSingle(),
       ])
-    : [{ data: [] }, { data: [] }, { data: null }, { data: null }];
+    : [{ data: [] }, { data: [] }, { data: null }, { data: null }, { data: null }, { data: null }];
+  const ewayLimits = ewayRules(ewayRow?.eway_rules);
+  const buyerZone = (buyerEway?.eway_zone ?? null) as EwayZone | null;
   const tallyBills: TallyBills = { purchases: tallyRaw?.purchases ?? [], sales: tallyRaw?.sales ?? [], buyerInTally: !!tallyRaw?.buyer_in_tally };
   // Only this order's photos: reading the whole company's list stopped at 1,000 rows and dropped the newest.
   const { data: dPhotos } = dRows?.length
@@ -277,7 +283,8 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
     purchaseTaxable: Number(d.purchase_taxable), purchaseGst: Number(d.purchase_gst),
     purchaseTallyAmount: d.purchase_tally_amount == null ? null : Number(d.purchase_tally_amount), billUrl: url(d.bill_path), invoiceUrl: url(d.invoice_path), purchasedAt: d.purchased_at, invoiceDueAt: d.invoice_due_at,
     invoiceNo: d.invoice_no, invoiceTaxable: d.invoice_taxable == null ? null : Number(d.invoice_taxable), invoiceGst: d.invoice_gst == null ? null : Number(d.invoice_gst),
-    invoicedAt: d.invoiced_at, ewayNo: d.eway_bill_no, ewayDate: d.eway_bill_date, ewayValidUntil: d.eway_valid_until, ewayUrl: url(d.eway_path), ewayFromTally: !!d.eway_from_tally,
+    invoicedAt: d.invoiced_at, ewaySkip: d.eway_skip, ewaySkipByHand: !!d.eway_skip_by, ewayNeeded: !!d.eway_needed, ewayZone: d.eway_zone ?? buyerZone,
+    ewayValue: d.invoice_taxable == null ? null : Number(d.invoice_taxable) + Number(d.invoice_gst ?? 0), ewayNo: d.eway_bill_no, ewayDate: d.eway_bill_date, ewayValidUntil: d.eway_valid_until, ewayUrl: url(d.eway_path), ewayFromTally: !!d.eway_from_tally,
     transporter: d.transporter, vehicleNo: d.vehicle_no, lrNo: d.lr_no, lrDate: d.lr_date, lrUrl: url(d.lr_path), cartons: d.cartons,
     shippedAt: d.shipped_at, grnDueOn: d.grn_due_on, grnUrl: url(d.grn_path), grnQty: d.grn_received_qty, grnNotes: d.grn_notes, grnAt: d.grn_at,
     photoUrls: dispatchPhotos.filter((p) => p.dispatch_id === d.id).map((p) => url(p.path)).filter(Boolean) as string[],
@@ -557,7 +564,7 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
         styles={lines.map((l) => ({ id: l.id, style: l.style, colour: str(l.colour), qty: l.qty, product: l.product }))} />
       </div>
       {seeBuyers && (
-        <div data-sec="dispatch"><OrderDispatch orderId={o.id} orderNo={o.order_no} companyId={o.company_id} open={o.status === "open"} owner={me?.role === "owner"} factories={dispatchFactories}
+        <div data-sec="dispatch"><OrderDispatch eway={ewayLimits} orderId={o.id} orderNo={o.order_no} companyId={o.company_id} open={o.status === "open"} owner={me?.role === "owner"} factories={dispatchFactories}
           ship={lines.map((l) => {
             const r = shipRows.find((x) => x.line_id === l.id);
             return { id: l.id, style: l.style, colour: str(l.colour), ordered: l.qty, bought: r?.bought ?? 0, billed: r?.billed ?? 0, shipped: r?.shipped ?? 0, unit: unitOf(l.product) };

@@ -17,7 +17,7 @@ export default async function ChallanPage({ params }: PageProps<"/goods/[id]/cha
   if (!canEditOrders(me?.role) || !me?.companyId) redirect("/");
   const supabase = await createClient();
   const { data: d } = await supabase.from("dispatches")
-    .select("id, order_id, factory_id, purchase_bill_no, invoice_no, invoiced_at, eway_bill_no, transporter, vehicle_no, lr_no, lr_date, cartons, shipped_at, challan_no, challan_at, cancelled_at")
+    .select("id, order_id, factory_id, purchase_bill_no, invoice_no, invoiced_at, eway_bill_no, eway_skip, transporter, vehicle_no, lr_no, lr_date, cartons, shipped_at, challan_no, challan_at, cancelled_at")
     .eq("id", id).maybeSingle();
   if (!d || d.cancelled_at) notFound();
   const [{ data: o }, { data: dl }, { data: co }] = await Promise.all([
@@ -79,7 +79,7 @@ export default async function ChallanPage({ params }: PageProps<"/goods/[id]/cha
             <dl>
               <div><dt>Buyer PO</dt><dd>{o.buyer_po || "—"}{o.po_date ? ` · ${day(o.po_date)}` : ""}</dd></div>
               <div><dt>Invoice</dt><dd>{d.invoice_no || "—"}</dd></div>
-              <div><dt>E-way bill</dt><dd>{d.eway_bill_no || "—"}</dd></div>
+              <div><dt>E-way bill</dt><dd>{d.eway_bill_no || (d.eway_skip ? "Not required" : "—")}</dd></div>
             </dl>
           </div>
           <div>

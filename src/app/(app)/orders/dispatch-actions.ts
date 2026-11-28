@@ -86,6 +86,12 @@ export async function recordEwayBill(orderId: string, id: string, p: { no: strin
   return run(orderId, "record_eway_bill", { p_id: id, p: { no, date: p.date, valid_until: isDate(p.valid_until) ? p.valid_until : "", path: p.path } });
 }
 
+// The lot's e-way bill step: where it goes (the rule then decides), or the merchandiser's own call either way.
+export async function setDispatchEway(orderId: string, id: string, action: "zone" | "needed" | "not_needed" | "auto", value = ""): Promise<Result> {
+  if (action === "not_needed" && value.trim().length < 5) return { error: "Say why this lot needs no e-way bill." };
+  return run(orderId, "set_dispatch_eway", { p_id: id, p_action: action, p_value: value.trim() || null });
+}
+
 export type ShippingInput = { transporter: string; vehicle_no: string; lr_no: string; lr_date: string; cartons: string; lr_path: string; photos: string[] };
 
 // Step 4: photos of the goods, the transporter and the LR.

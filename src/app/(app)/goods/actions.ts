@@ -34,6 +34,18 @@ export async function setCompanyDetails(dispatchId: string, address: string, gst
   return {};
 }
 
+// The owner's e-way bill limits (0132). The database checks them again and looks at waiting lots afresh.
+export async function saveEwayRules(v: { home_state: string; inter_state: string; in_state: string; same_city: string; checked_on: string; source: string }): Promise<{ error?: string }> {
+  if ((await getMe())?.role !== "owner") return { error: "Only the owner can change the e-way bill limits." };
+  const rs = (x: string) => x.replace(/[,₹\s]|^Rs\.?/gi, "");
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("set_eway_rules", { p: { ...v, inter_state: rs(v.inter_state), in_state: rs(v.in_state), same_city: rs(v.same_city), source: v.source.trim() } });
+  if (error) return { error: friendly(error) };
+  revalidatePath("/goods");
+  revalidatePath("/orders", "layout");
+  return {};
+}
+
 // Saves a lot's packing list as a whole: runs of identical cartons with pieces per size.
 export async function savePackingList(dispatchId: string, rows: PackRow[]): Promise<{ error?: string }> {
   if (!canEditOrders((await getMe())?.role)) return { error: "Only the orders team makes packing lists." };
