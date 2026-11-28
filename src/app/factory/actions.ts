@@ -131,3 +131,28 @@ export async function saveMyCapacity(rows: { week: string; free: number | null }
   revalidatePath("/factory");
   return {};
 }
+
+export type ProfileInput = { makes?: string[]; about?: string; address?: string; gstin?: string; people?: string; machines?: string; pieces_month?: string; photos?: string[] };
+
+// The factory's own profile: what it makes, its people and machines, and floor photos.
+export async function saveMyProfile(p: ProfileInput): Promise<{ error?: string }> {
+  const me = await getMe();
+  if (me?.role !== "factory") return { error: "This login is not set up for a factory." };
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("save_factory_profile", { p_factory: null, p });
+  if (error) return { error: friendly(error) };
+  revalidatePath("/factory");
+  return {};
+}
+
+// The factory asks Sourcingo to visit from a day on.
+export async function askVisit(from: string, note: string): Promise<{ error?: string }> {
+  const me = await getMe();
+  if (me?.role !== "factory") return { error: "This login is not set up for a factory." };
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(from)) return { error: "Pick a day." };
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("ask_factory_visit", { p_from: from, p_note: note });
+  if (error) return { error: friendly(error) };
+  revalidatePath("/factory");
+  return {};
+}
