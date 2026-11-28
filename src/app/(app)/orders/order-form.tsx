@@ -34,7 +34,8 @@ function point(form: HTMLFormElement | null, k: string) {
 // overdueShown: the buyer whose overdue invoices the page already warns about, so the form doesn't say it twice.
 // inquiryId: the buyer inquiry this new order comes from.
 // companyId: given on a new order typed in by hand, so the buyer's PO file can go with it.
-export function OrderForm({ initial, initialLines, buyers, factories, team, incomingId, inquiryId, overdueShown, companyId }: {
+// buyerRates: false for someone without Buyer details: the selling price column is left out (the database keeps it as it was).
+export function OrderForm({ initial, initialLines, buyers, factories, team, incomingId, inquiryId, overdueShown, companyId, buyerRates = true }: {
   initial: OrderInput;
   initialLines: LineInput[];
   buyers: Option[];
@@ -44,6 +45,7 @@ export function OrderForm({ initial, initialLines, buyers, factories, team, inco
   inquiryId?: string;
   overdueShown?: string;
   companyId?: string;
+  buyerRates?: boolean;
 }) {
   const router = useRouter();
   const [order, setOrder] = useState(initial);
@@ -290,7 +292,7 @@ export function OrderForm({ initial, initialLines, buyers, factories, team, inco
             <thead>
               <tr>
                 <th>Style no. *</th><th>Description</th><th>Colour</th><th>Qty *</th>
-                <th>Buyer rate ₹</th>{fac && <><th>Factory</th><th>Factory rate ₹</th></>}<th></th>
+                {buyerRates && <th>Buyer rate ₹</th>}{fac && <><th>Factory</th><th>Factory rate ₹</th></>}<th></th>
               </tr>
             </thead>
             <tbody ref={tableRef}>
@@ -300,7 +302,7 @@ export function OrderForm({ initial, initialLines, buyers, factories, team, inco
                   <td data-label="Description"><input className="inp min-w-[140px]" value={l.description} onChange={(e) => setLine(i, "description", e.target.value)} aria-label={`Line ${i + 1} description`} /></td>
                   <td data-label="Colour"><input className="inp min-w-[90px]" value={l.colour} onChange={(e) => setLine(i, "colour", e.target.value)} aria-label={`Line ${i + 1} colour`} /></td>
                   <td data-label="Qty"><input className="inp w-[90px]" inputMode="numeric" value={l.qty} onChange={(e) => setLine(i, "qty", e.target.value)} placeholder={isFabric(l) ? "metres" : "pcs"} aria-label={`Line ${i + 1} quantity in ${isFabric(l) ? "metres" : "pieces"}`} {...mark(`line-${i}-qty`)} />{errAt(`line-${i}-qty`)}</td>
-                  <td data-label="Buyer rate ₹"><input className="inp w-[90px]" inputMode="decimal" value={l.buyer_rate} onChange={(e) => setLine(i, "buyer_rate", e.target.value)} aria-label={`Line ${i + 1} buyer rate`} {...mark(`line-${i}-buyer_rate`)} />{errAt(`line-${i}-buyer_rate`)}</td>
+                  {buyerRates && <td data-label="Buyer rate ₹"><input className="inp w-[90px]" inputMode="decimal" value={l.buyer_rate} onChange={(e) => setLine(i, "buyer_rate", e.target.value)} aria-label={`Line ${i + 1} buyer rate`} {...mark(`line-${i}-buyer_rate`)} />{errAt(`line-${i}-buyer_rate`)}</td>}
                   {fac && <><td data-label="Factory">
                     <select className="inp min-w-[150px]" value={l.factory_id} onChange={(e) => setLine(i, "factory_id", e.target.value)} aria-label={`Line ${i + 1} factory`}>
                       <option value="">Not decided</option>

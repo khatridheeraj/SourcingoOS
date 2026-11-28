@@ -1,5 +1,6 @@
 import { cache } from "react";
-import type { Perms, Role } from "@/lib/auth-roles";
+import { redirect } from "next/navigation";
+import { can as canDo, canEditOrders as canEdit, type Perms, type Role } from "@/lib/auth-roles";
 import { createClient } from "@/lib/supabase/server";
 
 export { can, canEditOrders, canEnterDone, canRecordQc, ROLES, roleLabel, type Perms, type Role } from "@/lib/auth-roles";
@@ -23,3 +24,12 @@ export const getMe = cache(async (): Promise<Me | null> => {
   if (!m?.active) return me;
   return { ...me, companyId: p.current_company_id, companyName: c?.name ?? null, role: m.role as Role, perms: (m.perms ?? {}) as Perms };
 });
+
+// Pages about buyers (Buyers, Buyer emails, Inquiries, Leads, statements): only for people with Buyer details.
+// The database holds the same line, so this only keeps people from landing on an empty page.
+export async function requireBuyerDetails(opts: { quality?: boolean } = {}) {
+  const me = await getMe();
+  if (opts.quality && me?.role === "quality") return me;
+  if (!me || !canEdit(me.role) || !canDo(me, "buyers")) redirect("/");
+  return me;
+}

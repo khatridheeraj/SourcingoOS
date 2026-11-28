@@ -9,6 +9,7 @@ export const USERS = {
   accounts: ["00000000-0000-0000-0000-0000000000a5", "accounts@test.local"],
   factory: ["00000000-0000-0000-0000-0000000000a6", "factory@test.local"],
   buyer: ["00000000-0000-0000-0000-0000000000a7", "buyer@test.local"],
+  asst: ["00000000-0000-0000-0000-0000000000a8", "asst@test.local"],
 };
 const b64 = (o) => Buffer.from(JSON.stringify(o)).toString("base64url");
 export const sign = (c) => { const h = b64({ alg: "HS256", typ: "JWT" }), b = b64(c); return `${h}.${b}.${crypto.createHmac("sha256", SECRET).update(`${h}.${b}`).digest("base64url")}`; };

@@ -134,3 +134,10 @@ test("an open order whose every piece went out is not late on the clock", () => 
   assert.deepEqual(shipClock("2026-10-01", today, "open", true), { n: "✓", unit: "Sent", tone: "ok" });
   assert.equal(shipClock("2026-10-01", today, "open", false).tone, "bad");
 });
+test("without Buyer details, Dispatch (our invoice to the buyer) waits on someone who has them", () => {
+  const r = j({ packedAll: true, finalPassed: true, buyerDetails: false, dispatch: null });
+  assert.equal(r.stage, "ship");
+  assert.equal(r.next.action.kind, "none");
+  assert.equal(areaOf("ship", true, false), "qc");
+  assert.equal(areaOf("factory", true, false), "details");
+});

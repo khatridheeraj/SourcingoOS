@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { canEditOrders, getMe } from "@/lib/auth";
+import { can, canEditOrders, getMe } from "@/lib/auth";
 import { buyerName, loadBuyers, loadFactories } from "@/lib/data";
 import { fetchAll } from "@/lib/fetch-all";
 import { todayIST } from "@/lib/format";
@@ -47,7 +47,9 @@ export default async function UpdatesPage({ searchParams }: PageProps<"/updates"
     orders, stages: stages ?? [], pos: pos ?? [], factories: factories.map((f) => ({ ...f, link: linkOf.get(f.id) })), buyerName: (id) => names.get(id) ?? "Buyer",
     chased: new Set((chases ?? []).map((c) => c.factory_id)), today,
   });
-  const tab = sp.tab === "buyers" ? "buyers" : "factories";
+  // Buyer updates are for people with Buyer details only.
+  const sales = can(me, "buyers");
+  const tab = sp.tab === "buyers" && sales ? "buyers" : "factories";
   const failed = error || e2 || e3;
 
   return (
@@ -56,7 +58,7 @@ export default async function UpdatesPage({ searchParams }: PageProps<"/updates"
       <div className="head">
         <div className="grow">
           <h1>Updates</h1>
-          <p>Chase every factory that is behind, and tell each buyer where their orders stand. One tap each, the message is written.</p>
+          <p>{sales ? "Chase every factory that is behind, and tell each buyer where their orders stand." : "Chase every factory that is behind."} One tap each, the message is written.</p>
         </div>
         {mineCount > 0 && (
           <nav className="seg" aria-label="Whose orders">
@@ -66,7 +68,7 @@ export default async function UpdatesPage({ searchParams }: PageProps<"/updates"
         )}
       </div>
       {failed && <div className="errbox">Some orders couldn&apos;t load, so these messages may be missing something. Reload to try again.</div>}
-      <UpdatesView tab={tab} who={who} factories={factoryList} buyers={buyerList} />
+      <UpdatesView tab={tab} who={who} factories={factoryList} buyers={sales ? buyerList : null} />
     </>
   );
 }

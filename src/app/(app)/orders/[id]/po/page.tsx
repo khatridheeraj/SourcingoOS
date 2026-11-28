@@ -6,6 +6,7 @@ import type { LinePrice } from "@/lib/margin";
 import { sizeEntries } from "@/lib/sizes";
 import { createClient } from "@/lib/supabase/server";
 import { PrintPo } from "../factory-po/[factoryId]/print-po";
+import { buyerWithDetails } from "@/lib/data";
 
 type Line = { id: string; style: string; description: string | null; colour: string | null; qty: number; fabric: string | null; sizes: Record<string, number> | null; position: number; product: string };
 
@@ -25,7 +26,7 @@ export default async function OrderPoPage({ params }: PageProps<"/orders/[id]/po
   ]);
   if (!o) notFound();
   const [{ data: b }, { data: bn }] = await Promise.all([
-    supabase.from("buyers").select("code, city, delivery_address, credit_days").eq("id", o.buyer_id).maybeSingle(),
+    buyerWithDetails<{ code: string; credit_days: number | null }>(supabase, o.buyer_id, "code, credit_days"),
     supabase.from("buyer_names").select("real_name").eq("buyer_id", o.buyer_id).maybeSingle(),
   ]);
   const buyer = bn?.real_name ?? b?.code ?? "Buyer";

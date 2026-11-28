@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { canEditOrders, getMe } from "@/lib/auth";
+import { can, canEditOrders, getMe } from "@/lib/auth";
 import { briefText, buildBrief, teamCopy, type BriefData } from "@/lib/brief";
 import { createClient } from "@/lib/supabase/server";
 import { BriefShare } from "./brief-share";
@@ -21,7 +21,7 @@ export default async function BriefPage() {
 
   return (
     <>
-      {canEditOrders(me?.role) && <PageTabs tabs={reportTabs(me?.role)} label="Reports" />}
+      {canEditOrders(me?.role) && <PageTabs tabs={reportTabs(me?.role, can(me, "buyers"))} label="Reports" />}
       <div className="head">
         <div className="grow">
           <p className="text-[12.5px] font-semibold uppercase tracking-wide text-muted">Morning brief · {b.title}</p>

@@ -20,15 +20,23 @@ async function scope() {
 // The name a buyer is shown by. The team sees real names for now (Dheeraj, 15 Oct 2026); codes may come back later.
 export const buyerName = (b: Pick<Buyer, "code" | "realName">) => b.realName ?? b.code;
 
+// A buyer's city, notes and delivery address: only for people with Buyer details (empty for everyone else).
+export type BuyerDetails = { city: string | null; notes: string | null; delivery_address: string | null };
+export async function buyerDetails(supabase: Awaited<ReturnType<typeof createClient>>, ids?: string[]): Promise<Map<string, BuyerDetails>> {
+  const { data } = await supabase.rpc("buyer_details", ids ? { p_ids: ids } : {});
+  return new Map(((data ?? []) as ({ id: string } & BuyerDetails)[]).map((d) => [d.id, d]));
+}
+
 // Buyers, A to Z by the name they are shown by. Factory logins can't read real names, so they never reach the factory panel.
 export async function loadBuyers(): Promise<Buyer[]> {
   const { companyId, supabase } = await scope();
-  const [{ data: buyers }, { data: names }] = await Promise.all([
-    supabase.from("buyers").select("id, code, city, notes, active, grn_days").eq("company_id", companyId).order("code"),
+  const [{ data: buyers }, { data: names }, details] = await Promise.all([
+    supabase.from("buyers").select("id, code, active, grn_days").eq("company_id", companyId).order("code"),
     supabase.from("buyer_names").select("buyer_id, real_name").eq("company_id", companyId),
+    buyerDetails(supabase),
   ]);
   const byId = new Map((names ?? []).map((n) => [n.buyer_id as string, n.real_name as string]));
-  return (buyers ?? []).map((b) => ({ ...b, realName: byId.get(b.id) ?? null }))
+  return (buyers ?? []).map((b) => ({ ...b, city: details.get(b.id)?.city ?? null, notes: details.get(b.id)?.notes ?? null, realName: byId.get(b.id) ?? null }))
     .sort((a, z) => buyerName(a).localeCompare(buyerName(z), "en-IN", { sensitivity: "base" }));
 }
 
@@ -89,4 +97,11 @@ export async function loadTerms() {
       return isMsme45(x?.msme) ? Math.min(d, MSME_DAYS) : d;
     },
   };
+}
+
+// One buyer's row with its city, notes and delivery address added (blank without Buyer details).
+export async function buyerWithDetails<T extends object>(supabase: Awaited<ReturnType<typeof createClient>>, id: string, columns: string) {
+  const [{ data }, details] = await Promise.all([supabase.from("buyers").select(columns).eq("id", id).maybeSingle(), buyerDetails(supabase, [id])]);
+  const row = data as Record<string, unknown> | null;
+  return { data: row ? { ...row, ...(details.get(id) ?? { city: null, notes: null, delivery_address: null }) } as T & BuyerDetails : null };
 }

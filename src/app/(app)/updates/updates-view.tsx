@@ -10,7 +10,7 @@ import type { BuyerUpdate, FactoryChase } from "@/lib/updates";
 
 const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;
 
-export function UpdatesView({ tab, who, factories, buyers }: { tab: "factories" | "buyers"; who: string; factories: FactoryChase[]; buyers: BuyerUpdate[] }) {
+export function UpdatesView({ tab, who, factories, buyers }: { tab: "factories" | "buyers"; who: string; factories: FactoryChase[]; buyers: BuyerUpdate[] | null }) {
   const chased = factories.filter((f) => f.chased).length;
   return (
     <section className="card" aria-labelledby="upd-h">
@@ -20,12 +20,12 @@ export function UpdatesView({ tab, who, factories, buyers }: { tab: "factories" 
           <p>
             {tab === "factories"
               ? factories.length ? `${`${factories.length} ${factories.length === 1 ? "factory" : "factories"}`} with late steps${chased ? ` · ${chased} chased today` : ""}. Each message lists every late order.` : "Every factory is on plan."
-              : `${plural(buyers.length, "buyer")} with open orders. Check the message, then send it on WhatsApp or copy it into an email.`}
+              : `${plural(buyers?.length ?? 0, "buyer")} with open orders. Check the message, then send it on WhatsApp or copy it into an email.`}
           </p>
         </div>
         <nav className="seg" aria-label="Who to message">
           <Link href={`/updates?who=${who}&tab=factories`} aria-current={tab === "factories" ? "page" : undefined} scroll={false}>Factories <span>{factories.length}</span></Link>
-          <Link href={`/updates?who=${who}&tab=buyers`} aria-current={tab === "buyers" ? "page" : undefined} scroll={false}>Buyers <span>{buyers.length}</span></Link>
+          {buyers && <Link href={`/updates?who=${who}&tab=buyers`} aria-current={tab === "buyers" ? "page" : undefined} scroll={false}>Buyers <span>{buyers.length}</span></Link>}
         </nav>
       </header>
       {tab === "factories" ? (
@@ -38,7 +38,7 @@ export function UpdatesView({ tab, who, factories, buyers }: { tab: "factories" 
         ) : (
           <ul className="upd-list">{factories.map((f) => <FactoryRow key={f.factoryId} f={f} />)}</ul>
         )
-      ) : buyers.length === 0 ? (
+      ) : !buyers || buyers.length === 0 ? (
         <p className="card-empty">No open orders.</p>
       ) : (
         <ul className="upd-list">{buyers.map((b) => <BuyerRow key={b.buyerId} b={b} />)}</ul>

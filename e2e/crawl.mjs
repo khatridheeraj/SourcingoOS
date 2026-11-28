@@ -15,7 +15,7 @@ const BASE = process.env.E2E_BASE ?? "http://localhost:3100";
 const arg = (k) => { const i = process.argv.indexOf(k); return i > 0 ? process.argv[i + 1] : null; };
 const shots = arg("--shots");
 const quick = process.argv.includes("--quick");
-const roles = (arg("--roles") ?? "owner,manager,merch,quality,accounts,factory,buyer").split(",");
+const roles = (arg("--roles") ?? "owner,manager,merch,asst,quality,accounts,factory,buyer").split(",");
 if (shots) fs.mkdirSync(shots, { recursive: true });
 
 const STAFF = ["/today", "/", "/?status=late", "/orders/new", "/inquiries", "/inquiries/new", "/pos", "/goods", "/updates", "/samples", "/brief",
@@ -92,7 +92,11 @@ for (const who of roles) {
         const err = [...document.querySelectorAll(".errbox")].map((e) => e.textContent.trim().slice(0, 200));
         const wide = document.documentElement.scrollWidth > window.innerWidth + 1;
         const notFound = /This page could not be found|404/.test(document.title) || !!document.querySelector("[data-next-error]");
-        return { odd, err, wide, notFound, title: document.title };
+        // Anything only people with Buyer details may see: the seed buyers' real names, selling prices, buyer pages.
+        const whole = document.body.innerText;
+        const buyerBits = [/Areeba Test House|Mira Test Retail|Nova Test Brands/, /Buyer rate|buyer value|Sale rate/i, /Buyer emails|Inquiries|Goods with us/]
+          .flatMap((r) => (whole.match(r) ?? []).slice(0, 1));
+        return { odd, err, wide, notFound, title: document.title, buyerBits, at: location.pathname };
       });
       let info;
       try { info = await read(); } catch {
@@ -102,6 +106,10 @@ for (const who of roles) {
           continue;
         }
       }
+      // The assistant merchandiser (Buyer details off) must never see buyer details, nor land on a buyer page.
+      if (who === "asst" && info.buyerBits.length) problems.push({ who, form, dark, url: path, kind: "buyer details shown", text: info.buyerBits.join(", ") });
+      if (who === "asst" && /^\/(buyers|pos|inquiries|goods|guarantee|reports\/leads|reports\/record|preview\/buyer)/.test(info.at))
+        problems.push({ who, form, dark, url: path, kind: "buyer page opened", text: info.at });
       if (info.odd.length) problems.push({ who, form, dark, url: path, kind: "odd text", text: info.odd.join(", ") });
       for (const e of info.err) problems.push({ who, form, dark, url: path, kind: "error box", text: e });
       if (info.wide && form === "phone") problems.push({ who, form, dark, url: path, kind: "wider than phone", text: "" });

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { getMe } from "@/lib/auth";
+import { can, getMe } from "@/lib/auth";
 import { isPartner, roleLabel, type Role } from "@/lib/auth-roles";
 import { buyerName, loadBuyers, loadTeam, personName } from "@/lib/data";
 import { fetchAll } from "@/lib/fetch-all";
@@ -68,7 +68,7 @@ export default async function TeamBoardPage() {
 
   return (
     <>
-      <PageTabs tabs={reportTabs(me?.role)} label="Reports" />
+      <PageTabs tabs={reportTabs(me?.role, can(me, "buyers"))} label="Reports" />
       <div className="head">
         <div className="grow">
           <h1>Team</h1>

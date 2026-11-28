@@ -8,14 +8,15 @@ import type { Cell, Sheet } from "@/lib/xlsx";
 // What can be downloaded from Team > Data, each a sheet in Excel. Everything is read as the person downloading,
 // so the database's own rules decide what goes in (Money only with the Money switch, prices only for the orders team).
 export type ExportKey = "orders" | "tna" | "factory-pos" | "qc" | "buyers" | "factories" | "inquiries" | "money";
-export const EXPORTS: { key: ExportKey; label: string; hint: string; money?: boolean }[] = [
+// money: needs the Money switch; buyers: needs Buyer details.
+export const EXPORTS: { key: ExportKey; label: string; hint: string; money?: boolean; buyers?: boolean }[] = [
   { key: "orders", label: "Orders and styles", hint: "One row per style: buyer, PO, dates, pieces, factory and rates" },
   { key: "tna", label: "TNA steps", hint: "Every step of every style: target, factory date, done" },
   { key: "factory-pos", label: "Factory POs", hint: "Sent, approved and accepted, per order and factory" },
   { key: "qc", label: "QC checks", hint: "Inline, mid-line and final checks with results and defects" },
-  { key: "buyers", label: "Buyers", hint: "Codes, names, cities and payment days" },
+  { key: "buyers", label: "Buyers", hint: "Codes, names, cities and payment days", buyers: true },
   { key: "factories", label: "Factories", hint: "Contacts, cities, GSTIN and Tally ledgers" },
-  { key: "inquiries", label: "Inquiries", hint: "Every costing request with its status and follow-up" },
+  { key: "inquiries", label: "Inquiries", hint: "Every costing request with its status and follow-up", buyers: true },
   { key: "money", label: "Money", hint: "Invoices, credit notes and cheques", money: true },
 ];
 

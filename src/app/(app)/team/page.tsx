@@ -42,7 +42,9 @@ export default async function TeamPage() {
         <summary>What each role and switch means</summary>
         <ul className="muted text-[13px]">
           {ROLES.map((r) => <li key={r.value}><b>{r.label}:</b> {r.hint}</li>)}
-          {PERMS.map((p) => <li key={p.key}><b>{p.label}:</b> {p.hint}. Owner and Accounts have it unless you switch it off; tick it to give it to anyone else.</li>)}
+          {PERMS.map((p) => <li key={p.key}><b>{p.label}:</b> {p.hint}. {p.key === "buyers"
+            ? "Owner, Manager, Merchandiser and Accounts have it unless you switch it off. Switch it off for an assistant merchandiser."
+            : "Owner and Accounts have it unless you switch it off; tick it to give it to anyone else."}</li>)}
         </ul>
       </details>
     </>

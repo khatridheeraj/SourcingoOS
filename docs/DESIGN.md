@@ -30,6 +30,12 @@ These rules keep every screen consistent. Every change follows them, including t
   Never work out "what's next" again on a screen: add the rule to `journey()` and to `journey.test.ts`.
 - Days to ship come from `shipClock()`, and the order-page area a stage opens comes from `areaOf()`, both in the same file.
 
+## Who sees what
+- `docs/ACCESS.md` is the access table, and the database holds every line of it (row-level security and guarded functions).
+- Anything about buyers (real names, contacts, messages, buyer emails, inquiries, selling prices, Dispatch) needs the
+  **Buyer details** switch: `can(me, "buyers")` on screen, `can_see_buyers()` in the database. Without it a buyer shows
+  by its code. A new screen or function about buyers follows both, and the access table gets the new line.
+
 ## Shared building blocks (`src/components/order-ui.tsx`)
 - `ShipClock`: days to ship as one big number (`lg` on the order page, `sm` on cards).
 - `StageMeter`: six short bars, one per stage, coloured by the next step's tone.

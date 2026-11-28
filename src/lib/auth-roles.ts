@@ -25,13 +25,16 @@ export const canEditOrders = (role: Role | null | undefined) => !!role && role !
 export const canEnterDone = (role: Role | null | undefined) => canEditOrders(role) || role === "quality";
 
 // Switches the owner sets per person on Team. Anything not set follows the role.
-export type PermKey = "money" | "export";
+export type PermKey = "money" | "export" | "buyers";
 export type Perms = Partial<Record<PermKey, boolean>>;
 export const PERMS: { key: PermKey; label: string; hint: string }[] = [
   { key: "money", label: "Money", hint: "Bills, invoices, cheques, payments and Tally: sees and records them" },
   { key: "export", label: "Download data", hint: "Excel downloads of orders, factories, buyers and the activity log" },
+  { key: "buyers", label: "Buyer details", hint: "Buyer names, contacts, messages, buyer emails, inquiries and selling prices. Without it, orders show the buyer's code only" },
 ];
-const PERM_DEFAULT: Record<PermKey, Role[]> = { money: ["owner", "accounts"], export: ["owner", "accounts"] };
+const PERM_DEFAULT: Record<PermKey, Role[]> = {
+  money: ["owner", "accounts"], export: ["owner", "accounts"], buyers: ["owner", "manager", "merchandiser", "accounts"],
+};
 // The same rule as my_perm() in the database: the owner always, partner logins never, otherwise the switch or the role.
 export function can(who: { role: Role | null; perms?: Perms } | null | undefined, key: PermKey) {
   if (!who?.role || isPartner(who.role)) return false;

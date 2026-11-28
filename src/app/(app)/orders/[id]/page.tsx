@@ -2,7 +2,7 @@ import type { LinePrice } from "@/lib/margin";
 import Link from "next/link";
 import { Fragment } from "react";
 import { notFound } from "next/navigation";
-import { canEditOrders, canEnterDone, canRecordQc, getMe } from "@/lib/auth";
+import { can, canEditOrders, canEnterDone, canRecordQc, getMe } from "@/lib/auth";
 import { fetchAll } from "@/lib/fetch-all";
 import { day, dayAt, dayAtNear, dayTimeNear, dayNear, money, moneyShort, qty, qtyTotal, qtyU, unitOf, unitOfAll, SHIP_QC, stageReached, STATUS, TNA_STEPS, todayIST, nowMs } from "@/lib/format";
 import { areaOf, journey, shipClock } from "@/lib/journey";
@@ -105,13 +105,15 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
   ]);
   const ship = orderShip(shipRows);
   const canEdit = canEditOrders(me?.role);
+  // Buyer details (Team switch): the buyer's PO files, messages, selling prices and Dispatch (our invoice to the buyer).
+  const seeBuyers = canEdit && can(me, "buyers");
   // Each style's fit, strike off, PP and size-set samples, with every round.
   const samples = await loadSampleThreads(id);
   const samplesToAct = samples.threads.filter((t) => t.state === "with_team").length;
   // The buyer's own PO: the files its email (or Buyer POs) brought, and any the team added by hand.
-  const poDocsP = canEdit ? loadPoDocs(supabase, id, new Map(team.map((m) => [m.user_id, personName(m)]))) : Promise.resolve([]);
+  const poDocsP = seeBuyers ? loadPoDocs(supabase, id, new Map(team.map((m) => [m.user_id, personName(m)]))) : Promise.resolve([]);
   // Dispatches (purchase to GRN) are for the orders team only.
-  const [{ data: dRows }, { data: dLines }, { data: tallyRaw }, { data: shipBlocker }] = canEdit
+  const [{ data: dRows }, { data: dLines }, { data: tallyRaw }, { data: shipBlocker }] = seeBuyers
     ? await Promise.all([
         supabase.from("dispatches").select("*").eq("order_id", id).is("cancelled_at", null).order("purchased_at"),
         supabase.from("dispatch_lines").select("dispatch_id, line_id, qty, purchase_rate, sale_rate").in("line_id", (o.order_lines ?? []).map((l) => l.id)),
@@ -128,7 +130,10 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
     : { data: [] };
   const dispatchPhotos = dPhotos ?? [];
   const poDocs = await poDocsP;
-  const foundPos = canEdit && !poDocs.length && o.buyer_id ? await loadFoundPos(supabase, o.buyer_id, lines.map((l) => l.style)) : [];
+  // Without Buyer details the files stay hidden, but whether the buyer's PO is on file still decides the next step.
+  const hasBuyerPo = seeBuyers ? poDocs.length > 0
+    : canEdit ? (((await supabase.rpc("orders_with_po_file", { p_orders: [id] })).data ?? []) as string[]).includes(id) : false;
+  const foundPos = seeBuyers && !poDocs.length && o.buyer_id ? await loadFoundPos(supabase, o.buyer_id, lines.map((l) => l.style)) : [];
   const people = new Map(team.map((m) => [m.user_id, personName(m)]));
   // Photos come from private storage through links that work for an hour.
   const qcIds = (qc ?? []).map((c) => c.id);
@@ -299,7 +304,7 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
   ].filter((x) => !x.row?.not_needed);
   const finalOk = (lineId: string) => checks.find((c) => c.line_id === lineId && SHIP_QC.includes(c.kind) && !c.cancelled_at)?.result === "pass";
   const buyerLabel = opts.buyers.find((b) => b.id === o.buyer_id)?.label ?? "";
-  const share: ShareOption[] = [{
+  const share: ShareOption[] = [...(seeBuyers ? [{
     key: "buyer", label: "Buyer",
     text: [
       `*${buyerLabel} · PO ${o.buyer_po}*`,
@@ -320,7 +325,7 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
       "",
       "Sourcingo",
     ].filter((x, i, a) => x !== "" || (a[i - 1] ?? "") !== "").join("\n"),
-  }, ...(canEdit ? groups.filter((g) => g.factoryId).map((g) => ({
+  }] : []), ...(canEdit ? groups.filter((g) => g.factoryId).map((g) => ({
     key: g.factoryId!, label: g.factoryName,
     text: [
       `*${o.order_no} · ${g.factoryName}*`,
@@ -359,13 +364,14 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
     status: o.status, role: me?.role,
     lines: lines.map((l) => ({ factoryId: l.factory_id ?? null, hasRate: l.factory_rate != null })),
     groups: groups.map((g) => ({ factoryId: g.factoryId, released: !!g.releasedAt, lockRequested: !!g.lockRequestedAt })),
-    hasBuyerPo: canEdit ? poDocs.length > 0 : null,
+    hasBuyerPo: canEdit ? hasBuyerPo : null,
+    buyerDetails: seeBuyers,
     steps: stageRows.filter((r) => lineIds.has(r.line_id) && !r.not_needed).map((r) => ({ stage: r.stage, planned: r.planned_on, done: r.done_on })),
     packedAll: stageReached(o.stage, "packed") || (lines.length > 0 && lines.every((l) => stageRows.some((r) => r.line_id === l.id && r.stage === "packed" && r.done_on))),
     finalPassed,
     samplesToAct,
     pendingUpdates: pendingUpdates.length,
-    dispatch: canEdit ? {
+    dispatch: seeBuyers ? {
       count: dispatches.length,
       uninvoiced: dispatches.filter((d) => !d.invoicedAt).length,
       unshipped: dispatches.filter((d) => !d.shippedAt).length,
@@ -393,10 +399,10 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
   const tabs: SectionTab[] = [
     { id: "tna", label: "Styles", count: pendingUpdates.length || behind || undefined, tone: pendingUpdates.length ? "info" : outlook?.level === "risk" ? "bad" : "warn" },
     { id: "talk", label: "Notes", count: notesForMe || undefined, tone: "warn" },
-    { id: "buyer-talk", label: "Buyer", count: buyerWaiting || undefined, tone: "warn" },
+    ...(seeBuyers ? [{ id: "buyer-talk", label: "Buyer", count: buyerWaiting || undefined, tone: "warn" as const }] : []),
     { id: "samples", label: "Samples", count: samplesToAct || undefined, tone: "warn" },
     { id: "qc", label: "QC" },
-    ...(canEdit ? [{ id: "dispatch", label: "Dispatch" }] : []),
+    ...(seeBuyers ? [{ id: "dispatch", label: "Dispatch" }] : []),
     { id: "details", label: "Details" },
     { id: "history", label: "History" },
   ];
@@ -426,13 +432,13 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
             )}
             <span><b className="num">{lines.length}</b> {lines.length === 1 ? "style" : "styles"}</span>
             <span>{qtyTotal(lines).split(" + ").map((t, i) => { const [n, u] = t.split(" "); return <Fragment key={u}>{i > 0 && " + "}<b className="num">{n}</b> {u}</Fragment>; })}</span>
-            {canEdit && lines.length > 0 && lines.every((l) => l.buyer_rate != null) && (
+            {seeBuyers && lines.length > 0 && lines.every((l) => l.buyer_rate != null) && (
               <span title={money(lines.reduce((t, l) => t + l.qty * Number(l.buyer_rate), 0))}><b className="num">{moneyShort(lines.reduce((t, l) => t + l.qty * Number(l.buyer_rate), 0))}</b> value</span>
             )}
           </div>
           <p className="oh-chips">
             {o.status !== "open" && <span className={STATUS[o.status]?.cls}>{STATUS[o.status]?.label}</span>}
-            {canEdit && (poDocs[0]?.url ? <a href={poDocs[0].url} target="_blank" rel="noreferrer" className="chip po-chip" title={`Open ${poDocs[0].name}`}>
+            {seeBuyers && (poDocs[0]?.url ? <a href={poDocs[0].url} target="_blank" rel="noreferrer" className="chip po-chip" title={`Open ${poDocs[0].name}`}>
               <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" aria-hidden><path d="M4 1.75h5.5L12.25 4.5v9.75H4z" /><path d="M9.25 1.75V4.75h3" /></svg>
               {poDocs[0].ext === "pdf" ? "Buyer PO PDF" : "Buyer PO file"}{poDocs.length > 1 ? ` · ${poDocs.length} files` : ""}</a>
               : <a href="#details-po" className="chip warn" title="A factory PO is locked only once the buyer's PO is on file">No buyer PO yet</a>)}
@@ -449,11 +455,11 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
           <SheetButton orderId={o.id} mode="update" className="btn">Update progress</SheetButton>
         )}
         {/* Keyed like the styles below, so the message is worded afresh after every save. */}
-        {canEdit && o.status === "open" && <BuyerLink buyerId={o.buyer_id} name={buyerLabel || "the buyer"} size="md" />}
-        <ShareUpdate key={`${(lineStages ?? []).length}:${(lineStages ?? []).reduce((a, r) => (r.updated_at > a ? r.updated_at : a), "")}`} options={share} />
+        {seeBuyers && o.status === "open" && <BuyerLink buyerId={o.buyer_id} name={buyerLabel || "the buyer"} size="md" />}
+        {share.length > 0 && <ShareUpdate key={`${(lineStages ?? []).length}:${(lineStages ?? []).reduce((a, r) => (r.updated_at > a ? r.updated_at : a), "")}`} options={share} />}
       </OrderJourney>
       {saved && <div className="okbox">Order saved as {o.order_no}.</div>}
-      <OrderSections tabs={tabs} start={areaOf(j.stage, canEdit)}>
+      <OrderSections tabs={tabs} start={areaOf(j.stage, canEdit, seeBuyers)}>
       <div data-sec="tna">
       <FactoryUpdates orderId={o.id} updates={pendingUpdates} canReview={canEnterDone(me?.role) && o.status === "open"} />
       <OrderFloor orderId={o.id} updates={floor} canPost={canEnterDone(me?.role) && o.status === "open"} />
@@ -484,7 +490,7 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
         counts={countByStyle}
         asks={asksByStyle}
         ready={readyByFactory}
-        hasBuyerPo={poDocs.length > 0}
+        hasBuyerPo={hasBuyerPo}
       />
       </div>
       <div data-sec="samples">
@@ -509,7 +515,7 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
       <OrderQc orderId={o.id} orderNo={o.order_no} companyId={o.company_id} open={o.status === "open"} canRecord={canRecordQc(me?.role)} today={todayIST()} checks={checks} finalPassed={finalPassed}
         styles={lines.map((l) => ({ id: l.id, style: l.style, colour: str(l.colour), qty: l.qty, product: l.product }))} />
       </div>
-      {canEdit && (
+      {seeBuyers && (
         <div data-sec="dispatch"><OrderDispatch orderId={o.id} orderNo={o.order_no} companyId={o.company_id} open={o.status === "open"} owner={me?.role === "owner"} factories={dispatchFactories}
           ship={lines.map((l) => {
             const r = shipRows.find((x) => x.line_id === l.id);
@@ -525,7 +531,7 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
           return sent > 0 && l.photo_path && url ? [{ id: l.id, style: l.style, description: str(l.description), photoUrl: url, shown: !!l.site_photo, caption: str(l.site_caption) }] : [];
         })} /></div>
       )}
-      {canEdit && (
+      {seeBuyers && (
         <div data-sec="dispatch"><OrderMargin
           styles={lines.map((l) => ({
             id: l.id, style: l.style, colour: str(l.colour), qty: l.qty, product: l.product,
@@ -534,7 +540,7 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
           dispatches={dispatches} cash={cash}
         /></div>
       )}
-      <div data-sec="details">{canEdit && <BuyerPo orderId={o.id} companyId={o.company_id} docs={poDocs} found={foundPos} canEdit={canEdit} />}{canEdit ? <OrderForm
+      <div data-sec="details">{seeBuyers && <BuyerPo orderId={o.id} companyId={o.company_id} docs={poDocs} found={foundPos} canEdit={canEdit} />}{canEdit ? <OrderForm
         key={o.updated_at}
         initial={{
           id: o.id, edit_no: o.edit_no, buyer_id: o.buyer_id, buyer_po: o.buyer_po, po_date: str(o.po_date), ship_date: str(o.ship_date),
@@ -547,6 +553,7 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
         buyers={opts.buyers}
         factories={opts.factories}
         team={opts.team}
+        buyerRates={seeBuyers}
       /> : (
         // Quality sees what is being made, without prices.
         <section className="panel scroll-mt-20" id="details">
@@ -585,9 +592,9 @@ export default async function OrderPage({ params, searchParams }: PageProps<"/or
       <div data-sec="talk">
         <OrderTalk orderId={o.id} companyId={o.company_id} meId={me?.id ?? ""} notes={notes} team={staff} canWrite={!!me?.role && !isPartner(me.role)} />
       </div>
-      <div data-sec="buyer-talk">
+      {seeBuyers && <div data-sec="buyer-talk">
         <BuyerThread orderId={o.id} buyer={buyerLabel || "The buyer"} lines={buyerLines} canWrite={!!me?.role && !isPartner(me.role)} />
-      </div>
+      </div>}
       <div data-sec="history"><OrderHistory orderId={o.id} /></div>
       </OrderSections>
     </>

@@ -25,12 +25,12 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
   const supabase = await createClient();
   const today = todayIST();
   const [pos, counts, due, held, samples, asks, unknown, tags, claims, bell] = await Promise.all([
-    canEditOrders(me.role) && me.companyId
+    canEditOrders(me.role) && can(me, "buyers") && me.companyId
       ? supabase.from("incoming_pos").select("id", { count: "exact", head: true }).eq("company_id", me.companyId).in("status", ["to_check", "failed"])
       : Promise.resolve({ count: 0 }),
     me.role ? supabase.rpc("help_counts") : Promise.resolve({ data: null }),
     // Inquiries whose follow-up is due today or earlier.
-    canEditOrders(me.role) && me.companyId
+    canEditOrders(me.role) && can(me, "buyers") && me.companyId
       ? supabase.from("inquiries").select("id", { count: "exact", head: true }).eq("company_id", me.companyId).in("status", ["new", "quoted"]).lte("next_follow_up", today)
       : Promise.resolve({ count: 0 }),
     // Goods bought from a factory and still with us after a day.
@@ -55,7 +55,7 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
       ? supabase.from("order_notes").select("id", { count: "exact", head: true }).eq("company_id", me.companyId).contains("mentions", [me.id]).not("done_by", "cs", `{${me.id}}`)
       : Promise.resolve({ count: 0 }),
     // Buyer claims still to decide (the Guarantee promises a decision within 7 days).
-    canEditOrders(me.role) && me.companyId
+    (can(me, "buyers") || me.role === "quality") && me.companyId
       ? supabase.from("buyer_claims").select("id", { count: "exact", head: true }).eq("company_id", me.companyId).is("decision", null)
       : Promise.resolve({ count: 0 }),
     // What changed on the orders since I last opened Notifications (the bell).
@@ -66,6 +66,8 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
 
   const edit = canEditOrders(me.role);
   const money = can(me, "money");
+  // Buyer details (a switch on Team): without it, nothing about buyers beyond the code on each order.
+  const buyers = edit && can(me, "buyers");
   // Ten places, in the order the work flows. Pages that belong together share one menu item and a tab row on top
   // (Home and its chase list, Buyer emails, Money, Reports), so nobody hunts through near-duplicate pages.
   const home = { href: "/today", label: "Home", icon: "home" as const, also: ["/updates", "/calendar"], count: (asks.count ?? 0) + (unknown.count ?? 0) + (tags.count ?? 0) };
@@ -75,14 +77,15 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
   const groups: NavGroup[] = [
     { items: [
       home, orders,
-      ...(edit ? [inbox] : []),
+      ...(buyers ? [inbox] : []),
       samplesItem,
-      ...(edit ? [{ href: "/goods", label: "Goods with us", icon: "box" as const, count: held.count ?? 0 }] : []),
+      ...(buyers ? [{ href: "/goods", label: "Goods with us", icon: "box" as const, count: held.count ?? 0 }] : []),
       ...(money ? [{ href: "/payments", label: "Money", icon: "payments" as const, also: ["/payables", "/tally"] }] : []),
-      ...(edit || me.role === "quality" ? [{ href: "/guarantee", label: "Guarantee", icon: "shield" as const, count: claims.count ?? 0 }] : []),
+      ...(buyers || me.role === "quality" ? [{ href: "/guarantee", label: "Guarantee", icon: "shield" as const, count: claims.count ?? 0 }] : []),
     ] },
     { label: "Records", items: [
-      ...(edit ? [{ href: "/buyers", label: "Buyers", icon: "buyers" as const }, { href: "/factories", label: "Factories", icon: "factories" as const },
+      ...(buyers ? [{ href: "/buyers", label: "Buyers", icon: "buyers" as const }] : []),
+      ...(edit ? [{ href: "/factories", label: "Factories", icon: "factories" as const },
         { href: "/styles", label: "Style catalogue", icon: "styles" as const },
         { href: "/markers", label: "Markers", icon: "markers" as const }] : []),
       edit ? { href: "/reports", label: "Reports", icon: "chart" as const, also: ["/brief"] } : { href: "/brief", label: "Morning brief", icon: "sun" as const },
@@ -94,16 +97,18 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
   // Search still finds every page by its own name.
   const pages: NavGroup = { items: [
     { href: "/notifications", label: "Notifications", icon: "bell" as const },
-    ...(edit ? [{ href: "/updates", label: "Chase and updates", icon: "share" as const }, { href: "/inquiries", label: "Inquiries", icon: "inquiry" as const },
-      { href: "/pos", label: "Buyer POs", icon: "inbox" as const }, { href: "/brief", label: "Morning brief", icon: "sun" as const }] : []),
+    ...(edit ? [{ href: "/updates", label: "Chase and updates", icon: "share" as const }, { href: "/brief", label: "Morning brief", icon: "sun" as const }] : []),
+    ...(buyers ? [{ href: "/inquiries", label: "Inquiries", icon: "inquiry" as const }, { href: "/pos", label: "Buyer POs", icon: "inbox" as const }] : []),
     ...(money ? [{ href: "/payables", label: "Bills to pay", icon: "bills" as const }, { href: "/tally", label: "Tally", icon: "tally" as const }, { href: "/payments", label: "Payments", icon: "payments" as const }] : []),
   ] };
   // Phone tab bar: Home, Orders, New, then the screen each role opens most.
-  const tabs = edit ? [home, orders, { ...inbox, label: "Inbox" }] : [home, orders, samplesItem];
+  const tabs = buyers ? [home, orders, { ...inbox, label: "Inbox" }] : [home, orders, samplesItem];
   // Everything that starts a piece of work, in one place.
   const create = [
     ...(edit ? [
       { href: "/orders/new", label: "New order", icon: "orders" as const, hint: "From a buyer PO: styles, quantities, ship date" },
+    ] : []),
+    ...(buyers ? [
       { href: "/inquiries/new", label: "Log an inquiry", icon: "inquiry" as const, hint: "A buyer asked for prices or samples" },
       { href: "/pos", label: "Add a buyer PO", icon: "inbox" as const, hint: "A PO that came on WhatsApp or paper: upload its file" },
     ] : []),

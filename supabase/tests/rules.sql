@@ -207,7 +207,8 @@ end $$;
 select pg_temp.as_user('00000000-0000-0000-0000-0000000000a9');
 do $$ begin
   if (select count(*) from public.orders) <> 1 then raise exception 'Quality should see orders'; end if;
-  if (select count(*) from public.buyer_names) <> 1 then raise exception 'Quality should see real buyer names'; end if;
+  -- Buyer details (0126): Quality sees buyers by code only, unless the owner switches it on.
+  if (select count(*) from public.buyer_names) <> 0 then raise exception 'Quality should see buyer codes, not real names'; end if;
   if public.can_upload_photo((select id::text from public.companies where name = 'Sourcingo') || '/o/styles/l/a.jpg') then
     raise exception 'Quality may upload style photos';
   end if;

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { canEditOrders, getMe } from "@/lib/auth";
+import { can, canEditOrders, getMe } from "@/lib/auth";
 import { loadBuyers, loadFactories } from "@/lib/data";
 import { day, PLAN_HOURS, qty, todayIST } from "@/lib/format";
 import { addDays } from "@/lib/payments";
@@ -33,7 +33,7 @@ export default async function ReportsPage({ searchParams }: PageProps<"/reports"
 
   return (
     <>
-      <PageTabs tabs={reportTabs(me?.role)} label="Reports" />
+      <PageTabs tabs={reportTabs(me?.role, can(me, "buyers"))} label="Reports" />
       <div className="head">
         <div className="grow">
           <h1>Reports</h1>
