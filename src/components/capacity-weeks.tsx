@@ -59,7 +59,7 @@ export function CapacityWeeks({ weeks, mode, lang = "en", canEdit, save }: {
   }
 
   return (
-    <section className="panel stack" aria-labelledby="cap-h">
+    <section id="capacity" className="panel stack scroll-mt-20" aria-labelledby="cap-h">
       <div>
         <h2 id="cap-h" className="font-bold">{w.title}</h2>
         <p className="muted text-[13px]">{mode === "team" ? w.teamSub : w.factorySub}</p>

@@ -62,3 +62,15 @@ export async function markApplication(id: string, status: "contacted" | "added" 
   revalidatePath("/today");
   return {};
 }
+
+// Turns a factory's ask from the website into a factory with a profile it can fill from its own panel.
+export async function addFromApplication(id: string): Promise<{ error?: string; factoryId?: string }> {
+  const me = await getMe();
+  if (!canEditOrders(me?.role)) return { error: "Only the orders team can do this." };
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("add_factory_from_application", { p_id: id });
+  if (error) return { error: friendly(error) };
+  revalidatePath("/factories");
+  revalidatePath("/today");
+  return { factoryId: data as string };
+}

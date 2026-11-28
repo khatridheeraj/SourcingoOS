@@ -10,7 +10,11 @@ import type { FactoryCap } from "@/lib/capacity";
 import { leadFor, leadLine, type LeadRow, MIN_LEAD_ORDERS } from "@/lib/lead-time";
 import { PHOTO_BUCKET } from "@/lib/storage";
 import type { DefectStats } from "@/lib/defects";
-import { checkCert, removeCert, saveCapacity, saveCert } from "./actions";
+import { FactoryProfileCard } from "@/components/factory-profile";
+import { type FactoryProfile, onboardingSteps, readyLine, visitState } from "@/lib/onboarding";
+import { addDays } from "@/lib/buyer-week";
+import { FactoryLink } from "../factory-link";
+import { bookVisit, checkCert, removeCert, saveCapacity, saveCert, saveProfile } from "./actions";
 import { VisitForm } from "./visit-form";
 
 // One factory's record: what it has earned on its orders with us, and what our own visit confirmed.
@@ -21,7 +25,7 @@ export default async function FactoryRecordPage({ params }: PageProps<"/factorie
   const me = await getMe();
   if (!canEnterDone(me?.role)) redirect("/");
   const supabase = await createClient();
-  const [{ data }, { data: certRows }, { data: capRows }, { data: leadRows }, { data: kinds }, { data: defRow }, { data: rateRows }] = await Promise.all([
+  const [{ data }, { data: certRows }, { data: capRows }, { data: leadRows }, { data: kinds }, { data: defRow }, { data: rateRows }, { data: profRow }, { data: facRow }] = await Promise.all([
     supabase.rpc("factory_records", { p_factory: id }),
     supabase.from("factory_certificates").select("id, name, cert_no, valid_until, path, file_name, status, status_note, from_factory")
       .eq("factory_id", id).is("removed_at", null).order("name").order("created_at"),
@@ -32,14 +36,19 @@ export default async function FactoryRecordPage({ params }: PageProps<"/factorie
     // The defects our checks find most on its styles, and how buyers rated the orders it made.
     supabase.rpc("defect_stats", { p_factory: id, p_days: 365 }),
     supabase.rpc("factory_ratings", { p_factory: id }),
+    // Its own profile and visit (0110), and its contact for the panel link.
+    supabase.from("factory_profiles").select("factory_id, makes, about, address, gstin, people, machines, pieces_month, photos, visit_from, visit_note, visit_asked_at, visit_on")
+      .eq("factory_id", id).maybeSingle(),
+    supabase.from("factories").select("phone").eq("id", id).maybeSingle(),
   ]);
+  const profile: FactoryProfile = (profRow as FactoryProfile | null) ?? { factory_id: id, makes: [], photos: [] };
   const topDefects = ((defRow as DefectStats | null)?.top ?? []).slice(0, 5);
   const ratings = (rateRows ?? []) as { order_id: string; order_no: string; score: number; comment: string | null; created_at: string }[];
   const avgRating = ratings.length ? Math.round((ratings.reduce((a, r) => a + r.score, 0) / ratings.length) * 10) / 10 : null;
   const f = ((data ?? []) as RecordFacts[])[0];
   if (!f) notFound();
   const rawCerts = (certRows ?? []) as (Omit<CertRow, "url"> & { path: string | null })[];
-  const paths = rawCerts.map((c) => c.path).filter((x): x is string => !!x);
+  const paths = [...profile.photos, ...rawCerts.map((c) => c.path).filter((x): x is string => !!x)];
   const { data: signed } = paths.length ? await supabase.storage.from(PHOTO_BUCKET).createSignedUrls(paths, 3600) : { data: [] };
   const urlOf = new Map((signed ?? []).filter((x) => x.signedUrl).map((x) => [x.path, x.signedUrl]));
   const certs: CertRow[] = rawCerts.map(({ path, ...c }) => ({ ...c, url: path ? urlOf.get(path) ?? null : null }));
@@ -54,6 +63,9 @@ export default async function FactoryRecordPage({ params }: PageProps<"/factorie
   const levelCls = r.level === "watch" ? "warn" : r.level === "strong" ? "ok" : "";
   const counted = f.steps_finished + f.steps_overdue;
   const forBuyer = buyerLine(f, r);
+  const verifiedOn = f.verified?.visited_on ?? null;
+  const steps = onboardingSteps(profile, !!cap?.weeks.some((x) => x.free != null && x.said_at && x.said_at.slice(0, 10) >= addDays(today, -21)), verifiedOn, today);
+  const canLink = ["owner", "manager", "merchandiser", "accounts"].includes(me?.role ?? "");
   const since = f.since ? day(f.since).replace(/^\d+ /, "") : null;
 
   return (
@@ -65,12 +77,14 @@ export default async function FactoryRecordPage({ params }: PageProps<"/factorie
             <h1>{f.name}</h1>
             {r.level !== "new" && <span className={`chip ${levelCls}`}>{LEVEL_WORDS[r.level]}</span>}
             {r.visit?.current && <span className="chip">Verified {day(r.visit.on)}</span>}
+            {f.orders === 0 && <span className="muted text-[13px]">{readyLine(steps)}</span>}
           </div>
           <p className="num">
             {[f.city, since && `with us since ${since}`, `${f.orders} ${f.orders === 1 ? "order" : "orders"}`,
               f.pieces_shipped ? `${qty(f.pieces_shipped)} pcs shipped` : ""].filter(Boolean).join(" · ")}
           </p>
         </div>
+        {canLink && <FactoryLink factoryId={id} name={f.name ?? ""} phone={(facRow as { phone: string | null } | null)?.phone ?? null} />}
       </div>
 
       {r.watch.length > 0 && (
@@ -98,6 +112,10 @@ export default async function FactoryRecordPage({ params }: PageProps<"/factorie
           {!lead && <small className="muted">It shows once {MIN_LEAD_ORDERS} orders have shipped, counted from the PO date to the first shipment.</small>}
         </div>
       </section>
+
+      <FactoryProfileCard profile={profile} photoUrls={Object.fromEntries(profile.photos.flatMap((p) => { const u = urlOf.get(p); return u ? [[p, u]] : []; }))}
+        steps={steps} visit={visitState(profile, verifiedOn, today)} folder={`${me?.companyId}/factory-files/${id}/photos`} mode="team" canEdit={canVerify}
+        today={today} save={saveProfile.bind(null, id)} book={bookVisit.bind(null, id)} />
 
       {cap && <CapacityWeeks weeks={cap.weeks} mode="team" canEdit={!!me?.role} save={saveCapacity.bind(null, id)} />}
 

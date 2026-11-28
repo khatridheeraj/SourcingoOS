@@ -83,3 +83,27 @@ export async function saveCapacity(factoryId: string, rows: { week: string; free
   revalidatePath(`/factories/${factoryId}`);
   return {};
 }
+
+// A factory's profile, corrected by the team.
+export async function saveProfile(factoryId: string, p: Record<string, unknown>): Promise<{ error?: string }> {
+  const me = await getMe();
+  if (!me?.role || !VERIFIERS.includes(me.role)) return { error: "Only the owner, a manager, a merchandiser or Quality can change a factory's profile." };
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("save_factory_profile", { p_factory: factoryId, p });
+  if (error) return { error: friendly(error) };
+  revalidatePath(`/factories/${factoryId}`);
+  return {};
+}
+
+// Books the day we visit a factory that asked (or clears it).
+export async function bookVisit(factoryId: string, on: string | null): Promise<{ error?: string }> {
+  const me = await getMe();
+  if (!me?.role || !VERIFIERS.includes(me.role)) return { error: "Only the owner, a manager, a merchandiser or Quality can book a visit." };
+  if (on && !/^\d{4}-\d{2}-\d{2}$/.test(on)) return { error: "Pick a day." };
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("book_factory_visit", { p_factory: factoryId, p_on: on });
+  if (error) return { error: friendly(error) };
+  revalidatePath(`/factories/${factoryId}`);
+  revalidatePath("/today");
+  return {};
+}
