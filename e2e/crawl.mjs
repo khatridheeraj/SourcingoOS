@@ -20,6 +20,9 @@ if (shots) fs.mkdirSync(shots, { recursive: true });
 
 const STAFF = ["/today", "/", "/?status=late", "/orders/new", "/inquiries", "/inquiries/new", "/pos", "/goods", "/updates", "/samples", "/brief",
   "/buyers", "/factories", "/styles", "/reports", "/payments", "/payables", "/tally", "/team", "/team/data", "/notifications", "/activity", "/feedback",
+  // Pages inside a menu place's tab row, so every tab gets checked too.
+  "/calendar", "/calendar/visits", "/markers", "/orders/sheet", "/buyers/updates", "/reports/leads", "/reports/record", "/reports/week", "/reports/team",
+  "/payables/calendar", "/payments/cash", "/payments/margin", "/factories/quality", "/factories/market", "/guarantee",
   // "See what they see": a factory's panel as the team previews it (buyer previews are followed from the Buyers list).
   "/preview/factory/20000000-0000-0000-0000-000000000003"];
 const VIEWS = quick ? [["phone", false]] : [["phone", false], ["desk", false], ["phone", true], ["desk", true]];
@@ -34,7 +37,7 @@ async function detailLinks(page) {
   const keep = new Set();
   for (const h of hrefs) {
     if (!h || !h.startsWith("/")) continue;
-    const m = /^\/(orders|inquiries|pos|payments\/(cheques|invoices)|preview\/buyer)\/[0-9a-f-]{36}(\/[a-z-]+)?$/.exec(h.split("#")[0].split("?")[0]);
+    const m = /^\/(orders|inquiries|pos|payments\/(cheques|invoices)|preview\/buyer|goods|buyers\/updates|buyers|factories|factories\/market)\/[0-9a-f-]{36}(\/[a-z-]+)?$/.exec(h.split("#")[0].split("?")[0]);
     if (m) keep.add(h.split("#")[0]);
   }
   return [...keep];

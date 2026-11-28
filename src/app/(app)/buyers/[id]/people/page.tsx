@@ -27,7 +27,7 @@ export default async function BuyerPeoplePage({ params }: PageProps<"/buyers/[id
     <>
       <div className="head">
         <div className="grow">
-          <Link className="link text-[13px]" href="/buyers">Buyers</Link>
+          <nav className="crumbs" aria-label="Breadcrumb"><Link href="/buyers">Buyers</Link></nav>
           <h1>{name}&apos;s people</h1>
           <p>Everyone at {name} who follows orders gets their own link, so each message shows who wrote it.</p>
         </div>

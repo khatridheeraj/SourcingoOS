@@ -6,6 +6,7 @@ import { toast } from "@/components/toast";
 import { caught } from "@/lib/errors";
 import { dayNear, qty } from "@/lib/format";
 import { blankSheet, readSheet, sheetQty, type SheetBuyer, type SheetFactory } from "@/lib/po-sheet";
+import { num } from "@/lib/order-input";
 import { addSheetOrders, type SheetSaved } from "./actions";
 
 const LINES_SHOWN = 4;
@@ -139,7 +140,7 @@ function Line({ l }: { l: { row: number; style: string; colour: string; descript
       <span className="psheet-style"><b>{l.style || "—"}</b>{[l.colour, l.description].filter(Boolean).length > 0 && <small>{[l.colour, l.description].filter(Boolean).join(" · ")}</small>}</span>
       <span className="num psheet-nums">
         <b>{l.qty ? `${l.qty} pcs` : "no qty"}</b>
-        <small>{[l.buyer_rate && `₹${l.buyer_rate}`, l.factory && `${l.factory}${l.factory_rate ? ` ₹${l.factory_rate}` : ""}`].filter(Boolean).join(" · ")}</small>
+        <small>{[l.buyer_rate && `₹${num(l.buyer_rate)}`, l.factory && `${l.factory}${l.factory_rate ? ` ₹${num(l.factory_rate)}` : ""}`].filter(Boolean).join(" · ")}</small>
       </span>
     </li>
   );

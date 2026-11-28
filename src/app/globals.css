@@ -1235,6 +1235,12 @@ main:focus { outline: none; }
     .qc-acts { width: 100%; margin: 4px 0 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; padding-top: 6px; border-top: 1px solid var(--line); }
     .qc-acts .btn { min-height: 38px; padding: 0 6px; justify-content: center; }
     .savebar.dirty, .sticky-actions { bottom: calc(70px + env(safe-area-inset-bottom)); }
+    /* One rule for every screen (DESIGN.md "Phone first"): a primary button is at least 44px tall, and the one that
+       saves a form or a panel takes the full width, so no thread has to remember its own rule. */
+    main .btn.primary:not(.sm) { min-height: 44px; }
+    .sticky-actions > .btn.primary { flex: 1; }
+    form .row > .btn.primary:only-child, form > .btn.primary, .panel > .row > .btn.primary:only-child,
+    .panel > div:last-child > .btn.primary:only-child { width: 100%; }
 
     /* The page's main action floats above the tab bar. */
     .fab {

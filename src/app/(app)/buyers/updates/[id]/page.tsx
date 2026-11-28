@@ -26,7 +26,7 @@ export default async function BuyerUpdatePage({ params }: PageProps<"/buyers/upd
     <>
       <div className="head">
         <div className="grow">
-          <Link className="link text-[13px]" href="/buyers/updates">Weekly updates</Link>
+          <nav className="crumbs" aria-label="Breadcrumb"><Link href="/buyers">Buyers</Link> / <Link href="/buyers/updates">Weekly updates</Link></nav>
           <h1>{b.name}</h1>
           <p>{b.sent ? `Sent ${dayTimeNear(b.sent.at)} ${VIA[b.sent.via] ?? ""}` : `Not sent yet this week · counts from ${dm(week.since)}`}</p>
         </div>

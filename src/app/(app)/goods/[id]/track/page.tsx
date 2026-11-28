@@ -35,7 +35,7 @@ export default async function TrackPage({ params }: PageProps<"/goods/[id]/track
     return (
       <>
         <div className="head"><div className="grow">
-          <nav className="crumbs" aria-label="Breadcrumb"><Link href="/goods">Goods</Link> / {o.order_no}</nav>
+          <nav className="crumbs" aria-label="Breadcrumb"><Link href="/goods">Goods with us</Link> / {o.order_no}</nav>
           <h1>Tracking</h1>
         </div></div>
         <div className="warnbox">This lot hasn&apos;t left yet. Tracking starts once its LR is added in the order&apos;s Dispatch.</div>
@@ -59,7 +59,7 @@ export default async function TrackPage({ params }: PageProps<"/goods/[id]/track
     <>
       <div className="head">
         <div className="grow">
-          <nav className="crumbs" aria-label="Breadcrumb"><Link href="/goods?show=on-way">Goods</Link> / <Link href={`/orders/${o.id}#dispatch`}>{o.order_no}</Link></nav>
+          <nav className="crumbs" aria-label="Breadcrumb"><Link href="/goods?show=on-way">Goods with us</Link> / <Link href={`/orders/${o.id}#dispatch`}>{o.order_no}</Link></nav>
           <h1>{delivered ? "Delivered" : state.text.split(" · ")[0]}</h1>
           <p>
             {[buyer ? buyerName(buyer) : "", o.buyer_po ? `PO ${o.buyer_po}` : "", pieces ? `${qty(pieces)} pcs` : "", d.cartons ? `${d.cartons} cartons` : "",

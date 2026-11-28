@@ -10,7 +10,8 @@ export type OrderProblem = { field: string; msg: string };
 
 import { latinDigits } from "./digits.ts";
 
-export const num = (s: string) => latinDigits(s).replace(/[,₹\s]/g, "");
+// A number as people type or paste it: "1,200", "₹ 450", "Rs. 450", "INR 450", "$12.50", "450/pc" all read as the number.
+export const num = (s: string) => latinDigits(s).replace(/[,₹$€£\s]/g, "").replace(/^(rs\.?|inr|usd|us|eur|gbp)/i, "").replace(/\/-?$|(\/|per)(pc|pcs|piece|m|mtr|metre|meter)$/i, "");
 
 // A row counts once its style number or quantity is filled in; fully blank rows are left out of the save.
 export const isFilled = (l: OrderLine) => !!(l.style.trim() || l.qty.trim());
