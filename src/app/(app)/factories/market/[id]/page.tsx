@@ -3,6 +3,8 @@ import { notFound, redirect } from "next/navigation";
 import { canEditOrders, getMe } from "@/lib/auth";
 import { dayAtNear, dayNear as day, money, qty, todayIST } from "@/lib/format";
 import { rankQuotes } from "@/lib/market";
+import { fitLine } from "@/lib/capacity";
+import { leadLine } from "@/lib/lead-time";
 import { loadListings } from "../load";
 import { AwardButton, CloseListing } from "./quote-actions";
 
@@ -62,6 +64,8 @@ export default async function ListingPage({ params }: PageProps<"/factories/mark
                     {" · quoted "}{dayAtNear(q.updated_at || q.created_at)}
                   </small>
                   {q.record && <small className={`num ${q.record.watch ? "text-warn font-semibold" : ""}`}>Record with us: {q.record.line}</small>}
+                  {q.fit && q.fit.state !== "unknown" && <small className={`num ${q.fit.state === "fits" ? "" : "text-warn font-semibold"}`}>{fitLine(q.fit, l.qty, l.product === "fabric" ? "m" : "pcs")}</small>}
+                  {q.lead?.scope === "factory" && <small className="num">Lead time: {leadLine(q.lead, l.product).replace(/^Usually ships/, "usually ships")}</small>}
                   {q.note && <small>{q.note}</small>}
                 </div>
                 <div className="mkt-q-rate num">

@@ -4,6 +4,7 @@ import { fmtCurrency, inCurrency, isCurrency, totalIn, type Currency } from "@/l
 import { day, money } from "@/lib/format";
 import { buyerStatement } from "@/lib/payments";
 import { createClient } from "@/lib/supabase/server";
+import { todaysFx } from "@/lib/fx";
 import { PrintButton } from "../../../goods/[id]/packing/print-button";
 import { BuyerCurrency, InvoiceRate } from "../../currency-forms";
 import { loadBooks } from "../../load";
@@ -14,6 +15,9 @@ const plural = (n: number, w: string) => `${n} ${w}${n === 1 ? "" : "s"}`;
 // what was billed, credited and received, the balance, the due date and how late; cheques we hold; recent payments.
 export default async function StatementPage({ params }: PageProps<"/payments/statement/[id]">) {
   const { id } = await params;
+  // Today's market rate prefills an unlocked invoice; rough fallback rates are never offered.
+  const fxNow = await todaysFx();
+  const todayRate = (c: string) => (fxNow.live && fxNow.inr[c] ? Math.round(fxNow.inr[c] * 10000) / 10000 : null);
   if (!/^[0-9a-f-]{36}$/i.test(id)) notFound();
   const { me, books, buyerLabel } = await loadBooks();
   if (!books.buyerById.has(id)) notFound();
@@ -99,8 +103,8 @@ export default async function StatementPage({ params }: PageProps<"/payments/sta
                   <td className="num text-right">{money(i.outstanding)}</td>
                   {abroad && (
                     <td className="num text-right nw">
-                      {i.currency === cur && i.fx_rate ? <>{fmtCurrency(fx(i.outstanding, i.fx_rate)!, cur)}<small className="block muted no-print"><InvoiceRate invoiceId={i.id} currency={cur} rate={Number(i.fx_rate)} today={null} /></small><small className="block muted print-only">at ₹{Number(i.fx_rate)}</small></>
-                        : <span className="no-print"><InvoiceRate invoiceId={i.id} currency={cur} rate={null} today={null} /></span>}
+                      {i.currency === cur && i.fx_rate ? <>{fmtCurrency(fx(i.outstanding, i.fx_rate)!, cur)}<small className="block muted no-print"><InvoiceRate invoiceId={i.id} currency={cur} rate={Number(i.fx_rate)} today={todayRate(cur)} /></small><small className="block muted print-only">at ₹{Number(i.fx_rate)}</small></>
+                        : <span className="no-print"><InvoiceRate invoiceId={i.id} currency={cur} rate={null} today={todayRate(cur)} /></span>}
                     </td>
                   )}
                   <td className={`nw ${i.late ? "text-bad" : ""}`}>{i.due ? `${day(i.due)}${i.late ? ` · ${i.late} days late` : ""}` : "—"}</td>

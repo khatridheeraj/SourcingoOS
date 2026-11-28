@@ -15,6 +15,11 @@ import { LANG_COOKIE, langOf, words } from "./i18n";
 import { FactoryRecordCard } from "./factory-record";
 import { FactoryGuarantee, type FactoryGuaranteeData } from "./factory-guarantee";
 import type { RecordFacts } from "@/lib/factory-record";
+import type { FactoryCap } from "@/lib/capacity";
+import { todayIST } from "@/lib/format";
+import { CapacityWeeks } from "@/components/capacity-weeks";
+import { type CertRow, FactoryCerts } from "@/components/factory-certs";
+import { removeMyCert, saveMyCapacity, saveMyCert } from "./actions";
 import { InviteCard } from "@/components/invite-card";
 import { factoryInvite, isRef } from "@/lib/referral";
 
@@ -38,7 +43,7 @@ const INVITE = {
 // the same panel, read for that factory, with nothing to press.
 export async function FactoryView({ preview }: { preview?: string }) {
   const supabase = await createClient(preview ? { "x-preview-factory": preview } : undefined);
-  const [me, { data, error }, { data: ups }, { data: fileRows }, { data: detailRows }, { data: sampleRows }, { data: poRows }, { data: moneyRow }, { data: qcRows }, { data: countRows }, { data: askRows }, { data: readyRows }, { data: recordRow }, { data: guarRow }, { data: refCode }] = await Promise.all([
+  const [me, { data, error }, { data: ups }, { data: fileRows }, { data: detailRows }, { data: sampleRows }, { data: poRows }, { data: moneyRow }, { data: qcRows }, { data: countRows }, { data: askRows }, { data: readyRows }, { data: recordRow }, { data: guarRow }, { data: certRows }, { data: capRow }, { data: fixRows }, { data: rateRow }, { data: refCode }] = await Promise.all([
     getMe(), supabase.rpc("factory_tna"), supabase.rpc("factory_step_updates"),
     // Each style's tech pack, cutting program, fabric and sizes, as the orders team entered them.
     supabase.rpc("factory_line_files"), supabase.rpc("factory_line_details"),
@@ -60,6 +65,10 @@ export async function FactoryView({ preview }: { preview?: string }) {
     supabase.rpc("factory_record_mine"),
     // The Sourcingo Guarantee: when it is paid for each order (nothing until the Guarantee is on).
     supabase.rpc("factory_guarantee"),
+    // Its certificates, and the free pieces it gave week by week.
+    supabase.rpc("factory_certificates_mine"), supabase.rpc("factory_capacity_mine", { p_weeks: 8 }),
+    // The defects Sourcingo found most on its styles lately, and buyers' average rating (once three have rated).
+    supabase.rpc("factory_defects_mine"), supabase.rpc("factory_rating_mine"),
     // Its own invite link for factories it knows.
     supabase.rpc("my_referral_code"),
   ]);
@@ -71,7 +80,8 @@ export async function FactoryView({ preview }: { preview?: string }) {
   const files = (fileRows ?? []) as { line_id: string; kind: string; path: string; file_name: string | null }[];
   const rawRounds = (sampleRows ?? []) as (Omit<FactoryRound, "photos" | "answerPhotos"> & { photos: string[]; answer_photos: string[] })[];
   const rawChecks = (qcRows ?? []) as (Omit<FactoryCheck, "photos" | "reports"> & { files: { path: string; kind: string; name: string | null }[] })[];
-  const paths = [...files.map((f) => f.path), ...rawRounds.flatMap((r) => [...r.photos, ...r.answer_photos]), ...rawChecks.flatMap((c) => c.files.map((f) => f.path))];
+  const rawCerts = (certRows ?? []) as (Omit<CertRow, "url"> & { path: string | null })[];
+  const paths = [...rawCerts.flatMap((c) => (c.path ? [c.path] : [])), ...files.map((f) => f.path), ...rawRounds.flatMap((r) => [...r.photos, ...r.answer_photos]), ...rawChecks.flatMap((c) => c.files.map((f) => f.path))];
   const { data: signed } = paths.length ? await supabase.storage.from(PHOTO_BUCKET).createSignedUrls(paths, 3600) : { data: [] };
   const urlOf = new Map((signed ?? []).filter((x) => x.signedUrl).map((x) => [x.path, x.signedUrl]));
   const info: Record<string, StyleInfo> = {};
@@ -95,6 +105,10 @@ export async function FactoryView({ preview }: { preview?: string }) {
   const panel = (data ?? { factory: "", orders: [] }) as { factory: string; orders: PanelOrder[] };
   const waiting = panel.orders.filter((o) => !o.released_at);
   const now = new Date().toISOString();
+  const certs: CertRow[] = rawCerts.map(({ path, ...c }) => ({ ...c, url: path ? urlOf.get(path) ?? null : null }));
+  const cap = capRow as FactoryCap | null;
+  const factoryId = (recordRow as RecordFacts | null)?.factory_id ?? cap?.factory_id ?? "";
+  const canWrite = me?.role === "factory";
   const lang = langOf((await cookies()).get(LANG_COOKIE)?.value);
   const w = words(lang);
 
@@ -122,7 +136,11 @@ export async function FactoryView({ preview }: { preview?: string }) {
           {panel.orders.map((o) => <FactoryOrder key={o.order_id} order={o} now={now} companyId={me?.companyId ?? ""} updates={updates} rounds={rounds.filter((r) => r.order_id === o.order_id)} lang={lang} info={info} po={pos.find((p) => p.order_id === o.order_id)} checks={checks.filter((c) => c.order_id === o.order_id)} counts={counts} asks={asks} ready={ready} canWrite={me?.role === "factory"} />)}
         </>
       )}
-      <FactoryRecordCard facts={(recordRow ?? null) as RecordFacts | null} lang={lang} />
+      <FactoryRecordCard facts={(recordRow ?? null) as RecordFacts | null} lang={lang}
+        fix={(fixRows ?? []) as { defect: string; pieces: number; checks: number }[]} rating={rateRow as { ratings: number; average: number } | null} />
+      {cap && <CapacityWeeks weeks={cap.weeks} mode="factory" lang={lang} canEdit={canWrite} save={saveMyCapacity} />}
+      {factoryId && <FactoryCerts rows={certs} today={todayIST()} folder={`${me?.companyId}/factory-files/${factoryId}/certs`} mode="factory" lang={lang}
+        canEdit={canWrite} actions={{ save: saveMyCert, remove: removeMyCert }} />}
       <FactoryGuarantee data={(guarRow ?? null) as FactoryGuaranteeData | null} lang={lang} preview={!!preview} />
       {moneyRow && <FactoryMoney data={moneyRow as FactoryMoneyData} lang={lang} />}
       {isRef(refCode as string | null) && (

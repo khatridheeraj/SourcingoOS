@@ -2,11 +2,14 @@ import type { Metadata, Viewport } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import { SheetBack } from "@/components/sheet-back";
+import { SITE_URL } from "@/lib/site";
 
 const body = Inter({ variable: "--font-body", subsets: ["latin"] });
 const mono = JetBrains_Mono({ variable: "--font-mono-face", subsets: ["latin"], weight: ["400", "500"] });
 
 export const metadata: Metadata = {
+  // Without this, Next uses the Vercel project's production domain (www.sourcingo.in), which serves the other site.
+  metadataBase: new URL(SITE_URL),
   title: "Sourcingo OS",
   description: "Orders, TNA, QC and dispatch for Sourcingo",
   // Opened from a phone's home screen, it runs full screen like an app.

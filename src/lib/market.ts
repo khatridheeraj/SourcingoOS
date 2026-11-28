@@ -1,3 +1,6 @@
+import type { Fit } from "./capacity.ts";
+import type { Lead } from "./lead-time.ts";
+
 // Styles open to factories ("Shop orders"), from the orders team's side: the quotes on each, ranked so the best one
 // is on top, and what each would leave as margin against the buyer's price.
 
@@ -8,6 +11,9 @@ export type MarketQuote = {
   styles_with_us: number;
   // The factory's record with us in one line (from factoryRecord/recordLine); watch marks a record the team should watch.
   record?: { line: string; watch: boolean } | null;
+  // Free capacity it gave up to the ready week (capacityFit), and the lead time it has really delivered (leadFor).
+  fit?: Fit | null;
+  lead?: Lead | null;
 };
 
 export type QuoteRow = MarketQuote & { margin: number | null; marginPct: number | null; daysLate: number; best: boolean };
@@ -16,7 +22,8 @@ const dayDiff = (a: string, b: string) => Math.round((Date.parse(b) - Date.parse
 
 // Live quotes only, on time first, then cheapest, then the factory we know better, then whoever quoted first.
 // "best" marks the top one, so the merchandiser sees a suggestion without being told what to do. A factory whose record
-// is one to watch is not suggested while another quote is just as on time; the order itself stays as ranked.
+// is one to watch, or that said it is full by the ready week, is not suggested while another quote is just as on time;
+// the order itself stays as ranked.
 export function rankQuotes(quotes: MarketQuote[], readyBy: string, buyerRate: number | null): QuoteRow[] {
   const rows = quotes.filter((q) => !q.withdrawn_at).map((q) => {
     const margin = buyerRate != null ? Math.round((buyerRate - q.rate) * 100) / 100 : null;
@@ -26,7 +33,7 @@ export function rankQuotes(quotes: MarketQuote[], readyBy: string, buyerRate: nu
     };
   });
   rows.sort((a, b) => (a.daysLate > 0 ? 1 : 0) - (b.daysLate > 0 ? 1 : 0) || a.rate - b.rate || b.styles_with_us - a.styles_with_us || a.created_at.localeCompare(b.created_at));
-  const pick = rows.find((r) => !r.record?.watch && (r.daysLate > 0) === (rows[0].daysLate > 0)) ?? rows[0];
+  const pick = rows.find((r) => !r.record?.watch && r.fit?.state !== "full" && (r.daysLate > 0) === (rows[0].daysLate > 0)) ?? rows[0];
   if (pick) pick.best = true;
   return rows;
 }

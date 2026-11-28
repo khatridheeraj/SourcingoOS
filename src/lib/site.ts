@@ -1,7 +1,8 @@
 // The public website: its address, its pages, and the words they share. Visitors read these without signing in.
 
-// The address search engines and shared links use. Set NEXT_PUBLIC_SITE_URL when the site moves to its own domain.
-export const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL ?? "https://sourcingo-os.vercel.app").replace(/\/$/, "");
+// This app's own address, for link previews and absolute links. Never sourcingo.in: that is a separate site
+// (see robots.ts), so a preview image pointed there is a 404. Set NEXT_PUBLIC_APP_URL if the app gets its own domain.
+export const SITE_URL = (process.env.NEXT_PUBLIC_APP_URL ?? "https://sourcingo-os.vercel.app").replace(/\/$/, "");
 
 // Pages anyone may open without signing in ("/" itself shows /welcome to visitors).
 export const SITE_PATHS = ["/welcome", "/how-it-works", "/quality", "/for-factories", "/costing", "/privacy", "/make", "/record", "/sitemap.xml", "/robots.txt", "/opengraph-image"];

@@ -32,3 +32,37 @@ export function defectMessage(o: { order: string; style: string; kind: string; o
     o.notes ? `Note: ${o.notes}` : "",
   ].filter(Boolean).join("\n");
 }
+
+// ---------------------------------------------------------------- analytics (defect_stats(), migration 0109)
+export type TopDefect = { defect: string; pieces: number; checks: number; critical: number; major: number; minor: number };
+export type FactoryDefects = { factory_id: string; name: string; checks: number; failed: number; pieces_checked: number; defects: number; top: { defect: string; pieces: number }[] };
+export type KindDefects = { kind: string; checks: number; failed: number; pieces_checked: number; defects: number };
+export type MonthPass = { month: string; firsts: number; passed: number };
+export type DefectStats = { top: TopDefect[]; factories: FactoryDefects[]; kinds: KindDefects[]; months: MonthPass[]; since: string };
+
+// Defects per 100 pieces checked, one decimal; nothing under 100 pieces, where one bad carton swings it.
+export const per100 = (defects: number, checked: number) => (checked >= 100 ? Math.round((defects / checked) * 1000) / 10 : null);
+
+// The last 12 months ending this month, each with its first-time Final pass (null when no style had a first Final).
+export function passByMonth(months: MonthPass[], today: string): { month: string; label: string; firsts: number; pct: number | null }[] {
+  const MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const out = [];
+  let y = Number(today.slice(0, 4));
+  let m = Number(today.slice(5, 7));
+  for (let i = 0; i < 12; i++) {
+    const key = `${y}-${String(m).padStart(2, "0")}`;
+    const row = months.find((x) => x.month === key);
+    out.unshift({ month: key, label: MON[m - 1], firsts: row?.firsts ?? 0, pct: row?.firsts ? Math.round((row.passed / row.firsts) * 100) : null });
+    m -= 1;
+    if (m === 0) { m = 12; y -= 1; }
+  }
+  return out;
+}
+
+// Factories worst first by defect rate, those without enough pieces checked last.
+export function rankFactories(rows: FactoryDefects[]) {
+  return rows.map((f) => ({ ...f, rate: per100(f.defects, f.pieces_checked) }))
+    .sort((a, b) => (b.rate ?? -1) - (a.rate ?? -1) || b.failed - a.failed || a.name.localeCompare(b.name));
+}
+
+export const KIND_WORDS: Record<string, string> = { inline: "Inline", midline: "Mid-line", final: "Final", recheck: "Re-check" };
