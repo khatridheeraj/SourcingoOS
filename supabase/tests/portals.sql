@@ -104,6 +104,7 @@ select pg_temp.expect_error(format($$select public.post_step_update('%s', 'greig
   'You can update only your own styles on a released PO.');
 select pg_temp.as_user('00000000-0000-0000-0000-00000000000b');
 select public.accept_targets_for_factory(:'ord', '20000000-0000-0000-0000-000000000001');
+\ir _factory_ready.sql
 select pg_temp.owner_release(:'ord', '20000000-0000-0000-0000-000000000001');
 
 select pg_temp.as_user('00000000-0000-0000-0000-0000000000fa');

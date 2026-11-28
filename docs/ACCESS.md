@@ -20,6 +20,7 @@ The owner changes a person's role and switches on Team. Three switches exist: **
 | Guarantee claims | Decide | Decide | Decide | No | Decide | Read | Raise own | No |
 | QC checks | Record | See | See | See | See | Record | Final QC photos | Own |
 | Factories, Style catalogue, Markers, Numbers report | Yes | Yes | Yes | Yes | Yes | No (Visit plan instead) | No | Own profile |
+| Factory details and papers (GSTIN, PAN, bank, GST/PAN/cheque/agreement); full bank account needs Money | Change | Change | Change | Change | Change | No | No | Own, papers wait for our check |
 | Week and Team reports | Yes | Yes | No | No | No | No | No | No |
 | Money: payments, bills, cheques, Tally, cash ahead (switch) | Yes | Off | Off | Off | On | No | Own invoices | Own bills |
 | Download data (switch); Buyers and Inquiries sheets need Buyer details | Yes | Off | Off | Off | On | No | No | No |

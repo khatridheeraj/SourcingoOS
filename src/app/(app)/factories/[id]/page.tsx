@@ -1,6 +1,9 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import { canEnterDone, getMe } from "@/lib/auth";
+import { can, canEditOrders, canEnterDone, getMe } from "@/lib/auth";
+import { FactoryKycCard } from "@/components/factory-kyc-card";
+import type { PaperRow } from "@/components/factory-papers";
+import { type Gaps, type Kyc, maskAccount } from "@/lib/factory-kyc";
 import { BUYER_SHOWS, buyerLine, factoryRecord, LEVEL_WORDS, MIN_CHECKS, MIN_SHIPMENTS, MIN_STEPS, type RecordFacts } from "@/lib/factory-record";
 import { day, money, qty, todayIST } from "@/lib/format";
 import { createClient } from "@/lib/supabase/server";
@@ -14,7 +17,7 @@ import { FactoryProfileCard } from "@/components/factory-profile";
 import { type FactoryProfile, onboardingSteps, readyLine, visitState } from "@/lib/onboarding";
 import { addDays } from "@/lib/buyer-week";
 import { FactoryLink } from "../factory-link";
-import { bookVisit, checkCert, removeCert, saveCapacity, saveCert, saveProfile } from "./actions";
+import { bookVisit, checkCert, removeCert, saveCapacity, saveCert, saveDetails, savePaper, saveProfile } from "./actions";
 import { VisitForm } from "./visit-form";
 
 // One factory's record: what it has earned on its orders with us, and what our own visit confirmed.
@@ -25,9 +28,9 @@ export default async function FactoryRecordPage({ params }: PageProps<"/factorie
   const me = await getMe();
   if (!canEnterDone(me?.role)) redirect("/");
   const supabase = await createClient();
-  const [{ data }, { data: certRows }, { data: capRows }, { data: leadRows }, { data: kinds }, { data: defRow }, { data: rateRows }, { data: profRow }, { data: facRow }] = await Promise.all([
+  const [{ data }, { data: certRows }, { data: capRows }, { data: leadRows }, { data: kinds }, { data: defRow }, { data: rateRows }, { data: profRow }, { data: facRow }, { data: gapRows }] = await Promise.all([
     supabase.rpc("factory_records", { p_factory: id }),
-    supabase.from("factory_certificates").select("id, name, cert_no, valid_until, path, file_name, status, status_note, from_factory")
+    supabase.from("factory_certificates").select("id, kind, name, cert_no, valid_until, path, file_name, status, status_note, from_factory")
       .eq("factory_id", id).is("removed_at", null).order("name").order("created_at"),
     supabase.rpc("factory_capacity", { p_factory: id, p_weeks: 8 }),
     supabase.rpc("lead_times"),
@@ -39,19 +42,36 @@ export default async function FactoryRecordPage({ params }: PageProps<"/factorie
     // Its own profile and visit (0110), and its contact for the panel link.
     supabase.from("factory_profiles").select("factory_id, makes, about, address, gstin, people, machines, pieces_month, photos, visit_from, visit_note, visit_asked_at, visit_on")
       .eq("factory_id", id).maybeSingle(),
-    supabase.from("factories").select("phone").eq("id", id).maybeSingle(),
+    // Its full details (0135) and what is still missing before it can have a PO.
+    supabase.from("factories").select("name, notes, active, phone, email, legal_name, gstin, no_gst_reason, pan, udyam_no, address, city, state, pin, contact_name, whatsapp, bank_holder, bank_account, bank_ifsc, bank_name, pay_days, bank_changed_at")
+      .eq("id", id).maybeSingle(),
+    supabase.rpc("factory_gaps", { p_factory: id }),
   ]);
+  const fac = (facRow ?? {}) as Record<string, string | number | boolean | null>;
+  const gaps = ((gapRows ?? []) as Gaps[])[0] ?? { factory_id: id, missing: [], total: 15 };
+  const seesBank = can(me, "money");
+  const str = (k: string) => (fac[k] == null ? "" : String(fac[k]));
+  const details: Kyc = {
+    legal_name: str("legal_name"), gstin: str("gstin") || (profRow as { gstin?: string | null } | null)?.gstin || "", no_gst_reason: str("no_gst_reason"),
+    pan: str("pan"), udyam_no: str("udyam_no"), address: str("address") || (profRow as { address?: string | null } | null)?.address || "", city: str("city"),
+    state: str("state"), pin: str("pin"), contact_name: str("contact_name"), phone: str("phone"), whatsapp: str("whatsapp"), email: str("email"),
+    bank_holder: str("bank_holder"), bank_account: seesBank ? str("bank_account") : "", bank_ifsc: str("bank_ifsc"), bank_name: str("bank_name"), pay_days: str("pay_days"),
+  };
   const profile: FactoryProfile = (profRow as FactoryProfile | null) ?? { factory_id: id, makes: [], photos: [] };
   const topDefects = ((defRow as DefectStats | null)?.top ?? []).slice(0, 5);
   const ratings = (rateRows ?? []) as { order_id: string; order_no: string; score: number; comment: string | null; created_at: string }[];
   const avgRating = ratings.length ? Math.round((ratings.reduce((a, r) => a + r.score, 0) / ratings.length) * 10) / 10 : null;
   const f = ((data ?? []) as RecordFacts[])[0];
   if (!f) notFound();
-  const rawCerts = (certRows ?? []) as (Omit<CertRow, "url"> & { path: string | null })[];
-  const paths = [...profile.photos, ...rawCerts.map((c) => c.path).filter((x): x is string => !!x)];
+  const allPapers = (certRows ?? []) as (Omit<CertRow, "url"> & { path: string | null; kind: string })[];
+  const rawCerts = allPapers.filter((c) => c.kind === "cert");
+  const rawPapers = allPapers.filter((c) => c.kind !== "cert");
+  const paths = [...profile.photos, ...allPapers.map((c) => c.path).filter((x): x is string => !!x)];
   const { data: signed } = paths.length ? await supabase.storage.from(PHOTO_BUCKET).createSignedUrls(paths, 3600) : { data: [] };
   const urlOf = new Map((signed ?? []).filter((x) => x.signedUrl).map((x) => [x.path, x.signedUrl]));
   const certs: CertRow[] = rawCerts.map(({ path, ...c }) => ({ ...c, url: path ? urlOf.get(path) ?? null : null }));
+  const papers = rawPapers.map(({ path, ...c }) => ({ ...c, url: path ? urlOf.get(path) ?? null : null })) as unknown as PaperRow[];
+  const editsOrders = canEditOrders(me?.role);
   const cap = ((capRows ?? []) as FactoryCap[])[0];
   const fabricCount = ((kinds ?? []) as { product: string }[]).filter((k) => k.product === "fabric").length;
   const product = fabricCount * 2 > (kinds ?? []).length ? "fabric" : "garment";
@@ -84,12 +104,18 @@ export default async function FactoryRecordPage({ params }: PageProps<"/factorie
               f.pieces_shipped ? `${qty(f.pieces_shipped)} pcs shipped` : ""].filter(Boolean).join(" · ")}
           </p>
         </div>
-        {canLink && <FactoryLink factoryId={id} name={f.name ?? ""} phone={(facRow as { phone: string | null } | null)?.phone ?? null} />}
+        {canLink && <FactoryLink factoryId={id} name={f.name ?? ""} phone={str("phone") || null} />}
       </div>
 
       {r.watch.length > 0 && (
         <div className="warnbox" role="status"><b>Watch this factory.</b> {r.watch.join(". ")}.</div>
       )}
+
+      <FactoryKycCard details={details} gaps={gaps} papers={papers} folder={folder} mode="team" canEdit={editsOrders} today={today}
+        extras={editsOrders ? { name: str("name") || (f.name ?? ""), notes: str("notes"), active: fac.active !== false } : undefined}
+        maskedAccount={!seesBank && fac.bank_account ? maskAccount(String(fac.bank_account)) : undefined} bankChangedAt={str("bank_changed_at") || null}
+        ask={canLink ? <FactoryLink factoryId={id} name={f.name ?? ""} phone={str("whatsapp") || str("phone") || null} email={str("email") || null} missing={gaps.missing} seePage={false} /> : null}
+        actions={{ save: saveDetails.bind(null, id), savePaper: savePaper.bind(null, id), checkPaper: checkCert.bind(null, id) }} />
 
       <section className="kpis" aria-label="Its record">
         <Kpi label="Steps on time" value={r.onTime} unit="%" tone={r.onTime != null && r.onTime < 70 ? "warn" : ""}

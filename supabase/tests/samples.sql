@@ -82,6 +82,7 @@ select pg_temp.expect_error(format($$select public.send_sample('%s', 'fit_sample
 select pg_temp.as_user('00000000-0000-0000-0000-00000000000b');
 select pg_temp.expect_error(format($$select public.send_sample('%s', 'fit_sample', '', array[%L])$$, :'k1', :ks), 'Samples are sent once the factory PO is released.');
 select public.accept_targets_for_factory(:'ord', '20000000-0000-0000-0000-000000000001');
+\ir _factory_ready.sql
 select pg_temp.owner_release(:'ord', '20000000-0000-0000-0000-000000000001');
 
 -- ---------------------------------------------------------------- the factory sends round 1

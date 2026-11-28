@@ -1,7 +1,10 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { getMe } from "@/lib/auth";
+import { canEditOrders, getMe } from "@/lib/auth";
+import type { TeamExtras } from "@/components/factory-details-form";
+import type { PaperInput } from "@/components/factory-papers";
+import type { Kyc } from "@/lib/factory-kyc";
 import { friendly } from "@/lib/errors";
 import { createClient } from "@/lib/supabase/server";
 
@@ -105,5 +108,38 @@ export async function bookVisit(factoryId: string, on: string | null): Promise<{
   if (error) return { error: friendly(error) };
   revalidatePath(`/factories/${factoryId}`);
   revalidatePath("/today");
+  return {};
+}
+
+// A factory's full details (0135), corrected or filled by the orders team. Only the boxes that changed come in.
+export async function saveDetails(factoryId: string, k: Partial<Kyc>, x?: TeamExtras): Promise<{ error?: string; field?: string }> {
+  const me = await getMe();
+  if (!canEditOrders(me?.role)) return { error: "Only the orders team can change a factory's details." };
+  const supabase = await createClient();
+  if (x) {
+    const { error } = await supabase.from("factories").update({ name: x.name.trim().replace(/\s+/g, " "), notes: x.notes.trim() || null, active: x.active }).eq("id", factoryId);
+    if (error) return { error: friendly(error), field: error.message?.includes("factories_name_key") ? "name" : undefined };
+  }
+  if (Object.keys(k).length) {
+    const { error } = await supabase.rpc("save_factory_details", { p_factory: factoryId, p: k });
+    if (error) return { error: friendly(error) };
+  }
+  revalidatePath(`/factories/${factoryId}`);
+  revalidatePath("/factories");
+  return {};
+}
+
+// One of its papers, uploaded by the team: saved as checked, putting away the old one of that kind.
+export async function savePaper(factoryId: string, p: PaperInput): Promise<{ error?: string }> {
+  const me = await getMe();
+  if (!canEditOrders(me?.role) && !VERIFIERS.includes(me?.role ?? "")) return { error: "Only the team can add a factory's papers." };
+  if (p.until && !/^\d{4}-\d{2}-\d{2}$/.test(p.until)) return { error: "Pick the date it runs out." };
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("save_factory_document", {
+    p_factory: factoryId, p_kind: p.kind, p_no: p.no || null, p_until: p.until || null, p_path: p.path, p_file_name: p.fileName,
+  });
+  if (error) return { error: friendly(error) };
+  revalidatePath(`/factories/${factoryId}`);
+  revalidatePath("/factories");
   return {};
 }

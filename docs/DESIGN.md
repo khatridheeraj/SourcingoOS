@@ -37,6 +37,9 @@ These rules keep every screen consistent. Every change follows them, including t
 - **A step marked done carries photos of the work.** The factory's updates and Quality's visits always did; the team's done dates
   now go through `mark_steps_done` with photos in the style's folder (`step_proofs`), which the buyer sees beside the factory's.
   Final QC is exempt: its check has its own photos.
+- **Factory details and papers** (`supabase/migrations/0135_factory_kyc.sql`): `factory_gaps()` alone decides what a factory still
+  owes and "Ready for POs"; a factory PO can't be sent for approval or released until it is empty. Add factory takes every detail;
+  the factory page and the factory's own panel show `FactoryKycCard`, and Ask the factory sends its link with the missing list.
 - **E-way bill only when the law asks** (`docs/EWAY-BILL.md`): the database clears a lot's e-way bill step when its invoice with
   GST is not above the limit for where it goes (`dispatch_eway_rule`, limits in `companies.eway_rules`, owner edits them on Goods).
   Screens explain it with `src/lib/eway.ts` and never decide it again.

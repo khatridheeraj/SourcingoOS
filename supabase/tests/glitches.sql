@@ -82,6 +82,7 @@ select id as k2 from public.order_lines where style = 'K-2' \gset
 select id as k3 from public.order_lines where style = 'K-3' \gset
 select id as c1 from public.order_lines where style = 'C-1' \gset
 select company_id as co from public.orders where id = :'ord' \gset
+\ir _factory_ready.sql
 select pg_temp.release(:'ord', '20000000-0000-0000-0000-000000000001');
 select pg_temp.release(:'ord2', '20000000-0000-0000-0000-000000000001');
 select public.factory_link('20000000-0000-0000-0000-000000000001') as secret \gset

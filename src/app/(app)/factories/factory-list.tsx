@@ -1,90 +1,48 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef, useState, useTransition } from "react";
-import { toast } from "@/components/toast";
+import { useRouter } from "next/navigation";
+import { useState } from "react";
+import { FactoryDetailsForm } from "@/components/factory-details-form";
 import type { Factory } from "@/lib/data";
-import { saveFactory, type FactoryInput } from "./actions";
-import { checkFactory } from "./check";
+import type { Gaps, Kyc } from "@/lib/factory-kyc";
+import { addFactory } from "./actions";
 import { FactoryLink } from "./factory-link";
-
-const blank: FactoryInput = { name: "", city: "", contact_name: "", phone: "", notes: "", active: true, address: "", gstin: "", email: "" };
-type Bad = { field?: keyof FactoryInput; msg: string } | null;
 
 export type RecordCell = { line: string; tone: string; verified: boolean };
 
-export function FactoryList({ factories, openStyles, records = {} }: { factories: Factory[]; openStyles: Record<string, number>; records?: Record<string, RecordCell> }) {
-  const [editing, setEditing] = useState<FactoryInput | null>(null);
-  const [bad, setBad] = useState<Bad>(null);
-  const [pending, start] = useTransition();
-  const formRef = useRef<HTMLFormElement>(null);
-  // Where keyboard focus goes once the form closes: the saved factory's Edit button, or Add factory.
-  const back = useRef<string | null>(null);
+const BLANK: Kyc = {
+  legal_name: "", gstin: "", no_gst_reason: "", pan: "", udyam_no: "", address: "", city: "", state: "", pin: "", contact_name: "", phone: "",
+  whatsapp: "", email: "", bank_holder: "", bank_account: "", bank_ifsc: "", bank_name: "", pay_days: "",
+};
 
-  // The form opens above the list; a factory far down the list would otherwise open it off screen.
-  const open = (f: FactoryInput) => { setBad(null); setEditing(f); requestAnimationFrame(() => formRef.current?.scrollIntoView({ block: "start" })); };
-  const close = (to: string) => { setEditing(null); setBad(null); back.current = to; };
-  useEffect(() => {
-    if (!back.current || editing) return;
-    const name = back.current;
-    back.current = null;
-    const el = document.querySelector<HTMLElement>(`[data-edit="${CSS.escape(name)}"]`) ?? document.querySelector<HTMLElement>("[data-add-factory]");
-    el?.focus({ preventScroll: true });
-  }, [editing]);
-
-  function point(field?: keyof FactoryInput) {
-    const el = field && formRef.current?.elements.namedItem(field);
-    if (el instanceof HTMLElement) { el.focus({ preventScroll: true }); el.scrollIntoView({ block: "center" }); }
-  }
-
-  function submit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!editing) return;
-    const wrong = checkFactory(editing);
-    if (wrong) { setBad({ field: wrong.field, msg: wrong.error }); return point(wrong.field); }
-    setBad(null);
-    const f = editing;
-    start(async () => {
-      const res = await saveFactory(f);
-      if (res.error) { setBad({ field: res.field, msg: res.error }); point(res.field); return; }
-      const name = f.name.trim().replace(/\s+/g, " ");
-      toast(f.id ? `${name} saved.` : `${name} added.`);
-      close(f.id ?? name);
-    });
-  }
-
-  const set = (k: keyof FactoryInput) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-    if (!editing) return;
-    const v = k === "active" ? (e.target as HTMLInputElement).checked : k === "gstin" ? e.target.value.replace(/\s+/g, "").toUpperCase() : e.target.value;
-    setEditing({ ...editing, [k]: v });
-    setBad((x) => (x?.field === k ? null : x));
-  };
-  const at = (k: keyof FactoryInput) => ({ name: k, "aria-invalid": bad?.field === k || undefined });
-  const err = (k: keyof FactoryInput) => bad?.field === k ? <small className="text-bad" role="alert">{bad.msg}</small> : null;
+export function FactoryList({ factories, openStyles, records = {}, gaps = {} }: { factories: Factory[]; openStyles: Record<string, number>; records?: Record<string, RecordCell>; gaps?: Record<string, Gaps> }) {
+  const router = useRouter();
+  const [adding, setAdding] = useState(false);
+  const notReady = factories.filter((f) => f.active && gaps[f.id]?.missing.length).length;
 
   return (
     <div className="stack">
-      {!editing && <div><button className="btn primary" data-add-factory onClick={() => open(blank)}>Add factory</button></div>}
-      {editing && (
-        <form ref={formRef} onSubmit={submit} className="panel stack scroll-mt-20" noValidate>
-          <h2 className="font-bold">{editing.id ? `Edit ${editing.name}` : "Add factory"}</h2>
-          <div className="fgrid">
-            <label className="field"><span>Name <i>*</i></span><input className="inp" value={editing.name} onChange={set("name")} required autoFocus {...at("name")} />{err("name")}</label>
-            <label className="field"><span>City</span><input className="inp" value={editing.city} onChange={set("city")} /></label>
-            <label className="field"><span>Contact person</span><input className="inp" value={editing.contact_name} onChange={set("contact_name")} /></label>
-            <label className="field"><span>Phone</span><input className="inp" type="tel" value={editing.phone} onChange={set("phone")} placeholder="98290 12345" {...at("phone")} />{err("phone")}</label>
-            <label className="field"><span>Email</span><input className="inp" type="email" value={editing.email} onChange={set("email")} {...at("email")} />{err("email")}</label>
-            <label className="field"><span>GSTIN</span><input className="inp code" maxLength={24} value={editing.gstin} onChange={set("gstin")} placeholder="08ABCDE1234F1Z5" autoCapitalize="characters" {...at("gstin")} />{err("gstin")}</label>
-            <label className="field sm:col-span-2"><span>Address (printed on its POs)</span><textarea className="inp" rows={2} maxLength={500} value={editing.address} onChange={set("address")} /></label>
-            <label className="field"><span>Notes</span><input className="inp" value={editing.notes} onChange={set("notes")} /></label>
+      {!adding && (
+        <div className="row">
+          <button className="btn primary" data-add-factory onClick={() => setAdding(true)}>Add factory</button>
+          {notReady > 0 && <span className="text-[13px] text-warn">{notReady} of {factories.filter((f) => f.active).length} active factories aren&apos;t ready for POs yet</span>}
+        </div>
+      )}
+      {adding && (
+        <section className="panel stack scroll-mt-20">
+          <div>
+            <h2 className="font-bold">Add factory</h2>
+            <p className="muted text-[13px]">Take everything now, so its first PO isn&apos;t held up. The GST certificate, PAN card, cancelled cheque and signed agreement are uploaded on the next screen.</p>
           </div>
-          <label className="row text-[13px]"><input type="checkbox" checked={editing.active} onChange={set("active")} /> Active (shows when entering orders)</label>
-          {bad && !bad.field && <div className="errbox" role="alert">{bad.msg}</div>}
-          <div className="row">
-            <button className="btn primary" disabled={pending}>{pending ? "Saving…" : "Save"}</button>
-            <button type="button" className="btn" onClick={() => close(editing.id ?? "add")}>Cancel</button>
-          </div>
-        </form>
+          <FactoryDetailsForm initial={BLANK} extras={{ name: "", notes: "", active: true }} mode="team" submitLabel="Add factory"
+            onSave={async (k, x) => {
+              const r = await addFactory(x!.name, k, x!.notes);
+              if (r.id) router.push(`/factories/${r.id}#details`);
+              return r;
+            }}
+            onDone={() => setAdding(false)} />
+        </section>
       )}
 
       {factories.length === 0 ? (
@@ -94,27 +52,33 @@ export function FactoryList({ factories, openStyles, records = {} }: { factories
           <table className="tbl stack">
             <thead><tr><th>Name</th><th>City</th><th>Contact</th><th>Phone</th><th>Record</th><th className="r">Open styles</th><th></th><th></th></tr></thead>
             <tbody>
-              {factories.map((f) => (
-                <tr key={f.id}>
-                  <td className="font-semibold"><Link className="link" href={`/factories/${f.id}`}>{f.name}</Link></td>
-                  <td>{f.city}</td>
-                  <td data-label={f.contact_name ? "Contact" : undefined}>{f.contact_name}</td>
-                  <td>{f.phone && <a className="link" href={`tel:${f.phone}`}>{f.phone}</a>}</td>
-                  <td data-label="Record">
-                    <Link href={`/factories/${f.id}`} className={`text-[13px] ${records[f.id]?.tone === "warn" ? "text-warn" : "muted"}`}>
-                      {records[f.id]?.verified && <span className="chip mr-1.5">Verified</span>}{records[f.id]?.line ?? "Open record"}
-                    </Link>
-                  </td>
-                  <td className="r num" data-label="Open styles">{openStyles[f.id] ?? 0}</td>
-                  <td>{!f.active && <span className="chip">Inactive</span>}</td>
-                  <td className="r">
-                    <div className="row justify-end flex-nowrap">
-                    {f.active && <FactoryLink factoryId={f.id} name={f.name} phone={f.phone} />}
-                    <button className="btn sm" data-edit={f.id} onClick={() => { open({ id: f.id, name: f.name, city: f.city ?? "", contact_name: f.contact_name ?? "", phone: f.phone ?? "", notes: f.notes ?? "", active: f.active, address: f.address ?? "", gstin: f.gstin ?? "", email: f.email ?? "" }); }}>Edit</button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+              {factories.map((f) => {
+                const g = gaps[f.id];
+                return (
+                  <tr key={f.id}>
+                    <td className="font-semibold"><Link className="link" href={`/factories/${f.id}`}>{f.name}</Link></td>
+                    <td>{f.city}</td>
+                    <td data-label={f.contact_name ? "Contact" : undefined}>{f.contact_name}</td>
+                    <td>{f.phone && <a className="link" href={`tel:${f.phone}`}>{f.phone}</a>}</td>
+                    <td data-label="Record">
+                      <Link href={`/factories/${f.id}`} className={`text-[13px] ${records[f.id]?.tone === "warn" ? "text-warn" : "muted"}`}>
+                        {records[f.id]?.verified && <span className="chip mr-1.5">Verified</span>}{records[f.id]?.line ?? "Open record"}
+                      </Link>
+                    </td>
+                    <td className="r num" data-label="Open styles">{openStyles[f.id] ?? 0}</td>
+                    <td>
+                      {!f.active ? <span className="chip">Inactive</span>
+                        : g && g.missing.length > 0 && <Link href={`/factories/${f.id}#details`} className="chip warn" title={g.missing.join(", ")}>{g.missing.length} details missing</Link>}
+                    </td>
+                    <td className="r">
+                      <div className="row justify-end flex-nowrap">
+                        {f.active && <FactoryLink factoryId={f.id} name={f.name} phone={f.phone} />}
+                        <Link className="btn sm" data-edit={f.id} href={`/factories/${f.id}#details`}>Edit</Link>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

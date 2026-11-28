@@ -1,4 +1,6 @@
 import Link from "next/link";
+import type { Gaps } from "@/lib/factory-kyc";
+import { FactoryLink } from "@/app/(app)/factories/factory-link";
 import { notFound, redirect } from "next/navigation";
 import { canEditOrders, getMe } from "@/lib/auth";
 import { loadTeam, personName } from "@/lib/data";
@@ -56,7 +58,7 @@ export default async function FactoryPoPage({ params }: PageProps<"/orders/[id]/
   const lines = ((o.order_lines ?? []) as Line[]).filter((l) => l.factory_id === factoryId).sort((a, b) => a.position - b.position);
   if (!lines.length) notFound();
   const photoPaths = lines.map((l) => l.photo_path).filter(Boolean) as string[];
-  const [{ data: stages }, { data: terms }, { data: signed }, { data: ledger }, { data: poNoRpc }, { data: blocker }, { data: token }, { data: relBlock }, { data: sendBlock }, team] = await Promise.all([
+  const [{ data: stages }, { data: terms }, { data: signed }, { data: ledger }, { data: poNoRpc }, { data: blocker }, { data: token }, { data: relBlock }, { data: sendBlock }, team, { data: gapRows }] = await Promise.all([
     supabase.from("line_stages").select("line_id, stage, planned_on, not_needed").in("line_id", lines.map((l) => l.id)).in("stage", [...new Set([...KEY_STEPS, ...FABRIC_KEY_STEPS].map((s) => s.key))]),
     // Payment terms are kept per Tally ledger and only Accounts and the owner can read them; everyone else sees the usual 60 days.
     f.tally_ledger ? supabase.from("supplier_terms").select("days").eq("ledger", f.tally_ledger).maybeSingle() : Promise.resolve({ data: null }),
@@ -70,7 +72,10 @@ export default async function FactoryPoPage({ params }: PageProps<"/orders/[id]/
     supabase.rpc("release_blocker", { p_order: id, p_factory: factoryId }),
     supabase.rpc("po_send_blocker", { p_order: id, p_factory: factoryId }),
     loadTeam(),
+    // The factory's own details and papers (0135): a PO can't go for approval until nothing is missing.
+    supabase.rpc("factory_gaps", { p_factory: factoryId }),
   ]);
+  const kycMissing = (((gapRows ?? []) as Gaps[])[0]?.missing) ?? [];
   const photoOf = new Map((signed ?? []).filter((s) => s.signedUrl).map((s) => [s.path, s.signedUrl]));
 
   const po = (pos ?? []).find((p) => p.factory_id === factoryId);
@@ -128,6 +133,15 @@ export default async function FactoryPoPage({ params }: PageProps<"/orders/[id]/
         <div className="warnbox no-print">
           <b>{noPhoto.length === 1 ? `${noPhoto[0].style} has no photo.` : `${noPhoto.length} styles have no photo: ${noPhoto.map((l) => l.style).join(", ")}.`}</b>{" "}
           The factory works from the picture, so the PO can&apos;t be sent for approval or emailed until every style has one. Tap + Add photo on the style below.
+        </div>
+      )}
+      {!released && kycMissing.length > 0 && (
+        <div className="warnbox no-print stack gap-2" role="status">
+          <div><b>{f.name} isn&apos;t ready for POs yet.</b> Missing: {kycMissing.join(", ")}. The PO can be sent for approval once these are in.</div>
+          <div className="row">
+            <Link className="btn sm primary" href={`/factories/${factoryId}#details`}>Fill them in</Link>
+            <FactoryLink factoryId={factoryId} name={f.name} phone={f.phone} email={f.email} missing={kycMissing} seePage={false} />
+          </div>
         </div>
       )}
       <PoSend orderId={o.id} factoryId={factoryId} released={released} blocker={(blocker as string | null) ?? null} factoryEmail={f.email ?? ""}

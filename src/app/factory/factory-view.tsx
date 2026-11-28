@@ -22,7 +22,9 @@ import { CapacityWeeks } from "@/components/capacity-weeks";
 import { type CertRow, FactoryCerts } from "@/components/factory-certs";
 import { FactoryProfileCard } from "@/components/factory-profile";
 import { type FactoryProfile, onboardingSteps, visitState } from "@/lib/onboarding";
-import { askVisit, removeMyCert, saveMyCapacity, saveMyCert, saveMyProfile } from "./actions";
+import { askVisit, removeMyCert, saveMyCapacity, saveMyCert, saveMyDetails, saveMyPaper, saveMyProfile } from "./actions";
+import { FactoryKycCard } from "@/components/factory-kyc-card";
+import type { PaperRow } from "@/components/factory-papers";
 import { InviteCard } from "@/components/invite-card";
 import { factoryInvite, isRef } from "@/lib/referral";
 
@@ -46,7 +48,7 @@ const INVITE = {
 // the same panel, read for that factory, with nothing to press.
 export async function FactoryView({ preview }: { preview?: string }) {
   const supabase = await createClient(preview ? { "x-preview-factory": preview } : undefined);
-  const [me, { data, error }, { data: ups }, { data: fileRows }, { data: detailRows }, { data: sampleRows }, { data: poRows }, { data: moneyRow }, { data: qcRows }, { data: countRows }, { data: askRows }, { data: readyRows }, { data: recordRow }, { data: guarRow }, { data: certRows }, { data: capRow }, { data: fixRows }, { data: rateRow }, { data: profRow }, { data: refCode }] = await Promise.all([
+  const [me, { data, error }, { data: ups }, { data: fileRows }, { data: detailRows }, { data: sampleRows }, { data: poRows }, { data: moneyRow }, { data: qcRows }, { data: countRows }, { data: askRows }, { data: readyRows }, { data: recordRow }, { data: guarRow }, { data: certRows }, { data: capRow }, { data: fixRows }, { data: rateRow }, { data: profRow }, { data: refCode }, { data: kycRow }] = await Promise.all([
     getMe(), supabase.rpc("factory_tna"), supabase.rpc("factory_step_updates"),
     // Each style's tech pack, cutting program, fabric and sizes, as the orders team entered them.
     supabase.rpc("factory_line_files"), supabase.rpc("factory_line_details"),
@@ -76,6 +78,8 @@ export async function FactoryView({ preview }: { preview?: string }) {
     supabase.rpc("factory_profile_mine"),
     // Its own invite link for factories it knows.
     supabase.rpc("my_referral_code"),
+    // Its full details and papers, and what is still missing before Sourcingo can send it a PO (0135).
+    supabase.rpc("factory_details_mine"),
   ]);
   const profile = profRow as FactoryProfile | null;
   const counts = (countRows ?? []) as FactoryCount[];
@@ -86,8 +90,10 @@ export async function FactoryView({ preview }: { preview?: string }) {
   const files = (fileRows ?? []) as { line_id: string; kind: string; path: string; file_name: string | null }[];
   const rawRounds = (sampleRows ?? []) as (Omit<FactoryRound, "photos" | "answerPhotos"> & { photos: string[]; answer_photos: string[] })[];
   const rawChecks = (qcRows ?? []) as (Omit<FactoryCheck, "photos" | "reports"> & { files: { path: string; kind: string; name: string | null }[] })[];
-  const rawCerts = (certRows ?? []) as (Omit<CertRow, "url"> & { path: string | null })[];
-  const paths = [...(profile?.photos ?? []), ...rawCerts.flatMap((c) => (c.path ? [c.path] : [])), ...files.map((f) => f.path), ...rawRounds.flatMap((r) => [...r.photos, ...r.answer_photos]), ...rawChecks.flatMap((c) => c.files.map((f) => f.path))];
+  const allCerts = (certRows ?? []) as (Omit<CertRow, "url"> & { path: string | null; kind?: string })[];
+  const rawCerts = allCerts.filter((c) => (c.kind ?? "cert") === "cert");
+  const rawPapers = allCerts.filter((c) => (c.kind ?? "cert") !== "cert");
+  const paths = [...(profile?.photos ?? []), ...allCerts.flatMap((c) => (c.path ? [c.path] : [])), ...files.map((f) => f.path), ...rawRounds.flatMap((r) => [...r.photos, ...r.answer_photos]), ...rawChecks.flatMap((c) => c.files.map((f) => f.path))];
   const { data: signed } = paths.length ? await supabase.storage.from(PHOTO_BUCKET).createSignedUrls(paths, 3600) : { data: [] };
   const urlOf = new Map((signed ?? []).filter((x) => x.signedUrl).map((x) => [x.path, x.signedUrl]));
   const info: Record<string, StyleInfo> = {};
@@ -112,6 +118,9 @@ export async function FactoryView({ preview }: { preview?: string }) {
   const waiting = panel.orders.filter((o) => !o.released_at);
   const now = new Date().toISOString();
   const certs: CertRow[] = rawCerts.map(({ path, ...c }) => ({ ...c, url: path ? urlOf.get(path) ?? null : null }));
+  const papers = rawPapers.map(({ path, ...c }) => ({ ...c, url: path ? urlOf.get(path) ?? null : null })) as unknown as PaperRow[];
+  const kyc = kycRow as (Record<string, string | number | null> & { missing: string[] | null; total: number | null }) | null;
+  const kycStr = (k: string) => (kyc?.[k] == null ? "" : String(kyc[k]));
   const cap = capRow as FactoryCap | null;
   const factoryId = (recordRow as RecordFacts | null)?.factory_id ?? cap?.factory_id ?? "";
   const canWrite = me?.role === "factory";
@@ -123,6 +132,18 @@ export async function FactoryView({ preview }: { preview?: string }) {
   const steps = profile ? onboardingSteps(profile, capGiven, verifiedOn, today) : [];
   // A new factory (no orders yet, steps still open) sees its steps first; a working one finds its profile further down.
   const gettingReady = panel.orders.length === 0 && steps.length > 0 && !steps.every((x) => x.done);
+  const kycMissing = kyc?.missing ?? [];
+  const kycCard = kyc && (
+    <FactoryKycCard mode="factory" lang={lang} canEdit={canWrite} today={today} papers={papers}
+      folder={`${me?.companyId}/factory-files/${kycStr("factory_id")}/certs`} gaps={{ missing: kycMissing, total: kyc.total ?? 15 }}
+      details={{
+        legal_name: kycStr("legal_name"), gstin: kycStr("gstin"), no_gst_reason: kycStr("no_gst_reason"), pan: kycStr("pan"), udyam_no: kycStr("udyam_no"),
+        address: kycStr("address"), city: kycStr("city"), state: kycStr("state"), pin: kycStr("pin"), contact_name: kycStr("contact_name"), phone: kycStr("phone"),
+        whatsapp: kycStr("whatsapp"), email: kycStr("email"), bank_holder: kycStr("bank_holder"), bank_account: kycStr("bank_account"), bank_ifsc: kycStr("bank_ifsc"),
+        bank_name: kycStr("bank_name"), pay_days: kycStr("pay_days"),
+      }}
+      actions={{ save: saveMyDetails, savePaper: saveMyPaper }} />
+  );
   const profileCard = profile && factoryId && (
     <FactoryProfileCard profile={profile} photoUrls={Object.fromEntries(profile.photos.flatMap((p) => { const u = urlOf.get(p); return u ? [[p, u]] : []; }))}
       steps={steps} visit={visitState(profile, verifiedOn, today)} folder={`${me?.companyId}/factory-files/${factoryId}/photos`} mode="factory" lang={lang}
@@ -140,6 +161,7 @@ export async function FactoryView({ preview }: { preview?: string }) {
         </div>
       </div>
       {error && <div className="errbox">{error.message}</div>}
+      {kycMissing.length > 0 && kycCard}
       {gettingReady && profileCard}
       {panel.orders.length === 0 ? (gettingReady ? null : 
         <div className="empty"><b>{w.noOrders}</b>{w.noOrdersSub}</div>
@@ -157,6 +179,7 @@ export async function FactoryView({ preview }: { preview?: string }) {
       <FactoryRecordCard facts={(recordRow ?? null) as RecordFacts | null} lang={lang}
         fix={(fixRows ?? []) as { defect: string; pieces: number; checks: number }[]} rating={rateRow as { ratings: number; average: number } | null} />
       {!gettingReady && profileCard}
+      {kycMissing.length === 0 && kycCard}
       {cap && <CapacityWeeks weeks={cap.weeks} mode="factory" lang={lang} canEdit={canWrite} save={saveMyCapacity} />}
       {factoryId && <FactoryCerts rows={certs} today={today} folder={`${me?.companyId}/factory-files/${factoryId}/certs`} mode="factory" lang={lang}
         canEdit={canWrite} actions={{ save: saveMyCert, remove: removeMyCert }} />}
