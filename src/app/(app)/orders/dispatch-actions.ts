@@ -4,10 +4,10 @@ import { revalidatePath } from "next/cache";
 import { canEditOrders, getMe } from "@/lib/auth";
 import { friendly } from "@/lib/errors";
 import { createClient } from "@/lib/supabase/server";
-import { latinDigits } from "@/lib/digits";
+import { num } from "@/lib/order-input";
 
 type Result = { error?: string };
-const num = (s: string) => latinDigits(s).replace(/[,₹\s]/g, "");
+// Rates and amounts read the way people type them ("Rs 450", "₹1,250"), the same as the order form.
 const isDate = (s: string) => /^\d{4}-\d{2}-\d{2}$/.test(s);
 
 async function team() {
