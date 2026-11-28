@@ -12,6 +12,7 @@ The owner changes a person's role and switches on Team. Three switches exist: **
 | Approve a factory PO | Yes | No | No | No | No | No | No | Accepts it |
 | Selling price, order value, margin | Yes | Yes | Yes | No | Yes | No | No | No |
 | Buyers pages, contacts, buyer links, weekly buyer updates | Yes | Yes | Yes | No | Yes | No | Own | No |
+| Buyer company details and papers (GSTIN, PAN, addresses, terms, agreement) | Yes | Yes | Yes | No | Yes | No | Own (no credit limit, deposit or terms notes) | No |
 | Buyer's messages on an order | Yes | Yes | Yes | No | Yes | No | Own | No |
 | Buyer emails, buyer PO files, inquiries, costings, Leads, Our record | Yes | Yes | Yes | No | Yes | No | Own asks | No |
 | Emails from unknown senders | Yes | No | No | No | No | No | No | No |

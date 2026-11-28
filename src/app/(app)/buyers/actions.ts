@@ -39,7 +39,7 @@ export async function saveBuyer(b: BuyerInput): Promise<{ error?: string; id?: s
   const { error: senders } = await supabase.rpc("set_buyer_po_senders", { p_buyer: id, p_senders: senderList(b.senders) });
   revalidatePath("/", "layout");
   if (senders) return { error: `The buyer is saved, but not its PO senders: ${friendly(senders)}`, id: id as string };
-  return {};
+  return { id: id as string };
 }
 
 // Days the buyer takes to send its GRN after goods ship; the merchandiser is reminded when it is due. Blank uses 7.

@@ -21,6 +21,8 @@ import { SAMPLE_STEPS } from "@/lib/calendar";
 import { addDays, buyerWeek, pastShip, type WeekShipment } from "@/lib/buyer-week";
 import { MODE_LABEL, trackLink, trackState, trackSteps, type Mode, type TrackEvent } from "@/lib/tracking";
 import { TrackLine } from "@/components/order-ui";
+import { profileScore, toProfile, type BuyerDoc } from "@/lib/buyer-profile";
+import { BuyerDetails } from "./buyer-details";
 
 type Step = { stage: string; label: string | null; planned_on: string | null; done_on: string | null };
 type FinalQc = { result: string; checked_on: string; pieces_checked: number | null; photos: string[] };
@@ -115,6 +117,23 @@ export async function BuyerView({ preview }: { preview?: string }) {
   // Only the buyer's own login writes; a team member's preview reads.
   const canWrite = me?.role === "buyer";
 
+  // Its own company details and papers (src/lib/buyer-profile.ts): near the top while something is missing.
+  const { data: mine } = await supabase.rpc("my_buyer_profile");
+  const own = (mine ?? null) as { buyer_id: string; profile: unknown; delivery_address: string | null; currency: string | null; credit_days: number | null; docs: BuyerDoc[] } | null;
+  let details: React.ReactNode = null;
+  let detailsFirst = false;
+  if (own?.buyer_id) {
+    const profile = toProfile(own.profile);
+    const basics = { delivery_address: own.delivery_address, currency: own.currency, credit_days: own.credit_days };
+    const sc = profileScore(profile, basics, own.docs);
+    const docPaths = own.docs.map((d) => d.path);
+    const { data: docSigned } = docPaths.length ? await supabase.storage.from(PHOTO_BUCKET).createSignedUrls(docPaths, 3600) : { data: [] };
+    const docUrls = Object.fromEntries((docSigned ?? []).filter((x) => x.signedUrl && x.path).map((x) => [x.path as string, x.signedUrl as string]));
+    detailsFirst = !sc.ready && sc.missing.some((i) => i.from === "buyer");
+    details = <BuyerDetails folder={`${me?.companyId ?? ""}/buyer-files/${own.buyer_id}`} profile={profile} basics={basics} docs={own.docs} urls={docUrls}
+      done={sc.done} total={sc.total} ready={sc.ready} missing={sc.missing} canWrite={canWrite} />;
+  }
+
   // One batch of short-lived links for every photo on the page.
   const paths = [...new Set([
     ...orders.flatMap((o) => o.lines.flatMap((l) => [l.photo_path, ...(l.final_qc?.photos ?? [])])),
@@ -174,6 +193,7 @@ export async function BuyerView({ preview }: { preview?: string }) {
       {preview && guarantee.shown && !guarantee.terms?.live && (
         <p className="muted text-[13px]" role="note">Preview: this buyer sees the Sourcingo Guarantee under each PO only once you turn it on in Guarantee.</p>
       )}
+      {detailsFirst && details}
       {moved && !week.empty && <BuyerWeekCard week={week} photoUrls={weekPhotos} title="What moved this week" sub="Last 7 days" compact />}
       <BuyerSamples companyId={me?.companyId ?? ""} samples={samples} />
       {costingFirst && costing}
@@ -361,6 +381,7 @@ export async function BuyerView({ preview }: { preview?: string }) {
           message="We make our clothes in India with Sourcingo. They check every step and send photos. Worth asking them for a costing:"
           words={{ share: "Send on WhatsApp", copy: "Copy link", copied: "Link copied." }} />
       )}
+      {!detailsFirst && details}
       {(orders.length > 0 || invoices.length > 0) && <p className="muted text-center text-[12.5px]">Questions about an order? Write under its PO above, or message your Sourcingo merchandiser.</p>}
     </>
   );

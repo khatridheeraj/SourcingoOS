@@ -12,6 +12,8 @@ import { createClient } from "@/lib/supabase/server";
 import { PrintButton } from "../packing/print-button";
 import { ExportForm, ExporterFix } from "./export-form";
 import { buyerWithDetails } from "@/lib/data";
+import { gapsFor } from "@/lib/buyer-profile";
+import { loadBuyerFiles } from "@/lib/buyer-profile-load";
 
 const dateIST = (ts: string | null) => (ts ? new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Kolkata" }).format(new Date(ts)) : null);
 
@@ -41,6 +43,8 @@ export default async function ExportPage({ params }: PageProps<"/goods/[id]/expo
     // Rates are read through line_prices(), which only the orders team and Accounts get.
     supabase.rpc("line_prices", { p_orders: [o.id] }),
   ]);
+  const bf = (await loadBuyerFiles(supabase, [o.buyer_id])).get(o.buyer_id);
+  const bp = bf?.profile;
   const rateOf = new Map(((prices ?? []) as { id: string; buyer_rate: number | null }[]).map((p) => [p.id, p.buyer_rate]));
   const buyer = bn?.real_name ?? b?.code ?? "Buyer";
   type L = { id: string; style: string; description: string | null; colour: string | null; qty: number; sizes: Record<string, number> | null; product: string | null };
@@ -52,9 +56,12 @@ export default async function ExportPage({ params }: PageProps<"/goods/[id]/expo
   const packed: PackRow[] = (rows ?? []).map((r) => ({ carton_from: r.carton_from, carton_to: r.carton_to, line_id: r.line_id, sizes: r.sizes as Record<string, number>,
     net_kg: r.net_kg == null ? null : Number(r.net_kg), gross_kg: r.gross_kg == null ? null : Number(r.gross_kg) }));
   const pt = packTotals(packed);
-  const e = startExport(d.export, { invoiceNo: d.invoice_no, invoiceDate: dateIST(d.invoiced_at), port: co?.export_port ?? null, usdInr: fx.inr.USD ?? null, country: null }, lines);
+  const e = startExport(d.export, { invoiceNo: d.invoice_no, invoiceDate: dateIST(d.invoiced_at), port: co?.export_port ?? null, usdInr: fx.inr.USD ?? null,
+    country: bp?.country && !/^india$/i.test(bp.country) ? bp.country : null, buyer: bp ?? null }, lines);
   const t = invoiceTotals(e, lines);
-  const gaps = exportGaps(e, lines, { iec: co?.iec ?? null, ad_code: co?.ad_code ?? null, lut_no: co?.lut_no ?? null, address: co?.address ?? null }, b?.delivery_address ?? null, packed.length > 0);
+  // The buyer's own details the papers need (its record, src/lib/buyer-profile.ts), then what this lot needs.
+  const buyerGaps = bf ? gapsFor("export", bf.profile, bf.basics, bf.docs) : [];
+  const gaps = buyerGaps.concat(exportGaps(e, lines, { iec: co?.iec ?? null, ad_code: co?.ad_code ?? null, lut_no: co?.lut_no ?? null, address: co?.address ?? null }, b?.delivery_address ?? null, packed.length > 0).filter((g) => !(buyerGaps.length && g === "The buyer's full address")));
   const owner = me.role === "owner";
   const us = co?.legal_name || co?.name || "Sourcingo";
   const m = (n: number | null) => (n == null ? "—" : curMoney(n, e.currency));
@@ -78,8 +85,11 @@ export default async function ExportPage({ params }: PageProps<"/goods/[id]/expo
   const consignee = (
     <div>
       <span className="challan-label">Consignee</span>
-      <b>{buyer}</b>
-      {b?.delivery_address ? <p className="whitespace-pre-line">{b.delivery_address}</p> : <p className="text-warn">Address to add</p>}
+      {bp?.consignee ? <p className="whitespace-pre-line">{bp.consignee}</p> : <>
+        <b>{bp?.legal_name || buyer}</b>
+        {b?.delivery_address ? <p className="whitespace-pre-line">{b.delivery_address}</p> : <p className="text-warn">Address to add</p>}
+      </>}
+      {bp?.tax_id && <p>Tax no. {bp.tax_id}{bp.eori ? ` · EORI ${bp.eori}` : ""}</p>}
       {e.country && <p>{e.country}</p>}
     </div>
   );

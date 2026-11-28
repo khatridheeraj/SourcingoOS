@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import type { Buyer } from "@/lib/data";
 import { saveBuyer, type BuyerInput } from "./actions";
@@ -9,9 +11,12 @@ import { GrnDays } from "./grn-days";
 const blank: BuyerInput = { code: "", realName: "", city: "", notes: "", active: true, senders: "" };
 
 // senders: each buyer's known PO senders, given to the owner only.
-export function BuyerList({ buyers, owner, openOrders, senders }: {
+// scores: how complete each buyer's details are (null without Buyer details).
+export function BuyerList({ buyers, owner, openOrders, senders, scores }: {
   buyers: Buyer[]; owner: boolean; openOrders: Record<string, number>; senders: Record<string, string[]>;
+  scores: Record<string, { pct: number; ready: boolean; missing: number }> | null;
 }) {
+  const router = useRouter();
   const [editing, setEditing] = useState<BuyerInput | null>(null);
   const [error, setError] = useState("");
   const [pending, start] = useTransition();
@@ -26,7 +31,11 @@ export function BuyerList({ buyers, owner, openOrders, senders }: {
         setError(res.error);
         // The buyer itself went in: the next Save changes it instead of adding it again.
         if (res.id) setEditing((e) => (e ? { ...e, id: res.id } : e));
-      } else setEditing(null);
+      } else {
+        // A new buyer goes straight to its record, to take its full details and papers.
+        if (!editing.id && res.id) router.push(`/buyers/${res.id}?edit=1`);
+        setEditing(null);
+      }
     });
   }
 
@@ -71,11 +80,17 @@ export function BuyerList({ buyers, owner, openOrders, senders }: {
       ) : (
         <div className="table-wrap">
           <table className="tbl stack">
-            <thead><tr><th>Name</th><th>Code</th><th>City</th><th className="r">Open orders</th><th>GRN within</th><th>Notes</th>{owner && <th>PO senders</th>}<th></th>{owner && <th></th>}</tr></thead>
+            <thead><tr><th>Name</th>{scores && <th>Details</th>}<th>Code</th><th>City</th><th className="r">Open orders</th><th>GRN within</th><th>Notes</th>{owner && <th>PO senders</th>}<th></th>{owner && <th></th>}</tr></thead>
             <tbody>
               {buyers.map((b) => (
                 <tr key={b.id}>
-                  <td className="font-semibold">{b.realName ?? <span className="muted">Not set</span>}</td>
+                  <td className="font-semibold">{scores ? <Link className="link" href={`/buyers/${b.id}`}>{b.realName ?? b.code}</Link> : b.realName ?? <span className="muted">Not set</span>}</td>
+                  {scores && (
+                    <td data-label="Details">
+                      {scores[b.id]?.ready ? <span className="text-ok text-[13px]">Ready</span>
+                        : <Link href={`/buyers/${b.id}`} className="text-warn text-[13px] num">{scores[b.id]?.missing ?? 0} missing · {scores[b.id]?.pct ?? 0}%</Link>}
+                    </td>
+                  )}
                   <td className="code muted">{b.code}</td>
                   <td>{b.city}</td>
                   <td className="r num" data-label="Open orders">{openOrders[b.id] ?? 0}</td>
