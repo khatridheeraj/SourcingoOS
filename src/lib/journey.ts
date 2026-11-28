@@ -208,7 +208,7 @@ function route(j: JourneyInput): Journey {
     return { ...base, stage: "ship", next: { title: "Record the factory's bill", detail: "Final QC passed. Add the factory's purchase bill in Dispatch: it is matched with Tally.", action: { kind: "dispatch" }, label: "Open dispatch", tone: "warn" } };
   }
   if (d.uninvoiced > 0) {
-    return { ...base, stage: "ship", next: { title: "Add our invoice", detail: "The factory bill is in. Add our sales invoice and e-way bill (both come from Tally).", action: { kind: "dispatch" }, label: "Open dispatch", tone: "warn" } };
+    return { ...base, stage: "ship", next: { title: "Add our invoice", detail: "The factory bill is in. Add our sales invoice (from Tally), and its e-way bill when the value needs one.", action: { kind: "dispatch" }, label: "Open dispatch", tone: "warn" } };
   }
   if (d.unshipped > 0) {
     return { ...base, stage: "ship", next: { title: "Add transport and send it", detail: "Invoiced. Add the transporter and LR, then mark the goods sent.", action: { kind: "dispatch" }, label: "Open dispatch", tone: "warn" } };

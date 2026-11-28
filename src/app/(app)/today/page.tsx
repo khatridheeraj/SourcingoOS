@@ -925,7 +925,7 @@ export default async function HomePage({ searchParams }: PageProps<"/today">) {
       now_.push({ ...item, key: `held:${d.id}`, sev: "bad", detail: `${heldText(heldHours(d.purchased_at, now))}, not shipped. ${!d.eway_at ? "Add the e-way bill" : "Add goods photos and the LR"} and send them today.`,
         chip: { text: `Held over ${HOLD_HOURS} hours`, cls: "bad" }, action: !d.eway_at ? "Add e-way bill" : "Add photos and LR", sort: d.purchased_at });
     } else if (!d.eway_at || !d.shipped_at) {
-      soon.push({ ...item, key: `disp:${d.id}`, sev: "warn", detail: !d.eway_at ? "Invoiced; add the e-way bill" : "E-way bill in; add goods photos and the LR",
+      soon.push({ ...item, key: `disp:${d.id}`, sev: "warn", detail: !d.eway_at ? "Invoiced; add the e-way bill (the value needs one)" : "Ready to ship; add goods photos and the LR",
         action: !d.eway_at ? "Add e-way bill" : "Add photos and LR", sort: d.invoiced_at });
     } else if (d.grn_due_on && d.grn_due_on <= addDays(today, 3)) {
       const chip = when(d.grn_due_on, today);

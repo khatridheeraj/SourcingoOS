@@ -8,12 +8,13 @@ import { garmentBill, gstLabel, gstRate } from "@/lib/gst";
 import { amountText } from "@/lib/payments";
 import { uploadPhotos, uploadReports } from "@/lib/photos";
 import {
-  attachDispatchCopy, cancelDispatch, recordDispatchInvoice, recordEwayBill, recordGrn, recordPurchase, recordShipping,
+  attachDispatchCopy, cancelDispatch, recordDispatchInvoice, recordEwayBill, recordGrn, recordPurchase, recordShipping, setDispatchEway,
   type PurchaseInput, type ShippingInput,
 } from "../dispatch-actions";
 import { closeShort } from "../actions";
 import { latinDigits } from "@/lib/digits";
 import { belowCost } from "@/lib/goods";
+import { EWAY_ZONES, ewayLimitsLine, ewayWhy, zoneLabel, type EwayRules, type EwayZone } from "@/lib/eway";
 
 // Each style's pieces across the order's dispatches: ordered, bought, billed (invoiced) and shipped.
 // unit: "m" for a fabric style (bought by the metre), "pcs" for a garment.
@@ -34,6 +35,8 @@ export type Dispatch = {
   id: string; factoryName: string; billNo: string; billDate: string; purchaseTaxable: number; purchaseGst: number; purchaseTallyAmount: number | null;
   billUrl: string | null; invoiceUrl: string | null;
   purchasedAt: string; invoiceDueAt: string; invoiceNo: string | null; invoiceTaxable: number | null; invoiceGst: number | null; invoicedAt: string | null;
+  // E-way bill: needed only above the legal limit for where the lot goes (0132). ewaySkip says why one wasn't needed.
+  ewaySkip: string | null; ewaySkipByHand: boolean; ewayNeeded: boolean; ewayZone: EwayZone | null; ewayValue: number | null;
   ewayNo: string | null; ewayDate: string | null; ewayValidUntil: string | null; ewayUrl: string | null; ewayFromTally: boolean;
   transporter: string | null; vehicleNo: string | null; lrNo: string | null; lrDate: string | null; lrUrl: string | null; cartons: number | null;
   shippedAt: string | null; grnDueOn: string | null; grnUrl: string | null; grnQty: number | null; grnNotes: string | null; grnAt: string | null;
@@ -67,8 +70,8 @@ async function uploadDoc(folder: string, file: File): Promise<string> {
   return (await uploadReports(folder, [file]))[0].path;
 }
 
-export function OrderDispatch({ orderId, orderNo, companyId, open, owner, factories, dispatches, tally, now, today, ship, closedShort }: {
-  orderId: string; orderNo: string; companyId: string; open: boolean; owner: boolean; factories: DispatchFactory[]; dispatches: Dispatch[]; tally: TallyBills; now: number; today: string;
+export function OrderDispatch({ eway, orderId, orderNo, companyId, open, owner, factories, dispatches, tally, now, today, ship, closedShort }: {
+  eway: EwayRules; orderId: string; orderNo: string; companyId: string; open: boolean; owner: boolean; factories: DispatchFactory[]; dispatches: Dispatch[]; tally: TallyBills; now: number; today: string;
   ship: ShipLine[]; closedShort: { at: string; reason: string; by: string } | null;
 }) {
   const router = useRouter();
@@ -184,7 +187,7 @@ export function OrderDispatch({ orderId, orderNo, companyId, open, owner, factor
 
       <div className="flex flex-col gap-3">
         {dispatches.map((d, di) => {
-          const done = [true, !!d.invoicedAt, !!d.ewayNo, !!d.shippedAt, !!d.grnAt];
+          const done = [true, !!d.invoicedAt, !!d.ewayNo || !!d.ewaySkip, !!d.shippedAt, !!d.grnAt];
           const next = done.indexOf(false);
           const pcs = d.lines.reduce((s, l) => s + l.qty, 0);
           const unit = unitOver(d.lines.map((l) => unitOfStyle.get(l.style) ?? "pcs"));
@@ -202,7 +205,7 @@ export function OrderDispatch({ orderId, orderNo, companyId, open, owner, factor
                 {d.purchaseTallyAmount == null
                   ? <span className="chip" title="Linked by itself once Accounts books this bill in Tally.">Not in Tally yet</span>
                   : tallyOff ? <span className="chip bad">Tally says {money(d.purchaseTallyAmount)}</span> : <span className="chip ok">In Tally</span>}
-                <span className="ml-auto flex gap-2">
+                <span className="ml-auto flex flex-wrap gap-2">
                   <a href={`/goods/${d.id}/packing`} className="btn sm">Packing list</a>
                   <a href={`/goods/${d.id}/challan`} className="btn sm">Delivery challan</a>
                   <a href={`/goods/${d.id}/export`} className="btn sm">Export papers</a>
@@ -211,7 +214,7 @@ export function OrderDispatch({ orderId, orderNo, companyId, open, owner, factor
               </div>
               <ol className="steps mt-2" aria-label="Dispatch steps">
                 {STEPS.map((s, i) => (
-                  <li key={s}><span className={done[i] ? "chip ok" : i === next ? (i === 1 && invoiceLate) || (i === 4 && grnLate) ? "chip bad" : "chip warn" : "chip"}>{done[i] ? "✓ " : ""}{s}</span></li>
+                  <li key={s}><span className={done[i] ? "chip ok" : i === next ? (i === 1 && invoiceLate) || (i === 4 && grnLate) ? "chip bad" : "chip warn" : "chip"}>{done[i] ? "✓ " : ""}{i === 2 && !d.ewayNo && d.ewaySkip ? "No e-way bill needed" : s}</span></li>
                 ))}
               </ol>
               <p className="muted mt-1 text-[13px]">{d.lines.map((l) => `${l.style} ${qty(l.qty)} ${unitOfStyle.get(l.style) ?? "pcs"} at ${money(l.purchaseRate)}`).join(" · ")}</p>
@@ -230,6 +233,9 @@ export function OrderDispatch({ orderId, orderNo, companyId, open, owner, factor
               {d.ewayNo && (
                 <p className="text-[13px]">E-way bill <b className="num">{d.ewayNo}</b>{d.ewayDate && ` of ${day(d.ewayDate)}`}{d.ewayValidUntil && `, valid till ${day(d.ewayValidUntil)}`}{d.ewayFromTally && ", from Tally"}. {d.ewayUrl && <a className="link" href={d.ewayUrl} target="_blank" rel="noreferrer">Open</a>}</p>
               )}
+              {!d.ewayNo && d.ewaySkip && (
+                <EwayNote d={d} rules={eway} pending={pending} onPick={(action, value) => step(d.id, () => setDispatchEway(orderId, d.id, action, value))} />
+              )}
               {d.shippedAt && (
                 <div className="text-[13px]">
                   Shipped by {d.transporter}{d.vehicleNo && ` (${d.vehicleNo})`}, LR <b>{d.lrNo}</b>{d.lrDate && ` of ${day(d.lrDate)}`}{d.cartons && `, ${d.cartons} cartons`}. {d.lrUrl && <a className="link" href={d.lrUrl} target="_blank" rel="noreferrer">LR copy</a>}
@@ -247,7 +253,8 @@ export function OrderDispatch({ orderId, orderNo, companyId, open, owner, factor
 
               {/* Each dispatch goes on to its next step even once the order is shipped or cancelled: the goods are already on their way. */}
               {next === 1 && <InvoiceStep d={d} unit={unit} bills={tally.sales} buyerInTally={tally.buyerInTally} today={today} late={invoiceLate} pending={pending} onSave={(v) => step(d.id, () => recordDispatchInvoice(orderId, d.id, v))} />}
-              {next === 2 && <EwayStep invoiceNo={d.invoiceNo ?? ""} today={today} pending={pending} onSave={(v, file) => step(d.id, async (folder) => recordEwayBill(orderId, d.id, { ...v, path: await uploadDoc(folder, file) }))} />}
+              {next === 2 && <EwayStep d={d} rules={eway} invoiceNo={d.invoiceNo ?? ""} today={today} pending={pending}
+                onPick={(action, value) => step(d.id, () => setDispatchEway(orderId, d.id, action, value))} onSave={(v, file) => step(d.id, async (folder) => recordEwayBill(orderId, d.id, { ...v, path: await uploadDoc(folder, file) }))} />}
               {next === 3 && <ShipStep today={today} pending={pending} qcBlock={owner ? [] : d.qcNotPassed ?? []} onSave={(v, lr, photos) => step(d.id, async (folder) => recordShipping(orderId, d.id, { ...v, lr_path: await uploadDoc(folder, lr), photos: await uploadPhotos(folder, photos) }))} />}
               {next === 4 && <GrnStep d={d} pcs={pcs} unit={unit} late={grnLate} pending={pending} onSave={(v, file) => step(d.id, async (folder) => recordGrn(orderId, d.id, { ...v, path: await uploadDoc(folder, file) }))} />}
               {error[d.id] && <p className="mt-2 text-[13px] font-semibold text-bad" role="alert">{error[d.id]}</p>}
@@ -257,7 +264,8 @@ export function OrderDispatch({ orderId, orderNo, companyId, open, owner, factor
       </div>
       <details className="howto mt-4 border-t border-line pt-3">
         <summary>How dispatch works</summary>
-        <p>Purchase from the factory, then invoice the buyer within 4 hours, add the e-way bill, ship with photos and the LR, and collect the buyer&apos;s GRN in time.</p>
+        <p>Purchase from the factory, then invoice the buyer within 4 hours, add the e-way bill when the law needs one, ship with photos and the LR, and collect the buyer&apos;s GRN in time.</p>
+        <p>An e-way bill is needed only when the invoice with GST is above the limit for where the goods go: {ewayLimitsLine(eway)} Limits checked {day(eway.checked_on)}; the owner keeps them on Goods.</p>
       </details>
     </section>
   );
@@ -509,7 +517,68 @@ function InvoiceStep({ d, unit, bills, buyerInTally, today, late, pending, onSav
 }
 
 // The e-way bill comes from Tally with invoice invoiceNo. Typing it in is for when Tally hasn't synced yet.
-function EwayStep({ invoiceNo, today, pending, onSave }: {
+type EwayPick = (action: "zone" | "needed" | "not_needed" | "auto", value?: string) => void;
+
+// Where the lot goes decides the limit; the buyer keeps the answer for its next lot.
+function ZonePick({ d, rules, pending, onPick }: { d: Dispatch; rules: EwayRules; pending: boolean; onPick: EwayPick }) {
+  const zone = d.ewayZone ?? "other_state";
+  return (
+    <label className="field mt-2 max-w-[320px]"><span>Where are these goods going?</span>
+      <select className="inp" value={zone} disabled={pending} onChange={(e) => onPick("zone", e.target.value)}>
+        {EWAY_ZONES.map((z) => <option key={z} value={z}>{zoneLabel(z, rules)}</option>)}
+      </select>
+    </label>
+  );
+}
+
+// A lot that needed no e-way bill: why, and the merchandiser's way back if one is needed after all.
+function EwayNote({ d, rules, pending, onPick }: { d: Dispatch; rules: EwayRules; pending: boolean; onPick: EwayPick }) {
+  return (
+    <div className="mt-1 text-[13px]">
+      <p>No e-way bill needed. <span className="muted">{(d.ewaySkip ?? "").replace(/^Not required: (.)/, (_, c: string) => c.toUpperCase())}</span></p>
+      {!d.shippedAt && (
+        <>
+          {!d.ewaySkipByHand && <ZonePick d={d} rules={rules} pending={pending} onPick={onPick} />}
+          <button type="button" className="btn sm ghost mt-2" disabled={pending} onClick={() => onPick("needed")}>It needs an e-way bill</button>
+        </>
+      )}
+    </div>
+  );
+}
+
+function EwayStep({ d, rules, invoiceNo, today, pending, onPick, onSave }: {
+  d: Dispatch; rules: EwayRules; invoiceNo: string; today: string; pending: boolean; onPick: EwayPick;
+  onSave: (v: { no: string; date: string; valid_until: string }, file: File) => void;
+}) {
+  const [skipping, setSkipping] = useState(false);
+  const [reason, setReason] = useState("");
+  const why = d.ewayNeeded ? "Asked for by hand, whatever the value." : d.ewayValue != null ? ewayWhy(d.ewayValue, d.ewayZone, rules) : "";
+  return (
+    <>
+      <div className="mt-3 text-[13px]">
+        {why && <p>{why}</p>}
+        {d.ewayNeeded ? (
+          <button type="button" className="btn sm ghost mt-2" disabled={pending} onClick={() => onPick("auto")}>Go by the value instead</button>
+        ) : (
+          <ZonePick d={d} rules={rules} pending={pending} onPick={onPick} />
+        )}
+      </div>
+      <EwayEntry invoiceNo={invoiceNo} today={today} pending={pending} onSave={onSave} />
+      {!skipping ? (
+        <button type="button" className="link mt-2 block text-[13px]" onClick={() => setSkipping(true)}>No e-way bill needed for another reason?</button>
+      ) : (
+        <form className="mt-2 flex flex-wrap items-end gap-2" onSubmit={(e) => { e.preventDefault(); onPick("not_needed", reason); }}>
+          <label className="field grow"><span>Why no e-way bill?</span>
+            <input className="inp" value={reason} maxLength={300} onChange={(e) => setReason(e.target.value)} placeholder="For example: goods going to the airport under customs" aria-label="Why no e-way bill" /></label>
+          <button className="btn sm" disabled={pending || reason.trim().length < 5}>Save</button>
+          <button type="button" className="btn sm ghost" onClick={() => setSkipping(false)}>Cancel</button>
+        </form>
+      )}
+    </>
+  );
+}
+
+function EwayEntry({ invoiceNo, today, pending, onSave }: {
   invoiceNo: string; today: string; pending: boolean; onSave: (v: { no: string; date: string; valid_until: string }, file: File) => void;
 }) {
   const [byHand, setByHand] = useState(false);

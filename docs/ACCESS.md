@@ -16,6 +16,7 @@ The owner changes a person's role and switches on Team. Three switches exist: **
 | Buyer emails, buyer PO files, inquiries, costings, Leads, Our record | Yes | Yes | Yes | No | Yes | No | Own asks | No |
 | Emails from unknown senders | Yes | No | No | No | No | No | No | No |
 | Dispatch, Goods with us, challan, packing list, export papers, shipment tracking | Yes | Yes | Yes | No | Yes | No | Own shipments | No |
+| E-way bill limits (Goods): see / change | Change | See | See | No | See | No | No | No |
 | Guarantee claims | Decide | Decide | Decide | No | Decide | Read | Raise own | No |
 | QC checks | Record | See | See | See | See | Record | Final QC photos | Own |
 | Factories, Style catalogue, Markers, Numbers report | Yes | Yes | Yes | Yes | Yes | No (Visit plan instead) | No | Own profile |

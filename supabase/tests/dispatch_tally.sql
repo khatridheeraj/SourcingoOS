@@ -32,13 +32,13 @@ end $$;
 -- 2. The invoice is entered first; the e-way bill arrives with the next Tally read.
 select public.record_dispatch_invoice(:'d2', '{"invoice_no":"SPL/102","invoice_date":"2026-10-11","taxable":27750,"gst":1387.5}');
 do $$ begin
-  if (select eway_at from public.dispatches where invoice_no = 'SPL/102') is not null then raise exception 'e-way bill appeared from nowhere'; end if;
+  if (select eway_bill_no from public.dispatches where invoice_no = 'SPL/102') is not null then raise exception 'e-way bill appeared from nowhere'; end if;
 end $$;
 reset role;
 insert into public.tally_vouchers (company_id, guid, vtype, kind, number, vdate, party, amount, eway_bill_no)
 select id, 'g-102', 'Sales', 'sales', 'SPL/102', '2026-10-12', 'Areeba', 29137.5, null from public.companies;
 do $$ begin
-  if (select eway_at from public.dispatches where invoice_no = 'SPL/102') is not null then raise exception 'taken without an e-way bill number'; end if;
+  if (select eway_bill_no from public.dispatches where invoice_no = 'SPL/102') is not null then raise exception 'taken without an e-way bill number'; end if;
 end $$;
 update public.tally_vouchers set eway_bill_no = '331234567891' where guid = 'g-102';
 do $$ begin
